@@ -1180,12 +1180,12 @@ HTML output should preserve semantics:
 
 ```html
 <section>
-  <h1>Methods</h1>
-  <p>...</p>
-  <figure>
-    <img src="scan.png">
-    <figcaption>...</figcaption>
-  </figure>
+	<h1>Methods</h1>
+	<p>...</p>
+	<figure>
+		<img src="scan.png">
+		<figcaption>...</figcaption>
+	</figure>
 </section>
 ```
 
@@ -1702,10 +1702,9 @@ impl Compiler {
         let semantic = self.resolver.lower(syntax)?;
         let resolved = self.resolver.resolve(semantic)?;
 
-        let layout = self.layout_engine.layout_incremental(
-            resolved,
-            &mut self.cache,
-        )?;
+        let layout = self
+            .layout_engine
+            .layout_incremental(resolved, &mut self.cache)?;
 
         self.backend.emit_all(layout, input.outputs)
     }
@@ -1799,9 +1798,7 @@ fn reflow_from(start_page: PageIndex, old_pages: &[Page]) -> Vec<Page> {
     loop {
         let new_page = layout_one_page(state);
 
-        let old_next_boundary = old_pages
-            .get(page_index)
-            .map(|p| &p.output_boundary);
+        let old_next_boundary = old_pages.get(page_index).map(|p| &p.output_boundary);
 
         if Some(&new_page.output_boundary) == old_next_boundary {
             reuse_remaining_pages_from(page_index + 1);

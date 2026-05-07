@@ -39,12 +39,12 @@ spawn on stdio.
 
 Defined in `.cargo/config.toml`:
 
-| alias | expansion |
-| --- | --- |
+| alias                           | expansion                                                |
+| ------------------------------- | -------------------------------------------------------- |
 | `cargo bw` / `cw` / `tw` / `dw` | workspace flavours of `build` / `check` / `test` / `doc` |
-| `cargo br` / `rr` | release `build` / `run` |
-| `cargo lint` | `clippy --workspace --all-targets -- -D warnings` |
-| `cargo mos …` | `run -q -p mosaic-cli -- …` |
+| `cargo br` / `rr`               | release `build` / `run`                                  |
+| `cargo lint`                    | `clippy --workspace --all-targets -- -D warnings`        |
+| `cargo mos …`                   | `run -q -p mosaic-cli -- …`                              |
 
 ## Workspace layout
 

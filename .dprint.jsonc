@@ -1,0 +1,19 @@
+{
+	"$schema": "https://dprint.dev/schemas/v0.json",
+	"extends": "https://cdn.jsdelivr.net/gh/kjanat/kjanat/configs/dprint.remote.json",
+	"exec": {
+		"cwd": "${configDir}",
+		"commands": [
+			{ "command": "bunx tombi format - --stdin-filename {{file_path}}", "exts": ["toml"] },
+			{ "command": "rustfmt --edition 2024", "exts": ["rs"], "cacheKeyFiles": ["rustfmt.toml"] },
+		],
+	},
+	"excludes": [
+		"**/node_modules",
+		"**/{*-,bun}lock(.*)?",
+		"**/target",
+	],
+	"plugins": [
+		"https://plugins.dprint.dev/exec-0.6.2.json@df98f54ffd3092b8a841aedd6d098a2651f16d0a796a40535774f1a8b4b9d463",
+	],
+}

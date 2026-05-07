@@ -1,23 +1,23 @@
 [package]
-name        = "mosaic-lsp"
-description = "Language server for Mosaic (manifest §17)."
-version.workspace      = true
-edition.workspace      = true
+name = "mosaic-lsp"
+version.workspace = true
+edition.workspace = true
 rust-version.workspace = true
-license.workspace      = true
-repository.workspace   = true
-homepage.workspace     = true
-keywords.workspace     = true
-categories.workspace   = true
-readme.workspace       = true
-
-[lints]
-workspace = true
+description = "Language server for Mosaic (manifest §17)."
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [[bin]]
 name = "mos-lsp"
 path = "src/main.rs"
 
 [dependencies]
-mosaic-core  = { workspace = true }
+mosaic-core = { workspace = true }
 mosaic-parse = { workspace = true }
+
+[lints]
+workspace = true

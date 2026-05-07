@@ -1,15 +1,15 @@
 [package]
-name        = "mosaic-fonts"
-description = "Font discovery, shaping, and metrics for Mosaic (manifest §22.1)."
-version.workspace      = true
-edition.workspace      = true
+name = "mosaic-fonts"
+version.workspace = true
+edition.workspace = true
 rust-version.workspace = true
-license.workspace      = true
-repository.workspace   = true
-homepage.workspace     = true
-keywords.workspace     = true
-categories.workspace   = true
-readme.workspace       = true
+description = "Font discovery, shaping, and metrics for Mosaic (manifest §22.1)."
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [lints]
 workspace = true
