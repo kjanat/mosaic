@@ -26,7 +26,7 @@ pub enum Block {
 /// algorithm in manifest §22.3 / §33.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BoundaryState {
-    pub next_block:     Option<NodeId>,
+    pub next_block: Option<NodeId>,
     pub pending_floats: Vec<NodeId>,
     // Real counter and footnote state land in MVP 1.
 }
@@ -52,6 +52,8 @@ impl LayoutEngine {
 
     /// Lay out a resolved document into a `PageGraph`. Stub.
     pub fn layout(&mut self) -> Result<PageGraph> {
-        Err(CoreError::Unimplemented("mosaic-layout::LayoutEngine::layout"))
+        Err(CoreError::Unimplemented(
+            "mosaic-layout::LayoutEngine::layout",
+        ))
     }
 }

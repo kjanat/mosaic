@@ -48,13 +48,13 @@ pub enum NodeKind {
 /// A semantic document node (manifest §5.1).
 #[derive(Clone, Debug)]
 pub struct Node {
-    pub id:           NodeId,
-    pub kind:         NodeKind,
-    pub span:         SourceSpan,
+    pub id: NodeId,
+    pub kind: NodeKind,
+    pub span: SourceSpan,
     pub content_hash: ContentHash,
-    pub style_id:     StyleId,
-    pub children:     Vec<NodeId>,
-    pub attributes:   AttrMap,
+    pub style_id: StyleId,
+    pub children: Vec<NodeId>,
+    pub attributes: AttrMap,
 }
 
 /// Attribute map carried on each node. Keys are interned strings in a
@@ -73,9 +73,9 @@ pub enum AttrValue {
 /// A byte-range location in a source file (manifest §6 stage 1).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceSpan {
-    pub file:  PathBuf,
+    pub file: PathBuf,
     pub start: usize,
-    pub end:   usize,
+    pub end: usize,
 }
 
 /// Diagnostic severity (manifest §31).
@@ -94,24 +94,24 @@ pub struct DiagnosticCode(pub &'static str);
 #[derive(Clone, Debug)]
 pub struct DiagnosticNote {
     pub message: String,
-    pub span:    Option<SourceSpan>,
+    pub span: Option<SourceSpan>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Suggestion {
-    pub message:     String,
+    pub message: String,
     pub replacement: Option<String>,
-    pub span:        Option<SourceSpan>,
+    pub span: Option<SourceSpan>,
 }
 
 /// A user-facing diagnostic (manifest §16, §31).
 #[derive(Clone, Debug)]
 pub struct Diagnostic {
-    pub severity:    Severity,
-    pub code:        DiagnosticCode,
-    pub message:     String,
-    pub span:        Option<SourceSpan>,
-    pub notes:       Vec<DiagnosticNote>,
+    pub severity: Severity,
+    pub code: DiagnosticCode,
+    pub message: String,
+    pub span: Option<SourceSpan>,
+    pub notes: Vec<DiagnosticNote>,
     pub suggestions: Vec<Suggestion>,
 }
 

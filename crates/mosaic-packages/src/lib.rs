@@ -21,9 +21,9 @@ pub struct ProjectManifest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectSection {
-    pub name:    String,
+    pub name: String,
     pub version: String,
-    pub entry:   String,
+    pub entry: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

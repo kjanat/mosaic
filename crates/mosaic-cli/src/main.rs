@@ -13,10 +13,10 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(
-    name    = "mos",
+    name = "mos",
     bin_name = "mos",
     version,
-    about   = "Mosaic — semantic, incremental typesetting compiler",
+    about = "Mosaic — semantic, incremental typesetting compiler",
     long_about = "Mosaic compiles `.mos` source files to PDF, HTML, and EPUB.\n\
                   See manifest.md in the repository root for the full design."
 )]
@@ -36,10 +36,10 @@ enum Command {
     /// Build the project to its declared outputs.
     Build {
         #[arg(default_value = "main.mos")]
-        entry:        PathBuf,
+        entry: PathBuf,
         /// Refuse to update dependencies (manifest §15.3).
         #[arg(long)]
-        frozen:       bool,
+        frozen: bool,
         /// Make the build deterministic (manifest §24).
         #[arg(long)]
         reproducible: bool,
@@ -86,14 +86,14 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let cmd = match &cli.command {
-        Command::Init    { .. } => "init",
-        Command::Build   { .. } => "build",
-        Command::Watch   { .. } => "watch",
-        Command::Check   { .. } => "check",
-        Command::Fmt     { .. } => "fmt",
-        Command::Test            => "test",
+        Command::Init { .. } => "init",
+        Command::Build { .. } => "build",
+        Command::Watch { .. } => "watch",
+        Command::Check { .. } => "check",
+        Command::Fmt { .. } => "fmt",
+        Command::Test => "test",
         Command::Profile { .. } => "profile",
-        Command::Clean           => "clean",
+        Command::Clean => "clean",
         Command::Package { .. } => "package",
     };
 
