@@ -48,7 +48,7 @@ Defined in `.cargo/config.toml`:
 
 ## Workspace layout
 
-```
+```text
 crates/
   mosaic-core       document model, IDs, diagnostics      (manifest §5, §31)
   mosaic-parse      parser for .mos                       (manifest §3, §6)

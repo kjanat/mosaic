@@ -4,11 +4,12 @@
 //! For now this crate only defines the manifest schema and parses it.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectManifest {
     pub project: ProjectSection,
 
@@ -20,6 +21,7 @@ pub struct ProjectManifest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectSection {
     pub name: String,
     pub version: String,
@@ -27,6 +29,7 @@ pub struct ProjectSection {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DocumentSection {
     #[serde(default)]
     pub language: Option<String>,
@@ -37,17 +40,31 @@ pub struct DocumentSection {
 
 #[derive(thiserror::Error, Debug)]
 pub enum ManifestError {
-    #[error("could not read manifest: {0}")]
-    Io(#[from] std::io::Error),
+    #[error("could not read manifest `{path}`: {source}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 
-    #[error("could not parse manifest: {0}")]
-    Parse(#[from] toml::de::Error),
+    #[error("could not parse manifest `{path}`: {source}")]
+    Parse {
+        path: PathBuf,
+        #[source]
+        source: toml::de::Error,
+    },
 }
 
 impl ProjectManifest {
     /// Load and parse a `mosaic.toml` from disk.
     pub fn load(path: &Path) -> Result<Self, ManifestError> {
-        let text = std::fs::read_to_string(path)?;
-        Ok(toml::from_str(&text)?)
+        let text = std::fs::read_to_string(path).map_err(|source| ManifestError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        toml::from_str(&text).map_err(|source| ManifestError::Parse {
+            path: path.to_path_buf(),
+            source,
+        })
     }
 }

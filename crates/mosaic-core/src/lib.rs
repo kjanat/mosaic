@@ -128,6 +128,14 @@ impl Diagnostic {
     }
 }
 
+impl std::fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] {}", self.code.0, self.message)
+    }
+}
+
+impl std::error::Error for Diagnostic {}
+
 /// Convenience top-level error type for crates that want a single
 /// `Result` alias without inventing their own.
 #[derive(thiserror::Error, Debug)]
@@ -135,8 +143,8 @@ pub enum CoreError {
     #[error("not yet implemented: {0}")]
     Unimplemented(&'static str),
 
-    #[error("{0}")]
-    Diagnostic(String),
+    #[error(transparent)]
+    Diagnostic(Box<Diagnostic>),
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;

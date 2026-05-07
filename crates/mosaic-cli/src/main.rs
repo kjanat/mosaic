@@ -1,10 +1,11 @@
 //! `mos` — command-line interface for the Mosaic typesetting engine.
 //!
 //! Subcommands mirror manifest §15.1. Every command currently prints
-//! a "not yet implemented" message and exits 0; the real work is
+//! a "not yet implemented" message to stderr and exits non-zero so
+//! that scripts and CI can detect the placeholder; real work is
 //! sequenced through MVP 0–6.
 
-#![allow(clippy::print_stdout, clippy::print_stderr)]
+#![allow(clippy::print_stderr)]
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -97,6 +98,6 @@ fn main() -> ExitCode {
         Command::Package { .. } => "package",
     };
 
-    println!("mos {cmd}: not yet implemented (see manifest §30 MVP roadmap)");
-    ExitCode::SUCCESS
+    eprintln!("mos {cmd}: not yet implemented (see manifest §30 MVP roadmap)");
+    ExitCode::FAILURE
 }
