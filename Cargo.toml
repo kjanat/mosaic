@@ -9,6 +9,7 @@ rust-version = "1.95"
 license      = "MIT"
 repository   = "https://github.com/kjanat/mosaic"
 homepage     = "https://github.com/kjanat/mosaic#readme"
+readme       = "README.md"
 keywords     = ["typesetting", "typography", "pdf", "compiler", "layout"]
 categories   = ["compilers", "text-processing"]
 
@@ -127,11 +128,10 @@ unwrap_used                        = "warn"
 verbose_file_reads                 = "warn"
 
 # --- cargo cherry-picks -------------------------------------------
-# `multiple_crate_versions` deliberately omitted: `toml` currently
-# pulls both `winnow` 0.7 and 1.0; it's a known transitive duplicate
-# we can't fix here, and `cargo lint` runs with `-D warnings`.
-# `cargo_common_metadata` deferred until homepage/keywords/categories
-# are filled in on `[workspace.package]`.
+# `multiple_crate_versions` is omitted because transitive duplicates
+# (currently a `winnow` 0.7/1.0 split via `toml`) aren't ours to fix
+# and would hard-fail under `-D warnings`.
+cargo_common_metadata              = "warn"
 negative_feature_names             = "warn"
 redundant_feature_names            = "warn"
 wildcard_dependencies              = "warn"
@@ -149,11 +149,11 @@ mosaic-cache    = { path = "crates/mosaic-cache",    version = "0.0.0" }
 mosaic-lsp      = { path = "crates/mosaic-lsp",      version = "0.0.0" }
 mosaic-packages = { path = "crates/mosaic-packages", version = "0.0.0" }
 
-clap        = { version = "4.5", features = ["derive"] }
+clap        = { version = "4.6", features = ["derive"] }
 serde       = { version = "1",   features = ["derive"] }
 serde_json  = "1"
 thiserror   = "2"
-toml        = "0.9"
+toml        = "1.1"
 
 [profile.release]
 lto       = "thin"
