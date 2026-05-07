@@ -47,6 +47,16 @@ jobs:
       - name: test
         run: cargo test --workspace
 
+      - name: Upload debug binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: mosaic-binaries-linux-x86_64
+          path: |
+            target/debug/mos
+            target/debug/mos-lsp
+          retention-days: 2
+          if-no-files-found: error
+
       - name: doc
         run: cargo doc --workspace --no-deps
 
