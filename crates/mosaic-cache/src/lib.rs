@@ -3,6 +3,8 @@
 //! The dependency graph (`DepNode`) and content-addressed cache live
 //! here. The MVP 5 implementation will persist to `.mosaic-cache/`.
 
+use std::collections::HashMap;
+
 use mosaic_core::ContentHash;
 
 /// A cache entry's address. Real keys include node, style, and width
@@ -17,14 +19,16 @@ pub trait Cache {
 }
 
 #[derive(Default, Debug)]
-pub struct InMemoryCache;
+pub struct InMemoryCache {
+    entries: HashMap<CacheKey, Vec<u8>>,
+}
 
 impl Cache for InMemoryCache {
-    fn get(&self, _key: &CacheKey) -> Option<Vec<u8>> {
-        None
+    fn get(&self, key: &CacheKey) -> Option<Vec<u8>> {
+        self.entries.get(key).cloned()
     }
 
-    fn put(&mut self, _key: CacheKey, _value: Vec<u8>) {
-        // no-op; landing in MVP 5
+    fn put(&mut self, key: CacheKey, value: Vec<u8>) {
+        self.entries.insert(key, value);
     }
 }
