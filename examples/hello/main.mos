@@ -1,0 +1,23 @@
+#set document(
+  title: "Hello, Mosaic",
+  author: "Mosaic contributors",
+  language: "en",
+)
+
+#set page(
+  paper: "A4",
+  margin: 24mm,
+  numbering: "bottom-center",
+)
+
+#set text(
+  font: "Libertinus Serif",
+  size: 11pt,
+  leading: 1.35,
+)
+
+= Hello, Mosaic
+
+This file is a placeholder so the project layout is exercisable
+once the parser lands in MVP 0. See `manifest.md` §2 for the syntax
+this is sketching toward.

@@ -1,0 +1,16 @@
+[package]
+name        = "mosaic-eval"
+description = "Expression and scripting evaluator for Mosaic (manifest §4, §25)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-core  = { workspace = true }
+mosaic-parse = { workspace = true }

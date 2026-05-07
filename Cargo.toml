@@ -1,0 +1,37 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version      = "0.0.0"
+edition      = "2024"
+rust-version = "1.85"
+license      = "MIT"
+repository   = "https://github.com/kjanat/mosaic"
+authors      = ["Mosaic contributors"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.dependencies]
+mosaic-core     = { path = "crates/mosaic-core",     version = "0.0.0" }
+mosaic-parse    = { path = "crates/mosaic-parse",    version = "0.0.0" }
+mosaic-eval     = { path = "crates/mosaic-eval",     version = "0.0.0" }
+mosaic-layout   = { path = "crates/mosaic-layout",   version = "0.0.0" }
+mosaic-pdf      = { path = "crates/mosaic-pdf",      version = "0.0.0" }
+mosaic-html     = { path = "crates/mosaic-html",     version = "0.0.0" }
+mosaic-fonts    = { path = "crates/mosaic-fonts",    version = "0.0.0" }
+mosaic-bib      = { path = "crates/mosaic-bib",      version = "0.0.0" }
+mosaic-cache    = { path = "crates/mosaic-cache",    version = "0.0.0" }
+mosaic-lsp      = { path = "crates/mosaic-lsp",      version = "0.0.0" }
+mosaic-packages = { path = "crates/mosaic-packages", version = "0.0.0" }
+
+clap        = { version = "4.5", features = ["derive"] }
+serde       = { version = "1",   features = ["derive"] }
+serde_json  = "1"
+thiserror   = "2"
+toml        = "0.9"
+
+[profile.release]
+lto       = "thin"
+codegen-units = 1

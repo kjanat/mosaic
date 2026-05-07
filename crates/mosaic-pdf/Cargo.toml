@@ -1,0 +1,17 @@
+[package]
+name        = "mosaic-pdf"
+description = "PDF backend for Mosaic (manifest §21.1)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-core   = { workspace = true }
+mosaic-layout = { workspace = true }
+mosaic-fonts  = { workspace = true }

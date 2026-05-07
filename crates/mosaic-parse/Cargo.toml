@@ -1,0 +1,15 @@
+[package]
+name        = "mosaic-parse"
+description = "Parser for the Mosaic source language (manifest §3, §6 stages 1–2)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-core = { workspace = true }

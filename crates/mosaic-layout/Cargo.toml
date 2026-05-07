@@ -1,0 +1,16 @@
+[package]
+name        = "mosaic-layout"
+description = "Inline, block, and page layout for Mosaic (manifest §6 stages 5–7, §22, §33)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mosaic-core  = { workspace = true }
+mosaic-fonts = { workspace = true }
