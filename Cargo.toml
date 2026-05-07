@@ -8,7 +8,10 @@ edition      = "2024"
 rust-version = "1.95"
 license      = "MIT"
 repository   = "https://github.com/kjanat/mosaic"
+homepage     = "https://github.com/kjanat/mosaic"
 authors      = ["Mosaic contributors"]
+keywords     = ["typesetting", "typography", "pdf", "compiler", "layout"]
+categories   = ["compilers", "text-processing"]
 
 [workspace.lints.rust]
 unsafe_code                   = "forbid"
@@ -46,6 +49,7 @@ manual_assert                      = "warn"
 manual_let_else                    = "warn"
 manual_ok_or                       = "warn"
 manual_string_new                  = "warn"
+many_single_char_names             = "warn"
 map_unwrap_or                      = "warn"
 match_same_arms                    = "warn"
 mismatching_type_param_order       = "warn"
@@ -61,6 +65,7 @@ ref_binding_to_reference           = "warn"
 ref_option_ref                     = "warn"
 return_self_not_must_use           = "warn"
 semicolon_if_nothing_returned      = "warn"
+single_char_pattern                = "warn"
 single_match_else                  = "warn"
 stable_sort_primitive              = "warn"
 trait_duplication_in_bounds        = "warn"
