@@ -25,7 +25,8 @@ cargo run -p mosaic-cli -- --help  # or: cargo mos --help
 ```
 
 The `mos` CLI exposes the manifest §15.1 subcommands; each currently prints a
-"not yet implemented" placeholder and exits 0.
+"not yet implemented" placeholder to stderr and exits non-zero
+(`ExitCode::FAILURE`) so scripts and CI surface the stub.
 
 ```sh
 cargo mos build examples/hello/main.mos
