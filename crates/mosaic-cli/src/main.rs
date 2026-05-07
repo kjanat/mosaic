@@ -4,6 +4,8 @@
 //! a "not yet implemented" message and exits 0; the real work is
 //! sequenced through MVP 0–6.
 
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 
