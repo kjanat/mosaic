@@ -284,7 +284,7 @@ struct Node {
     id: NodeId,
     kind: NodeKind,
     span: SourceSpan,
-    content_hash: Hash,
+    content_hash: ContentHash,
     style_id: StyleId,
     children: Vec<NodeId>,
     attributes: AttrMap,
@@ -510,11 +510,13 @@ This is the heart.
 Every computed artifact declares dependencies.
 
 ```rust
+// `DepId` and `DepKind` are deferred to MVP 5 (incremental builds);
+// the MVP 0 scaffold tracks dependencies inline on `Node` instead.
 struct DepNode {
     id: DepId,
     kind: DepKind,
     inputs: Vec<DepId>,
-    output_hash: Hash,
+    output_hash: ContentHash,
 }
 ```
 
@@ -913,6 +915,8 @@ Because if packages can run arbitrary code during document compilation, congratu
 
 ## 15.1 Commands
 
+Implemented (MVP 0 scaffold; see §30):
+
 ```bash
 mos init
 mos build
@@ -923,6 +927,14 @@ mos test
 mos profile
 mos clean
 mos package
+```
+
+Deferred to later MVPs:
+
+```bash
+mos graph    # dependency inspection (§8); MVP 5
+mos bundle   # archival `.mosaicbundle` (§15.3); MVP 5
+mos convert  # best-effort LaTeX import (§29); post-MVP
 ```
 
 ## 15.2 Build output
@@ -1297,6 +1309,11 @@ This is the exact trick: convergence by boundary stability.
 Each page or region has a boundary signature:
 
 ```rust
+// `BlockId` and `FloatId` are aliases over `NodeId` in the eventual
+// design; the MVP 0 layout scaffold uses `Option<NodeId>` and
+// `Vec<NodeId>` directly. `counter_state` and `footnote_state` are
+// deferred to MVP 1 (references and counters) and MVP 3 (figures and
+// floats) respectively.
 struct BoundaryState {
     next_block: BlockId,
     pending_floats: Vec<FloatId>,
@@ -1762,11 +1779,13 @@ Cache keys should include:
 Example paragraph layout cache key:
 
 ```rust
+// `Language` is deferred to MVP 2 (real text layout); MVP 0 keys
+// paragraphs without locale and revisits hyphenation/CJK then.
 struct ParagraphCacheKey {
-    node_hash: Hash,
-    style_hash: Hash,
+    node_hash: ContentHash,
+    style_hash: ContentHash,
     width: Abs,
-    font_set_hash: Hash,
+    font_set_hash: ContentHash,
     language: Language,
 }
 ```
@@ -1793,7 +1812,10 @@ Pseudo-code:
 ```rust
 fn reflow_from(start_page: PageIndex, old_pages: &[Page]) -> Vec<Page> {
     let mut page_index = start_page;
-    let mut state = old_pages[start_page].input_boundary.clone();
+    let mut state = old_pages
+        .get(start_page)
+        .map(|p| p.input_boundary.clone())
+        .unwrap_or_default();
 
     loop {
         let new_page = layout_one_page(state);
