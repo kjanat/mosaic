@@ -67,7 +67,7 @@ pub enum AttrValue {
     Int(i64),
     Float(f64),
     Str(String),
-    List(Vec<AttrValue>),
+    List(Vec<Self>),
 }
 
 /// A byte-range location in a source file (manifest §6 stage 1).

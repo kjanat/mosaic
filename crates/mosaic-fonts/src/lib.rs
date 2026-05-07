@@ -1,6 +1,6 @@
 //! Font discovery, shaping, and metrics (manifest §22.1).
 //!
-//! Real shaping will go through HarfBuzz or `rustybuzz` per the manifest:
+//! Real shaping will go through `HarfBuzz` or `rustybuzz` per the manifest:
 //! "Do not invent font shaping unless the goal is lifelong suffering."
 
 /// In-process font database. The MVP-2 version will hold loaded font
