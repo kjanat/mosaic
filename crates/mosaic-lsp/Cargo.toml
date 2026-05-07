@@ -6,13 +6,16 @@ edition.workspace      = true
 rust-version.workspace = true
 license.workspace      = true
 repository.workspace   = true
-authors.workspace      = true
 homepage.workspace     = true
 keywords.workspace     = true
 categories.workspace   = true
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "mos-lsp"
+path = "src/main.rs"
 
 [dependencies]
 mosaic-core  = { workspace = true }

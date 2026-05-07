@@ -8,8 +8,7 @@ edition      = "2024"
 rust-version = "1.95"
 license      = "MIT"
 repository   = "https://github.com/kjanat/mosaic"
-homepage     = "https://github.com/kjanat/mosaic"
-authors      = ["Mosaic contributors"]
+homepage     = "https://github.com/kjanat/mosaic#readme"
 keywords     = ["typesetting", "typography", "pdf", "compiler", "layout"]
 categories   = ["compilers", "text-processing"]
 
