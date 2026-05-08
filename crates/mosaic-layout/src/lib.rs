@@ -172,7 +172,25 @@ impl LayoutState {
         if self.page_has_content {
             self.cursor_y += space_before;
         }
-        let words = self.collect_words(document, section, Font::HelveticaBold, size);
+        let mut words = self.collect_words(document, section, Font::HelveticaBold, size);
+        // Resolver-assigned section number is rendered as a leading
+        // word so it gets the same font/size as the title and flows
+        // through the existing line-break path. The trailing `.` is
+        // the conventional "1." style; `#set heading(numbering: ...)`
+        // (manifest §4) overrides it once `#set` is interpreted.
+        if let Some(number) = read_str_attr(section, "number") {
+            let prefix = format!("{number}.");
+            let width_pt = text_width(Font::HelveticaBold, size, &prefix);
+            words.insert(
+                0,
+                Word {
+                    text: prefix,
+                    font: Font::HelveticaBold,
+                    size_pt: size,
+                    width_pt,
+                },
+            );
+        }
         self.flow_words(&words, BODY_LEADING);
         self.cursor_y += space_after;
     }
@@ -380,6 +398,13 @@ fn blank_page(number: u32) -> Page {
 fn read_level(section: &Node) -> Option<u8> {
     match section.attributes.get("level") {
         Some(AttrValue::Int(n)) if *n >= 1 => u8::try_from((*n).clamp(1, 255)).ok(),
+        _ => None,
+    }
+}
+
+fn read_str_attr<'a>(node: &'a Node, key: &str) -> Option<&'a str> {
+    match node.attributes.get(key) {
+        Some(AttrValue::Str(s)) => Some(s.as_str()),
         _ => None,
     }
 }
@@ -652,6 +677,67 @@ mod tests {
             heading_page > first_word_page,
             "heading on page {heading_page}, first paragraph word on page {first_word_page}"
         );
+    }
+
+    #[test]
+    fn heading_with_number_attribute_emits_prefix_run() {
+        // Resolver writes `number = "2.1"` onto a section node; layout
+        // must emit a leading bold run with that number plus a trailing
+        // dot, ahead of the heading text.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let mut attrs = AttrMap::new();
+        attrs.insert("level".to_owned(), AttrValue::Int(2));
+        attrs.insert("number".to_owned(), AttrValue::Str("2.1".to_owned()));
+        let section = doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Section,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        );
+        alloc_inline(&mut doc, section, NodeKind::Text, "Background");
+        let result = LayoutEngine::new().layout(&doc);
+        let runs = &result.graph.pages[0].runs;
+        assert!(matches!(runs[0].font, Font::HelveticaBold));
+        assert_eq!(runs[0].text, "2.1.");
+        assert!(runs.iter().any(|r| r.text == "Background"));
+        // The number's baseline matches the title's baseline because
+        // they live on the same line.
+        let title = runs.iter().find(|r| r.text == "Background").unwrap();
+        assert!((runs[0].baseline_from_top_pt - title.baseline_from_top_pt).abs() < 1e-3);
+    }
+
+    #[test]
+    fn reference_node_renders_resolved_text() {
+        // A `Reference` node with a `text` attribute (set by the
+        // resolver) flows through `collect_words` like any other inline
+        // — no separate code path. The font defaults to the body face.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let para = make_paragraph(&mut doc, "see");
+        let mut attrs = AttrMap::new();
+        attrs.insert("label".to_owned(), AttrValue::Str("intro".to_owned()));
+        attrs.insert("text".to_owned(), AttrValue::Str("1.2".to_owned()));
+        doc.alloc_child(
+            para,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Reference,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        );
+        let result = LayoutEngine::new().layout(&doc);
+        let runs = &result.graph.pages[0].runs;
+        let reference = runs.iter().find(|r| r.text == "1.2").expect("ref run");
+        assert!(matches!(reference.font, Font::Helvetica));
     }
 
     #[test]
