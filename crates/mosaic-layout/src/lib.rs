@@ -39,13 +39,6 @@ const HEADING_SPACE_AFTER_PT: [f32; 3] = [10.0, 8.0, 6.0];
 /// Vertical gap between consecutive paragraphs.
 const PARA_SPACE_AFTER_PT: f32 = 4.0;
 
-/// Absolute typographic length, in points. Wraps `f32` so callers
-/// can't accidentally mix points with millimetres. f32 matches the
-/// PDF backend's coordinate type with plenty of precision for any
-/// realistic page geometry.
-#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
-pub struct Pt(pub f32);
-
 /// A single horizontal run of text on a page. The MVP 0 emitter
 /// produces one run per word; coalescing same-font neighbours is an
 /// MVP 2 optimisation.
@@ -171,7 +164,7 @@ impl LayoutState {
     }
 
     fn layout_heading(&mut self, document: &Document, section: &Node) {
-        let level = read_level(section).unwrap_or(1).clamp(1, 3) as usize;
+        let level = usize::from(read_level(section).unwrap_or(1).clamp(1, 3));
         let size = HEADING_SIZES_PT[level - 1];
         let space_before = HEADING_SPACE_BEFORE_PT[level - 1];
         let space_after = HEADING_SPACE_AFTER_PT[level - 1];
@@ -221,10 +214,12 @@ impl LayoutState {
                 if piece.is_empty() {
                     continue;
                 }
+                let width_pt = text_width(font, size, piece);
                 out.push(Word {
                     text: piece.to_owned(),
                     font,
                     size_pt: size,
+                    width_pt,
                 });
             }
         }
@@ -241,19 +236,16 @@ impl LayoutState {
         let line_width = A4_WIDTH_PT - 2.0 * MARGIN_PT;
         let mut line: Vec<Word> = Vec::new();
         let mut line_width_used = 0.0_f32;
-        let mut max_size_on_line = 0.0_f32;
 
         for word in words {
-            let w_width = text_width(word.font, word.size_pt, &word.text);
             // Hard wrap: a single word wider than the column gets
             // chopped into character-sized pieces, each on its own
             // line. This is the contract MVP 0 documents.
-            if w_width > line_width {
+            if word.width_pt > line_width {
                 if !line.is_empty() {
-                    self.flush_line(&line, leading, max_size_on_line);
+                    self.flush_line(&line, leading);
                     line.clear();
                     line_width_used = 0.0;
-                    max_size_on_line = 0.0;
                 }
                 self.flush_oversize_word(word, leading);
                 continue;
@@ -263,43 +255,42 @@ impl LayoutState {
             } else {
                 text_width(word.font, word.size_pt, " ")
             };
-            if line_width_used + space_w + w_width > line_width && !line.is_empty() {
-                self.flush_line(&line, leading, max_size_on_line);
+            if !line.is_empty() && line_width_used + space_w + word.width_pt > line_width {
+                self.flush_line(&line, leading);
                 line.clear();
-                line_width_used = 0.0;
-                max_size_on_line = 0.0;
-            }
-            let space_w = if line.is_empty() {
-                0.0
+                // Post-flush the line is empty, so no leading space
+                // is charged before the wrapped word.
+                line_width_used = word.width_pt;
             } else {
-                text_width(word.font, word.size_pt, " ")
-            };
-            line_width_used += space_w + w_width;
-            if word.size_pt > max_size_on_line {
-                max_size_on_line = word.size_pt;
+                line_width_used += space_w + word.width_pt;
             }
             line.push(word.clone());
         }
         if !line.is_empty() {
-            self.flush_line(&line, leading, max_size_on_line);
+            self.flush_line(&line, leading);
         }
     }
 
     /// Emit one line worth of words at `cursor_y`, advancing past it.
-    fn flush_line(&mut self, line: &[Word], leading: f32, max_size: f32) {
-        // Reserve space at the top of the page: if this is the first
-        // line on the page, advance the cursor by the ascent so the
-        // baseline sits below the top margin.
+    /// Computes the line's typographic metrics from `line` itself so
+    /// the caller doesn't have to track them in parallel.
+    fn flush_line(&mut self, line: &[Word], leading: f32) {
+        let max_size = line.iter().map(|w| w.size_pt).fold(0.0_f32, f32::max);
+        let max_ascent = line
+            .iter()
+            .map(|w| ascent(w.font, w.size_pt))
+            .fold(0.0_f32, f32::max);
+
+        // First line on a page: drop the baseline by the line's
+        // ascent so the glyph tops sit at the top margin.
         if !self.page_has_content {
-            self.cursor_y = MARGIN_PT + max_size; // approximate ascent
+            self.cursor_y = MARGIN_PT + max_ascent;
         }
         // Page break if the baseline would fall below the bottom
-        // margin. Compare against descent-aware bottom: descent is
-        // small and absorbed by the margin in this MVP, so the simple
-        // check is `cursor_y > height - margin`.
+        // margin. Descent is small and absorbed by the bottom margin.
         if self.cursor_y > A4_HEIGHT_PT - MARGIN_PT {
             self.start_new_page();
-            self.cursor_y = MARGIN_PT + max_size;
+            self.cursor_y = MARGIN_PT + max_ascent;
         }
 
         let mut x = MARGIN_PT;
@@ -314,7 +305,7 @@ impl LayoutState {
                 font: word.font,
                 text: word.text.clone(),
             });
-            x += text_width(word.font, word.size_pt, &word.text);
+            x += word.width_pt;
         }
         self.page_has_content = true;
         self.cursor_y += max_size * leading;
@@ -335,9 +326,9 @@ impl LayoutState {
                         text: chunk,
                         font: word.font,
                         size_pt: word.size_pt,
+                        width_pt: buf_width,
                     }],
                     leading,
-                    word.size_pt,
                 );
                 buf_width = 0.0;
             }
@@ -350,9 +341,9 @@ impl LayoutState {
                     text: buf,
                     font: word.font,
                     size_pt: word.size_pt,
+                    width_pt: buf_width,
                 }],
                 leading,
-                word.size_pt,
             );
         }
     }
@@ -371,6 +362,10 @@ struct Word {
     text: String,
     font: Font,
     size_pt: f32,
+    /// Pre-computed advance width — populated when the word is
+    /// constructed in `collect_words` so the line-breaker doesn't
+    /// re-measure on every comparison.
+    width_pt: f32,
 }
 
 fn blank_page(number: u32) -> Page {
@@ -397,7 +392,7 @@ fn sanitize_text(raw: &str, span: &SourceSpan, diagnostics: &mut Vec<Diagnostic>
     let mut out = String::with_capacity(raw.len());
     let mut substituted = false;
     for ch in raw.chars() {
-        let code = ch as u32;
+        let code = u32::from(ch);
         if ch == '\n' || ch == '\r' || ch == '\t' {
             out.push(' ');
         } else if (0x20..=0x7E).contains(&code) {
@@ -422,7 +417,11 @@ fn sanitize_text(raw: &str, span: &SourceSpan, diagnostics: &mut Vec<Diagnostic>
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
+    )]
     use std::path::PathBuf;
 
     use mosaic_core::{
@@ -573,6 +572,86 @@ mod tests {
         let result = LayoutEngine::new().layout(&doc);
         assert_eq!(result.graph.pages.len(), 1);
         assert!(result.graph.pages[0].runs.is_empty());
+    }
+
+    #[test]
+    fn raw_inline_uses_courier() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let para = make_paragraph(&mut doc, "before");
+        alloc_inline(&mut doc, para, NodeKind::Raw, "code");
+        alloc_inline(&mut doc, para, NodeKind::Text, "after");
+        let result = LayoutEngine::new().layout(&doc);
+        let runs = &result.graph.pages[0].runs;
+        let code_run = runs.iter().find(|r| r.text == "code").expect("code run");
+        assert!(matches!(code_run.font, Font::Courier));
+        // Adjacent runs stay in the default Helvetica face so the
+        // engine isn't accidentally promoting everything to Courier.
+        assert!(matches!(
+            runs.iter().find(|r| r.text == "before").unwrap().font,
+            Font::Helvetica
+        ));
+    }
+
+    #[test]
+    fn heading_levels_pick_distinct_sizes() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_section(&mut doc, 1, "H1");
+        make_section(&mut doc, 2, "H2");
+        make_section(&mut doc, 3, "H3");
+        let result = LayoutEngine::new().layout(&doc);
+        let runs = &result.graph.pages[0].runs;
+        let h1 = runs.iter().find(|r| r.text == "H1").expect("H1 run");
+        let h2 = runs.iter().find(|r| r.text == "H2").expect("H2 run");
+        let h3 = runs.iter().find(|r| r.text == "H3").expect("H3 run");
+        assert_eq!(h1.size_pt, HEADING_SIZES_PT[0]);
+        assert_eq!(h2.size_pt, HEADING_SIZES_PT[1]);
+        assert_eq!(h3.size_pt, HEADING_SIZES_PT[2]);
+        // Each level is strictly smaller than the one above it.
+        assert!(h1.size_pt > h2.size_pt);
+        assert!(h2.size_pt > h3.size_pt);
+        // Vertical order matches source order.
+        assert!(h1.baseline_from_top_pt < h2.baseline_from_top_pt);
+        assert!(h2.baseline_from_top_pt < h3.baseline_from_top_pt);
+    }
+
+    #[test]
+    fn heading_after_long_paragraph_paginates_correctly() {
+        // A paragraph long enough to span multiple pages, followed
+        // by a heading. The heading must appear *after* every
+        // paragraph word in document order, and the first paragraph
+        // word and the heading must end up on different pages.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let mut text = String::new();
+        for i in 0..1500 {
+            text.push_str(&format!("word{i} "));
+        }
+        make_paragraph(&mut doc, text.trim());
+        make_section(&mut doc, 1, "After");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(
+            result.graph.pages.len() >= 2,
+            "expected pagination, got {} page(s)",
+            result.graph.pages.len()
+        );
+        // Locate the heading and the very first paragraph word.
+        let mut heading_page: Option<u32> = None;
+        let mut first_word_page: Option<u32> = None;
+        for page in &result.graph.pages {
+            for run in &page.runs {
+                if run.text == "After" && matches!(run.font, Font::HelveticaBold) {
+                    heading_page = Some(page.number);
+                }
+                if run.text == "word0" && first_word_page.is_none() {
+                    first_word_page = Some(page.number);
+                }
+            }
+        }
+        let heading_page = heading_page.expect("heading run not emitted");
+        let first_word_page = first_word_page.expect("first paragraph word not emitted");
+        assert!(
+            heading_page > first_word_page,
+            "heading on page {heading_page}, first paragraph word on page {first_word_page}"
+        );
     }
 
     #[test]

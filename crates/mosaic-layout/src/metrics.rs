@@ -87,7 +87,7 @@ fn glyph_width_units(font: Font, ch: char) -> u16 {
     if matches!(font, Font::Courier) {
         return 600;
     }
-    let code = ch as u32;
+    let code = u32::from(ch);
     assert!(
         (0x20..=0x7E).contains(&code),
         "glyph_width_units: non-ASCII char {ch:?} reached metrics; \
@@ -174,9 +174,12 @@ mod tests {
 
     #[test]
     fn courier_is_monospace() {
+        // Courier returns a constant 600-unit advance for every
+        // glyph, so both calls go through identical f32 arithmetic
+        // and must produce byte-equal results.
         let a = text_width(Font::Courier, 12.0, "a");
         let m = text_width(Font::Courier, 12.0, "M");
-        assert!((a - m).abs() < 1e-9);
+        assert_eq!(a, m);
     }
 
     #[test]

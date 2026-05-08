@@ -53,9 +53,9 @@ fn io_diagnostic(message: String) -> CoreError {
 }
 
 /// Build the PDF bytes from `graph`. Pulled out of [`emit`] so tests
-/// can round-trip without touching the filesystem.
-#[must_use]
-pub fn build_pdf(graph: &PageGraph) -> Vec<u8> {
+/// can round-trip without touching the filesystem. Kept `pub(crate)`
+/// until there's a real consumer — the public surface is [`emit`].
+pub(crate) fn build_pdf(graph: &PageGraph) -> Vec<u8> {
     let mut pdf = Pdf::new();
     let mut next_id: i32 = 1;
     let mut alloc = || {
@@ -77,10 +77,10 @@ pub fn build_pdf(graph: &PageGraph) -> Vec<u8> {
 
     pdf.catalog(catalog_id).pages(page_tree_id);
 
-    let kids: Vec<Ref> = page_refs.iter().map(|(p, _)| *p).collect();
+    let page_count = i32::try_from(page_refs.len()).unwrap_or(i32::MAX);
     pdf.pages(page_tree_id)
-        .kids(kids.iter().copied())
-        .count(i32::try_from(kids.len()).unwrap_or(0));
+        .kids(page_refs.iter().map(|(p, _)| *p))
+        .count(page_count);
 
     for (page, (page_id, content_id)) in graph.pages.iter().zip(page_refs.iter()) {
         let mut page_obj = pdf.page(*page_id);
@@ -130,7 +130,12 @@ fn build_content_stream(page_height_pt: f32, runs: &[TextRun]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
+    )]
     use mosaic_layout::{Font, Page, PageGraph, TextRun};
 
     use super::*;
@@ -192,19 +197,46 @@ mod tests {
         assert!(bytes.starts_with(b"%PDF-"));
     }
 
-    #[test]
-    fn emit_writes_file() {
-        let dir = std::env::temp_dir().join(format!(
-            "mosaic-pdf-test-{}",
+    fn unique_temp_path(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "mosaic-pdf-test-{label}-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_nanos())
-        ));
+        ))
+    }
+
+    #[test]
+    fn emit_writes_file() {
+        let dir = unique_temp_path("write");
         let out = dir.join("out.pdf");
         emit(&sample_graph(), &out).expect("emit");
         let bytes = std::fs::read(&out).expect("read pdf");
         assert!(bytes.starts_with(b"%PDF-"));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn emit_fails_with_e090_when_target_is_a_directory() {
+        // Writing a file whose path collides with an existing
+        // directory must surface as an `E090` diagnostic, not a
+        // panic or an `Unimplemented` error.
+        let dir = unique_temp_path("conflict");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        // `dir` itself is the bogus output target; `fs::write` will
+        // refuse to overwrite a directory.
+        let result = emit(&sample_graph(), &dir);
+        std::fs::remove_dir_all(&dir).ok();
+        let err = result.expect_err("expected emit to fail");
+        let CoreError::Diagnostic(d) = err else {
+            panic!("expected Diagnostic, got Unimplemented");
+        };
+        assert_eq!(d.code.0, "E090");
+        assert!(
+            d.message.contains("could not write PDF"),
+            "message={:?}",
+            d.message
+        );
     }
 }
 
