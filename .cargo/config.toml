@@ -1,0 +1,21 @@
+# Cargo configuration for the Mosaic workspace.
+# See: https://doc.rust-lang.org/cargo/reference/config.html
+
+[alias]
+# Workspace shortcuts (built-in single-letter aliases b/c/d/t/r/rm
+# can't be redefined per the alias schema, so the workspace flavours
+# get short two-letter names).
+bw = "build --workspace"
+cw = "check --workspace --all-targets"
+tw = "test --workspace"
+dw = "doc --workspace --no-deps"
+
+# Release flavours.
+br = "build --release"
+rr = "run --release"
+
+# Lints. Not aliased as `clippy` because that's an existing subcommand.
+lint = "clippy --workspace --all-targets -- -D warnings"
+
+# Run the `mos` CLI from the workspace without typing `-p mosaic-cli`.
+mos = "run -q -p mosaic-cli --"

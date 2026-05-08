@@ -1,0 +1,82 @@
+name: CI
+
+run-name: >-
+  ${{ format('{0}: {1}',
+    case(github.event.pull_request, format('PR #{0}', github.event.pull_request.number), github.ref_name),
+    case(github.event.pull_request, github.event.pull_request.title, github.event.head_commit.message)
+  ) }} @${{ github.actor }}
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  check:
+    name: fmt · clippy · build · test · doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: build
+        run: cargo build --workspace --all-targets
+
+      - name: test
+        run: cargo test --workspace
+
+      - name: Upload debug binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: mosaic-binaries-linux-x86_64
+          path: |
+            target/debug/mos
+            target/debug/mos-lsp
+          retention-days: 2
+          if-no-files-found: error
+
+      - name: doc
+        run: cargo doc --workspace --no-deps
+
+  msrv:
+    name: build on MSRV (1.95)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+
+      - name: build
+        run: cargo build --workspace --all-targets
