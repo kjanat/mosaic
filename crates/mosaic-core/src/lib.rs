@@ -161,22 +161,27 @@ impl std::fmt::Display for Diagnostic {
 
 /// Convert a byte offset into a 1-based `(line, column)` pair.
 ///
-/// `src` is treated as UTF-8; columns are counted in bytes. Both the
-/// returned line and column are clamped to a minimum of 1, and offsets
-/// past the end of `src` map to the final line.
+/// `src` is treated as UTF-8; columns are counted in *Unicode scalar
+/// values* (i.e. `char`s), not bytes, so a span pointing at the byte
+/// after `µ` reports column 2 rather than 3. Both the returned line
+/// and column are at least 1, and offsets past the end of `src` are
+/// clamped to the end. Offsets that fall in the middle of a UTF-8
+/// code-point round down to the start of that code-point.
 #[must_use]
 pub fn linecol(src: &str, byte_offset: usize) -> (usize, usize) {
-    let clamped = byte_offset.min(src.len());
+    let mut clamped = byte_offset.min(src.len());
+    while clamped > 0 && !src.is_char_boundary(clamped) {
+        clamped -= 1;
+    }
     let mut line = 1_usize;
-    let mut last_newline: Option<usize> = None;
+    let mut line_start = 0_usize;
     for (i, b) in src.as_bytes().iter().enumerate().take(clamped) {
         if *b == b'\n' {
             line += 1;
-            last_newline = Some(i);
+            line_start = i + 1;
         }
     }
-    let col_start = last_newline.map_or(0, |i| i + 1);
-    let column = (clamped - col_start) + 1;
+    let column = src[line_start..clamped].chars().count() + 1;
     (line, column)
 }
 
@@ -288,7 +293,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn linecol_handles_offsets() {
+    fn linecol_handles_ascii_offsets() {
         let src = "ab\ncd\nef";
         assert_eq!(linecol(src, 0), (1, 1));
         assert_eq!(linecol(src, 1), (1, 2));
@@ -298,6 +303,26 @@ mod tests {
         assert_eq!(linecol(src, 7), (3, 2));
         // Past the end clamps.
         assert_eq!(linecol(src, 9999), (3, 3));
+    }
+
+    #[test]
+    fn linecol_counts_chars_not_bytes() {
+        // `µ` is 2 bytes in UTF-8, `字` is 3 bytes. The column for the
+        // byte after them should still be 2, not 3 / 4.
+        let src = "µx\n字y\n";
+        assert_eq!(linecol(src, 0), (1, 1));
+        assert_eq!(linecol(src, 2), (1, 2)); // after `µ`
+        assert_eq!(linecol(src, 3), (1, 3)); // after `µx`
+        assert_eq!(linecol(src, 4), (2, 1)); // start of line 2
+        assert_eq!(linecol(src, 7), (2, 2)); // after `字`
+    }
+
+    #[test]
+    fn linecol_offsets_inside_codepoints_round_down() {
+        // Pointing at the second byte of `µ` should still report
+        // column 1 of line 1, not panic.
+        let src = "µ";
+        assert_eq!(linecol(src, 1), (1, 1));
     }
 
     #[test]

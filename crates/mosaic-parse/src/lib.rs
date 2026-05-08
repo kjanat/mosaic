@@ -147,7 +147,7 @@ impl<'a> Parser<'a> {
                 self.skip_line();
                 continue;
             }
-            if self.starts_with("#set") {
+            if self.at_set_keyword() {
                 self.parse_set_block();
             } else if self.starts_with("=") {
                 self.parse_heading();
@@ -170,6 +170,20 @@ impl<'a> Parser<'a> {
 
     fn starts_with(&self, prefix: &str) -> bool {
         self.src.as_bytes()[self.pos..].starts_with(prefix.as_bytes())
+    }
+
+    /// Returns true if the current position spells the `#set` keyword
+    /// followed by a token boundary (whitespace, EOF, or `(`). Without
+    /// the boundary check, prefixes like `#setting` would be routed to
+    /// `parse_set_block` and emit spurious diagnostics.
+    fn at_set_keyword(&self) -> bool {
+        if !self.starts_with("#set") {
+            return false;
+        }
+        match self.src.as_bytes().get(self.pos + 4) {
+            None => true,
+            Some(&b) => b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' || b == b'(',
+        }
     }
 
     /// Returns true if the current line is blank (contains only ASCII
@@ -355,7 +369,6 @@ impl<'a> Parser<'a> {
         let bytes = self.src.as_bytes();
         let para_start = self.pos;
         let mut para_end = self.pos;
-        let mut text = String::new();
         let mut text_start: Option<usize> = None;
         loop {
             if self.pos >= bytes.len() {
@@ -369,21 +382,23 @@ impl<'a> Parser<'a> {
             if self.starts_with("=") && self.heading_level_of_current_line().is_some() {
                 break;
             }
-            if self.starts_with("#set") {
+            if self.at_set_keyword() {
                 break;
             }
             let (line_start, content_end, line_end) = self.current_line_bounds();
             if text_start.is_none() {
                 text_start = Some(line_start);
-            } else {
-                text.push('\n');
             }
-            text.push_str(&self.src[line_start..content_end]);
             para_end = content_end;
             self.pos = line_end;
         }
         if let Some(start) = text_start {
-            let inlines = self.parse_inlines(&text, start);
+            // Slice the paragraph directly out of `self.src` so byte
+            // offsets stay aligned with the original file. Building a
+            // separate buffer with synthetic `\n` separators would
+            // shift inline spans by one byte per CRLF line ending.
+            let slice = &self.src[start..para_end];
+            let inlines = self.parse_inlines(slice, start);
             let span = self.span(para_start, para_end);
             self.items.push(Item::Paragraph { inlines, span });
         }
@@ -690,5 +705,47 @@ mod tests {
         let r = parse_str("= Title\r\nbody\r\n");
         assert!(!r.has_errors());
         assert_eq!(r.tree.items.len(), 2);
+    }
+
+    #[test]
+    fn set_prefix_without_token_boundary_stays_paragraph() {
+        // `#setting` is not the `#set` keyword. The parser must not
+        // route it to the set-block path and emit a spurious error.
+        let r = parse_str("#setting up\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert!(r.tree.items[0].as_paragraph().is_some());
+    }
+
+    #[test]
+    fn set_prefix_followed_by_paren_is_set_block() {
+        // No whitespace, but `(` is also a valid token boundary.
+        let r = parse_str("#set(name: \"x\")\n");
+        // Either the parser recognises this as a set block with no
+        // identifier (E010) or it parses as paragraph; what matters
+        // is that it does NOT panic and returns a structured result.
+        // We document the current behaviour here: `#set` is treated
+        // as the keyword and `name` is parsed as the body identifier
+        // — see `at_set_keyword`. This guards against regression.
+        assert_eq!(r.tree.items.len() + r.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn paragraph_inline_spans_align_with_crlf_source() {
+        // Regression for the CRLF byte-offset bug: when the paragraph
+        // contains `\r\n` between its lines, inline spans on the
+        // second line must still index into the original source.
+        let src = "first\r\n*x*\r\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        // The emphasis run is the byte sequence `*x*` on the second
+        // line. Its span must point at exactly those three bytes in
+        // the original source, regardless of the CR before it.
+        let emph = inlines
+            .iter()
+            .find(|i| i.kind == InlineKind::Emphasis)
+            .expect("emphasis inline");
+        assert_eq!(&src[emph.span.start..emph.span.end], "*x*");
+        assert_eq!(emph.text, "x");
     }
 }

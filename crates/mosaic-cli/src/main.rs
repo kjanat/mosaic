@@ -221,13 +221,16 @@ fn render_span_caret(src: &str, span: &SourceSpan) {
         .find('\n')
         .map_or(src.len(), |p| line_start + p);
     let line_text = &src[line_start..line_end];
-    let len = span.end.saturating_sub(span.start).max(1);
-    let caret_count = len.min(line_end.saturating_sub(span.start)).max(1);
+    // Convert byte offsets into char counts so multibyte UTF-8
+    // sequences (e.g. `µ`, `é`) line up with the source above.
+    let span_byte_end = span.end.min(line_end);
+    let span_byte_start = span.start.min(span_byte_end);
+    let caret_chars = src[span_byte_start..span_byte_end].chars().count().max(1);
     eprintln!("   |");
     eprintln!("{line_no:>3}| {line_text}");
     eprintln!(
         "   | {pad}{carets}",
         pad = " ".repeat(col.saturating_sub(1)),
-        carets = "^".repeat(caret_count),
+        carets = "^".repeat(caret_chars),
     );
 }
