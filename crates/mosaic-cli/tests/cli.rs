@@ -74,6 +74,25 @@ fn check_missing_file_fails() {
 }
 
 #[test]
+fn check_crlf_source_does_not_leak_carriage_return() {
+    // Regression: the rendered source line under a diagnostic must
+    // not include the trailing `\r` from CRLF line endings, which
+    // would mangle alignment when stderr handles `\r` as a column
+    // reset.
+    let dir = temp_dir("mos-check-crlf");
+    write_file(dir.path(), "main.mos", "= Title\r\n*unclosed\r\n");
+    let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
+    assert_eq!(code, 0);
+    assert!(stderr.contains("warning[W021]"), "stderr={stderr:?}");
+    // The line above the caret should be the bare paragraph text,
+    // with no CR character anywhere in the diagnostic frame.
+    assert!(
+        !stderr.contains('\r'),
+        "stderr leaked a carriage return: {stderr:?}"
+    );
+}
+
+#[test]
 fn build_succeeds_at_lowering_then_fails_until_pdf_lands() {
     // `mos build` parses + lowers the entry, so a clean source should
     // surface no diagnostics. It then exits 1 because the PDF backend

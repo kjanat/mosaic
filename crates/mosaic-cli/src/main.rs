@@ -212,19 +212,36 @@ fn render_diagnostic(diag: &Diagnostic, src: &str) {
     }
 }
 
+fn clamp_to_char_boundary(src: &str, mut offset: usize) -> usize {
+    offset = offset.min(src.len());
+    while offset > 0 && !src.is_char_boundary(offset) {
+        offset -= 1;
+    }
+    offset
+}
+
 fn render_span_caret(src: &str, span: &SourceSpan) {
     let (line_no, col) = linecol(src, span.start);
-    let line_start = src[..span.start.min(src.len())]
-        .rfind('\n')
-        .map_or(0, |p| p + 1);
-    let line_end = src[line_start..]
+    let span_start = clamp_to_char_boundary(src, span.start);
+    let line_start = src[..span_start].rfind('\n').map_or(0, |p| p + 1);
+    let raw_line_end = src[line_start..]
         .find('\n')
         .map_or(src.len(), |p| line_start + p);
+    // CRLF sources keep the trailing `\r` inside `[line_start, '\n')`;
+    // strip it so the caret line lines up with what stderr actually
+    // prints.
+    let line_end = if raw_line_end > line_start && src.as_bytes()[raw_line_end - 1] == b'\r' {
+        raw_line_end - 1
+    } else {
+        raw_line_end
+    };
     let line_text = &src[line_start..line_end];
     // Convert byte offsets into char counts so multibyte UTF-8
-    // sequences (e.g. `µ`, `é`) line up with the source above.
-    let span_byte_end = span.end.min(line_end);
-    let span_byte_start = span.start.min(span_byte_end);
+    // sequences (e.g. `µ`, `é`) line up with the source above. Clamp
+    // both ends to char boundaries first; otherwise a span that
+    // straddles a multibyte sequence would panic the slice below.
+    let span_byte_end = clamp_to_char_boundary(src, span.end.min(line_end));
+    let span_byte_start = clamp_to_char_boundary(src, span_start.min(span_byte_end));
     let caret_chars = src[span_byte_start..span_byte_end].chars().count().max(1);
     eprintln!("   |");
     eprintln!("{line_no:>3}| {line_text}");

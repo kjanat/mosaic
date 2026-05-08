@@ -398,7 +398,16 @@ impl<'a> Parser<'a> {
             // separate buffer with synthetic `\n` separators would
             // shift inline spans by one byte per CRLF line ending.
             let slice = &self.src[start..para_end];
-            let inlines = self.parse_inlines(slice, start);
+            let mut inlines = self.parse_inlines(slice, start);
+            // Spans stay anchored to the raw source, but the displayed
+            // text payload is platform-stable: normalize `\r\n` → `\n`
+            // so the same logical paragraph lowers identically on
+            // Windows and Unix sources.
+            for inline in &mut inlines {
+                if inline.text.contains("\r\n") {
+                    inline.text = inline.text.replace("\r\n", "\n");
+                }
+            }
             let span = self.span(para_start, para_end);
             self.items.push(Item::Paragraph { inlines, span });
         }
@@ -747,5 +756,26 @@ mod tests {
             .expect("emphasis inline");
         assert_eq!(&src[emph.span.start..emph.span.end], "*x*");
         assert_eq!(emph.text, "x");
+    }
+
+    #[test]
+    fn paragraph_inline_text_is_crlf_normalized() {
+        // The raw slice contains `\r\n` between paragraph lines, but
+        // the Inline.text payload should be `\n`-only so the same
+        // source lowers identically on Windows and Unix.
+        let src = "alpha\r\nbeta\r\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert!(
+            inlines.iter().all(|i| !i.text.contains('\r')),
+            "inline text should be CRLF-normalized: {:?}",
+            inlines.iter().map(|i| &i.text).collect::<Vec<_>>()
+        );
+        // The first text run still spans the raw bytes including the
+        // CR — only the *payload* is normalized.
+        let text = inlines.iter().find(|i| i.kind == InlineKind::Text).unwrap();
+        assert_eq!(text.text, "alpha\nbeta");
+        assert_eq!(&src[text.span.start..text.span.end], "alpha\r\nbeta");
     }
 }

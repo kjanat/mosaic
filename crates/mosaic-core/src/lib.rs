@@ -251,15 +251,22 @@ impl Document {
 
     /// Allocate `node` as a child of `parent` and return its [`NodeId`].
     ///
-    /// `parent` must come from this `Document`; if it does not, the new
-    /// node is still allocated but ends up detached from the tree.
-    /// Internal callers (the lowerer) preserve this invariant.
+    /// # Panics
+    ///
+    /// Panics if `parent` is not a node already allocated by this
+    /// `Document`. Silently producing detached nodes would hide lowerer
+    /// bugs in release builds, so this is intentionally a release-time
+    /// assertion rather than a `debug_assert!`.
     pub fn alloc_child(&mut self, parent: NodeId, node: Node) -> NodeId {
+        assert!(
+            self.nodes.contains_key(&parent),
+            "Document::alloc_child: unknown parent {parent:?}"
+        );
         let child_id = self.alloc(node);
+        // Safe to index: we just verified the key exists, and `alloc`
+        // doesn't remove existing entries.
         if let Some(parent_node) = self.nodes.get_mut(&parent) {
             parent_node.children.push(child_id);
-        } else {
-            debug_assert!(false, "Document::alloc_child: unknown parent {parent:?}");
         }
         child_id
     }
@@ -323,6 +330,26 @@ mod tests {
         // column 1 of line 1, not panic.
         let src = "µ";
         assert_eq!(linecol(src, 1), (1, 1));
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown parent")]
+    fn alloc_child_panics_on_unknown_parent() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        // `NodeId(9999)` was never allocated by `doc`; the call must
+        // abort instead of leaking a detached node.
+        doc.alloc_child(
+            NodeId(9999),
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Text,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
     }
 
     #[test]
