@@ -1615,13 +1615,16 @@ Goal:
 Features:
 
 ```text
-- parser
-- sections
-- paragraphs
-- bold/italic/code
-- basic page layout
-- PDF output
-- diagnostics
+- parser                ✅  mosaic-parse: headings, paragraphs,
+                            inline emphasis/strong/code, `#set` blocks
+- sections              ✅  lowered as NodeKind::Section under the document root
+- paragraphs            ✅
+- bold/italic/code      ✅  inline emphasis (NodeKind::Emphasis), strong
+                            (NodeKind::Strong), and code (NodeKind::Raw)
+- basic page layout     ⏳
+- PDF output            ⏳  mosaic-pdf::emit is still a stub
+- diagnostics           ✅  recoverable; rendered with file:line:col + carets
+                            by `mos check` (manifest §16)
 ```
 
 No floats yet. No bibliography yet. No heroic bullshit.

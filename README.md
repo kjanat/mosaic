@@ -11,9 +11,16 @@ and to get the workspace building.
 
 ## Status
 
-Pre-alpha (`0.0.0`). The 12-crate workspace skeleton is in place and every
-subcommand parses, but **nothing actually parses, lays out, or emits a PDF
-yet**. MVP 0 from `manifest.md` §30 is the next milestone.
+Pre-alpha (`0.0.0`). The 12-crate workspace skeleton is in place. MVP 0 from
+`manifest.md` §30 is in progress:
+
+- ✅ parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline
+  `*emphasis*` / `**strong**` / `` `code` ``, and `#set name(...)` blocks;
+- ✅ lowering to a typed semantic `Document` graph in `mosaic-core`
+  (manifest §5, §6 stage 2);
+- ✅ `mos check` end-to-end — parse → lower → render diagnostics with
+  `file:line:col` and source carets;
+- ⏳ basic page layout and the PDF backend (manifest §6 stages 5–9, §21.1).
 
 ## Quick start
 
@@ -24,13 +31,17 @@ cargo build --workspace            # or: cargo bw
 cargo run -p mosaic-cli -- --help  # or: cargo mos --help
 ```
 
-The `mos` CLI exposes the manifest §15.1 subcommands; each currently prints a
-"not yet implemented" placeholder to stderr and exits non-zero
-(`ExitCode::FAILURE`) so scripts and CI surface the stub.
+The `mos` CLI exposes the manifest §15.1 subcommands. `mos check` is wired
+end-to-end; the rest still print a "not yet implemented" placeholder to stderr
+and exit non-zero (`ExitCode::FAILURE`) so scripts and CI surface the stub.
 
 ```sh
+cargo mos check examples/hello/main.mos
+# ok: 10 node(s), 0 warning(s)
+
 cargo mos build examples/hello/main.mos
-# mos build: not yet implemented (see manifest §30 MVP roadmap)
+# mos build: parsed and lowered 10 node(s); layout + PDF emission not yet
+# implemented (manifest §30 MVP 0 stages 5–9)
 ```
 
 A second binary, `mos-lsp`, is the language server entry point editors will
