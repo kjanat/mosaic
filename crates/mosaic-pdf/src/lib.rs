@@ -33,10 +33,7 @@ pub fn emit(graph: &PageGraph, out: &Path) -> Result<()> {
         })?;
     }
     std::fs::write(out, bytes).map_err(|err| {
-        io_diagnostic(format!(
-            "could not write PDF to `{}`: {err}",
-            out.display()
-        ))
+        io_diagnostic(format!("could not write PDF to `{}`: {err}", out.display()))
     })?;
     Ok(())
 }
@@ -239,4 +236,3 @@ mod tests {
         );
     }
 }
-

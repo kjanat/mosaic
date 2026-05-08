@@ -175,9 +175,10 @@ fn run_build(entry: &Path) -> ExitCode {
         render_diagnostic(diag, &src);
     }
 
-    let stem = entry
-        .file_stem()
-        .map_or_else(|| std::ffi::OsString::from("out"), std::ffi::OsStr::to_os_string);
+    let stem = entry.file_stem().map_or_else(
+        || std::ffi::OsString::from("out"),
+        std::ffi::OsStr::to_os_string,
+    );
     let mut out = PathBuf::from("build");
     out.push(format!("{}.pdf", stem.to_string_lossy()));
 
