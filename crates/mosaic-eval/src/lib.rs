@@ -1,10 +1,12 @@
 //! Expression and scripting evaluator (manifest §4, §25).
 //!
-//! In MVP 0 the "evaluator" is really a *lowerer*: it walks a
+//! The "evaluator" is really a *lowerer + resolver*: it walks a
 //! [`SyntaxTree`] from `mosaic-parse` and builds the typed semantic
-//! [`Document`] graph from `mosaic-core` (manifest §6 stage 2).
-//! Section hierarchy resolution, counters, and label binding (§6
-//! stage 3) are deferred to MVP 1.
+//! [`Document`] graph from `mosaic-core` (manifest §6 stage 2), then
+//! runs the [`resolve`] pass to assign section numbers and rewrite
+//! `@label` cross-references (§6 stage 3, MVP 1).
+
+mod resolve;
 
 use std::collections::BTreeMap;
 
@@ -12,6 +14,8 @@ use mosaic_core::{
     AttrMap, AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, Severity, StyleId,
 };
 use mosaic_parse::{Inline, InlineKind, Item, SyntaxTree};
+
+pub use resolve::resolve;
 
 /// Result of lowering a [`SyntaxTree`] into a [`Document`].
 #[derive(Debug)]
@@ -49,10 +53,14 @@ impl Evaluator {
                 Item::Heading {
                     level,
                     inlines,
+                    label,
                     span,
                 } => {
                     let mut attributes: AttrMap = BTreeMap::new();
                     attributes.insert("level".to_owned(), AttrValue::Int(i64::from(*level)));
+                    if let Some(id) = label {
+                        attributes.insert("label".to_owned(), AttrValue::Str(id.clone()));
+                    }
                     let heading = document.alloc_child(
                         root,
                         Node {
@@ -67,7 +75,15 @@ impl Evaluator {
                     );
                     lower_inlines(&mut document, heading, inlines);
                 }
-                Item::Paragraph { inlines, span } => {
+                Item::Paragraph {
+                    inlines,
+                    label,
+                    span,
+                } => {
+                    let mut attributes: AttrMap = BTreeMap::new();
+                    if let Some(id) = label {
+                        attributes.insert("label".to_owned(), AttrValue::Str(id.clone()));
+                    }
                     let para = document.alloc_child(
                         root,
                         Node {
@@ -77,7 +93,7 @@ impl Evaluator {
                             content_hash: Default::default(),
                             style_id: StyleId::default(),
                             children: Vec::new(),
-                            attributes: AttrMap::new(),
+                            attributes,
                         },
                     );
                     lower_inlines(&mut document, para, inlines);
@@ -118,9 +134,26 @@ fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inline]) {
             InlineKind::Emphasis => NodeKind::Emphasis,
             InlineKind::Strong => NodeKind::Strong,
             InlineKind::Code => NodeKind::Raw,
+            InlineKind::Reference => NodeKind::Reference,
         };
         let mut attributes: AttrMap = BTreeMap::new();
-        attributes.insert("text".to_owned(), AttrValue::Str(inline.text.clone()));
+        match inline.kind {
+            InlineKind::Reference => {
+                // Pre-resolve placeholder text: the resolver overwrites
+                // `text` with the target's resolved string. Layout reads
+                // the same `text` attribute either way, so an unresolved
+                // reference still renders something visible — which makes
+                // E042 diagnostics easier to spot in the output PDF.
+                attributes.insert("label".to_owned(), AttrValue::Str(inline.text.clone()));
+                attributes.insert(
+                    "text".to_owned(),
+                    AttrValue::Str(format!("?{}?", inline.text)),
+                );
+            }
+            _ => {
+                attributes.insert("text".to_owned(), AttrValue::Str(inline.text.clone()));
+            }
+        }
         doc.alloc_child(
             parent,
             Node {
@@ -136,13 +169,14 @@ fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inline]) {
     }
 }
 
-/// Convenience: parse + lower in one step. Concatenates parse diagnostics
-/// with lowering diagnostics so callers can render them uniformly.
+/// Convenience: parse + lower + resolve in one step. Concatenates the
+/// diagnostics from each stage so callers can render them uniformly.
 pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
     let parse_result = mosaic_parse::parse(src, file);
     let mut diagnostics = parse_result.diagnostics;
-    let lower = Evaluator::new().evaluate(&parse_result.tree);
-    diagnostics.extend(lower.diagnostics);
+    let mut lower = Evaluator::new().evaluate(&parse_result.tree);
+    diagnostics.append(&mut lower.diagnostics);
+    diagnostics.extend(resolve(&mut lower.document));
     LowerResult {
         document: lower.document,
         diagnostics,

@@ -62,7 +62,7 @@ pub struct Node {
 /// later iteration; for now plain `String` keys are fine for the stub.
 pub type AttrMap = BTreeMap<String, AttrValue>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum AttrValue {
     Bool(bool),
     Int(i64),
@@ -274,6 +274,14 @@ impl Document {
     #[must_use]
     pub fn get(&self, id: NodeId) -> Option<&Node> {
         self.nodes.get(&id)
+    }
+
+    /// Mutable accessor for a single node. Used by the resolver
+    /// (manifest §6 stage 3) to back-patch attributes like `number`
+    /// onto sections and `text` onto `@label` references.
+    #[must_use]
+    pub fn get_mut(&mut self, id: NodeId) -> Option<&mut Node> {
+        self.nodes.get_mut(&id)
     }
 
     /// Iterate over every node in the arena in insertion order.

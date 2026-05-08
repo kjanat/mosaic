@@ -1,13 +1,17 @@
 //! Parser for the Mosaic source language (`.mos`).
 //!
 //! See manifest §3 (language design) and §6 stages 1–2 (parse + lower).
-//! MVP 0 covers:
+//! Currently covers:
 //!
 //! - `= Heading` / `== Subheading` / `=== Subsubheading`,
 //! - paragraphs (newline-joined non-empty line groups),
 //! - inline `*emphasis*`, `**strong**`, and `` `inline code` ``,
-//! - `#set name(...)` blocks, recorded with span and name but otherwise
-//!   inert until the resolver lands in MVP 1.
+//! - `#set name(...)` blocks, recorded with span and name but interpreted
+//!   later by the evaluator,
+//! - `<label>` attached to the preceding block (trailing on a heading or
+//!   leading on a paragraph), and `@label` cross-references as inline
+//!   [`InlineKind::Reference`] runs (manifest §3.3 and the MVP 1
+//!   resolver).
 //!
 //! Anything outside that subset is preserved as text and a recoverable
 //! diagnostic is emitted; the parser never panics on user input
@@ -27,16 +31,20 @@ pub struct SyntaxTree {
 /// Top-level construct in a `.mos` file.
 #[derive(Debug, Clone)]
 pub enum Item {
-    /// `= Title`, `== Subtitle`, `=== Subsubtitle`.
+    /// `= Title`, `== Subtitle`, `=== Subsubtitle`. A trailing
+    /// `<label>` token after the title attaches to this heading.
     Heading {
         level: u8,
         inlines: Vec<Inline>,
+        label: Option<String>,
         span: SourceSpan,
     },
     /// One or more consecutive non-blank lines that are not a heading
-    /// and not a `#set` block.
+    /// and not a `#set` block. A leading `<label>` token (possibly
+    /// preceded by ASCII whitespace) attaches to this paragraph.
     Paragraph {
         inlines: Vec<Inline>,
+        label: Option<String>,
         span: SourceSpan,
     },
     /// `#set name(...)` — captured for span tracking; the body is not
@@ -58,6 +66,10 @@ pub enum InlineKind {
     Emphasis,
     Strong,
     Code,
+    /// `@label` — a cross-reference to a labelled block. The
+    /// [`Inline::text`] payload is the bare label name (no leading
+    /// `@`); the resolver rewrites it to the target's resolved text.
+    Reference,
 }
 
 impl Item {
@@ -68,6 +80,7 @@ impl Item {
             level,
             inlines,
             span,
+            ..
         } = self
         {
             Some((*level, inlines, span))
@@ -79,7 +92,7 @@ impl Item {
     /// Borrow the paragraph payload if `self` is [`Item::Paragraph`].
     #[must_use]
     pub fn as_paragraph(&self) -> Option<(&[Inline], &SourceSpan)> {
-        if let Self::Paragraph { inlines, span } = self {
+        if let Self::Paragraph { inlines, span, .. } = self {
             Some((inlines, span))
         } else {
             None
@@ -93,6 +106,17 @@ impl Item {
             Some((name.as_str(), span))
         } else {
             None
+        }
+    }
+
+    /// Borrow the explicit `<label>` attached to this block, if any.
+    /// Returns `None` for [`Item::Set`] (label syntax is not allowed
+    /// on `#set` blocks).
+    #[must_use]
+    pub fn label(&self) -> Option<&str> {
+        match self {
+            Self::Heading { label, .. } | Self::Paragraph { label, .. } => label.as_deref(),
+            Self::Set { .. } => None,
         }
     }
 }
@@ -250,12 +274,18 @@ impl<'a> Parser<'a> {
         while i < content_end && (bytes[i] == b' ' || bytes[i] == b'\t') {
             i += 1;
         }
-        let content = &self.src[i..content_end];
+        // Strip a trailing `<label>` (with optional leading whitespace
+        // before it) off the heading content. The label attaches to
+        // *this* heading; only the text before it goes through the
+        // inline tokenizer.
+        let (text_end, label) = strip_trailing_label(self.src, i, content_end);
+        let content = &self.src[i..text_end];
         let inlines = self.parse_inlines(content, i);
         let span = self.span(line_start, content_end);
         self.items.push(Item::Heading {
             level,
             inlines,
+            label,
             span,
         });
         self.pos = line_end;
@@ -416,8 +446,13 @@ impl<'a> Parser<'a> {
             // offsets stay aligned with the original file. Building a
             // separate buffer with synthetic `\n` separators would
             // shift inline spans by one byte per CRLF line ending.
-            let slice = &self.src[start..para_end];
-            let mut inlines = self.parse_inlines(slice, start);
+            //
+            // A leading `<label>` (after optional whitespace) attaches
+            // to the paragraph rather than rendering as text — peel it
+            // off before tokenizing inlines.
+            let (body_start, label) = strip_leading_label(self.src, start, para_end);
+            let slice = &self.src[body_start..para_end];
+            let mut inlines = self.parse_inlines(slice, body_start);
             // Spans stay anchored to the raw source, but the displayed
             // text payload is platform-stable: normalize `\r\n` → `\n`
             // so the same logical paragraph lowers identically on
@@ -428,7 +463,11 @@ impl<'a> Parser<'a> {
                 }
             }
             let span = self.span(para_start, para_end);
-            self.items.push(Item::Paragraph { inlines, span });
+            self.items.push(Item::Paragraph {
+                inlines,
+                label,
+                span,
+            });
         }
     }
 
@@ -527,6 +566,28 @@ impl<'a> Parser<'a> {
                 i += 1;
                 continue;
             }
+            if c == b'@' {
+                let id_end = scan_label_chars(bytes, i + 1);
+                if id_end > i + 1 {
+                    self.flush_text(&mut out, slice, base, text_start, i);
+                    out.push(Inline {
+                        kind: InlineKind::Reference,
+                        text: slice[i + 1..id_end].to_owned(),
+                        span: self.span(base + i, base + id_end),
+                    });
+                    i = id_end;
+                    text_start = i;
+                    continue;
+                }
+                self.diagnostics.push(self.warn(
+                    "W023",
+                    "stray `@` is not followed by a label identifier; treated as text",
+                    base + i,
+                    base + i + 1,
+                ));
+                i += 1;
+                continue;
+            }
             i += 1;
         }
         self.flush_text(&mut out, slice, base, text_start, bytes.len());
@@ -574,6 +635,88 @@ fn find_byte(haystack: &[u8], needle: u8, from: usize) -> Option<usize> {
         .iter()
         .position(|&b| b == needle)
         .map(|p| p + from)
+}
+
+/// Returns the byte offset just past the longest label-identifier run
+/// that starts at `from` in `bytes`. Empty (caller should detect via
+/// `id_end == from`) if the first byte is not a valid identifier char.
+///
+/// The accepted alphabet matches manifest §3.3 examples:
+/// `[A-Za-z0-9_:.-]`. Critically `:` is included so `fig:wells` and
+/// `eq:bayes` round-trip.
+fn scan_label_chars(bytes: &[u8], from: usize) -> usize {
+    let mut i = from;
+    while i < bytes.len() {
+        let b = bytes[i];
+        let is_id = b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':' | b'.');
+        if !is_id {
+            break;
+        }
+        i += 1;
+    }
+    i
+}
+
+/// If the substring `src[start..end]` begins with optional ASCII
+/// whitespace followed by `<label>`, return `(label_body_start, Some(id))`
+/// where `label_body_start` is the offset just past the closing `>`
+/// (with any trailing whitespace also consumed). Otherwise return
+/// `(start, None)`.
+///
+/// Only a single leading label is recognised; further `<...>` runs in
+/// the body are left intact for downstream stages.
+fn strip_leading_label(src: &str, start: usize, end: usize) -> (usize, Option<String>) {
+    let bytes = src.as_bytes();
+    let mut i = start;
+    while i < end && (bytes[i] == b' ' || bytes[i] == b'\t') {
+        i += 1;
+    }
+    if i >= end || bytes[i] != b'<' {
+        return (start, None);
+    }
+    let id_start = i + 1;
+    let id_end = scan_label_chars(bytes, id_start);
+    if id_end == id_start || id_end >= end || bytes[id_end] != b'>' {
+        return (start, None);
+    }
+    let label = src[id_start..id_end].to_owned();
+    let mut after = id_end + 1;
+    while after < end && (bytes[after] == b' ' || bytes[after] == b'\t' || bytes[after] == b'\n') {
+        after += 1;
+    }
+    (after, Some(label))
+}
+
+/// If the substring `src[start..end]` ends with `<label>` (after any
+/// trailing ASCII whitespace), return `(text_end, Some(id))` where
+/// `text_end` is the offset of the first byte to *exclude* from the
+/// preceding text — trailing whitespace before the label is also
+/// trimmed. Otherwise return `(end, None)`.
+fn strip_trailing_label(src: &str, start: usize, end: usize) -> (usize, Option<String>) {
+    let bytes = src.as_bytes();
+    if end <= start || bytes[end - 1] != b'>' {
+        return (end, None);
+    }
+    let close = end - 1;
+    // Walk back over identifier chars to find the matching `<`.
+    let mut i = close;
+    while i > start {
+        let b = bytes[i - 1];
+        let is_id = b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':' | b'.');
+        if !is_id {
+            break;
+        }
+        i -= 1;
+    }
+    if i == close || i == start || bytes[i - 1] != b'<' {
+        return (end, None);
+    }
+    let label = src[i..close].to_owned();
+    let mut text_end = i - 1;
+    while text_end > start && (bytes[text_end - 1] == b' ' || bytes[text_end - 1] == b'\t') {
+        text_end -= 1;
+    }
+    (text_end, Some(label))
 }
 
 /// Locate the closing `*` of an emphasis run starting at `from`. The
@@ -800,6 +943,74 @@ mod tests {
             .expect("emphasis inline");
         assert_eq!(&src[emph.span.start..emph.span.end], "*x*");
         assert_eq!(emph.text, "x");
+    }
+
+    #[test]
+    fn heading_with_trailing_label_attaches() {
+        let r = parse_str("= Methods <sec:methods>\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let item = &r.tree.items[0];
+        let (_, inlines, _) = item.as_heading().unwrap();
+        assert_eq!(item.label(), Some("sec:methods"));
+        assert_eq!(inlines.len(), 1);
+        assert_eq!(inlines[0].text, "Methods");
+    }
+
+    #[test]
+    fn paragraph_with_leading_label_attaches() {
+        let r = parse_str("<intro> body text\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let item = &r.tree.items[0];
+        let (inlines, _) = item.as_paragraph().unwrap();
+        assert_eq!(item.label(), Some("intro"));
+        assert_eq!(inlines[0].text, "body text");
+    }
+
+    #[test]
+    fn at_label_produces_reference_inline() {
+        let r = parse_str("see @sec:methods now\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let kinds: Vec<InlineKind> = inlines.iter().map(|i| i.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![InlineKind::Text, InlineKind::Reference, InlineKind::Text]
+        );
+        let r_inline = inlines
+            .iter()
+            .find(|i| i.kind == InlineKind::Reference)
+            .unwrap();
+        assert_eq!(r_inline.text, "sec:methods");
+    }
+
+    #[test]
+    fn stray_at_warns_and_stays_text() {
+        let r = parse_str("an @ symbol\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert!(r.diagnostics.iter().any(|d| d.code.0 == "W023"));
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert!(!inlines.iter().any(|i| i.kind == InlineKind::Reference));
+    }
+
+    #[test]
+    fn heading_without_label_keeps_full_text() {
+        let r = parse_str("= Just a title\n");
+        let item = &r.tree.items[0];
+        let (_, inlines, _) = item.as_heading().unwrap();
+        assert_eq!(item.label(), None);
+        assert_eq!(inlines[0].text, "Just a title");
+    }
+
+    #[test]
+    fn paragraph_with_angle_text_not_label() {
+        // `<` inside paragraph body that isn't a leading label-only
+        // token must be left as text.
+        let r = parse_str("a < b > c\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let item = &r.tree.items[0];
+        assert_eq!(item.label(), None);
+        let (inlines, _) = item.as_paragraph().unwrap();
+        assert_eq!(inlines[0].text, "a < b > c");
     }
 
     #[test]

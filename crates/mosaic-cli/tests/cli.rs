@@ -136,6 +136,72 @@ fn build_emits_pdf() {
 }
 
 #[test]
+fn build_renders_section_numbers_and_resolves_references() {
+    // End-to-end MVP 1: a multi-section doc with an `@ref` produces a
+    // PDF whose content stream contains the rendered section number
+    // (`1.`) ahead of the heading text *and* the resolved reference
+    // text (the target's number) instead of the bare label.
+    let dir = temp_dir("mos-build-xref");
+    write_file(
+        dir.path(),
+        "main.mos",
+        "= Introduction <intro>\n\n= Methods\n\nsee @intro for context\n",
+    );
+    let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+
+    let pdf_path = dir.path().join("build").join("main.pdf");
+    let bytes = std::fs::read(&pdf_path).expect("pdf written");
+    let doc = lopdf::Document::load_mem(&bytes).expect("lopdf parse");
+    let pages = doc.get_pages();
+
+    // Concatenate every page's content so we can grep for the
+    // rendered tokens regardless of which page they ended up on.
+    let mut combined: Vec<u8> = Vec::new();
+    for &page_id in pages.values() {
+        combined.extend(doc.get_page_content(page_id).expect("content"));
+    }
+
+    let has = |needle: &[u8]| combined.windows(needle.len()).any(|w| w == needle);
+    assert!(
+        has(b"(1.)") && has(b"(Introduction)"),
+        "expected `1.` and `Introduction` runs in PDF stream"
+    );
+    assert!(
+        has(b"(2.)") && has(b"(Methods)"),
+        "expected `2.` and `Methods` runs in PDF stream"
+    );
+    // `@intro` resolves to section 1, so the rendered reference is `1`.
+    // The bare label must NOT appear — that would mean the resolver
+    // didn't run.
+    assert!(has(b"(1)"), "expected resolved reference text `1`");
+    assert!(
+        !has(b"(intro)") && !has(b"(?intro?)"),
+        "reference left unresolved in PDF stream"
+    );
+}
+
+#[test]
+fn check_reports_unknown_label() {
+    // E042 surfaces through `mos check` so editor integration sees
+    // unresolved references without having to drive the build.
+    let dir = temp_dir("mos-check-e042");
+    write_file(dir.path(), "main.mos", "see @no:such\n");
+    let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
+    assert_eq!(code, 1);
+    assert!(stderr.contains("error[E042]"), "stderr={stderr:?}");
+}
+
+#[test]
+fn check_reports_duplicate_label() {
+    let dir = temp_dir("mos-check-e041");
+    write_file(dir.path(), "main.mos", "= A <dup>\n\n= B <dup>\n");
+    let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
+    assert_eq!(code, 1);
+    assert!(stderr.contains("error[E041]"), "stderr={stderr:?}");
+}
+
+#[test]
 fn build_creates_output_directory() {
     // Sanity: the `build/` directory shouldn't need to pre-exist.
     let dir = temp_dir("mos-build-mkdir");
