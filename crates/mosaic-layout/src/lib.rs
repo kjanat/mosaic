@@ -17,32 +17,34 @@ use mosaic_core::{
 };
 
 /// A4 page width in PDF points (1pt = 1/72 inch).
-pub const A4_WIDTH_PT: f64 = 595.276;
+pub const A4_WIDTH_PT: f32 = 595.276;
 /// A4 page height in PDF points.
-pub const A4_HEIGHT_PT: f64 = 841.890;
+pub const A4_HEIGHT_PT: f32 = 841.890;
 /// Page margin in points (24mm × 72/25.4).
-pub const MARGIN_PT: f64 = 68.031;
+pub const MARGIN_PT: f32 = 68.031;
 
 /// Body font size (manifest §22.1 default; MVP 0 hard-codes it).
-const BODY_SIZE_PT: f64 = 11.0;
+const BODY_SIZE_PT: f32 = 11.0;
 /// Body leading multiplier (line height = size × leading).
-const BODY_LEADING: f64 = 1.35;
+const BODY_LEADING: f32 = 1.35;
 
 /// Heading sizes by level (1-indexed). Anything beyond level 3 falls
 /// back to body size — counters and section numbering land in MVP 1.
-const HEADING_SIZES_PT: [f64; 3] = [20.0, 16.0, 13.0];
+const HEADING_SIZES_PT: [f32; 3] = [20.0, 16.0, 13.0];
 /// Space above each heading level (skipped for the first block on a
 /// page).
-const HEADING_SPACE_BEFORE_PT: [f64; 3] = [16.0, 12.0, 10.0];
+const HEADING_SPACE_BEFORE_PT: [f32; 3] = [16.0, 12.0, 10.0];
 /// Space below each heading level.
-const HEADING_SPACE_AFTER_PT: [f64; 3] = [10.0, 8.0, 6.0];
+const HEADING_SPACE_AFTER_PT: [f32; 3] = [10.0, 8.0, 6.0];
 /// Vertical gap between consecutive paragraphs.
-const PARA_SPACE_AFTER_PT: f64 = 4.0;
+const PARA_SPACE_AFTER_PT: f32 = 4.0;
 
-/// Absolute typographic length, in points. Wraps `f64` so callers
-/// can't accidentally mix points with millimetres.
+/// Absolute typographic length, in points. Wraps `f32` so callers
+/// can't accidentally mix points with millimetres. f32 matches the
+/// PDF backend's coordinate type with plenty of precision for any
+/// realistic page geometry.
 #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
-pub struct Pt(pub f64);
+pub struct Pt(pub f32);
 
 /// A single horizontal run of text on a page. The MVP 0 emitter
 /// produces one run per word; coalescing same-font neighbours is an
@@ -51,13 +53,13 @@ pub struct Pt(pub f64);
 pub struct TextRun {
     /// X coordinate of the run's left edge, measured from the page's
     /// left edge in points.
-    pub x_pt: f64,
+    pub x_pt: f32,
     /// Y coordinate of the run's baseline, measured from the page's
     /// **top** edge in points. The PDF backend flips to bottom-origin
     /// once when emitting.
-    pub baseline_from_top_pt: f64,
+    pub baseline_from_top_pt: f32,
     /// Font size in points.
-    pub size_pt: f64,
+    pub size_pt: f32,
     /// Font face for this run.
     pub font: Font,
     /// Text content. Already filtered to printable ASCII by the
@@ -69,8 +71,8 @@ pub struct TextRun {
 #[derive(Clone, Debug)]
 pub struct Page {
     pub number: u32,
-    pub width_pt: f64,
-    pub height_pt: f64,
+    pub width_pt: f32,
+    pub height_pt: f32,
     pub runs: Vec<TextRun>,
 }
 
@@ -136,7 +138,7 @@ struct LayoutState {
     /// In-progress page being filled.
     current_page: Page,
     /// Y position of the next baseline, measured from page top.
-    cursor_y: f64,
+    cursor_y: f32,
     /// Whether `current_page` has had any block emitted yet (controls
     /// `space_before` skipping).
     page_has_content: bool,
@@ -197,7 +199,7 @@ impl LayoutState {
         document: &Document,
         parent: &Node,
         default_font: Font,
-        size: f64,
+        size: f32,
     ) -> Vec<Word> {
         let mut out: Vec<Word> = Vec::new();
         for child_id in &parent.children {
@@ -232,14 +234,14 @@ impl LayoutState {
     /// Greedy line-break `words` and emit text runs onto the page,
     /// paginating as we go. `leading` is the line-height multiplier
     /// applied per line.
-    fn flow_words(&mut self, words: &[Word], leading: f64) {
+    fn flow_words(&mut self, words: &[Word], leading: f32) {
         if words.is_empty() {
             return;
         }
         let line_width = A4_WIDTH_PT - 2.0 * MARGIN_PT;
         let mut line: Vec<Word> = Vec::new();
-        let mut line_width_used = 0.0_f64;
-        let mut max_size_on_line = 0.0_f64;
+        let mut line_width_used = 0.0_f32;
+        let mut max_size_on_line = 0.0_f32;
 
         for word in words {
             let w_width = text_width(word.font, word.size_pt, &word.text);
@@ -284,7 +286,7 @@ impl LayoutState {
     }
 
     /// Emit one line worth of words at `cursor_y`, advancing past it.
-    fn flush_line(&mut self, line: &[Word], leading: f64, max_size: f64) {
+    fn flush_line(&mut self, line: &[Word], leading: f32, max_size: f32) {
         // Reserve space at the top of the page: if this is the first
         // line on the page, advance the cursor by the ascent so the
         // baseline sits below the top margin.
@@ -320,10 +322,10 @@ impl LayoutState {
 
     /// Emit a word that's wider than the column by chopping it on
     /// character boundaries. Each chunk goes on its own line.
-    fn flush_oversize_word(&mut self, word: &Word, leading: f64) {
+    fn flush_oversize_word(&mut self, word: &Word, leading: f32) {
         let line_width = A4_WIDTH_PT - 2.0 * MARGIN_PT;
         let mut buf = String::new();
-        let mut buf_width = 0.0_f64;
+        let mut buf_width = 0.0_f32;
         for ch in word.text.chars() {
             let w = glyph_width(word.font, word.size_pt, ch);
             if buf_width + w > line_width && !buf.is_empty() {
@@ -368,7 +370,7 @@ impl LayoutState {
 struct Word {
     text: String,
     font: Font,
-    size_pt: f64,
+    size_pt: f32,
 }
 
 fn blank_page(number: u32) -> Page {

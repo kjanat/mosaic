@@ -103,16 +103,23 @@ fn glyph_width_units(font: Font, ch: char) -> u16 {
 
 /// Advance width of `text` rendered in `font` at `size` points.
 ///
+/// Uses `f32` to match the PDF backend's coordinate type — PDF page
+/// dimensions never come close to f32's representable range so there's
+/// no precision win from f64 here.
+///
 /// # Panics
 ///
 /// See [`glyph_width_units`]: every character must be printable ASCII.
 #[must_use]
-pub fn text_width(font: Font, size: f64, text: &str) -> f64 {
-    let mut units = 0_u32;
+pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
+    // Accumulate in f32: `f32::from(u16)` is exact, and the running
+    // sum is bounded by line-length × max-glyph-width which stays
+    // well inside f32's 24-bit mantissa for any realistic input.
+    let mut units: f32 = 0.0;
     for ch in text.chars() {
-        units += u32::from(glyph_width_units(font, ch));
+        units += f32::from(glyph_width_units(font, ch));
     }
-    f64::from(units) * size / 1000.0
+    units * size / 1000.0
 }
 
 /// Width of a single glyph rendered in `font` at `size` points.
@@ -121,16 +128,16 @@ pub fn text_width(font: Font, size: f64, text: &str) -> f64 {
 ///
 /// See [`glyph_width_units`].
 #[must_use]
-pub fn glyph_width(font: Font, size: f64, ch: char) -> f64 {
-    f64::from(glyph_width_units(font, ch)) * size / 1000.0
+pub fn glyph_width(font: Font, size: f32, ch: char) -> f32 {
+    f32::from(glyph_width_units(font, ch)) * size / 1000.0
 }
 
 /// Ascender height for `font` at `size` points (distance from
 /// baseline to top of tallest glyph). Pulled from AFM's
 /// `Ascender` field divided by 1000.
 #[must_use]
-pub fn ascent(font: Font, size: f64) -> f64 {
-    let units = match font {
+pub fn ascent(font: Font, size: f32) -> f32 {
+    let units: f32 = match font {
         Font::Helvetica | Font::HelveticaBold | Font::HelveticaOblique => 718.0,
         Font::Courier => 629.0,
     };
@@ -139,8 +146,8 @@ pub fn ascent(font: Font, size: f64) -> f64 {
 
 /// Descender depth for `font` at `size` points (positive value).
 #[must_use]
-pub fn descent(font: Font, size: f64) -> f64 {
-    let units = match font {
+pub fn descent(font: Font, size: f32) -> f32 {
+    let units: f32 = match font {
         Font::Helvetica | Font::HelveticaBold | Font::HelveticaOblique => 207.0,
         Font::Courier => 157.0,
     };
@@ -149,7 +156,6 @@ pub fn descent(font: Font, size: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::float_cmp_const)]
     use super::*;
 
     #[test]

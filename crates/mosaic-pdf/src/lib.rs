@@ -84,15 +84,7 @@ pub fn build_pdf(graph: &PageGraph) -> Vec<u8> {
 
     for (page, (page_id, content_id)) in graph.pages.iter().zip(page_refs.iter()) {
         let mut page_obj = pdf.page(*page_id);
-        // Cast f64 → f32 for media_box. Page sizes fit comfortably,
-        // and pdf-writer's API is f32-typed.
-        #[allow(clippy::cast_possible_truncation)]
-        page_obj.media_box(Rect::new(
-            0.0,
-            0.0,
-            page.width_pt as f32,
-            page.height_pt as f32,
-        ));
+        page_obj.media_box(Rect::new(0.0, 0.0, page.width_pt, page.height_pt));
         page_obj.parent(page_tree_id);
         page_obj.contents(*content_id);
         {
@@ -119,18 +111,17 @@ pub fn build_pdf(graph: &PageGraph) -> Vec<u8> {
 /// Build the per-page content stream. The layout engine measures
 /// baselines from the **top** of the page; PDF's coordinate system is
 /// bottom-origin, so we flip once here.
-#[allow(clippy::cast_possible_truncation)]
-fn build_content_stream(page_height_pt: f64, runs: &[TextRun]) -> Vec<u8> {
+fn build_content_stream(page_height_pt: f32, runs: &[TextRun]) -> Vec<u8> {
     let mut content = Content::new();
     if runs.is_empty() {
         return content.finish().to_vec();
     }
     content.begin_text();
     for run in runs {
-        content.set_font(Name(run.font.pdf_resource_name()), run.size_pt as f32);
+        content.set_font(Name(run.font.pdf_resource_name()), run.size_pt);
         // Identity rotation/scaling, translate to (x, page_height - baseline).
-        let y_from_bottom = (page_height_pt - run.baseline_from_top_pt) as f32;
-        content.set_text_matrix([1.0, 0.0, 0.0, 1.0, run.x_pt as f32, y_from_bottom]);
+        let y_from_bottom = page_height_pt - run.baseline_from_top_pt;
+        content.set_text_matrix([1.0, 0.0, 0.0, 1.0, run.x_pt, y_from_bottom]);
         content.show(Str(run.text.as_bytes()));
     }
     content.end_text();
@@ -148,8 +139,8 @@ mod tests {
         PageGraph {
             pages: vec![Page {
                 number: 1,
-                width_pt: 595.276,
-                height_pt: 841.89,
+                width_pt: 595.276_f32,
+                height_pt: 841.89_f32,
                 runs: vec![
                     TextRun {
                         x_pt: 68.0,
