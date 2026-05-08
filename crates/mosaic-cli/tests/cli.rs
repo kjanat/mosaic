@@ -93,16 +93,57 @@ fn check_crlf_source_does_not_leak_carriage_return() {
 }
 
 #[test]
-fn build_succeeds_at_lowering_then_fails_until_pdf_lands() {
-    // `mos build` parses + lowers the entry, so a clean source should
-    // surface no diagnostics. It then exits 1 because the PDF backend
-    // (manifest §6 stage 9 / §21.1) isn't implemented yet.
+fn build_emits_pdf() {
+    // `mos build` parses, lowers, lays out, and writes
+    // `build/<stem>.pdf`. The output must be a syntactically valid
+    // PDF that lopdf can parse, with at least one page and the
+    // heading text visible somewhere in the content streams.
     let dir = temp_dir("mos-build");
+    write_file(
+        dir.path(),
+        "main.mos",
+        "= Title\n\nbody paragraph with *italic* word\n",
+    );
+    let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.contains("wrote "), "stdout={stdout:?}");
+
+    let pdf_path = dir.path().join("build").join("main.pdf");
+    let bytes = std::fs::read(&pdf_path).expect("pdf written");
+    assert!(bytes.starts_with(b"%PDF-"), "missing header");
+    assert!(
+        bytes.windows(5).any(|w| w == b"%%EOF"),
+        "missing %%EOF marker"
+    );
+
+    let doc = lopdf::Document::load_mem(&bytes).expect("lopdf parse");
+    let pages = doc.get_pages();
+    assert!(!pages.is_empty(), "no pages");
+
+    // Decode each page's content streams and confirm the heading
+    // text shows up at least once. We grep raw bytes because lopdf's
+    // text extraction over standard-14 fonts requires more setup
+    // than the smoke test needs.
+    let mut found_title = false;
+    for &page_id in pages.values() {
+        let content = doc.get_page_content(page_id).expect("content");
+        if content.windows(b"(Title)".len()).any(|w| w == b"(Title)") {
+            found_title = true;
+            break;
+        }
+    }
+    assert!(found_title, "Title text not found in any content stream");
+}
+
+#[test]
+fn build_creates_output_directory() {
+    // Sanity: the `build/` directory shouldn't need to pre-exist.
+    let dir = temp_dir("mos-build-mkdir");
     write_file(dir.path(), "main.mos", "= Title\n\nbody\n");
-    let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
-    assert_eq!(code, 1);
-    assert!(stderr.contains("not yet implemented"), "stderr={stderr:?}");
-    assert!(!stderr.contains("error["), "stderr={stderr:?}");
+    let (code, _stdout, _stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 0);
+    assert!(dir.path().join("build").is_dir(), "build/ not created");
+    assert!(dir.path().join("build/main.pdf").exists());
 }
 
 mod tempdir {

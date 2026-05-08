@@ -148,10 +148,10 @@ fn run_check(entry: &Path) -> ExitCode {
     }
 }
 
-/// `mos build` — currently runs check, then errors out because the
-/// layout pipeline (manifest §6 stages 5–7) and PDF backend (§21.1)
-/// aren't implemented yet. Surfacing parse/lower errors first is more
-/// useful than failing immediately with a stub message.
+/// `mos build` — read source, parse, lower, lay out, and emit a PDF
+/// to `build/<entry-stem>.pdf`. MVP 0 produces a fixed-A4 document
+/// using the standard PDF base fonts (no embedding). Layout warnings
+/// (e.g. non-ASCII substitutions) print but don't fail the build.
 fn run_build(entry: &Path) -> ExitCode {
     let src = match std::fs::read_to_string(entry) {
         Ok(s) => s,
@@ -161,6 +161,7 @@ fn run_build(entry: &Path) -> ExitCode {
         }
     };
 
+    let started = std::time::Instant::now();
     let result = mosaic_eval::lower(&src, entry);
     for diag in &result.diagnostics {
         render_diagnostic(diag, &src);
@@ -169,12 +170,33 @@ fn run_build(entry: &Path) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    eprintln!(
-        "mos build: parsed and lowered {} node(s); layout + PDF emission not yet implemented \
-         (manifest §30 MVP 0 stages 5–9)",
-        result.document.len()
+    let layout = mosaic_layout::LayoutEngine::new().layout(&result.document);
+    for diag in &layout.diagnostics {
+        render_diagnostic(diag, &src);
+    }
+
+    let stem = entry
+        .file_stem()
+        .map_or_else(|| std::ffi::OsString::from("out"), std::ffi::OsStr::to_os_string);
+    let mut out = PathBuf::from("build");
+    out.push(format!("{}.pdf", stem.to_string_lossy()));
+
+    if let Err(err) = mosaic_pdf::emit(&layout.graph, &out) {
+        match err {
+            mosaic_core::CoreError::Diagnostic(d) => render_diagnostic(&d, &src),
+            mosaic_core::CoreError::Unimplemented(msg) => {
+                eprintln!("mos build: {msg}");
+            }
+        }
+        return ExitCode::FAILURE;
+    }
+
+    println!(
+        "wrote {} in {} ms",
+        out.display(),
+        started.elapsed().as_millis()
     );
-    ExitCode::FAILURE
+    ExitCode::SUCCESS
 }
 
 fn severity_label(s: Severity) -> &'static str {
