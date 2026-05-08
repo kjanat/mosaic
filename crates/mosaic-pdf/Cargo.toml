@@ -16,5 +16,7 @@ mosaic-core = { workspace = true }
 mosaic-fonts = { workspace = true }
 mosaic-layout = { workspace = true }
 
+pdf-writer = { workspace = true }
+
 [lints]
 workspace = true
