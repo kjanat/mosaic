@@ -189,22 +189,14 @@ fn rewrite_references(
         };
 
         if let Some(node) = document.get_mut(ref_id) {
-            let prior = node.attributes.get("text").cloned();
             let new = AttrValue::Str(resolved_text);
-            if !matches!(&prior, Some(p) if attr_eq(p, &new)) {
+            if node.attributes.get("text") != Some(&new) {
                 node.attributes.insert("text".to_owned(), new);
                 changed = true;
             }
         }
     }
     changed
-}
-
-fn attr_eq(a: &AttrValue, b: &AttrValue) -> bool {
-    match (a, b) {
-        (AttrValue::Str(x), AttrValue::Str(y)) => x == y,
-        _ => false,
-    }
 }
 
 #[cfg(test)]
