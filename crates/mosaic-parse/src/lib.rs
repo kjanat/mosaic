@@ -306,13 +306,32 @@ impl<'a> Parser<'a> {
             let span = self.span(line_start, end);
             self.items.push(Item::Set { name, span });
             self.pos = end;
-            // Consume any trailing whitespace + newline on the line
-            // that closed the parens.
-            while self.pos < bytes.len() && bytes[self.pos] != b'\n' {
+            // Consume only horizontal whitespace after the closing `)`.
+            // Anything else on the line is unexpected and gets a
+            // recoverable diagnostic — silently dropping trailing
+            // tokens would hide user mistakes like
+            // `#set page(...) leftover`.
+            while self.pos < bytes.len() && (bytes[self.pos] == b' ' || bytes[self.pos] == b'\t') {
                 self.pos += 1;
             }
-            if self.pos < bytes.len() {
+            if self.pos >= bytes.len() {
+                // EOF — nothing to do.
+            } else if bytes[self.pos] == b'\n' {
                 self.pos += 1;
+            } else if bytes[self.pos] == b'\r' && bytes.get(self.pos + 1) == Some(&b'\n') {
+                self.pos += 2;
+            } else {
+                let (_, content_end, _) = self.current_line_bounds();
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E013"),
+                        "unexpected trailing content after `#set ... )`",
+                    )
+                    .with_span(self.span(self.pos, content_end)),
+                );
+                // Leave the trailing bytes in place; the outer loop
+                // will parse them as a paragraph so they remain
+                // visible to downstream stages.
             }
         } else {
             self.diagnostics.push(
@@ -685,6 +704,31 @@ mod tests {
     fn unterminated_set_block_errors() {
         let r = parse_str("#set page(\n  paper: \"A4\",\n");
         assert!(r.has_errors());
+    }
+
+    #[test]
+    fn trailing_content_after_set_block_diagnoses_and_recovers() {
+        // Prior behaviour swallowed everything between `)` and the
+        // next `\n`. The parser now emits E013 and leaves the
+        // trailing bytes in place so they parse as a paragraph.
+        let r = parse_str("#set page(paper: \"A4\") leftover\n");
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E013"),
+            "expected E013 diagnostic, got {:?}",
+            r.diagnostics
+        );
+        assert!(r.tree.items.iter().any(|i| i.as_set().is_some()));
+        assert!(r.tree.items.iter().any(|i| {
+            i.as_paragraph()
+                .is_some_and(|(inlines, _)| inlines.iter().any(|x| x.text.contains("leftover")))
+        }));
+    }
+
+    #[test]
+    fn set_block_followed_by_horizontal_whitespace_then_newline_is_ok() {
+        let r = parse_str("#set page(paper: \"A4\")  \t\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 1);
     }
 
     #[test]

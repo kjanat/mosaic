@@ -110,6 +110,9 @@ mod tempdir {
     //! dependency for one test file.
 
     use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TEMP_DIR: AtomicU64 = AtomicU64::new(0);
 
     pub(crate) struct Dir {
         path: PathBuf,
@@ -121,11 +124,13 @@ mod tempdir {
             let n = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_nanos());
-            p.push(format!("{label}-{n}-{}", std::process::id()));
-            // Tempdir creation is best-effort; downstream writes will
-            // surface a clearer error if the directory really can't be
-            // created.
-            let _ = std::fs::create_dir_all(&p);
+            // Combine timestamp + per-process atomic counter + PID so
+            // parallel tests inside the same binary cannot collide on
+            // a coarse clock, and so one test's `Drop` cannot nuke
+            // another's fixtures.
+            let seq = NEXT_TEMP_DIR.fetch_add(1, Ordering::Relaxed);
+            p.push(format!("{label}-{n}-{seq}-{}", std::process::id()));
+            std::fs::create_dir(&p).expect("create temp test dir");
             Self { path: p }
         }
 
