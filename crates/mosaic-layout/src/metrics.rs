@@ -1,9 +1,20 @@
 //! Glyph metrics for the four standard PDF fonts MVP 0 uses.
 //!
-//! Widths are in 1/1000 em as published in the Adobe AFM files for
-//! Helvetica, Helvetica-Bold, and Courier (manifest §22.1).
-//! Helvetica-Oblique shares the same advance widths as upright
-//! Helvetica. Courier is monospace (every glyph 600 units).
+//! Widths and ascent/descent are sourced from the **Adobe Core 14
+//! AFMs** (canonical mirror: `tecnickcom/tc-font-core14-afms`).
+//! For Helvetica that's `Ascender 718`, `Descender -207`, and
+//! `C 65 ; WX 667 ; N A` — and the values are identical for
+//! Helvetica-Oblique. Helvetica-Bold shares the same ascent /
+//! descent and only widths differ. Courier is monospace
+//! (every glyph 600 units, ascent 629, descent -157).
+//!
+//! Important: do **not** "correct" these to URW Nimbus Sans values
+//! (729/-218 ascent/descent, 556 for capital A). URW Nimbus Sans is
+//! the Liberation-family Helvetica *substitute* that many Linux
+//! distributions install as `Helvetica.afm` — it's metrically
+//! similar but a different font, and PDF readers consume Adobe's
+//! Type 1 Helvetica metrics for the standard `/Helvetica`
+//! resource per the PDF spec.
 //!
 //! Only printable ASCII (`0x20..=0x7E`) is supported. The layout
 //! engine substitutes anything outside that range with `?` at a
@@ -188,6 +199,23 @@ mod tests {
         let r = text_width(Font::Helvetica, 100.0, "B");
         let b = text_width(Font::HelveticaBold, 100.0, "B");
         assert!(b > r);
+    }
+
+    #[test]
+    fn helvetica_capital_a_matches_adobe_core14_afm() {
+        // Adobe Helvetica.afm: `C 65 ; WX 667 ; N A ; B 14 0 654 718 ;`
+        // URW Nimbus Sans (the Linux/htmldoc Helvetica substitute)
+        // reports 556 here — that's a *different font* and is not
+        // what PDF readers use for the standard `/Helvetica`
+        // resource. This test pins us to Adobe's Type 1 metrics so
+        // a future "drive-by AFM fix" can't silently change them.
+        let w = text_width(Font::Helvetica, 1000.0, "A");
+        assert!((w - 667.0).abs() < 1e-3, "got {w}");
+        let wo = text_width(Font::HelveticaOblique, 1000.0, "A");
+        assert!((wo - 667.0).abs() < 1e-3, "got {wo}");
+        // Bold differs: `C 65 ; WX 722 ; N A` in Helvetica-Bold.afm.
+        let wb = text_width(Font::HelveticaBold, 1000.0, "A");
+        assert!((wb - 722.0).abs() < 1e-3, "got {wb}");
     }
 
     #[test]
