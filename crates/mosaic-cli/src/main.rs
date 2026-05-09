@@ -174,6 +174,16 @@ fn run_build(entry: &Path) -> ExitCode {
     for diag in &layout.diagnostics {
         render_diagnostic(diag, &src);
     }
+    // Layout can now produce real errors (E023 unknown paper, E025
+    // geometrically invalid margin/leading). Don't ship a PDF with
+    // broken config under a success exit code.
+    if layout
+        .diagnostics
+        .iter()
+        .any(|d| d.severity == Severity::Error)
+    {
+        return ExitCode::FAILURE;
+    }
 
     let stem = entry.file_stem().map_or_else(
         || std::ffi::OsString::from("out"),

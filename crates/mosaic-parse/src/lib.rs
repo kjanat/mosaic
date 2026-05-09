@@ -564,28 +564,51 @@ impl<'a> Parser<'a> {
                 let c = bytes[*i];
                 if c == b'\\' && *i + 1 < end {
                     let esc = bytes[*i + 1];
-                    let ch = match esc {
-                        b'\\' => '\\',
-                        b'"' => '"',
-                        b'n' => '\n',
-                        b't' => '\t',
-                        b'r' => '\r',
+                    match esc {
+                        b'\\' => {
+                            out.push('\\');
+                            *i += 2;
+                        }
+                        b'"' => {
+                            out.push('"');
+                            *i += 2;
+                        }
+                        b'n' => {
+                            out.push('\n');
+                            *i += 2;
+                        }
+                        b't' => {
+                            out.push('\t');
+                            *i += 2;
+                        }
+                        b'r' => {
+                            out.push('\r');
+                            *i += 2;
+                        }
                         _ => {
+                            // Unknown escape: the byte after `\` may
+                            // start a multibyte UTF-8 scalar, so we
+                            // can't blindly advance by 2 — that would
+                            // strand `*i` mid-codepoint and panic on
+                            // the next slice. Walk to the next char
+                            // boundary, push the source slice as-is,
+                            // and report the offending range.
+                            let esc_start = *i + 1;
+                            let esc_end = next_char_boundary(self.src, esc_start);
                             self.diagnostics.push(
                                 Diagnostic::error(
                                     DiagnosticCode("E014"),
                                     format!(
                                         "unknown escape sequence `\\{}` in string",
-                                        esc as char
+                                        &self.src[esc_start..esc_end]
                                     ),
                                 )
-                                .with_span(self.span(*i, *i + 2)),
+                                .with_span(self.span(*i, esc_end)),
                             );
-                            esc as char
+                            out.push_str(&self.src[esc_start..esc_end]);
+                            *i = esc_end;
                         }
-                    };
-                    out.push(ch);
-                    *i += 2;
+                    }
                     continue;
                 }
                 if c == b'"' {
@@ -1219,6 +1242,21 @@ mod tests {
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         let (_, args, _) = r.tree.items[0].as_set().unwrap();
         assert_eq!(args[0].value, SetValue::Str("a\"b\nc\\d".to_owned()));
+    }
+
+    #[test]
+    fn set_unknown_escape_with_multibyte_does_not_panic() {
+        // Regression: the byte after `\` may be the leading byte of a
+        // multibyte UTF-8 scalar (here `é` = 0xC3 0xA9). Advancing by 2
+        // would leave the cursor mid-codepoint and the next slice
+        // would panic. The parser must walk to a char boundary and
+        // emit E014 instead.
+        let r = parse_str("#set foo(s: \"\\é\")\n");
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E014"),
+            "expected E014, got {:?}",
+            r.diagnostics
+        );
     }
 
     #[test]

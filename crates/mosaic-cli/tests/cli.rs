@@ -282,6 +282,26 @@ fn read_mediabox_dim(value: &lopdf::Object) -> f32 {
 }
 
 #[test]
+fn build_fails_on_layout_error_does_not_emit_pdf() {
+    // E023 (unknown paper) is a layout-level Error. The CLI must
+    // surface it and exit non-zero rather than writing a "successful"
+    // PDF with broken config.
+    let dir = temp_dir("mos-build-layout-error");
+    write_file(
+        dir.path(),
+        "main.mos",
+        "#set page(paper: \"Foolscap\")\n\n= T\n\nbody\n",
+    );
+    let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 1, "stderr={stderr:?}");
+    assert!(stderr.contains("error[E023]"), "stderr={stderr:?}");
+    assert!(
+        !dir.path().join("build").join("main.pdf").exists(),
+        "PDF should not be written on layout error"
+    );
+}
+
+#[test]
 fn build_creates_output_directory() {
     // Sanity: the `build/` directory shouldn't need to pre-exist.
     let dir = temp_dir("mos-build-mkdir");

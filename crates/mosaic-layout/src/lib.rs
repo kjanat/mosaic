@@ -189,7 +189,7 @@ fn resolve_styles(document: &Document) -> (PageStyle, TextStyle, Vec<Diagnostic>
         };
         match target.as_str() {
             "page" => apply_page_set(node, &mut page, &mut diagnostics),
-            "text" => apply_text_set(node, &mut text),
+            "text" => apply_text_set(node, &mut text, &mut diagnostics),
             _ => {}
         }
     }
@@ -215,16 +215,63 @@ fn apply_page_set(node: &Node, page: &mut PageStyle, diagnostics: &mut Vec<Diagn
         }
     }
     if let Some(AttrValue::Length(pt)) = node.attributes.get("set.arg.margin") {
-        page.margin_pt = pt_to_f32(*pt);
+        let value = pt_to_f32(*pt);
+        // Reject geometrically impossible margins — eval's W024 only
+        // warns about "below sanity floor" and still applies the value.
+        // A negative or oversized margin would push runs off-page or
+        // make `column_width_pt()` non-positive, breaking layout.
+        if value < 0.0 || 2.0 * value >= page.width_pt {
+            diagnostics.push(reject(
+                node,
+                format!(
+                    "page margin {value:.2}pt is invalid for a {:.0}pt-wide page; default retained",
+                    page.width_pt
+                ),
+            ));
+        } else {
+            page.margin_pt = value;
+        }
     }
 }
 
-fn apply_text_set(node: &Node, text: &mut TextStyle) {
+fn apply_text_set(node: &Node, text: &mut TextStyle, diagnostics: &mut Vec<Diagnostic>) {
     if let Some(AttrValue::Length(pt)) = node.attributes.get("set.arg.size") {
-        text.size_pt = pt_to_f32(*pt);
+        let value = pt_to_f32(*pt);
+        if value <= 0.0 {
+            diagnostics.push(reject(
+                node,
+                format!("text size {value:.2}pt is not positive; default retained"),
+            ));
+        } else {
+            text.size_pt = value;
+        }
     }
     if let Some(AttrValue::Float(v)) = node.attributes.get("set.arg.leading") {
-        text.leading = pt_to_f32(*v);
+        let value = pt_to_f32(*v);
+        // Leading must be strictly positive — zero or negative would
+        // stack lines on top of each other or walk upward.
+        if value <= 0.0 {
+            diagnostics.push(reject(
+                node,
+                format!("text leading {value:.2} is not positive; default retained"),
+            ));
+        } else {
+            text.leading = value;
+        }
+    }
+}
+
+/// Build an `E025` diagnostic for a `#set` argument whose value, while
+/// well-typed, would produce broken page geometry. The value is *not*
+/// applied; the previous (or default) value is retained.
+fn reject(node: &Node, message: String) -> Diagnostic {
+    Diagnostic {
+        severity: Severity::Error,
+        code: DiagnosticCode("E025"),
+        message,
+        span: Some(node.span.clone()),
+        notes: Vec::new(),
+        suggestions: Vec::new(),
     }
 }
 
@@ -988,6 +1035,41 @@ mod tests {
         let result = LayoutEngine::new().layout(&doc);
         let runs = &result.graph.pages[0].runs;
         assert!((runs[0].size_pt - 20.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn negative_margin_is_rejected_with_e025() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "page", &[("margin", AttrValue::Length(-10.0))]);
+        make_paragraph(&mut doc, "hi");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.iter().any(|d| d.code.0 == "E025"));
+        // Default A4 margin retained.
+        let runs = &result.graph.pages[0].runs;
+        assert!(
+            (runs[0].x_pt - MARGIN_PT).abs() < 0.5,
+            "x = {}, expected default {MARGIN_PT}",
+            runs[0].x_pt
+        );
+    }
+
+    #[test]
+    fn oversized_margin_is_rejected_with_e025() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        // 400pt × 2 = 800pt, wider than A4's 595pt width.
+        alloc_set_block(&mut doc, "page", &[("margin", AttrValue::Length(400.0))]);
+        make_paragraph(&mut doc, "hi");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.iter().any(|d| d.code.0 == "E025"));
+    }
+
+    #[test]
+    fn nonpositive_leading_is_rejected_with_e025() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "text", &[("leading", AttrValue::Float(0.0))]);
+        make_paragraph(&mut doc, "hi");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.iter().any(|d| d.code.0 == "E025"));
     }
 
     #[test]
