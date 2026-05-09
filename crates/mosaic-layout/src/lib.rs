@@ -174,6 +174,11 @@ fn resolve_styles(document: &Document) -> (PageStyle, TextStyle, Vec<Diagnostic>
     let mut page = PageStyle::default();
     let mut text = TextStyle::default();
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
+    // Tracks the last #set node that touched either style, so a
+    // post-loop cross-validation diagnostic can point somewhere
+    // useful even when the impossibility comes from the *combination*
+    // of two earlier directives (e.g. a small page + a large text).
+    let mut last_style_span: Option<SourceSpan> = None;
     let Some(root) = document.get(document.root) else {
         return (page, text, diagnostics);
     };
@@ -190,8 +195,30 @@ fn resolve_styles(document: &Document) -> (PageStyle, TextStyle, Vec<Diagnostic>
         match target.as_str() {
             "page" => apply_page_set(node, &mut page, &mut diagnostics),
             "text" => apply_text_set(node, &mut text, &mut diagnostics),
-            _ => {}
+            _ => continue,
         }
+        last_style_span = Some(node.span.clone());
+    }
+    // Cross-validate the resolved combination: a single body line at
+    // the resolved `text.size_pt` must fit in the page's vertical
+    // margin gap. Otherwise `flush_line` would page-break into the
+    // same impossible state and emit runs below the page bottom.
+    // `text.size_pt` is a safe upper bound on a line's ascent for our
+    // standard fonts (ascent < size).
+    let available_pt = page.height_pt - 2.0 * page.margin_pt;
+    if available_pt > 0.0 && text.size_pt > available_pt {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            code: DiagnosticCode("E025"),
+            message: format!(
+                "text size {:.2}pt does not fit in {:.2}pt of vertical space on a {:.0}×{:.0}pt page; default text size retained",
+                text.size_pt, available_pt, page.width_pt, page.height_pt
+            ),
+            span: last_style_span,
+            notes: Vec::new(),
+            suggestions: Vec::new(),
+        });
+        text.size_pt = TextStyle::default().size_pt;
     }
     (page, text, diagnostics)
 }
@@ -247,7 +274,7 @@ fn apply_text_set(node: &Node, text: &mut TextStyle, diagnostics: &mut Vec<Diagn
         if value <= 0.0 {
             diagnostics.push(reject(
                 node,
-                format!("text size {value:.2}pt is not positive; default retained"),
+                format!("text size {value:.2}pt is not positive; previous value retained"),
             ));
         } else {
             text.size_pt = value;
@@ -260,7 +287,7 @@ fn apply_text_set(node: &Node, text: &mut TextStyle, diagnostics: &mut Vec<Diagn
         if value <= 0.0 {
             diagnostics.push(reject(
                 node,
-                format!("text leading {value:.2} is not positive; default retained"),
+                format!("text leading {value:.2} is not positive; previous value retained"),
             ));
         } else {
             text.leading = value;
@@ -1105,6 +1132,53 @@ mod tests {
             (page.width_pt - 2383.94).abs() < 1.0,
             "w = {}",
             page.width_pt
+        );
+    }
+
+    #[test]
+    fn oversized_text_size_is_rejected_with_e025() {
+        // Regression: a `text.size` larger than the page's vertical
+        // margin gap would make every flush_line hit the page-break
+        // branch and re-emit at the same off-page baseline. Reject
+        // up front, fall back to default size.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        // A4 vertical gap = 841.89 - 2*68.031 ≈ 705.83pt; ask for 1000pt.
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(1000.0))]);
+        make_paragraph(&mut doc, "hi");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.code.0 == "E025" && d.message.contains("vertical space")),
+            "expected E025 about vertical space, got {:?}",
+            result.diagnostics
+        );
+        // Default body size retained → run renders at 11pt.
+        let runs = &result.graph.pages[0].runs;
+        assert!((runs[0].size_pt - BODY_SIZE_PT).abs() < 0.01);
+    }
+
+    #[test]
+    fn rejected_text_size_says_previous_value_retained() {
+        // Wording check: after a valid #set text(size:) sets a custom
+        // value, a subsequent invalid one must not claim the default
+        // was retained — the previous custom value is.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(14.0))]);
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(-1.0))]);
+        make_paragraph(&mut doc, "hi");
+        let result = LayoutEngine::new().layout(&doc);
+        let msg = result
+            .diagnostics
+            .iter()
+            .find(|d| d.code.0 == "E025")
+            .expect("E025 emitted")
+            .message
+            .as_str();
+        assert!(
+            msg.contains("previous value retained"),
+            "message does not say `previous value retained`: {msg}"
         );
     }
 
