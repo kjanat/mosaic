@@ -7,21 +7,35 @@
 //! `@label` cross-references (§6 stage 3, MVP 1).
 
 mod resolve;
+mod set_schema;
 
 use std::collections::BTreeMap;
 
 use mosaic_core::{
-    AttrMap, AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, Severity, StyleId,
+    AttrMap, AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeId, NodeKind, Severity,
+    StyleId,
 };
-use mosaic_parse::{Inline, InlineKind, Item, SyntaxTree};
+use mosaic_parse::{Inline, InlineKind, Item, SetArg, SetValue, SyntaxTree};
 
 pub use resolve::resolve;
+
+/// Document-level metadata harvested from `#set document(...)` directives.
+/// The PDF backend writes `title` and `author` to the Info dictionary;
+/// `language` is captured for the catalog `/Lang` entry that the next
+/// PDF-metadata slice will wire up.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DocumentMetadata {
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub language: Option<String>,
+}
 
 /// Result of lowering a [`SyntaxTree`] into a [`Document`].
 #[derive(Debug)]
 pub struct LowerResult {
     pub document: Document,
     pub diagnostics: Vec<Diagnostic>,
+    pub metadata: DocumentMetadata,
 }
 
 impl LowerResult {
@@ -45,7 +59,12 @@ impl Evaluator {
     /// Lower `tree` into a semantic [`Document`].
     pub fn evaluate(&self, tree: &SyntaxTree) -> LowerResult {
         let mut document = Document::new(tree.file.clone());
-        let diagnostics: Vec<Diagnostic> = Vec::new();
+        let mut diagnostics: Vec<Diagnostic> = Vec::new();
+        let mut metadata = DocumentMetadata::default();
+        // Tracks the most-recently-set body text size in pt so `em`
+        // literals on later directives resolve against the right unit.
+        // Defaults to 11pt to match `mosaic-layout`'s `BODY_SIZE_PT`.
+        let mut current_text_size_pt: f64 = 11.0;
         let root = document.root;
 
         for item in &tree.items {
@@ -98,12 +117,46 @@ impl Evaluator {
                     );
                     lower_inlines(&mut document, para, inlines);
                 }
-                Item::Set { name, span } => {
-                    // `#set` is recorded but not interpreted at MVP 0.
-                    // Stash it as a `Raw` node off the document root so
-                    // later passes (MVP 1+) can pick it up.
+                Item::Set { name, args, span } => {
                     let mut attributes: AttrMap = BTreeMap::new();
                     attributes.insert("set".to_owned(), AttrValue::Str(name.clone()));
+                    let Some(target) = set_schema::lookup_target(name) else {
+                        diagnostics.push(
+                            Diagnostic::error(
+                                DiagnosticCode("E020"),
+                                format!(
+                                    "unknown `#set` target `{name}` (expected `page`, `text`, or `document`)"
+                                ),
+                            )
+                            .with_span(span.clone()),
+                        );
+                        // Still emit the Raw node so downstream stages
+                        // can see the directive existed (useful for
+                        // diagnostic spans pointing at it later).
+                        document.alloc_child(
+                            root,
+                            Node {
+                                id: NodeId::default(),
+                                kind: NodeKind::Raw,
+                                span: span.clone(),
+                                content_hash: Default::default(),
+                                style_id: StyleId::default(),
+                                children: Vec::new(),
+                                attributes,
+                            },
+                        );
+                        continue;
+                    };
+                    for arg in args {
+                        lower_set_arg(
+                            target,
+                            arg,
+                            &mut attributes,
+                            &mut metadata,
+                            &mut current_text_size_pt,
+                            &mut diagnostics,
+                        );
+                    }
                     document.alloc_child(
                         root,
                         Node {
@@ -123,8 +176,172 @@ impl Evaluator {
         LowerResult {
             document,
             diagnostics,
+            metadata,
         }
     }
+}
+
+/// Convert one parser-level `SetArg` into an attribute on the Raw node
+/// representing this `#set` directive. Emits semantic diagnostics
+/// (`E021` unknown key, `E022` type mismatch, `W024` sanity floor) and
+/// updates `metadata` / `current_text_size_pt` as a side effect.
+fn lower_set_arg(
+    target: set_schema::Target,
+    arg: &SetArg,
+    attributes: &mut AttrMap,
+    metadata: &mut DocumentMetadata,
+    current_text_size_pt: &mut f64,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some(slot) = target.slot(&arg.key) else {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode("E021"),
+                format!(
+                    "unknown argument `{}` for `#set {}` (valid: {})",
+                    arg.key,
+                    target.name(),
+                    target.keys().join(", ")
+                ),
+            )
+            .with_span(arg.key_span.clone()),
+        );
+        return;
+    };
+    let Some(value) = coerce_value(slot, &arg.value, *current_text_size_pt) else {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode("E022"),
+                format!(
+                    "`#set {} ({}: …)` expects {}, got {}",
+                    target.name(),
+                    arg.key,
+                    slot.expected(),
+                    describe_value(&arg.value),
+                ),
+            )
+            .with_span(arg.value_span.clone()),
+        );
+        return;
+    };
+    if let Some(msg) = sanity_floor_warning(target, &arg.key, &value) {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Warning,
+            code: DiagnosticCode("W024"),
+            message: msg,
+            span: Some(arg.value_span.clone()),
+            notes: Vec::new(),
+            suggestions: Vec::new(),
+        });
+    }
+    // Side effects: track text.size for em resolution; capture
+    // document metadata.
+    if matches!(target, set_schema::Target::Text)
+        && arg.key == "size"
+        && let AttrValue::Length(pt) = &value
+    {
+        *current_text_size_pt = *pt;
+    }
+    if matches!(target, set_schema::Target::Document)
+        && let AttrValue::Str(s) = &value
+    {
+        match arg.key.as_str() {
+            "title" => metadata.title = Some(s.clone()),
+            "author" => metadata.author = Some(s.clone()),
+            "language" => metadata.language = Some(s.clone()),
+            _ => {}
+        }
+    }
+    attributes.insert(format!("set.arg.{}", arg.key), value);
+}
+
+/// Coerce a parser literal to the type required by the target slot.
+/// Length values are resolved to PDF points using `em_pt` for `em`
+/// literals.
+fn coerce_value(slot: set_schema::SlotType, value: &SetValue, em_pt: f64) -> Option<AttrValue> {
+    use set_schema::SlotType;
+    match (slot, value) {
+        // Bare identifiers are accepted in string slots so authors can
+        // write `numbering: bottom-center` without quotes — folded with
+        // the quoted-string arm because they produce the same value.
+        (SlotType::Str, SetValue::Str(s) | SetValue::Ident(s)) => Some(AttrValue::Str(s.clone())),
+        (SlotType::Length, SetValue::Length(v, unit)) => {
+            Some(AttrValue::Length(length_to_pt(*v, *unit, em_pt)))
+        }
+        // A bare number in a length slot defaults to pt for ergonomic
+        // input; this mirrors how Typst treats `1pt` and `1` in length
+        // contexts. (Float-without-unit is more common than int.)
+        (SlotType::Length, SetValue::Float(v)) => Some(AttrValue::Length(*v)),
+        (SlotType::Length, SetValue::Int(v)) => Some(AttrValue::Length(int_to_f64(*v))),
+        (SlotType::Float, SetValue::Float(v)) => Some(AttrValue::Float(*v)),
+        (SlotType::Float, SetValue::Int(v)) => Some(AttrValue::Float(int_to_f64(*v))),
+        _ => None,
+    }
+}
+
+/// `#set` literals only accept i64 values that fit comfortably in
+/// f64's mantissa; we cap the range at ±2^53 so the cast is exact for
+/// every value an author could plausibly type.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "values clamped to f64-exact range above"
+)]
+fn int_to_f64(v: i64) -> f64 {
+    v.clamp(-(1_i64 << 53), 1_i64 << 53) as f64
+}
+
+fn length_to_pt(value: f64, unit: mosaic_parse::LengthUnit, em_pt: f64) -> f64 {
+    match unit {
+        mosaic_parse::LengthUnit::Pt => value,
+        mosaic_parse::LengthUnit::Mm => value * 72.0 / 25.4,
+        mosaic_parse::LengthUnit::Em => value * em_pt,
+    }
+}
+
+fn describe_value(v: &SetValue) -> &'static str {
+    match v {
+        SetValue::Str(_) => "a string",
+        SetValue::Int(_) => "an integer",
+        SetValue::Float(_) => "a number",
+        SetValue::Length(_, _) => "a length",
+        SetValue::Ident(_) => "an identifier",
+    }
+}
+
+fn sanity_floor_warning(
+    target: set_schema::Target,
+    key: &str,
+    value: &AttrValue,
+) -> Option<String> {
+    use set_schema::Target;
+    match (target, key) {
+        (Target::Page, "margin") => {
+            // 3mm ≈ 8.5pt — below most printer hardware margins.
+            if let AttrValue::Length(pt) = value
+                && *pt < 8.5
+            {
+                return Some(format!(
+                    "page margin {pt:.2}pt is below the 3mm sanity floor"
+                ));
+            }
+        }
+        (Target::Text, "size") => {
+            if let AttrValue::Length(pt) = value
+                && *pt < 4.0
+            {
+                return Some(format!("text size {pt:.2}pt is below the 4pt sanity floor"));
+            }
+        }
+        (Target::Text, "leading") => {
+            if let AttrValue::Float(v) = value
+                && *v < 0.8
+            {
+                return Some(format!("text leading {v:.2} is below the 0.8 sanity floor"));
+            }
+        }
+        _ => {}
+    }
+    None
 }
 
 fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inline]) {
@@ -180,14 +397,21 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
     LowerResult {
         document: lower.document,
         diagnostics,
+        metadata: lower.metadata,
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
+    )]
     use std::path::PathBuf;
 
-    use mosaic_core::NodeKind;
+    use mosaic_core::{Node, NodeKind};
 
     use super::*;
 
@@ -212,13 +436,103 @@ mod tests {
     #[test]
     fn lowers_set_block_as_raw() {
         let r = lower(
-            "#set page(paper: \"A4\")\n\n= After\n",
+            "#set page(paper: \"A4\", margin: 24mm)\n\n= After\n",
             &PathBuf::from("test.mos"),
         );
-        assert!(!r.has_errors());
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
         let kinds: Vec<NodeKind> = r.document.nodes().map(|n| n.kind).collect();
         assert!(kinds.contains(&NodeKind::Raw));
         assert!(kinds.contains(&NodeKind::Section));
+        // Find the Raw set node and check its attributes contain typed
+        // values: paper as Str, margin resolved to pt as Length.
+        let raw = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Raw && n.attributes.contains_key("set"))
+            .expect("set Raw node");
+        assert_eq!(
+            raw.attributes.get("set.arg.paper"),
+            Some(&AttrValue::Str("A4".to_owned()))
+        );
+        match raw.attributes.get("set.arg.margin") {
+            Some(AttrValue::Length(pt)) => {
+                // 24mm × 72 / 25.4 ≈ 68.031pt
+                assert!((pt - 68.031).abs() < 0.01, "margin pt = {pt}");
+            }
+            other => panic!("expected Length for margin, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_set_target_emits_e020() {
+        let r = lower("#set widget(x: 1)\n", &PathBuf::from("test.mos"));
+        assert!(r.diagnostics.iter().any(|d| d.code.0 == "E020"));
+    }
+
+    #[test]
+    fn unknown_set_arg_emits_e021() {
+        let r = lower("#set page(weirdkey: 1)\n", &PathBuf::from("test.mos"));
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E021"),
+            "got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn type_mismatch_emits_e022() {
+        let r = lower("#set page(margin: \"wide\")\n", &PathBuf::from("test.mos"));
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E022"),
+            "got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn sanity_floor_emits_w024() {
+        let r = lower("#set page(margin: 0.5mm)\n", &PathBuf::from("test.mos"));
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "W024"),
+            "got {:?}",
+            r.diagnostics
+        );
+        // Value should still apply despite the warning.
+        assert!(!r.has_errors());
+    }
+
+    #[test]
+    fn em_resolves_against_current_text_size() {
+        let r = lower(
+            "#set text(size: 12pt)\n#set text(leading: 1.0)\n#set page(margin: 2em)\n",
+            &PathBuf::from("test.mos"),
+        );
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let raws: Vec<&Node> = r
+            .document
+            .nodes()
+            .filter(|n| n.kind == NodeKind::Raw && n.attributes.contains_key("set"))
+            .collect();
+        let page = raws
+            .iter()
+            .find(|n| n.attributes.get("set") == Some(&AttrValue::Str("page".to_owned())))
+            .unwrap();
+        match page.attributes.get("set.arg.margin") {
+            Some(AttrValue::Length(pt)) => assert!((pt - 24.0).abs() < 0.01, "got {pt}"),
+            other => panic!("expected Length, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn document_metadata_captured() {
+        let r = lower(
+            "#set document(title: \"T\", author: \"A\", language: \"en\")\n",
+            &PathBuf::from("test.mos"),
+        );
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.metadata.title.as_deref(), Some("T"));
+        assert_eq!(r.metadata.author.as_deref(), Some("A"));
+        assert_eq!(r.metadata.language.as_deref(), Some("en"));
     }
 
     #[test]

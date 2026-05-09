@@ -182,7 +182,12 @@ fn run_build(entry: &Path) -> ExitCode {
     let mut out = PathBuf::from("build");
     out.push(format!("{}.pdf", stem.to_string_lossy()));
 
-    if let Err(err) = mosaic_pdf::emit(&layout.graph, &out) {
+    let metadata = mosaic_pdf::PdfMetadata {
+        title: result.metadata.title.clone(),
+        author: result.metadata.author.clone(),
+        language: result.metadata.language,
+    };
+    if let Err(err) = mosaic_pdf::emit(&layout.graph, &metadata, &out) {
         match err {
             mosaic_core::CoreError::Diagnostic(d) => render_diagnostic(&d, &src),
             mosaic_core::CoreError::Unimplemented(msg) => {

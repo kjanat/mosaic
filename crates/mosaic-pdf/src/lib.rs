@@ -9,7 +9,18 @@ use std::path::Path;
 
 use mosaic_core::{CoreError, Diagnostic, DiagnosticCode, Result, Severity};
 use mosaic_layout::{ALL_FONTS, Font, PageGraph, TextRun};
-use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str};
+use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
+
+/// Document-level metadata that gets written to the PDF Info
+/// dictionary. Populated by the lowerer from `#set document(...)`.
+/// The `language` field is captured but not yet emitted (it belongs in
+/// the catalog `/Lang` entry, which is the next slice).
+#[derive(Debug, Clone, Default)]
+pub struct PdfMetadata {
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub language: Option<String>,
+}
 
 /// Emit `graph` as a PDF file at `out`. Creates `out`'s parent
 /// directory if it doesn't already exist.
@@ -20,8 +31,8 @@ use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str};
 /// its parent directory) fails. Layout-level issues are surfaced
 /// through [`mosaic_layout::LayoutResult::diagnostics`] instead, so
 /// this function only fails on I/O problems.
-pub fn emit(graph: &PageGraph, out: &Path) -> Result<()> {
-    let bytes = build_pdf(graph);
+pub fn emit(graph: &PageGraph, metadata: &PdfMetadata, out: &Path) -> Result<()> {
+    let bytes = build_pdf(graph, metadata);
     if let Some(parent) = out.parent()
         && !parent.as_os_str().is_empty()
     {
@@ -52,7 +63,7 @@ fn io_diagnostic(message: String) -> CoreError {
 /// Build the PDF bytes from `graph`. Pulled out of [`emit`] so tests
 /// can round-trip without touching the filesystem. Kept `pub(crate)`
 /// until there's a real consumer — the public surface is [`emit`].
-pub(crate) fn build_pdf(graph: &PageGraph) -> Vec<u8> {
+pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> Vec<u8> {
     let mut pdf = Pdf::new();
     let mut next_id: i32 = 1;
     let mut alloc = || {
@@ -63,6 +74,9 @@ pub(crate) fn build_pdf(graph: &PageGraph) -> Vec<u8> {
 
     let catalog_id = alloc();
     let page_tree_id = alloc();
+    // Allocate the info ref up front so we can reference it from the
+    // trailer; the actual dictionary is written below.
+    let info_id = alloc();
 
     // One indirect ref per font face, in the order published by
     // `ALL_FONTS`. We always emit all four entries so every page's
@@ -100,6 +114,20 @@ pub(crate) fn build_pdf(graph: &PageGraph) -> Vec<u8> {
     for (face, font_id) in &font_refs {
         pdf.type1_font(*font_id)
             .base_font(Name(face.pdf_base_name().as_bytes()));
+    }
+
+    // Info dictionary: only emit fields we actually have. `pdf-writer`
+    // requires UTF-8-clean strings here; the lowerer already trims
+    // surrounding whitespace.
+    {
+        let mut info = pdf.document_info(info_id);
+        if let Some(title) = metadata.title.as_deref() {
+            info.title(TextStr(title));
+        }
+        if let Some(author) = metadata.author.as_deref() {
+            info.author(TextStr(author));
+        }
+        info.finish();
     }
 
     pdf.finish()
@@ -165,7 +193,7 @@ mod tests {
 
     #[test]
     fn build_pdf_starts_with_pdf_header_and_ends_with_eof() {
-        let bytes = build_pdf(&sample_graph());
+        let bytes = build_pdf(&sample_graph(), &PdfMetadata::default());
         assert!(bytes.starts_with(b"%PDF-"), "missing PDF header");
         assert!(
             bytes.windows(5).any(|w| w == b"%%EOF"),
@@ -175,7 +203,7 @@ mod tests {
 
     #[test]
     fn build_pdf_embeds_text_runs_as_visible_strings() {
-        let bytes = build_pdf(&sample_graph());
+        let bytes = build_pdf(&sample_graph(), &PdfMetadata::default());
         // The Str writer emits ASCII inside `(...)` so we can grep
         // the raw bytes for the visible payload.
         assert!(
@@ -190,8 +218,28 @@ mod tests {
 
     #[test]
     fn empty_graph_still_produces_valid_pdf() {
-        let bytes = build_pdf(&PageGraph::default());
+        let bytes = build_pdf(&PageGraph::default(), &PdfMetadata::default());
         assert!(bytes.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn metadata_appears_in_info_dictionary() {
+        let metadata = PdfMetadata {
+            title: Some("My Doc".to_owned()),
+            author: Some("A. Person".to_owned()),
+            language: None,
+        };
+        let bytes = build_pdf(&sample_graph(), &metadata);
+        assert!(
+            bytes.windows(b"(My Doc)".len()).any(|w| w == b"(My Doc)"),
+            "title not found in PDF"
+        );
+        assert!(
+            bytes
+                .windows(b"(A. Person)".len())
+                .any(|w| w == b"(A. Person)"),
+            "author not found in PDF"
+        );
     }
 
     fn unique_temp_path(label: &str) -> std::path::PathBuf {
@@ -207,7 +255,7 @@ mod tests {
     fn emit_writes_file() {
         let dir = unique_temp_path("write");
         let out = dir.join("out.pdf");
-        emit(&sample_graph(), &out).expect("emit");
+        emit(&sample_graph(), &PdfMetadata::default(), &out).expect("emit");
         let bytes = std::fs::read(&out).expect("read pdf");
         assert!(bytes.starts_with(b"%PDF-"));
         std::fs::remove_dir_all(&dir).ok();
@@ -222,7 +270,7 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("mkdir");
         // `dir` itself is the bogus output target; `fs::write` will
         // refuse to overwrite a directory.
-        let result = emit(&sample_graph(), &dir);
+        let result = emit(&sample_graph(), &PdfMetadata::default(), &dir);
         std::fs::remove_dir_all(&dir).ok();
         let err = result.expect_err("expected emit to fail");
         let CoreError::Diagnostic(d) = err else {

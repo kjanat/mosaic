@@ -69,6 +69,11 @@ pub enum AttrValue {
     Float(f64),
     Str(String),
     List(Vec<Self>),
+    /// A length already resolved to PDF points. The parser carries
+    /// unit-tagged literals (`mm`, `pt`, `em`); the lowerer converts
+    /// them to a single canonical scalar so layout never has to know
+    /// about units.
+    Length(f64),
 }
 
 /// A byte-range location in a source file (manifest §6 stage 1).
