@@ -174,11 +174,6 @@ fn resolve_styles(document: &Document) -> (PageStyle, TextStyle, Vec<Diagnostic>
     let mut page = PageStyle::default();
     let mut text = TextStyle::default();
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
-    // Tracks the last #set node that touched either style, so a
-    // post-loop cross-validation diagnostic can point somewhere
-    // useful even when the impossibility comes from the *combination*
-    // of two earlier directives (e.g. a small page + a large text).
-    let mut last_style_span: Option<SourceSpan> = None;
     let Some(root) = document.get(document.root) else {
         return (page, text, diagnostics);
     };
@@ -193,43 +188,27 @@ fn resolve_styles(document: &Document) -> (PageStyle, TextStyle, Vec<Diagnostic>
             continue;
         };
         match target.as_str() {
-            "page" => apply_page_set(node, &mut page, &mut diagnostics),
-            "text" => apply_text_set(node, &mut text, &mut diagnostics),
-            _ => continue,
+            "page" => apply_page_set(node, &mut page, &text, &mut diagnostics),
+            "text" => apply_text_set(node, &mut text, &page, &mut diagnostics),
+            _ => {}
         }
-        last_style_span = Some(node.span.clone());
-    }
-    // Cross-validate the resolved combination: a single body line at
-    // the resolved `text.size_pt` must fit in the page's vertical
-    // margin gap. Otherwise `flush_line` would page-break into the
-    // same impossible state and emit runs below the page bottom.
-    // `text.size_pt` is a safe upper bound on a line's ascent for our
-    // standard fonts (ascent < size).
-    let available_pt = page.height_pt - 2.0 * page.margin_pt;
-    if available_pt > 0.0 && text.size_pt > available_pt {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            code: DiagnosticCode("E025"),
-            message: format!(
-                "text size {:.2}pt does not fit in {:.2}pt of vertical space on a {:.0}×{:.0}pt page; default text size retained",
-                text.size_pt, available_pt, page.width_pt, page.height_pt
-            ),
-            span: last_style_span,
-            notes: Vec::new(),
-            suggestions: Vec::new(),
-        });
-        text.size_pt = TextStyle::default().size_pt;
     }
     (page, text, diagnostics)
 }
 
-fn apply_page_set(node: &Node, page: &mut PageStyle, diagnostics: &mut Vec<Diagnostic>) {
+fn apply_page_set(
+    node: &Node,
+    page: &mut PageStyle,
+    text: &TextStyle,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
     // Stage all updates from this directive into `next` and validate
-    // the *combined* result. Validating each field at the moment it's
-    // assigned would miss the case where only `paper` changes and the
-    // carried-over margin from an earlier directive becomes invalid
-    // (e.g. `paper: "A0", margin: 300pt` then `paper: "A5"` — the
-    // 300pt margin is fine on A0 but breaks the 419pt-wide A5).
+    // the *combined* result against both the new page geometry and
+    // the carried-over text style. Validating field-at-a-time would
+    // miss the case where only `paper` changes and either the carried
+    // margin or the carried text.size becomes unworkable on the new
+    // page (e.g. `paper: "A0", margin: 300pt` then `paper: "A5"`, or
+    // `text(size: 50pt)` then `paper: "A8"`).
     let mut next = *page;
     if let Some(AttrValue::Str(name)) = node.attributes.get("set.arg.paper") {
         if let Some((w, h)) = paper_size_pt(name) {
@@ -251,10 +230,7 @@ fn apply_page_set(node: &Node, page: &mut PageStyle, diagnostics: &mut Vec<Diagn
     if let Some(AttrValue::Length(pt)) = node.attributes.get("set.arg.margin") {
         next.margin_pt = pt_to_f32(*pt);
     }
-    // Reject geometrically impossible combinations — a negative or
-    // oversized margin would push runs off-page or make
-    // `column_width_pt()` non-positive. Eval's W024 only warns about
-    // "below sanity floor" and still applies the value.
+    // Reject geometrically impossible margins.
     if next.margin_pt < 0.0 || 2.0 * next.margin_pt >= next.width_pt {
         diagnostics.push(reject(
             node,
@@ -265,34 +241,73 @@ fn apply_page_set(node: &Node, page: &mut PageStyle, diagnostics: &mut Vec<Diagn
         ));
         return;
     }
+    // Reject page changes that would make the carried text.size_pt
+    // overflow the page's vertical margin gap.
+    let available_pt = next.height_pt - 2.0 * next.margin_pt;
+    if available_pt > 0.0 && text.size_pt > available_pt {
+        diagnostics.push(reject(
+            node,
+            format!(
+                "page change to {:.0}×{:.0}pt leaves text size {:.2}pt too large for {:.2}pt of vertical space; previous page geometry retained",
+                next.width_pt, next.height_pt, text.size_pt, available_pt
+            ),
+        ));
+        return;
+    }
     *page = next;
 }
 
-fn apply_text_set(node: &Node, text: &mut TextStyle, diagnostics: &mut Vec<Diagnostic>) {
+fn apply_text_set(
+    node: &Node,
+    text: &mut TextStyle,
+    page: &PageStyle,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut next = *text;
     if let Some(AttrValue::Length(pt)) = node.attributes.get("set.arg.size") {
-        let value = pt_to_f32(*pt);
-        if value <= 0.0 {
-            diagnostics.push(reject(
-                node,
-                format!("text size {value:.2}pt is not positive; previous value retained"),
-            ));
-        } else {
-            text.size_pt = value;
-        }
+        next.size_pt = pt_to_f32(*pt);
     }
     if let Some(AttrValue::Float(v)) = node.attributes.get("set.arg.leading") {
-        let value = pt_to_f32(*v);
-        // Leading must be strictly positive — zero or negative would
-        // stack lines on top of each other or walk upward.
-        if value <= 0.0 {
-            diagnostics.push(reject(
-                node,
-                format!("text leading {value:.2} is not positive; previous value retained"),
-            ));
-        } else {
-            text.leading = value;
-        }
+        next.leading = pt_to_f32(*v);
     }
+    if next.size_pt <= 0.0 {
+        diagnostics.push(reject(
+            node,
+            format!(
+                "text size {:.2}pt is not positive; previous value retained",
+                next.size_pt
+            ),
+        ));
+        return;
+    }
+    // Leading must be strictly positive — zero or negative would
+    // stack lines on top of each other or walk upward.
+    if next.leading <= 0.0 {
+        diagnostics.push(reject(
+            node,
+            format!(
+                "text leading {:.2} is not positive; previous value retained",
+                next.leading
+            ),
+        ));
+        return;
+    }
+    // The new text.size_pt must fit in the page's vertical margin
+    // gap; otherwise `flush_line` would page-break repeatedly into
+    // the same off-page state. text.size_pt is a safe upper bound on
+    // a line's ascent for our standard fonts (ascent < size).
+    let available_pt = page.height_pt - 2.0 * page.margin_pt;
+    if available_pt > 0.0 && next.size_pt > available_pt {
+        diagnostics.push(reject(
+            node,
+            format!(
+                "text size {:.2}pt does not fit in {:.2}pt of vertical space on the {:.0}×{:.0}pt page; previous value retained",
+                next.size_pt, available_pt, page.width_pt, page.height_pt
+            ),
+        ));
+        return;
+    }
+    *text = next;
 }
 
 /// Build an `E025` diagnostic for a `#set` argument whose value, while
@@ -1133,6 +1148,56 @@ mod tests {
             "w = {}",
             page.width_pt
         );
+    }
+
+    #[test]
+    fn earlier_valid_size_survives_later_rejection() {
+        // CodeRabbit scenario: 50pt is valid against A4, then a 180pt
+        // size is too big for A4's vertical gap (~706pt actually fits
+        // — pick something that genuinely breaks). The rejected
+        // directive must roll back, leaving 50pt intact for layout.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(50.0))]);
+        // 1000pt > A4's ~706pt vertical gap — rejected.
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(1000.0))]);
+        make_paragraph(&mut doc, "hi");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.iter().any(|d| d.code.0 == "E025"));
+        let runs = &result.graph.pages[0].runs;
+        assert!(
+            (runs[0].size_pt - 50.0).abs() < 0.01,
+            "expected 50pt preserved, got {}",
+            runs[0].size_pt
+        );
+    }
+
+    #[test]
+    fn page_change_that_invalidates_carried_text_size_is_rejected() {
+        // 100pt is valid against A4 (~706pt gap). Switching to A8
+        // (~74pt gap) would make 100pt unfit; reject the page change
+        // so both the prior page and the prior text size survive.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(100.0))]);
+        alloc_set_block(
+            &mut doc,
+            "page",
+            &[("paper", AttrValue::Str("A8".to_owned()))],
+        );
+        make_paragraph(&mut doc, "hi");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.code.0 == "E025" && d.message.contains("page change")),
+            "expected E025 about page change, got {:?}",
+            result.diagnostics
+        );
+        let page = &result.graph.pages[0];
+        let runs = &page.runs;
+        // A4 retained (page change rejected), and text.size = 100 kept.
+        assert!((page.width_pt - A4_WIDTH_PT).abs() < 0.5);
+        assert!((runs[0].size_pt - 100.0).abs() < 0.01);
     }
 
     #[test]
