@@ -197,10 +197,17 @@ fn resolve_styles(document: &Document) -> (PageStyle, TextStyle, Vec<Diagnostic>
 }
 
 fn apply_page_set(node: &Node, page: &mut PageStyle, diagnostics: &mut Vec<Diagnostic>) {
+    // Stage all updates from this directive into `next` and validate
+    // the *combined* result. Validating each field at the moment it's
+    // assigned would miss the case where only `paper` changes and the
+    // carried-over margin from an earlier directive becomes invalid
+    // (e.g. `paper: "A0", margin: 300pt` then `paper: "A5"` — the
+    // 300pt margin is fine on A0 but breaks the 419pt-wide A5).
+    let mut next = *page;
     if let Some(AttrValue::Str(name)) = node.attributes.get("set.arg.paper") {
         if let Some((w, h)) = paper_size_pt(name) {
-            page.width_pt = w;
-            page.height_pt = h;
+            next.width_pt = w;
+            next.height_pt = h;
         } else {
             diagnostics.push(Diagnostic {
                 severity: Severity::Error,
@@ -215,23 +222,23 @@ fn apply_page_set(node: &Node, page: &mut PageStyle, diagnostics: &mut Vec<Diagn
         }
     }
     if let Some(AttrValue::Length(pt)) = node.attributes.get("set.arg.margin") {
-        let value = pt_to_f32(*pt);
-        // Reject geometrically impossible margins — eval's W024 only
-        // warns about "below sanity floor" and still applies the value.
-        // A negative or oversized margin would push runs off-page or
-        // make `column_width_pt()` non-positive, breaking layout.
-        if value < 0.0 || 2.0 * value >= page.width_pt {
-            diagnostics.push(reject(
-                node,
-                format!(
-                    "page margin {value:.2}pt is invalid for a {:.0}pt-wide page; default retained",
-                    page.width_pt
-                ),
-            ));
-        } else {
-            page.margin_pt = value;
-        }
+        next.margin_pt = pt_to_f32(*pt);
     }
+    // Reject geometrically impossible combinations — a negative or
+    // oversized margin would push runs off-page or make
+    // `column_width_pt()` non-positive. Eval's W024 only warns about
+    // "below sanity floor" and still applies the value.
+    if next.margin_pt < 0.0 || 2.0 * next.margin_pt >= next.width_pt {
+        diagnostics.push(reject(
+            node,
+            format!(
+                "page margin {:.2}pt is invalid for a {:.0}pt-wide page; previous value retained",
+                next.margin_pt, next.width_pt
+            ),
+        ));
+        return;
+    }
+    *page = next;
 }
 
 fn apply_text_set(node: &Node, text: &mut TextStyle, diagnostics: &mut Vec<Diagnostic>) {
@@ -1061,6 +1068,44 @@ mod tests {
         make_paragraph(&mut doc, "hi");
         let result = LayoutEngine::new().layout(&doc);
         assert!(result.diagnostics.iter().any(|d| d.code.0 == "E025"));
+    }
+
+    #[test]
+    fn paper_shrink_revalidates_carried_margin() {
+        // Regression: a margin set on a large paper must be re-checked
+        // when a later directive shrinks the paper. Prior implementation
+        // only validated when the same node carried both fields, so a
+        // paper-only override could leave an oversized margin in place.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(
+            &mut doc,
+            "page",
+            &[
+                ("paper", AttrValue::Str("A0".to_owned())),
+                ("margin", AttrValue::Length(300.0)),
+            ],
+        );
+        // Then shrink to A5 (419pt wide) — 300pt margin is now > width/2.
+        alloc_set_block(
+            &mut doc,
+            "page",
+            &[("paper", AttrValue::Str("A5".to_owned()))],
+        );
+        make_paragraph(&mut doc, "hi");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(
+            result.diagnostics.iter().any(|d| d.code.0 == "E025"),
+            "expected E025 from paper shrink, got {:?}",
+            result.diagnostics
+        );
+        // Page must remain a valid (A0 + 300pt margin) configuration —
+        // the rejected A5 update reverts to the prior staged value.
+        let page = &result.graph.pages[0];
+        assert!(
+            (page.width_pt - 2383.94).abs() < 1.0,
+            "w = {}",
+            page.width_pt
+        );
     }
 
     #[test]
