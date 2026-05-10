@@ -14,6 +14,7 @@ keywords = ["compiler", "layout", "pdf", "typesetting", "typography"]
 categories = ["compilers", "text-processing"]
 
 [workspace.dependencies]
+afm = { path = "crates/afm", version = "0.0.0" }
 mosaic-bib = { path = "crates/mosaic-bib", version = "0.0.0" }
 mosaic-cache = { path = "crates/mosaic-cache", version = "0.0.0" }
 mosaic-core = { path = "crates/mosaic-core", version = "0.0.0" }
