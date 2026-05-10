@@ -1,1 +1,2 @@
-crates/afm/tests/fixtures/**/*.afm  linguist-vendored
+crates/afm/tests/fixtures/**/*.afm  linguist-vendored -text
+crates/pdf-base14-metrics/data/**/*.afm  linguist-vendored -text
