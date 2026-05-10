@@ -12,6 +12,8 @@
 //! rewrites to `?` at a single boundary so non-ASCII never reaches
 //! [`text_width`]. Broader Unicode → `WinAnsi` coverage is issue #8.
 
+#![deny(missing_docs)]
+
 pub use pdf_base14_metrics::Base14Font;
 
 /// One of the 14 standard PDF fonts, wrapped in a newtype.
@@ -228,6 +230,22 @@ mod tests {
     #[should_panic(expected = "non-ASCII char")]
     fn non_ascii_panics() {
         let _ = text_width(HELV, 12.0, "µ");
+    }
+
+    #[test]
+    #[should_panic(expected = "no WinAnsi mapping")]
+    fn symbol_has_no_winansi_mapping() {
+        // Symbol's glyph names don't overlap WinAnsi's; `winansi_width`
+        // returns `None` for every code, so the second assert in
+        // `glyph_width_units` fires loudly instead of silently producing
+        // a zero or garbage width.
+        let _ = text_width(Font(Base14Font::Symbol), 12.0, "A");
+    }
+
+    #[test]
+    #[should_panic(expected = "no WinAnsi mapping")]
+    fn zapfdingbats_has_no_winansi_mapping() {
+        let _ = text_width(Font(Base14Font::ZapfDingbats), 12.0, "A");
     }
 
     #[test]
