@@ -1,21 +1,21 @@
 [package]
-name = "mosaic-packages"
-version.workspace = true
-edition.workspace = true
+name                   = "mosaic-packages"
+version.workspace      = true
+edition.workspace      = true
 rust-version.workspace = true
-description = "Package manifest and dependency resolution for Mosaic (manifest §14)."
-readme.workspace = true
-homepage.workspace = true
-repository.workspace = true
-license.workspace = true
-keywords.workspace = true
-categories.workspace = true
+description            = "Package manifest and dependency resolution for Mosaic (manifest §14)."
+readme.workspace       = true
+homepage.workspace     = true
+repository.workspace   = true
+license.workspace      = true
+keywords.workspace     = true
+categories.workspace   = true
 
 [dependencies]
 mosaic-core = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
-toml = { workspace = true }
+serde       = { workspace = true }
+thiserror   = { workspace = true }
+toml        = { workspace = true }
 
 [lints]
 workspace = true

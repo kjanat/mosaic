@@ -1,10 +1,10 @@
 [project]
-name = "hello"
+name    = "hello"
 version = "0.1.0"
-entry = "main.mos"
+entry   = "main.mos"
 
 [document]
 language = "en"
-output = ["pdf", "html"]
+output   = ["pdf", "html"]
 
 [dependencies]

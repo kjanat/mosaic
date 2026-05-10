@@ -1,8 +1,10 @@
-Let’s design a new typesetting engine from scratch.
-
-Call it **Mosaic** for now, because apparently every serious system needs a name that sounds like either a browser from 1993 or a startup that sells calendars to developers.
-
 # Mosaic: a modern constraint-based typesetting engine
+
+> Let’s design a new typesetting engine from scratch.
+>
+> Call it **Mosaic** for now, because apparently every serious system needs a
+> name that sounds like either a browser from 1993 or a startup that sells
+> calendars to developers.
 
 ## Core idea
 
@@ -855,16 +857,16 @@ Every project has:
 # mosaic.toml
 
 [project]
-name = "pe-report"
+name    = "pe-report"
 version = "0.1.0"
-entry = "main.mos"
+entry   = "main.mos"
 
 [document]
 language = "en"
-output = ["pdf", "html"]
+output   = ["pdf", "html"]
 
 [dependencies]
-clinical = "1.2"
+clinical        = "1.2"
 vancouver-style = "2.0"
 ```
 
@@ -1459,12 +1461,12 @@ Plugin manifest:
 
 ```toml
 [plugin]
-name = "chemical-formula"
+name    = "chemical-formula"
 version = "1.0.0"
 
 [capabilities]
-filesystem = false
-network = false
+filesystem    = false
+network       = false
 deterministic = true
 ```
 

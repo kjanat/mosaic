@@ -1,9 +1,10 @@
 # Mosaic
 
 A semantic, incremental, constraint-based typesetting compiler — written in
-Rust, targeting PDF/HTML/EPUB. Mosaic compiles `.mos` source files into
-documents through a dependency graph rather than a linear stream of typesetting
-commands, so editing one sentence reflows only the affected pages.
+Rust, targeting PDF/HTML/EPUB.\
+Mosaic compiles `.mos` source files into documents through a dependency graph
+rather than a linear stream of typesetting commands, so editing one sentence
+reflows only the affected pages.
 
 The full design — language, layout algorithm, package model, MVP roadmap — lives
 in [`manifest.md`](./manifest.md). This README is just enough to orient you
@@ -14,13 +15,13 @@ and to get the workspace building.
 Pre-alpha (`0.0.0`). The 12-crate workspace skeleton is in place. MVP 0 from
 `manifest.md` §30 is in progress:
 
-- ✅ parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline
-  `*emphasis*` / `**strong**` / `` `code` ``, and `#set name(...)` blocks;
-- ✅ lowering to a typed semantic `Document` graph in `mosaic-core`
-  (manifest §5, §6 stage 2);
-- ✅ `mos check` end-to-end — parse → lower → render diagnostics with
-  `file:line:col` and source carets;
-- ⏳ basic page layout and the PDF backend (manifest §6 stages 5–9, §21.1).
+- [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline
+      `*emphasis*` / `**strong**` / `` `code` ``, and `#set name(...)` blocks;
+- [x] lowering to a typed semantic `Document` graph in `mosaic-core`
+      (manifest §5, §6 stage 2);
+- [x] `mos check` end-to-end — parse → lower → render diagnostics with
+      `file:line:col` and source carets;
+- [ ] basic page layout and the PDF backend (manifest §6 stages 5–9, §21.1).
 
 ## Quick start
 
@@ -81,4 +82,4 @@ examples/hello/     placeholder source + project manifest
 
 ## License
 
-[MIT](./LICENSE).
+[MIT](./LICENSE) Kaj Kowalski 2026.

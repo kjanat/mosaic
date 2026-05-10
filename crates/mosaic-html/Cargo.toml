@@ -1,18 +1,18 @@
 [package]
-name = "mosaic-html"
-version.workspace = true
-edition.workspace = true
+name                   = "mosaic-html"
+version.workspace      = true
+edition.workspace      = true
 rust-version.workspace = true
-description = "Semantic HTML backend for Mosaic (manifest §21.2)."
-readme.workspace = true
-homepage.workspace = true
-repository.workspace = true
-license.workspace = true
-keywords.workspace = true
-categories.workspace = true
+description            = "Semantic HTML backend for Mosaic (manifest §21.2)."
+readme.workspace       = true
+homepage.workspace     = true
+repository.workspace   = true
+license.workspace      = true
+keywords.workspace     = true
+categories.workspace   = true
 
 [dependencies]
-mosaic-core = { workspace = true }
+mosaic-core   = { workspace = true }
 mosaic-layout = { workspace = true }
 
 [lints]

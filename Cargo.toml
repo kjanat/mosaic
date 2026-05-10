@@ -1,40 +1,47 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members  = ["crates/*"]
 
 [workspace.package]
-version = "0.0.0"
-edition = "2024"
+version      = "0.0.0"
+edition      = "2024"
 rust-version = "1.95"
-readme = "README.md"
-homepage = "https://github.com/kjanat/mosaic#readme"
-repository = "https://github.com/kjanat/mosaic"
-license = "MIT"
-keywords = ["compiler", "layout", "pdf", "typesetting", "typography"]
-categories = ["compilers", "text-processing"]
+readme       = "README.md"
+homepage     = "https://github.com/kjanat/mosaic#readme"
+repository   = "https://github.com/kjanat/mosaic"
+license      = "MIT"
+keywords     = ["compiler", "layout", "pdf", "typesetting", "typography"]
+categories   = ["compilers", "text-processing"]
 
 [workspace.dependencies]
-afm = { path = "crates/afm", version = "0.0.0" }
-mosaic-bib = { path = "crates/mosaic-bib", version = "0.0.0" }
-mosaic-cache = { path = "crates/mosaic-cache", version = "0.0.0" }
-mosaic-core = { path = "crates/mosaic-core", version = "0.0.0" }
-mosaic-eval = { path = "crates/mosaic-eval", version = "0.0.0" }
-mosaic-fonts = { path = "crates/mosaic-fonts", version = "0.0.0" }
-mosaic-html = { path = "crates/mosaic-html", version = "0.0.0" }
-mosaic-layout = { path = "crates/mosaic-layout", version = "0.0.0" }
-mosaic-lsp = { path = "crates/mosaic-lsp", version = "0.0.0" }
-mosaic-packages = { path = "crates/mosaic-packages", version = "0.0.0" }
-mosaic-parse = { path = "crates/mosaic-parse", version = "0.0.0" }
-mosaic-pdf = { path = "crates/mosaic-pdf", version = "0.0.0" }
+afm                = { path = "crates/afm", version = "0.0.0" }
+mosaic-bib         = { path = "crates/mosaic-bib", version = "0.0.0" }
+mosaic-cache       = { path = "crates/mosaic-cache", version = "0.0.0" }
+mosaic-core        = { path = "crates/mosaic-core", version = "0.0.0" }
+mosaic-eval        = { path = "crates/mosaic-eval", version = "0.0.0" }
+mosaic-fonts       = { path = "crates/mosaic-fonts", version = "0.0.0" }
+mosaic-html        = { path = "crates/mosaic-html", version = "0.0.0" }
+mosaic-layout      = { path = "crates/mosaic-layout", version = "0.0.0" }
+mosaic-lsp         = { path = "crates/mosaic-lsp", version = "0.0.0" }
+mosaic-packages    = { path = "crates/mosaic-packages", version = "0.0.0" }
+mosaic-parse       = { path = "crates/mosaic-parse", version = "0.0.0" }
+mosaic-pdf         = { path = "crates/mosaic-pdf", version = "0.0.0" }
 pdf-base14-metrics = { path = "crates/pdf-base14-metrics", version = "0.0.0" }
 
-clap = { version = "4.6", features = ["derive"] }
-lopdf = "0.40"
+# External dependencies
+lopdf      = "0.40"
 pdf-writer = "0.14"
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-thiserror = "2"
-toml = "1.1"
+thiserror  = "2"
+toml       = "1.1"
+
+[workspace.dependencies.clap]
+version  = "4.6"
+features = ["derive"]
+
+[workspace.dependencies.serde]
+version  = "1"
+features = ["derive"]
 
 [workspace.lints.clippy]
 # Per the Clippy book, enabling the entire pedantic, nursery, or
@@ -44,121 +51,121 @@ toml = "1.1"
 # below, alphabetised within each group.
 
 # --- pedantic cherry-picks ----------------------------------------
-cast_lossless = "warn"
-cast_possible_truncation = "warn"
-cast_possible_wrap = "warn"
-cast_precision_loss = "warn"
-cast_sign_loss = "warn"
-checked_conversions = "warn"
-cloned_instead_of_copied = "warn"
-doc_markdown = "warn"
-explicit_deref_methods = "warn"
-explicit_into_iter_loop = "warn"
-explicit_iter_loop = "warn"
-flat_map_option = "warn"
-if_not_else = "warn"
-implicit_clone = "warn"
-inconsistent_struct_constructor = "warn"
-inefficient_to_string = "warn"
-items_after_statements = "warn"
-manual_assert = "warn"
-manual_let_else = "warn"
-manual_ok_or = "warn"
-manual_string_new = "warn"
-many_single_char_names = "warn"
-map_unwrap_or = "warn"
-match_same_arms = "warn"
-mismatching_type_param_order = "warn"
-mut_mut = "warn"
-needless_continue = "warn"
-needless_for_each = "warn"
-needless_pass_by_value = "warn"
-range_minus_one = "warn"
-range_plus_one = "warn"
+cast_lossless                      = "warn"
+cast_possible_truncation           = "warn"
+cast_possible_wrap                 = "warn"
+cast_precision_loss                = "warn"
+cast_sign_loss                     = "warn"
+checked_conversions                = "warn"
+cloned_instead_of_copied           = "warn"
+doc_markdown                       = "warn"
+explicit_deref_methods             = "warn"
+explicit_into_iter_loop            = "warn"
+explicit_iter_loop                 = "warn"
+flat_map_option                    = "warn"
+if_not_else                        = "warn"
+implicit_clone                     = "warn"
+inconsistent_struct_constructor    = "warn"
+inefficient_to_string              = "warn"
+items_after_statements             = "warn"
+manual_assert                      = "warn"
+manual_let_else                    = "warn"
+manual_ok_or                       = "warn"
+manual_string_new                  = "warn"
+many_single_char_names             = "warn"
+map_unwrap_or                      = "warn"
+match_same_arms                    = "warn"
+mismatching_type_param_order       = "warn"
+mut_mut                            = "warn"
+needless_continue                  = "warn"
+needless_for_each                  = "warn"
+needless_pass_by_value             = "warn"
+range_minus_one                    = "warn"
+range_plus_one                     = "warn"
 redundant_closure_for_method_calls = "warn"
-redundant_else = "warn"
-ref_binding_to_reference = "warn"
-ref_option_ref = "warn"
-return_self_not_must_use = "warn"
-semicolon_if_nothing_returned = "warn"
-single_char_pattern = "warn"
-single_match_else = "warn"
-stable_sort_primitive = "warn"
-trait_duplication_in_bounds = "warn"
-unnecessary_box_returns = "warn"
-unnecessary_join = "warn"
-unnecessary_wraps = "warn"
-unnested_or_patterns = "warn"
-unreadable_literal = "warn"
-used_underscore_binding = "warn"
-verbose_bit_mask = "warn"
-wildcard_imports = "warn"
+redundant_else                     = "warn"
+ref_binding_to_reference           = "warn"
+ref_option_ref                     = "warn"
+return_self_not_must_use           = "warn"
+semicolon_if_nothing_returned      = "warn"
+single_char_pattern                = "warn"
+single_match_else                  = "warn"
+stable_sort_primitive              = "warn"
+trait_duplication_in_bounds        = "warn"
+unnecessary_box_returns            = "warn"
+unnecessary_join                   = "warn"
+unnecessary_wraps                  = "warn"
+unnested_or_patterns               = "warn"
+unreadable_literal                 = "warn"
+used_underscore_binding            = "warn"
+verbose_bit_mask                   = "warn"
+wildcard_imports                   = "warn"
 
 # --- nursery cherry-picks -----------------------------------------
-clear_with_drain = "warn"
-collection_is_never_read = "warn"
-debug_assert_with_mut_call = "warn"
-derive_partial_eq_without_eq = "warn"
+clear_with_drain              = "warn"
+collection_is_never_read      = "warn"
+debug_assert_with_mut_call    = "warn"
+derive_partial_eq_without_eq  = "warn"
 empty_line_after_doc_comments = "warn"
-empty_line_after_outer_attr = "warn"
-equatable_if_let = "warn"
-iter_on_empty_collections = "warn"
-iter_on_single_items = "warn"
-iter_with_drain = "warn"
-needless_collect = "warn"
-or_fun_call = "warn"
-path_buf_push_overwrite = "warn"
-read_zero_byte_vec = "warn"
-redundant_clone = "warn"
-set_contains_or_insert = "warn"
-significant_drop_tightening = "warn"
-single_option_map = "warn"
-string_lit_as_bytes = "warn"
-trailing_empty_array = "warn"
-trivial_regex = "warn"
-uninhabited_references = "warn"
-unused_peekable = "warn"
-use_self = "warn"
-useless_let_if_seq = "warn"
+empty_line_after_outer_attr   = "warn"
+equatable_if_let              = "warn"
+iter_on_empty_collections     = "warn"
+iter_on_single_items          = "warn"
+iter_with_drain               = "warn"
+needless_collect              = "warn"
+or_fun_call                   = "warn"
+path_buf_push_overwrite       = "warn"
+read_zero_byte_vec            = "warn"
+redundant_clone               = "warn"
+set_contains_or_insert        = "warn"
+significant_drop_tightening   = "warn"
+single_option_map             = "warn"
+string_lit_as_bytes           = "warn"
+trailing_empty_array          = "warn"
+trivial_regex                 = "warn"
+uninhabited_references        = "warn"
+unused_peekable               = "warn"
+use_self                      = "warn"
+useless_let_if_seq            = "warn"
 
 # --- restriction cherry-picks (group itself is discouraged) -------
 # `print_stdout`/`print_stderr` are allowed at the binary crate that
 # legitimately writes to stdout (mosaic-cli) via crate-level attrs.
-dbg_macro = "warn"
-expect_used = "warn"
-float_cmp_const = "warn"
-lossy_float_literal = "warn"
-map_err_ignore = "warn"
-mem_forget = "warn"
-panic = "warn"
-panic_in_result_fn = "warn"
-print_stderr = "warn"
-print_stdout = "warn"
-rc_buffer = "warn"
-rc_mutex = "warn"
-str_to_string = "warn"
-todo = "warn"
+dbg_macro                  = "warn"
+expect_used                = "warn"
+float_cmp_const            = "warn"
+lossy_float_literal        = "warn"
+map_err_ignore             = "warn"
+mem_forget                 = "warn"
+panic                      = "warn"
+panic_in_result_fn         = "warn"
+print_stderr               = "warn"
+print_stdout               = "warn"
+rc_buffer                  = "warn"
+rc_mutex                   = "warn"
+str_to_string              = "warn"
+todo                       = "warn"
 undocumented_unsafe_blocks = "warn"
-unreachable = "warn"
-unwrap_used = "warn"
-verbose_file_reads = "warn"
+unreachable                = "warn"
+unwrap_used                = "warn"
+verbose_file_reads         = "warn"
 
 # --- cargo cherry-picks -------------------------------------------
 # `multiple_crate_versions` is omitted because transitive duplicates
 # (currently a `winnow` 0.7/1.0 split via `toml`) aren't ours to fix
 # and would hard-fail under `-D warnings`.
-cargo_common_metadata = "warn"
-negative_feature_names = "warn"
+cargo_common_metadata   = "warn"
+negative_feature_names  = "warn"
 redundant_feature_names = "warn"
-wildcard_dependencies = "warn"
+wildcard_dependencies   = "warn"
 
 [workspace.lints.rust]
 missing_debug_implementations = "warn"
-rust_2018_idioms = { level = "warn", priority = -1 }
-unreachable_pub = "warn"
-unsafe_code = "forbid"
-unused_qualifications = "warn"
+rust_2018_idioms              = { level = "warn", priority = -1 }
+unreachable_pub               = "warn"
+unsafe_code                   = "forbid"
+unused_qualifications         = "warn"
 
 [profile.release]
-lto = "thin"
+lto           = "thin"
 codegen-units = 1

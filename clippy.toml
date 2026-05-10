@@ -18,8 +18,8 @@ avoid-breaking-exported-api = false
 # need them, so keep `#[test]` blocks unaffected.
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
-allow-dbg-in-tests = true
-allow-print-in-tests = true
+allow-dbg-in-tests    = true
+allow-print-in-tests  = true
 
 # Extend the default ident list for `doc_markdown` with technical
 # names that appear throughout `manifest.md` and crate docs. The

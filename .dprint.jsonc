@@ -4,7 +4,7 @@
 	"exec": {
 		"cwd": "${configDir}",
 		"commands": [
-			{ "command": "bunx tombi format - --stdin-filename {{file_path}}", "exts": ["toml"] },
+			{ "command": "npx -y tombi format - --stdin-filename {{file_path}}", "exts": ["toml"] },
 			{ "command": "rustfmt --edition 2024", "exts": ["rs"], "cacheKeyFiles": ["rustfmt.toml"] },
 		],
 	},
