@@ -6,11 +6,6 @@
 //! per-crate rather than shared with `pdf-base14-metrics` so each
 //! crate stays independently buildable.
 
-// Match the project precedent set in `crates/mosaic-cli/tests/cli.rs`:
-// integration tests are allowed to use `.expect()` for fixture setup
-// where a panic on failure is the desired behaviour.
-#![allow(clippy::expect_used, clippy::unwrap_used)]
-
 use afm::{FontMetrics, ParseError, parse};
 
 const HELVETICA: &str = include_str!("fixtures/Helvetica.afm");
