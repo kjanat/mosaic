@@ -115,8 +115,15 @@ fn malformed_number_carries_line_context() {
     assert!(
         matches!(
             err,
-            ParseError::InvalidNumber { line: 2, field: "FontBBox", .. }
-                | ParseError::MalformedRecord { line: 2, keyword: "FontBBox", .. }
+            ParseError::InvalidNumber {
+                line: 2,
+                field: "FontBBox",
+                ..
+            } | ParseError::MalformedRecord {
+                line: 2,
+                keyword: "FontBBox",
+                ..
+            }
         ),
         "error must point at line 2 / FontBBox; got {err:?}"
     );

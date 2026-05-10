@@ -183,7 +183,10 @@ impl fmt::Display for ParseError {
                 write!(f, "line {line}: expected StartFontMetrics header")
             }
             Self::UnsupportedVersion { line, version } => {
-                write!(f, "line {line}: unsupported AFM version {version:?} (need 4.x)")
+                write!(
+                    f,
+                    "line {line}: unsupported AFM version {version:?} (need 4.x)"
+                )
             }
             Self::MissingRequiredField { field } => {
                 write!(f, "missing required field {field}")
