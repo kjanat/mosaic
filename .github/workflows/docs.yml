@@ -1,0 +1,76 @@
+name: docs
+
+run-name: >-
+  ${{ format('docs: {0}',
+    case(github.event_name == 'workflow_dispatch', 'manual dispatch', github.event.head_commit.message)
+  ) }} @${{ github.actor }}
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
+      - ".dprint.jsonc"
+      - "tombi.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: docs
+
+      - name: cargo doc
+        run: cargo doc --workspace --no-deps
+
+      - name: Write crate index
+        run: |
+          {
+            echo '<!doctype html><meta charset=utf-8>'
+            echo '<title>Mosaic API documentation</title>'
+            echo '<h1>Mosaic API documentation</h1>'
+            echo '<ul>'
+            for d in target/doc/*/index.html; do
+              c=$(basename "$(dirname "$d")")
+              echo "<li><a href=\"$c/\">$c</a></li>"
+            done
+            echo '</ul>'
+          } > target/doc/index.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/doc
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
