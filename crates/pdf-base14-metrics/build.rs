@@ -138,11 +138,7 @@ fn emit_font(
     // Optional per-font WinAnsi width table (Latin faces only).
     if is_latin {
         writeln!(buf, "const {ident}_WINANSI: [Option<f32>; 256] = [")?;
-        for code in 0_u16..=255 {
-            // code is u16 to make the inclusive range expressible; cast back
-            // for table indexing.
-            let idx = code as usize;
-            let entry = WINANSI_TABLE[idx];
+        for entry in &WINANSI_TABLE {
             match entry {
                 Some(name) => match find_width(m, name) {
                     Some(w) => {

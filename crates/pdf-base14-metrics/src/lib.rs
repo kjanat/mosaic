@@ -67,7 +67,6 @@ include!(concat!(env!("OUT_DIR"), "/baked.rs"));
 /// then Symbol and `ZapfDingbats`. [`Self::ALL`] iterates them in
 /// this order.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
-#[non_exhaustive]
 pub enum Base14Font {
     /// Helvetica (regular).
     Helvetica,

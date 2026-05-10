@@ -14,9 +14,9 @@
 
 use pdf_base14_metrics::Base14Font;
 
-fn approx_eq(a: f32, b: f32) -> bool {
-    (a - b).abs() < 1e-3
-}
+// AFM widths are integers (per Adobe spec) and integer values up to
+// 1015 round-trip exactly through f32, so bare `==` is safe here —
+// no approximate comparison needed.
 
 #[test]
 fn helvetica_capital_a_matches_adobe_core14_afm() {
@@ -128,15 +128,15 @@ fn pdf_base_names_pin_all_14() {
 fn winansi_covers_each_band() {
     let h = Base14Font::Helvetica;
     // ASCII band: 0x41 = 'A'. Helvetica 'A' = 667.
-    assert!(matches!(h.winansi_width(0x41), Some(w) if approx_eq(w, 667.0)));
+    assert_eq!(h.winansi_width(0x41), Some(667.0));
     // Win-specific band: 0x80 = Euro. Helvetica Euro = 556.
-    assert!(matches!(h.winansi_width(0x80), Some(w) if approx_eq(w, 556.0)));
+    assert_eq!(h.winansi_width(0x80), Some(556.0));
     // Win-specific band: 0x99 = trademark. Helvetica trademark = 1000.
-    assert!(matches!(h.winansi_width(0x99), Some(w) if approx_eq(w, 1000.0)));
+    assert_eq!(h.winansi_width(0x99), Some(1000.0));
     // Latin-1 band: 0xA7 = section. Helvetica section = 556.
-    assert!(matches!(h.winansi_width(0xA7), Some(w) if approx_eq(w, 556.0)));
+    assert_eq!(h.winansi_width(0xA7), Some(556.0));
     // Accented Latin: 0xC9 = Eacute. Helvetica Eacute = 667.
-    assert!(matches!(h.winansi_width(0xC9), Some(w) if approx_eq(w, 667.0)));
+    assert_eq!(h.winansi_width(0xC9), Some(667.0));
 }
 
 #[test]
