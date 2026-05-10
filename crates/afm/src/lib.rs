@@ -494,6 +494,13 @@ fn parse_bbox(s: &str, field: &'static str, lineno: usize) -> Result<BBox, Parse
     let lly = next_f32(&mut toks, field, lineno)?;
     let urx = next_f32(&mut toks, field, lineno)?;
     let ury = next_f32(&mut toks, field, lineno)?;
+    if toks.next().is_some() {
+        return Err(ParseError::MalformedRecord {
+            line: lineno,
+            keyword: field,
+            reason: "too many numbers",
+        });
+    }
     Ok(BBox { llx, lly, urx, ury })
 }
 
@@ -564,23 +571,31 @@ fn parse_kern_record<'a>(
     rest: &'a str,
     lineno: usize,
 ) -> Result<Option<KerningPair<'a>>, ParseError> {
+    // Resolve the canonical keyword up front so error messages and the
+    // arity check below carry the actual record name, not `"KP*"`.
+    let keyword = match kw {
+        "KPX" => "KPX",
+        "KPY" => "KPY",
+        "KP" => "KP",
+        _ => return Ok(None),
+    };
     let mut toks = rest.split_ascii_whitespace();
     let left = toks.next().ok_or(ParseError::MalformedRecord {
         line: lineno,
-        keyword: "KP*",
+        keyword,
         reason: "missing left glyph name",
     })?;
     let right = toks.next().ok_or(ParseError::MalformedRecord {
         line: lineno,
-        keyword: "KP*",
+        keyword,
         reason: "missing right glyph name",
     })?;
     let first_num = toks.next().ok_or(ParseError::MalformedRecord {
         line: lineno,
-        keyword: "KP*",
+        keyword,
         reason: "missing kern adjustment",
     })?;
-    let adjust = match kw {
+    let adjust = match keyword {
         "KPX" => parse_f32(first_num, "KPX", lineno)?,
         "KPY" => {
             // Validate the operand even though we discard it: a y-only
@@ -593,14 +608,22 @@ fn parse_kern_record<'a>(
             let x = parse_f32(first_num, "KP", lineno)?;
             let y = toks.next().ok_or(ParseError::MalformedRecord {
                 line: lineno,
-                keyword: "KP",
+                keyword,
                 reason: "missing y kern adjustment",
             })?;
             let _ = parse_f32(y, "KP", lineno)?;
             x
         }
+        // Unreachable: `keyword` was set from the same set of literals.
         _ => return Ok(None),
     };
+    if toks.next().is_some() {
+        return Err(ParseError::MalformedRecord {
+            line: lineno,
+            keyword,
+            reason: "too many operands",
+        });
+    }
     Ok(Some(KerningPair {
         left: Cow::Borrowed(left),
         right: Cow::Borrowed(right),

@@ -214,6 +214,43 @@ fn rejects_kpy_with_non_numeric_operand() {
 }
 
 #[test]
+fn rejects_bbox_with_trailing_garbage() {
+    // `FontBBox 0 0 0 0 junk` must fail — wrong arity, not silently truncated.
+    let src = "StartFontMetrics 4.1\n\
+               FontName Bad\n\
+               FontBBox 0 0 0 0 junk\n\
+               EndFontMetrics\n";
+    assert!(matches!(
+        parse(src),
+        Err(ParseError::MalformedRecord {
+            line: 3,
+            keyword: "FontBBox",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn rejects_kpx_with_trailing_garbage() {
+    // `KPX A V -80 junk` must fail.
+    let src = "StartFontMetrics 4.1\n\
+               FontName Bad\n\
+               FontBBox 0 0 0 0\n\
+               StartKernPairs 1\n\
+               KPX A V -80 junk\n\
+               EndKernPairs\n\
+               EndFontMetrics\n";
+    assert!(matches!(
+        parse(src),
+        Err(ParseError::MalformedRecord {
+            line: 5,
+            keyword: "KPX",
+            ..
+        })
+    ));
+}
+
+#[test]
 fn rejects_kp_missing_y_operand() {
     // `KP A V 5` is missing the required y adjustment.
     let src = "StartFontMetrics 4.1\n\
