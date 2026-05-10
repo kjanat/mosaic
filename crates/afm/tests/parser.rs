@@ -269,3 +269,60 @@ fn rejects_kp_missing_y_operand() {
         })
     ));
 }
+
+#[test]
+fn accepts_multibyte_ch_code() {
+    // `CH <8000>` (= 32768) is just past `i16::MAX`. Real CJK AFMs
+    // routinely use codes in the 0x2100–0x7FFF and 0x8000+ ranges.
+    let src = "StartFontMetrics 4.1\n\
+               FontName Test\n\
+               FontBBox 0 0 0 0\n\
+               StartCharMetrics 1\n\
+               CH <8000> ; WX 500 ; N test ;\n\
+               EndCharMetrics\n\
+               EndFontMetrics\n";
+    let m = parse(src).expect("parse");
+    assert_eq!(m.character_metrics.len(), 1);
+    assert_eq!(m.character_metrics[0].code, 0x8000);
+}
+
+#[test]
+fn direction_1_kerns_dropped_not_conflated() {
+    // Without the `StartKernPairs1` skip, the second KPX would either
+    // be appended to the same vector (silent conflation) or silently
+    // dropped depending on which path the state machine took.
+    // Either way the output misrepresents the AFM. Here we pin the
+    // intended behaviour: only the direction-0 pair survives.
+    let src = "StartFontMetrics 4.1\n\
+               FontName Test\n\
+               FontBBox 0 0 0 0\n\
+               StartKernData\n\
+               StartKernPairs0 1\n\
+               KPX A V -80\n\
+               EndKernPairs\n\
+               StartKernPairs1 1\n\
+               KPX A V -999\n\
+               EndKernPairs\n\
+               EndKernData\n\
+               EndFontMetrics\n";
+    let m = parse(src).expect("parse");
+    assert_eq!(m.kerning_pairs.len(), 1);
+    assert!((m.kerning_pairs[0].adjust - -80.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn non_zero_start_direction_does_not_clobber() {
+    // `StartDirection 1` carries direction-1 metrics. Without the
+    // skip, `UnderlinePosition -999` inside the block would overwrite
+    // the top-level `-100` we already read for direction-0.
+    let src = "StartFontMetrics 4.1\n\
+               FontName Test\n\
+               FontBBox 0 0 0 0\n\
+               UnderlinePosition -100\n\
+               StartDirection 1\n\
+               UnderlinePosition -999\n\
+               EndDirection\n\
+               EndFontMetrics\n";
+    let m = parse(src).expect("parse");
+    assert!((m.underline_position - -100.0).abs() < f32::EPSILON);
+}

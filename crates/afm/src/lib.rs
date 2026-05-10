@@ -13,6 +13,11 @@
 //! to obtain an [`OwnedFontMetrics`] (`FontMetrics<'static>`) suitable
 //! for caching, baking into static tables, or sending across threads.
 //!
+//! AFM v3.x files (e.g. older Adobe samples) are deliberately rejected
+//! with [`ParseError::UnsupportedVersion`]. The reader subset here
+//! would handle most v3 files, but the v4-only scope claim is honest —
+//! relax it once a real v3 fixture is on hand to validate against.
+//!
 //! # Coverage
 //!
 //! - Header: `StartFontMetrics` (rejects non-4.x versions).
@@ -23,9 +28,15 @@
 //! - Per-character records: `C`, `CH`, `WX`, `W0X`, `W`/`W0` (X taken),
 //!   `N`, `B`. `WY`, `L`, and other tokens are ignored within a record.
 //! - Kerning: `KPX`, `KPY`, `KP` (KPY rows store `adjust = 0.0`; only
-//!   the X axis is exposed in the public type today).
+//!   the X axis is exposed in the public type today). `StartKernPairs1`
+//!   blocks (direction-1 kerning) are accepted and dropped.
 //! - `StartComposites`/`CC` blocks are accepted and discarded per the
 //!   user-facing scope of the v0.1 surface.
+//! - `StartTrackKern`/`TrackKern`/`EndTrackKern` (track kerning) are
+//!   not modelled and pass through silently.
+//! - `StartDirection 1` blocks are skipped; direction-0 and
+//!   direction-2 blocks are accepted (their inner keys read as if at
+//!   the top level, matching the layout of real Core 14 AFMs).
 //! - Unknown keywords at the top level are silently ignored.
 //!
 //! # Errors
@@ -62,7 +73,9 @@ pub struct BBox {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CharacterMetric<'a> {
     /// Encoding-table code, or `-1` if the glyph is unencoded.
-    pub code: i16,
+    /// `i32` to accommodate multi-byte `CH <hex>` codes (e.g. CJK
+    /// fonts where values exceed `i16::MAX`).
+    pub code: i32,
     /// PostScript glyph name (e.g. `"A"`, `"section"`).
     pub name: Cow<'a, str>,
     /// Horizontal advance in 1/1000 em.
@@ -280,6 +293,10 @@ enum State {
     Top,
     CharMetrics,
     KernPairs,
+    /// Inside a `StartKernPairs1` block — direction-1 kerning is not
+    /// modelled by the public type, so records are dropped instead
+    /// of being conflated into the direction-0 vector.
+    SkipKernPairs,
 }
 
 /// Parse an AFM file into a borrowed [`FontMetrics`].
@@ -297,6 +314,11 @@ pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
     let mut header_seen = false;
     let mut state = State::Top;
     let mut composites_depth: u32 = 0;
+    // Set inside `StartDirection 1` blocks (direction-1 metrics);
+    // cleared on `EndDirection`. While set, every key in the body
+    // is silently dropped so direction-1 values don't clobber the
+    // direction-0 globals we already read at the top level.
+    let mut skip_direction = false;
 
     let mut font_name: Cow<'_, str> = Cow::Borrowed("");
     let mut full_name: Cow<'_, str> = Cow::Borrowed("");
@@ -328,6 +350,15 @@ pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
         if composites_depth > 0 {
             if kw == "EndComposites" {
                 composites_depth -= 1;
+            }
+            continue;
+        }
+
+        // Skip direction-1 blocks wholesale (direction-0 / direction-2
+        // are accepted at top level — see the StartDirection arm below).
+        if skip_direction {
+            if kw == "EndDirection" {
+                skip_direction = false;
             }
             continue;
         }
@@ -396,6 +427,26 @@ pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
                 }
                 state = State::KernPairs;
             }
+            "StartKernPairs1" => {
+                // Direction-1 kerning is not exposed in v0.1; route the
+                // block to `SkipKernPairs` so its KP* records are dropped
+                // rather than silently appended to the direction-0 vector.
+                state = State::SkipKernPairs;
+            }
+
+            // Per spec §7.2: `StartDirection 0` → direction-0 metrics
+            // (apply); `StartDirection 1` → direction-1 (skip);
+            // `StartDirection 2` → metrics for both (apply). Treat a
+            // missing/unparseable N as 0.
+            "StartDirection" => {
+                let n = rest.trim().parse::<u8>().unwrap_or(0);
+                if n == 1 {
+                    skip_direction = true;
+                }
+            }
+            // `EndDirection` for accepted directions is a no-op — falls
+            // through the wildcard. The skip-direction guard above
+            // handles `EndDirection` for the dropped direction-1 case.
 
             "C" | "CH" if state == State::CharMetrics => {
                 chars.push(parse_char_metric_line(line, lineno)?);
@@ -465,10 +516,10 @@ fn parse_f32(s: &str, field: &'static str, lineno: usize) -> Result<f32, ParseEr
         })
 }
 
-fn parse_i16(s: &str, field: &'static str, lineno: usize) -> Result<i16, ParseError> {
+fn parse_i32(s: &str, field: &'static str, lineno: usize) -> Result<i32, ParseError> {
     let trimmed = s.trim();
     trimmed
-        .parse::<i16>()
+        .parse::<i32>()
         .map_err(|_e| ParseError::InvalidNumber {
             line: lineno,
             field,
@@ -518,7 +569,7 @@ fn next_f32(
 }
 
 fn parse_char_metric_line(line: &str, lineno: usize) -> Result<CharacterMetric<'_>, ParseError> {
-    let mut code: i16 = -1;
+    let mut code: i32 = -1;
     let mut name: &str = "";
     let mut width_x: f32 = 0.0;
     let mut bbox: Option<BBox> = None;
@@ -531,10 +582,10 @@ fn parse_char_metric_line(line: &str, lineno: usize) -> Result<CharacterMetric<'
         let (tok, rest) = split_keyword(seg);
         let rest = rest.trim();
         match tok {
-            "C" => code = parse_i16(rest, "C", lineno)?,
+            "C" => code = parse_i32(rest, "C", lineno)?,
             "CH" => {
                 let hex = rest.trim_start_matches('<').trim_end_matches('>').trim();
-                code = i16::from_str_radix(hex, 16).map_err(|_e| ParseError::InvalidNumber {
+                code = i32::from_str_radix(hex, 16).map_err(|_e| ParseError::InvalidNumber {
                     line: lineno,
                     field: "CH",
                     value: rest.to_owned(),
