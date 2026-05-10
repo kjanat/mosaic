@@ -47,9 +47,42 @@ pub enum Item {
         label: Option<String>,
         span: SourceSpan,
     },
-    /// `#set name(...)` — captured for span tracking; the body is not
-    /// interpreted until the evaluator lands in MVP 1.
-    Set { name: String, span: SourceSpan },
+    /// `#set name(...)`. The body is lexed into typed `(key, value)`
+    /// args; semantic validation (known target/key, type coercion,
+    /// sanity floors) happens in the lowerer.
+    Set {
+        name: String,
+        args: Vec<SetArg>,
+        span: SourceSpan,
+    },
+}
+
+/// One named argument inside a `#set name(key: value, ...)` block.
+#[derive(Debug, Clone)]
+pub struct SetArg {
+    pub key: String,
+    pub value: SetValue,
+    pub key_span: SourceSpan,
+    pub value_span: SourceSpan,
+}
+
+/// Literal values recognised inside a `#set` body. Full expression
+/// evaluation (`#let`, function calls, `if`) is deferred to MVP 5; this
+/// covers what the manifest examples actually use.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SetValue {
+    Str(String),
+    Int(i64),
+    Float(f64),
+    Length(f64, LengthUnit),
+    Ident(String),
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum LengthUnit {
+    Mm,
+    Pt,
+    Em,
 }
 
 /// Inline run produced by the markup tokenizer.
@@ -101,9 +134,9 @@ impl Item {
 
     /// Borrow the `#set` payload if `self` is [`Item::Set`].
     #[must_use]
-    pub fn as_set(&self) -> Option<(&str, &SourceSpan)> {
-        if let Self::Set { name, span } = self {
-            Some((name.as_str(), span))
+    pub fn as_set(&self) -> Option<(&str, &[SetArg], &SourceSpan)> {
+        if let Self::Set { name, args, span } = self {
+            Some((name.as_str(), args.as_slice(), span))
         } else {
             None
         }
@@ -333,8 +366,12 @@ impl<'a> Parser<'a> {
         }
         let body_start = i;
         if let Some(end) = self.scan_balanced_parens(body_start) {
+            // `body_start` points at `(`, `end` is one past `)`.
+            let inner_start = body_start + 1;
+            let inner_end = end - 1;
+            let args = self.parse_set_body(inner_start, inner_end);
             let span = self.span(line_start, end);
-            self.items.push(Item::Set { name, span });
+            self.items.push(Item::Set { name, args, span });
             self.pos = end;
             // Consume only horizontal whitespace after the closing `)`.
             // Anything else on the line is unexpected and gets a
@@ -411,6 +448,293 @@ impl<'a> Parser<'a> {
             }
             i += 1;
         }
+        None
+    }
+
+    /// Lex `src[start..end]` (the contents of `#set name( ... )`) into
+    /// a list of `key: value` pairs. Recoverable: emits `E014`/`E015`
+    /// for malformed literals or structural problems and continues
+    /// scanning so a single typo doesn't drop the whole block.
+    fn parse_set_body(&mut self, start: usize, end: usize) -> Vec<SetArg> {
+        let bytes = self.src.as_bytes();
+        let mut args: Vec<SetArg> = Vec::new();
+        let mut i = start;
+        loop {
+            i = skip_set_ws(bytes, i, end);
+            if i >= end {
+                break;
+            }
+            // Key.
+            let key_start = i;
+            while i < end && (bytes[i].is_ascii_alphanumeric() || matches!(bytes[i], b'_' | b'-')) {
+                i += 1;
+            }
+            if i == key_start {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E015"),
+                        "expected `key: value` in `#set` arguments",
+                    )
+                    .with_span(self.span(i, (i + 1).min(end))),
+                );
+                // Skip to next comma to recover.
+                i = skip_to_comma(bytes, i, end);
+                if i < end && bytes[i] == b',' {
+                    i += 1;
+                }
+                continue;
+            }
+            let key = self.src[key_start..i].to_owned();
+            let key_span = self.span(key_start, i);
+            i = skip_set_ws(bytes, i, end);
+            if i >= end || bytes[i] != b':' {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E015"),
+                        format!("expected `:` after `{key}` in `#set` arguments"),
+                    )
+                    .with_span(key_span.clone()),
+                );
+                i = skip_to_comma(bytes, i, end);
+                if i < end && bytes[i] == b',' {
+                    i += 1;
+                }
+                continue;
+            }
+            i += 1; // consume ':'
+            i = skip_set_ws(bytes, i, end);
+            // Value.
+            let value_start = i;
+            let parsed = self.parse_set_value(&mut i, end);
+            let value_span = self.span(value_start, i);
+            if let Some(value) = parsed {
+                args.push(SetArg {
+                    key,
+                    value,
+                    key_span,
+                    value_span,
+                });
+            }
+            // Trailing whitespace then optional comma.
+            i = skip_set_ws(bytes, i, end);
+            if i < end {
+                if bytes[i] == b',' {
+                    i += 1;
+                } else {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E015"),
+                            "expected `,` or `)` between `#set` arguments",
+                        )
+                        .with_span(self.span(i, (i + 1).min(end))),
+                    );
+                    i = skip_to_comma(bytes, i, end);
+                    if i < end && bytes[i] == b',' {
+                        i += 1;
+                    }
+                }
+            }
+        }
+        args
+    }
+
+    /// Parse a single literal value starting at `*i`, advancing `*i`
+    /// past the consumed bytes. Returns `None` and emits `E014` if the
+    /// literal is malformed; `*i` is still advanced past the broken
+    /// token so the surrounding loop can resume.
+    fn parse_set_value(&mut self, i: &mut usize, end: usize) -> Option<SetValue> {
+        let bytes = self.src.as_bytes();
+        if *i >= end {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E014"),
+                    "expected a value in `#set` arguments",
+                )
+                .with_span(self.span(*i, *i)),
+            );
+            return None;
+        }
+        let b = bytes[*i];
+        // String literal.
+        if b == b'"' {
+            let start = *i;
+            *i += 1;
+            let mut out = String::new();
+            while *i < end {
+                let c = bytes[*i];
+                if c == b'\\' && *i + 1 < end {
+                    let esc = bytes[*i + 1];
+                    match esc {
+                        b'\\' => {
+                            out.push('\\');
+                            *i += 2;
+                        }
+                        b'"' => {
+                            out.push('"');
+                            *i += 2;
+                        }
+                        b'n' => {
+                            out.push('\n');
+                            *i += 2;
+                        }
+                        b't' => {
+                            out.push('\t');
+                            *i += 2;
+                        }
+                        b'r' => {
+                            out.push('\r');
+                            *i += 2;
+                        }
+                        _ => {
+                            // Unknown escape: the byte after `\` may
+                            // start a multibyte UTF-8 scalar, so we
+                            // can't blindly advance by 2 — that would
+                            // strand `*i` mid-codepoint and panic on
+                            // the next slice. Walk to the next char
+                            // boundary, push the source slice as-is,
+                            // and report the offending range.
+                            let esc_start = *i + 1;
+                            let esc_end = next_char_boundary(self.src, esc_start);
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    DiagnosticCode("E014"),
+                                    format!(
+                                        "unknown escape sequence `\\{}` in string",
+                                        &self.src[esc_start..esc_end]
+                                    ),
+                                )
+                                .with_span(self.span(*i, esc_end)),
+                            );
+                            out.push_str(&self.src[esc_start..esc_end]);
+                            *i = esc_end;
+                        }
+                    }
+                    continue;
+                }
+                if c == b'"' {
+                    *i += 1;
+                    return Some(SetValue::Str(out));
+                }
+                // Push raw byte; non-ASCII multi-byte UTF-8 sequences
+                // are passed through by accumulating the raw bytes via
+                // `str` slicing on each char boundary.
+                let ch_start = *i;
+                let ch_end = next_char_boundary(self.src, ch_start);
+                out.push_str(&self.src[ch_start..ch_end]);
+                *i = ch_end;
+            }
+            self.diagnostics.push(
+                Diagnostic::error(DiagnosticCode("E014"), "unterminated string literal")
+                    .with_span(self.span(start, end)),
+            );
+            return None;
+        }
+        // Number / length literal.
+        if b == b'-' || b.is_ascii_digit() {
+            let num_start = *i;
+            if b == b'-' {
+                *i += 1;
+            }
+            let int_start = *i;
+            while *i < end && bytes[*i].is_ascii_digit() {
+                *i += 1;
+            }
+            let mut is_float = false;
+            if *i < end && bytes[*i] == b'.' && *i + 1 < end && bytes[*i + 1].is_ascii_digit() {
+                is_float = true;
+                *i += 1;
+                while *i < end && bytes[*i].is_ascii_digit() {
+                    *i += 1;
+                }
+            }
+            if *i == int_start {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E014"),
+                        "expected a number after `-` in `#set` value",
+                    )
+                    .with_span(self.span(num_start, *i)),
+                );
+                return None;
+            }
+            let num_end = *i;
+            // Optional unit suffix.
+            let unit_start = *i;
+            while *i < end && bytes[*i].is_ascii_alphabetic() {
+                *i += 1;
+            }
+            let unit = &self.src[unit_start..*i];
+            if unit.is_empty() {
+                let text = &self.src[num_start..num_end];
+                if is_float {
+                    return text.parse::<f64>().ok().map(SetValue::Float).or_else(|| {
+                        self.diagnostics.push(
+                            Diagnostic::error(
+                                DiagnosticCode("E014"),
+                                format!("malformed number `{text}`"),
+                            )
+                            .with_span(self.span(num_start, num_end)),
+                        );
+                        None
+                    });
+                }
+                return text.parse::<i64>().ok().map(SetValue::Int).or_else(|| {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E014"),
+                            format!("malformed integer `{text}`"),
+                        )
+                        .with_span(self.span(num_start, num_end)),
+                    );
+                    None
+                });
+            }
+            let length_unit = match unit {
+                "mm" => LengthUnit::Mm,
+                "pt" => LengthUnit::Pt,
+                "em" => LengthUnit::Em,
+                _ => {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E014"),
+                            format!("unknown length unit `{unit}` (expected mm, pt, or em)"),
+                        )
+                        .with_span(self.span(unit_start, *i)),
+                    );
+                    return None;
+                }
+            };
+            let value = self.src[num_start..num_end].parse::<f64>().ok();
+            return value.map(|v| SetValue::Length(v, length_unit)).or_else(|| {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E014"),
+                        format!("malformed length value `{}`", &self.src[num_start..num_end]),
+                    )
+                    .with_span(self.span(num_start, num_end)),
+                );
+                None
+            });
+        }
+        // Bare identifier. Allows hyphens for things like `bottom-center`.
+        if b.is_ascii_alphabetic() {
+            let id_start = *i;
+            while *i < end
+                && (bytes[*i].is_ascii_alphanumeric() || matches!(bytes[*i], b'_' | b'-'))
+            {
+                *i += 1;
+            }
+            return Some(SetValue::Ident(self.src[id_start..*i].to_owned()));
+        }
+        // Anything else.
+        self.diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode("E014"),
+                format!("unexpected character `{}` in `#set` value", b as char),
+            )
+            .with_span(self.span(*i, *i + 1)),
+        );
+        *i += 1;
         None
     }
 
@@ -614,6 +938,36 @@ impl<'a> Parser<'a> {
             suggestions: Vec::new(),
         }
     }
+}
+
+/// Skip ASCII whitespace (space, tab, CR, LF) inside a `#set` body.
+fn skip_set_ws(bytes: &[u8], from: usize, end: usize) -> usize {
+    let mut i = from;
+    while i < end && matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r') {
+        i += 1;
+    }
+    i
+}
+
+/// Advance to the next `,` or end-of-body, used for error recovery
+/// inside `#set` argument parsing.
+fn skip_to_comma(bytes: &[u8], from: usize, end: usize) -> usize {
+    let mut i = from;
+    while i < end && bytes[i] != b',' {
+        i += 1;
+    }
+    i
+}
+
+/// Return the byte offset of the next character boundary at or after
+/// `from + 1`. Used to step over a single Unicode scalar value when
+/// accumulating string literal contents.
+fn next_char_boundary(src: &str, from: usize) -> usize {
+    let mut i = from + 1;
+    while i < src.len() && !src.is_char_boundary(i) {
+        i += 1;
+    }
+    i
 }
 
 fn find_subslice(haystack: &[u8], needle: &[u8], from: usize) -> Option<usize> {
@@ -828,9 +1182,12 @@ mod tests {
     #[test]
     fn set_block_simple() {
         let r = parse_str("#set page(paper: \"A4\")\n");
-        assert!(!r.has_errors());
-        let (name, _) = r.tree.items[0].as_set().unwrap();
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
         assert_eq!(name, "page");
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].key, "paper");
+        assert_eq!(args[0].value, SetValue::Str("A4".to_owned()));
     }
 
     #[test]
@@ -839,8 +1196,104 @@ mod tests {
         let r = parse_str(src);
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         assert_eq!(r.tree.items.len(), 2);
-        assert_eq!(r.tree.items[0].as_set().unwrap().0, "document");
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(name, "document");
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0].key, "title");
+        assert_eq!(args[0].value, SetValue::Str("x".to_owned()));
+        assert_eq!(args[1].key, "author");
+        assert_eq!(args[1].value, SetValue::Str("y".to_owned()));
         assert_eq!(r.tree.items[1].as_heading().unwrap().0, 1);
+    }
+
+    #[test]
+    fn set_value_length_units() {
+        let src = "#set page(margin: 24mm)\n#set text(size: 11pt, leading: 1.35, scale: 2em)\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (_, page_args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(page_args[0].value, SetValue::Length(24.0, LengthUnit::Mm));
+        let (_, text_args, _) = r.tree.items[1].as_set().unwrap();
+        assert_eq!(text_args[0].value, SetValue::Length(11.0, LengthUnit::Pt));
+        assert_eq!(text_args[1].value, SetValue::Float(1.35));
+        assert_eq!(text_args[2].value, SetValue::Length(2.0, LengthUnit::Em));
+    }
+
+    #[test]
+    fn set_value_int_and_ident() {
+        let r = parse_str("#set foo(count: 42, alignment: bottom-center)\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (_, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(args[0].value, SetValue::Int(42));
+        assert_eq!(args[1].value, SetValue::Ident("bottom-center".to_owned()));
+    }
+
+    #[test]
+    fn set_value_trailing_comma_ok() {
+        let r = parse_str("#set page(paper: \"A4\",)\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (_, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(args.len(), 1);
+    }
+
+    #[test]
+    fn set_string_escape_sequences() {
+        let r = parse_str("#set foo(s: \"a\\\"b\\nc\\\\d\")\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (_, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(args[0].value, SetValue::Str("a\"b\nc\\d".to_owned()));
+    }
+
+    #[test]
+    fn set_unknown_escape_with_multibyte_does_not_panic() {
+        // Regression: the byte after `\` may be the leading byte of a
+        // multibyte UTF-8 scalar (here `é` = 0xC3 0xA9). Advancing by 2
+        // would leave the cursor mid-codepoint and the next slice
+        // would panic. The parser must walk to a char boundary and
+        // emit E014 instead.
+        let r = parse_str("#set foo(s: \"\\é\")\n");
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E014"),
+            "expected E014, got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn set_unknown_unit_emits_e014() {
+        let r = parse_str("#set page(margin: 24xx)\n");
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E014"),
+            "expected E014, got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn set_lone_minus_emits_e014() {
+        // `-` not followed by a digit is a malformed number literal.
+        let r = parse_str("#set foo(x: -)\n");
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E014"),
+            "expected E014, got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn set_missing_colon_emits_e015() {
+        let r = parse_str("#set page(paper \"A4\")\n");
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E015"),
+            "expected E015, got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn set_positional_arg_emits_e015() {
+        let r = parse_str("#set page(\"A4\")\n");
+        assert!(r.diagnostics.iter().any(|d| d.code.0 == "E015"));
     }
 
     #[test]

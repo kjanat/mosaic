@@ -202,6 +202,106 @@ fn check_reports_duplicate_label() {
 }
 
 #[test]
+fn build_honors_set_directives() {
+    // End-to-end MVP 1.5: `#set page(paper: "A5")` shrinks the page
+    // and `#set document(title: ..., author: ...)` populates the
+    // PDF Info dictionary.
+    let dir = temp_dir("mos-build-set");
+    write_file(
+        dir.path(),
+        "main.mos",
+        concat!(
+            "#set document(title: \"Hello\", author: \"Kaj\")\n",
+            "#set page(paper: \"A5\", margin: 30mm)\n",
+            "#set text(size: 14pt)\n",
+            "\n",
+            "= Title\n",
+            "\nbody\n",
+        ),
+    );
+    let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+
+    let pdf_path = dir.path().join("build").join("main.pdf");
+    let bytes = std::fs::read(&pdf_path).expect("pdf written");
+    let doc = lopdf::Document::load_mem(&bytes).expect("lopdf parse");
+
+    // Page 1 must have the A5 MediaBox: 148 × 210 mm = 419.5 × 595.3 pt.
+    let pages = doc.get_pages();
+    let &first_page_id = pages.values().next().expect("at least one page");
+    let mb = doc
+        .get_object(first_page_id)
+        .and_then(|o| o.as_dict())
+        .and_then(|d| d.get(b"MediaBox"))
+        .and_then(|m| m.as_array())
+        .expect("MediaBox array");
+    let width = read_mediabox_dim(&mb[2]);
+    let height = read_mediabox_dim(&mb[3]);
+    let expected_w = 148.0_f32 * 72.0 / 25.4;
+    let expected_h = 210.0_f32 * 72.0 / 25.4;
+    assert!(
+        (width - expected_w).abs() < 1.0,
+        "MediaBox width = {width}, expected ~{expected_w}"
+    );
+    assert!(
+        (height - expected_h).abs() < 1.0,
+        "MediaBox height = {height}, expected ~{expected_h}"
+    );
+
+    // Info dictionary populated. lopdf parses /Info as a Reference; we
+    // grep the raw bytes for the title/author payloads to keep the
+    // assertion backend-agnostic.
+    assert!(
+        bytes.windows(b"Hello".len()).any(|w| w == b"Hello"),
+        "title not found in PDF"
+    );
+    assert!(
+        bytes.windows(b"Kaj".len()).any(|w| w == b"Kaj"),
+        "author not found in PDF"
+    );
+}
+
+/// Read a `MediaBox` numeric entry as `f32`. `lopdf` returns either a
+/// `Real` (already `f32`) or an `Integer`; we range-check the integer
+/// form so the cast is exact.
+fn read_mediabox_dim(value: &lopdf::Object) -> f32 {
+    if let Ok(f) = value.as_float() {
+        return f;
+    }
+    let n = value.as_i64().expect("MediaBox dim is numeric");
+    assert!(
+        (-(1_i64 << 24)..=(1_i64 << 24)).contains(&n),
+        "MediaBox dim {n} outside f32-exact range"
+    );
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "range-checked above to fit in 24 bits"
+    )]
+    let f = n as f32;
+    f
+}
+
+#[test]
+fn build_fails_on_layout_error_does_not_emit_pdf() {
+    // E023 (unknown paper) is a layout-level Error. The CLI must
+    // surface it and exit non-zero rather than writing a "successful"
+    // PDF with broken config.
+    let dir = temp_dir("mos-build-layout-error");
+    write_file(
+        dir.path(),
+        "main.mos",
+        "#set page(paper: \"Foolscap\")\n\n= T\n\nbody\n",
+    );
+    let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 1, "stderr={stderr:?}");
+    assert!(stderr.contains("error[E023]"), "stderr={stderr:?}");
+    assert!(
+        !dir.path().join("build").join("main.pdf").exists(),
+        "PDF should not be written on layout error"
+    );
+}
+
+#[test]
 fn build_creates_output_directory() {
     // Sanity: the `build/` directory shouldn't need to pre-exist.
     let dir = temp_dir("mos-build-mkdir");

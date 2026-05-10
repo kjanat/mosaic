@@ -174,6 +174,16 @@ fn run_build(entry: &Path) -> ExitCode {
     for diag in &layout.diagnostics {
         render_diagnostic(diag, &src);
     }
+    // Layout can now produce real errors (E023 unknown paper, E025
+    // geometrically invalid margin/leading). Don't ship a PDF with
+    // broken config under a success exit code.
+    if layout
+        .diagnostics
+        .iter()
+        .any(|d| d.severity == Severity::Error)
+    {
+        return ExitCode::FAILURE;
+    }
 
     let stem = entry.file_stem().map_or_else(
         || std::ffi::OsString::from("out"),
@@ -182,7 +192,12 @@ fn run_build(entry: &Path) -> ExitCode {
     let mut out = PathBuf::from("build");
     out.push(format!("{}.pdf", stem.to_string_lossy()));
 
-    if let Err(err) = mosaic_pdf::emit(&layout.graph, &out) {
+    let metadata = mosaic_pdf::PdfMetadata {
+        title: result.metadata.title.clone(),
+        author: result.metadata.author.clone(),
+        language: result.metadata.language,
+    };
+    if let Err(err) = mosaic_pdf::emit(&layout.graph, &metadata, &out) {
         match err {
             mosaic_core::CoreError::Diagnostic(d) => render_diagnostic(&d, &src),
             mosaic_core::CoreError::Unimplemented(msg) => {
