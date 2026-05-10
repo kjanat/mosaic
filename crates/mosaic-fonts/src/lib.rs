@@ -149,9 +149,13 @@ fn glyph_width_units(font: Font, ch: char) -> f32 {
          the layout engine must substitute non-ASCII before measuring"
     );
     // Post-assert: `cp` is in `0x20..=0x7E`, which fits in `u8`. Using
-    // `try_from` + `unwrap_or` avoids `cast_possible_truncation` (vs
+    // `try_from` + `unwrap_or(0)` avoids `cast_possible_truncation` (vs
     // `as u8`) and `unwrap_used` (vs `.unwrap()`); the `0` fallback is
-    // statically unreachable.
+    // statically unreachable, and if the upstream assert is ever
+    // weakened so chars > `u8::MAX` slip through, byte `0x00` is a
+    // WinAnsi control char with no mapping — the second `assert!`
+    // below surfaces the regression naming the bogus byte. Clippy's
+    // `unreachable = "warn"` rules out `unreachable!()` here.
     let byte = u8::try_from(cp).unwrap_or(0);
     let width = font.0.winansi_width(byte);
     assert!(
