@@ -2,8 +2,8 @@ name: CI
 
 run-name: >-
   ${{ format('{0}: {1}',
-    case(github.event.pull_request, format('PR #{0}', github.event.pull_request.number), github.ref_name),
-    case(github.event.pull_request, github.event.pull_request.title, github.event.head_commit.message)
+    case(github.event_name == 'pull_request', format('PR #{0}', github.event.pull_request.number), github.ref_name),
+    case(github.event_name == 'pull_request', github.event.pull_request.title, github.event.head_commit.message)
   ) }} @${{ github.actor }}
 
 on:
