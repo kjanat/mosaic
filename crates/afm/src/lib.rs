@@ -447,7 +447,6 @@ pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
             // `EndDirection` for accepted directions is a no-op — falls
             // through the wildcard. The skip-direction guard above
             // handles `EndDirection` for the dropped direction-1 case.
-
             "C" | "CH" if state == State::CharMetrics => {
                 chars.push(parse_char_metric_line(line, lineno)?);
             }
