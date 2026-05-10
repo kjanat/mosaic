@@ -340,7 +340,11 @@ pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
                 return Err(ParseError::MissingHeader { line: lineno });
             }
             let version = rest.trim();
-            if !version.starts_with("4.") {
+            // Strict `4.<digits>` — reject `4.`, `4.x`, `4.bad`, etc.
+            let is_v4 = version.split_once('.').is_some_and(|(major, minor)| {
+                major == "4" && !minor.is_empty() && minor.bytes().all(|b| b.is_ascii_digit())
+            });
+            if !is_v4 {
                 return Err(ParseError::UnsupportedVersion {
                     line: lineno,
                     version: version.to_owned(),
@@ -531,9 +535,15 @@ fn parse_char_metric_line(line: &str, lineno: usize) -> Result<CharacterMetric<'
             }
             "WX" | "W0X" => width_x = parse_f32(rest, "WX", lineno)?,
             "W" | "W0" => {
-                if let Some(x) = rest.split_ascii_whitespace().next() {
-                    width_x = parse_f32(x, "W", lineno)?;
-                }
+                let x =
+                    rest.split_ascii_whitespace()
+                        .next()
+                        .ok_or(ParseError::MalformedRecord {
+                            line: lineno,
+                            keyword: "W",
+                            reason: "missing x advance",
+                        })?;
+                width_x = parse_f32(x, "W", lineno)?;
             }
             "N" => name = rest,
             "B" => bbox = Some(parse_bbox(rest, "B", lineno)?),
@@ -572,8 +582,23 @@ fn parse_kern_record<'a>(
     })?;
     let adjust = match kw {
         "KPX" => parse_f32(first_num, "KPX", lineno)?,
-        "KPY" => 0.0, // y-only kern: x adjustment is 0 by definition
-        "KP" => parse_f32(first_num, "KP", lineno)?, // first of (x, y)
+        "KPY" => {
+            // Validate the operand even though we discard it: a y-only
+            // kern still has to be a well-formed number.
+            let _ = parse_f32(first_num, "KPY", lineno)?;
+            0.0
+        }
+        "KP" => {
+            // `KP left right xadj yadj` — both operands required.
+            let x = parse_f32(first_num, "KP", lineno)?;
+            let y = toks.next().ok_or(ParseError::MalformedRecord {
+                line: lineno,
+                keyword: "KP",
+                reason: "missing y kern adjustment",
+            })?;
+            let _ = parse_f32(y, "KP", lineno)?;
+            x
+        }
         _ => return Ok(None),
     };
     Ok(Some(KerningPair {

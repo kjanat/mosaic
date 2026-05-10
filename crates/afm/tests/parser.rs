@@ -155,3 +155,80 @@ fn rejects_missing_required_fields() {
         Err(ParseError::MissingRequiredField { field: "FontName" })
     ));
 }
+
+#[test]
+fn rejects_malformed_version_minor() {
+    // `4.x`, `4.bad`, `4.` should all fail — not just non-`4.` prefixes.
+    for bad in ["4.x", "4.bad", "4."] {
+        let src = format!("StartFontMetrics {bad}\nFontName X\nFontBBox 0 0 0 0\nEndFontMetrics\n");
+        assert!(
+            matches!(
+                parse(&src),
+                Err(ParseError::UnsupportedVersion { line: 1, ref version }) if version == bad
+            ),
+            "expected UnsupportedVersion for {bad:?}"
+        );
+    }
+}
+
+#[test]
+fn rejects_bare_w_in_char_metric() {
+    // `W` without an x operand must surface as MalformedRecord, not be
+    // silently normalised to width_x = 0.0.
+    let src = "StartFontMetrics 4.1\n\
+               FontName Bad\n\
+               FontBBox 0 0 0 0\n\
+               StartCharMetrics 1\n\
+               C 65 ; W ; N A ;\n\
+               EndCharMetrics\n\
+               EndFontMetrics\n";
+    assert!(matches!(
+        parse(src),
+        Err(ParseError::MalformedRecord {
+            line: 5,
+            keyword: "W",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn rejects_kpy_with_non_numeric_operand() {
+    // `KPY A V nope` must fail — operand has to be numeric even though
+    // KPY's value is discarded for the public x-only `adjust` field.
+    let src = "StartFontMetrics 4.1\n\
+               FontName Bad\n\
+               FontBBox 0 0 0 0\n\
+               StartKernPairs 1\n\
+               KPY A V nope\n\
+               EndKernPairs\n\
+               EndFontMetrics\n";
+    assert!(matches!(
+        parse(src),
+        Err(ParseError::InvalidNumber {
+            line: 5,
+            field: "KPY",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn rejects_kp_missing_y_operand() {
+    // `KP A V 5` is missing the required y adjustment.
+    let src = "StartFontMetrics 4.1\n\
+               FontName Bad\n\
+               FontBBox 0 0 0 0\n\
+               StartKernPairs 1\n\
+               KP A V 5\n\
+               EndKernPairs\n\
+               EndFontMetrics\n";
+    assert!(matches!(
+        parse(src),
+        Err(ParseError::MalformedRecord {
+            line: 5,
+            keyword: "KP",
+            ..
+        })
+    ));
+}
