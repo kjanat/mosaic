@@ -9,7 +9,17 @@ run-name: >-
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
+      - ".dprint.jsonc"
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
+      - ".dprint.jsonc"
 
 permissions:
   contents: read
@@ -51,7 +61,7 @@ jobs:
         run: cargo test --workspace
 
       - name: Upload debug binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mosaic-binaries-linux-x86_64
           path: |
