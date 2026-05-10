@@ -66,6 +66,8 @@ jobs:
   msrv:
     name: build on MSRV (1.95)
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: "1.95"
     steps:
       - uses: actions/checkout@v6
 

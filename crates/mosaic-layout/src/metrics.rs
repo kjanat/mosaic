@@ -123,7 +123,8 @@ fn glyph_width_units(font: Font, ch: char) -> u16 {
 ///
 /// # Panics
 ///
-/// See [`glyph_width_units`]: every character must be printable ASCII.
+/// Panics if `text` contains any character outside `0x20..=0x7E`
+/// (printable ASCII). Non-ASCII must be substituted upstream.
 #[must_use]
 pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
     // Accumulate in f32: `f32::from(u16)` is exact, and the running
@@ -140,7 +141,7 @@ pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
 ///
 /// # Panics
 ///
-/// See [`glyph_width_units`].
+/// Panics if `ch` is outside `0x20..=0x7E` (printable ASCII).
 #[must_use]
 pub fn glyph_width(font: Font, size: f32, ch: char) -> f32 {
     f32::from(glyph_width_units(font, ch)) * size / 1000.0
