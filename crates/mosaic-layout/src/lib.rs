@@ -10,6 +10,8 @@
 
 mod metrics;
 
+#[doc(hidden)]
+pub use metrics::glyph_width_units;
 pub use metrics::{ALL_FONTS, Font, ascent, descent, glyph_width, text_width};
 
 use mosaic_core::{
