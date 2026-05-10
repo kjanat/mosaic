@@ -682,6 +682,9 @@ dependencies = [
 [[package]]
 name = "mosaic-fonts"
 version = "0.0.0"
+dependencies = [
+ "pdf-base14-metrics",
+]
 
 [[package]]
 name = "mosaic-html"
