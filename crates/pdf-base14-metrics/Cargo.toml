@@ -1,0 +1,24 @@
+[package]
+name = "pdf-base14-metrics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Pre-parsed Adobe Core 14 PDF font metrics (Helvetica, Times, Courier, Symbol, ZapfDingbats) baked into `&'static FontMetrics` constants at compile time."
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+# `Adobe-Core14-AFM` is not a registered SPDX identifier, so use the
+# `LicenseRef-` form per SPDX §10. The license text is in
+# `LICENSE-Adobe-Core14-AFM` at the crate root.
+license = "MIT AND LicenseRef-Adobe-Core14-AFM"
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+afm = { workspace = true }
+
+[build-dependencies]
+afm = { workspace = true }
+
+[lints]
+workspace = true
