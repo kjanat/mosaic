@@ -35,6 +35,8 @@
 //! ill-formed input — every malformed record is converted into a
 //! [`ParseError::InvalidNumber`] or [`ParseError::MalformedRecord`].
 
+#![deny(missing_docs)]
+
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
@@ -46,9 +48,13 @@ use std::fmt;
 /// without precision loss.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct BBox {
+    /// Lower-left x coordinate.
     pub llx: f32,
+    /// Lower-left y coordinate.
     pub lly: f32,
+    /// Upper-right x coordinate.
     pub urx: f32,
+    /// Upper-right y coordinate.
     pub ury: f32,
 }
 
@@ -68,7 +74,9 @@ pub struct CharacterMetric<'a> {
 /// One entry from a `StartKernPairs` block.
 #[derive(Debug, Clone, PartialEq)]
 pub struct KerningPair<'a> {
+    /// PostScript name of the left-hand glyph.
     pub left: Cow<'a, str>,
+    /// PostScript name of the right-hand glyph.
     pub right: Cow<'a, str>,
     /// Horizontal kerning adjustment in 1/1000 em. `KPY` records
     /// always store `0.0` here at v0.1 — the public type does not
@@ -83,21 +91,43 @@ pub struct KerningPair<'a> {
 /// statics (`Cow::Borrowed` of `&'static`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct FontMetrics<'a> {
+    /// PostScript `FontName` (e.g. `"Helvetica"`).
     pub font_name: Cow<'a, str>,
+    /// Human-readable `FullName` (e.g. `"Helvetica Bold Oblique"`).
     pub full_name: Cow<'a, str>,
+    /// PostScript `FamilyName` (e.g. `"Helvetica"`).
     pub family_name: Cow<'a, str>,
+    /// `Weight` token, free-form per the spec (`"Medium"`, `"Bold"`, etc.).
     pub weight: Cow<'a, str>,
+    /// Italic angle in degrees, counter-clockwise from vertical.
     pub italic_angle: f32,
+    /// `true` if every glyph has the same advance width.
     pub is_fixed_pitch: bool,
+    /// Bounding box that contains every glyph in the font.
     pub font_bbox: BBox,
+    /// Recommended y position of the underline, in 1/1000 em.
     pub underline_position: f32,
+    /// Recommended thickness of the underline, in 1/1000 em.
     pub underline_thickness: f32,
+    /// Height of an unaccented capital, in 1/1000 em.
     pub cap_height: f32,
+    /// Height of a lowercase `x`, in 1/1000 em.
     pub x_height: f32,
+    /// Ascender height, in 1/1000 em.
     pub ascender: f32,
+    /// Descender depth (negative for descents below the baseline).
     pub descender: f32,
+    /// Encoding scheme name (e.g. `"AdobeStandardEncoding"`).
     pub encoding_scheme: Cow<'a, str>,
+    /// Per-glyph metrics. [`parse`] always returns this as
+    /// `Cow::Owned`; `Cow::Borrowed(&'static [...])` is reserved for
+    /// compile-time-baked statics in downstream crates (e.g.
+    /// `pdf-base14-metrics`).
     pub character_metrics: Cow<'a, [CharacterMetric<'a>]>,
+    /// Kerning pairs. [`parse`] always returns this as `Cow::Owned`;
+    /// `Cow::Borrowed(&'static [...])` is reserved for
+    /// compile-time-baked statics in downstream crates (e.g.
+    /// `pdf-base14-metrics`).
     pub kerning_pairs: Cow<'a, [KerningPair<'a>]>,
 }
 
@@ -108,23 +138,40 @@ pub type OwnedFontMetrics = FontMetrics<'static>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseError {
     /// First non-blank, non-comment line was not `StartFontMetrics`.
-    MissingHeader { line: usize },
+    MissingHeader {
+        /// 1-based source line number where the missing header was expected.
+        line: usize,
+    },
     /// `StartFontMetrics` declared a version outside the 4.x family.
-    UnsupportedVersion { line: usize, version: String },
+    UnsupportedVersion {
+        /// 1-based source line number of the offending `StartFontMetrics`.
+        line: usize,
+        /// Version literal that was rejected (e.g. `"5.0"`).
+        version: String,
+    },
     /// A field that the parser requires (currently `FontName` and
     /// `FontBBox`) never appeared.
-    MissingRequiredField { field: &'static str },
+    MissingRequiredField {
+        /// Name of the missing field.
+        field: &'static str,
+    },
     /// A token that should have parsed as a number didn't.
     InvalidNumber {
+        /// 1-based source line number where parsing failed.
         line: usize,
+        /// Logical field whose value couldn't be parsed (e.g. `"FontBBox"`).
         field: &'static str,
+        /// The raw token that failed to parse.
         value: String,
     },
     /// A record was structurally malformed (wrong arity, unrecognised
     /// boolean, etc.).
     MalformedRecord {
+        /// 1-based source line number where the record appeared.
         line: usize,
+        /// AFM keyword that introduced the record.
         keyword: &'static str,
+        /// Human-readable description of how the record was malformed.
         reason: &'static str,
     },
 }
@@ -242,6 +289,7 @@ enum State {
 /// Returns [`ParseError`] if the header is missing, the version is
 /// outside the 4.x range, a required field never appears, or any
 /// record is structurally malformed.
+#[must_use = "discarding the parsed FontMetrics also discards any parse error"]
 pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
     let mut header_seen = false;
     let mut state = State::Top;
