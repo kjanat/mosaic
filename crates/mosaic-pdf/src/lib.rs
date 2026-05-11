@@ -79,7 +79,7 @@ pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> Vec<u8> {
     let info_id = alloc();
 
     // One indirect ref per font face, in the order published by
-    // `Font::ALL`. We always emit all four entries so every page's
+    // `Font::ALL`. We always emit all 14 entries so every page's
     // resource dictionary is identical, simplifying the writer.
     let font_refs: Vec<(Font, Ref)> = Font::ALL.iter().map(|f| (*f, alloc())).collect();
 
