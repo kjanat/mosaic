@@ -66,7 +66,9 @@ fn build_fallback_graph(
             width_pt: 595.276_f32,
             height_pt: 841.89_f32,
             runs,
+            images: Vec::new(),
         }],
+        images: Vec::new(),
     };
     (graph, xs)
 }
