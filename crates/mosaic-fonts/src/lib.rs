@@ -805,8 +805,11 @@ fn into_subrun(
     }
 }
 
-/// `units_per_em` for any `Font::Embedded`. Panics on Base14 — callers
-/// must dispatch on the variant before reaching this. Internal helper.
+/// `units_per_em` for any `Font`. Returns the embedded face's actual
+/// upem (read from the `head` table); for `Font::Base14`, returns
+/// `1000.0` — the AFM unit scale — as a defensive default since callers
+/// in this module are expected to dispatch on the variant before
+/// reaching here. Internal helper.
 fn embedded_upem(font: Font) -> f32 {
     match font {
         Font::Embedded(id) => f32::from(id.data().units_per_em),
