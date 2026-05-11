@@ -13,7 +13,13 @@ default:
 examples:
     #!/usr/bin/env bash
     set -euo pipefail
-    for ex in examples/*/main.mos; do
+    shopt -s nullglob
+    files=(examples/*/main.mos)
+    if [ ${#files[@]} -eq 0 ]; then
+    	echo "no examples found under examples/*/main.mos"
+    	exit 0
+    fi
+    for ex in "${files[@]}"; do
     	dir="$(dirname "$ex")"
     	name="$(basename "$dir")"
     	(cd "$dir" && cargo mos build)
