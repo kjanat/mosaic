@@ -395,19 +395,32 @@ fn shown_cids_for_font(content: &[u8], resource_name: &[u8]) -> Result<Vec<u16>,
                 let Some(Object::String(bytes, _)) = operation.operands.first() else {
                     return Err("Tj operator missing string operand".into());
                 };
-                if bytes.len() % 2 != 0 {
-                    return Err(
-                        format!("embedded CID string has odd byte length: {bytes:?}").into(),
-                    );
-                }
-                for pair in bytes.chunks_exact(2) {
-                    cids.push((u16::from(pair[0]) << 8) | u16::from(pair[1]));
+                push_cids_from_bytes(bytes, &mut cids)?;
+            }
+            "TJ" if current_font.as_deref() == Some(resource_name) => {
+                let Some(Object::Array(items)) = operation.operands.first() else {
+                    return Err("TJ operator missing array operand".into());
+                };
+                for item in items {
+                    if let Object::String(bytes, _) = item {
+                        push_cids_from_bytes(bytes, &mut cids)?;
+                    }
                 }
             }
             _ => {}
         }
     }
     Ok(cids)
+}
+
+fn push_cids_from_bytes(bytes: &[u8], cids: &mut Vec<u16>) -> Result<(), Box<dyn Error>> {
+    if !bytes.len().is_multiple_of(2) {
+        return Err(format!("embedded CID string has odd byte length: {bytes:?}").into());
+    }
+    for pair in bytes.chunks_exact(2) {
+        cids.push((u16::from(pair[0]) << 8) | u16::from(pair[1]));
+    }
+    Ok(())
 }
 
 fn font_switches(content: &[u8]) -> Result<Vec<Vec<u8>>, Box<dyn Error>> {
@@ -468,7 +481,7 @@ fn embedded_descendant<'d>(
 
 fn object_number_as_f32(obj: &Object) -> Result<f32, Box<dyn Error>> {
     match obj {
-        Object::Integer(n) => Ok(f32::from(i16::try_from(*n)?)),
+        Object::Integer(n) => Ok(n.to_string().parse::<f32>()?),
         Object::Real(n) => Ok(*n),
         other => Err(format!("expected numeric width, got {other:?}").into()),
     }
