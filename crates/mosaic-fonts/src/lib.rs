@@ -328,19 +328,19 @@ pub struct FontFamily {
     pub monospace: Font,
     /// Per-glyph fallback chain. When shaping against any of the
     /// style-slot faces above yields `.notdef` for some cluster,
-    /// [`shape_with_fallback`] retries that cluster against each face
-    /// in this slice in order. The first face to cover the cluster
+    /// [`shape_with_fallback`] retries that cluster against each embedded
+    /// face in this slice in order. The first face to cover the cluster
     /// wins the whole cluster (cluster-granular replacement). Empty
     /// chain = primary-only shaping (Base14 families don't have an
     /// embedded fallback target).
-    pub fallbacks: &'static [Font],
+    pub fallbacks: &'static [EmbeddedFontId],
 }
 
 /// Per-glyph fallback chain for [`FontFamily::noto_sans`]. Math
 /// codepoints (`≤ ≥ √ ∂ ∑ ∆ ◊` …) outside Noto Sans's coverage
 /// route through Noto Sans Math via the cluster-granular retry in
 /// [`shape_with_fallback`].
-const NOTO_SANS_FALLBACKS: &[Font] = &[Font::Embedded(EmbeddedFontId::Math)];
+const NOTO_SANS_FALLBACKS: &[EmbeddedFontId] = &[EmbeddedFontId::Math];
 
 impl FontFamily {
     /// The bundled Noto Sans family — embedded TTFs, real designed
@@ -557,7 +557,7 @@ pub struct WordSubRun {
 /// Shape `text` against `primary` with per-glyph fallback. Walks each
 /// HarfBuzz cluster in the primary's shaped output; clusters that
 /// contain any `.notdef` (GID 0) glyph are re-shaped against each
-/// face in `fallbacks` in order. The first fallback to produce a
+/// embedded face in `fallbacks` in order. The first fallback to produce a
 /// glyph stream with no `.notdef` wins the whole cluster (cluster-
 /// granular replacement, never partial — partial replacement would
 /// duplicate bases, drop marks, break ligatures).
@@ -581,7 +581,7 @@ pub struct WordSubRun {
 #[must_use]
 pub fn shape_with_fallback(
     primary: Font,
-    fallbacks: &[Font],
+    fallbacks: &[EmbeddedFontId],
     size_pt: f32,
     text: &str,
 ) -> Vec<WordSubRun> {
@@ -639,10 +639,8 @@ pub fn shape_with_fallback(
         // entire cluster's glyph slice if a fallback covers it.
         let cluster_text = &text[cluster.byte_range.clone()];
         let mut accepted: Option<(Font, Vec<ShapedGlyph>)> = None;
-        for &fb_font in fallbacks {
-            let Font::Embedded(fb_id) = fb_font else {
-                continue;
-            };
+        for &fb_id in fallbacks {
+            let fb_font = Font::Embedded(fb_id);
             let fb_ef = fb_id.data();
             let fb_glyphs = shape(fb_ef, cluster_text);
             if !fb_glyphs.is_empty() && fb_glyphs.iter().all(|g| g.gid != 0) {
@@ -1085,7 +1083,7 @@ mod tests {
     #[test]
     fn fallback_empty_text_returns_empty() {
         let primary = Font::Embedded(EmbeddedFontId::Regular);
-        let fallbacks = &[Font::Embedded(EmbeddedFontId::Math)];
+        let fallbacks = &[EmbeddedFontId::Math];
         assert!(shape_with_fallback(primary, fallbacks, 11.0, "").is_empty());
     }
 
@@ -1094,7 +1092,7 @@ mod tests {
         // Pure ASCII is fully covered by Noto Sans Regular — no
         // fallback needed; one sub-run, primary-owned glyphs.
         let primary = Font::Embedded(EmbeddedFontId::Regular);
-        let fallbacks = &[Font::Embedded(EmbeddedFontId::Math)];
+        let fallbacks = &[EmbeddedFontId::Math];
         let subs = shape_with_fallback(primary, fallbacks, 11.0, "Hello");
         assert_eq!(subs.len(), 1, "expected one sub-run, got {}", subs.len());
         assert_eq!(subs[0].font, primary);
@@ -1111,7 +1109,7 @@ mod tests {
         // three sub-runs in source order. Each sub-run's text is its
         // own slice; glyph clusters rebased to local text.
         let primary = Font::Embedded(EmbeddedFontId::Regular);
-        let fallbacks = &[Font::Embedded(EmbeddedFontId::Math)];
+        let fallbacks = &[EmbeddedFontId::Math];
         let subs = shape_with_fallback(primary, fallbacks, 11.0, "a\u{2264}b");
         assert_eq!(subs.len(), 3, "expected 3 sub-runs, got {subs:?}");
 
@@ -1142,7 +1140,7 @@ mod tests {
         // duplication, copy-paste yields the source codepoint via the
         // existing `/ToUnicode` machinery (PDF reader paints empty box).
         let primary = Font::Embedded(EmbeddedFontId::Regular);
-        let fallbacks = &[Font::Embedded(EmbeddedFontId::Math)];
+        let fallbacks = &[EmbeddedFontId::Math];
         let subs = shape_with_fallback(primary, fallbacks, 11.0, "\u{1F389}");
         assert_eq!(subs.len(), 1);
         assert_eq!(subs[0].font, primary);
@@ -1159,7 +1157,7 @@ mod tests {
         // doesn't apply. One sub-run, empty glyphs, advance via the
         // AFM `text_width` path.
         let primary = Font::Base14(Base14Font::Helvetica);
-        let fallbacks = &[Font::Embedded(EmbeddedFontId::Math)];
+        let fallbacks = &[EmbeddedFontId::Math];
         let subs = shape_with_fallback(primary, fallbacks, 11.0, "Hello");
         assert_eq!(subs.len(), 1);
         assert_eq!(subs[0].font, primary);
@@ -1184,7 +1182,7 @@ mod tests {
         // Math's `units_per_em`, not Regular's. Both happen to be
         // 1000 in Noto Sans, but the contract should hold regardless.
         let primary = Font::Embedded(EmbeddedFontId::Regular);
-        let fallbacks = &[Font::Embedded(EmbeddedFontId::Math)];
+        let fallbacks = &[EmbeddedFontId::Math];
         let subs = shape_with_fallback(primary, fallbacks, 11.0, "\u{2264}");
         assert_eq!(subs.len(), 1);
         assert_eq!(subs[0].font, Font::Embedded(EmbeddedFontId::Math));

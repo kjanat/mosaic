@@ -1088,7 +1088,7 @@ impl LayoutState {
         let max_size = line.iter().map(|w| w.size_pt).fold(marker_size, f32::max);
         let max_ascent = line
             .iter()
-            .map(|w| ascent(w.font, w.size_pt))
+            .flat_map(|w| w.subruns.iter().map(|sub| ascent(sub.font, w.size_pt)))
             .fold(marker_ascent, f32::max);
 
         // First line on a page: drop the baseline by the line's
@@ -1155,10 +1155,13 @@ impl LayoutState {
         let line_width = self.column_width_pt();
         let fallbacks = self.text.family.fallbacks;
         let mut buf = String::new();
-        let mut buf_width = 0.0_f32;
         for ch in word.text.chars() {
-            let w = glyph_width(word.font, word.size_pt, ch);
-            if buf_width + w > line_width && !buf.is_empty() {
+            let mut candidate = buf.clone();
+            candidate.push(ch);
+            let candidate_subruns =
+                shape_with_fallback(word.font, fallbacks, word.size_pt, &candidate);
+            let candidate_width: f32 = candidate_subruns.iter().map(|s| s.advance_pt).sum();
+            if candidate_width > line_width && !buf.is_empty() {
                 let chunk = std::mem::take(&mut buf);
                 let subruns = shape_with_fallback(word.font, fallbacks, word.size_pt, &chunk);
                 let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
@@ -1172,10 +1175,10 @@ impl LayoutState {
                     }],
                     leading,
                 );
-                buf_width = 0.0;
+                buf.push(ch);
+            } else {
+                buf = candidate;
             }
-            buf.push(ch);
-            buf_width += w;
         }
         if !buf.is_empty() {
             let subruns = shape_with_fallback(word.font, fallbacks, word.size_pt, &buf);

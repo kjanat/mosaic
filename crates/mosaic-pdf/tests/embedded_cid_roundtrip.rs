@@ -41,7 +41,7 @@ macro_rules! ensure {
 /// `advance_pt` so the runs render side-by-side, never overlapping.
 fn build_fallback_graph(
     primary: EmbeddedFontId,
-    fallbacks: &[Font],
+    fallbacks: &[EmbeddedFontId],
     text: &str,
 ) -> (PageGraph, Vec<f32>) {
     let size_pt = 12.0_f32;
@@ -343,9 +343,13 @@ fn notdef_glyphs_dont_pollute_tounicode() -> TestResult {
 // Per-glyph fallback tests (Noto Sans Regular + Math fallback)
 // ---------------------------------------------------------------------
 
-const MATH_FALLBACK: &[Font] = &[Font::Embedded(EmbeddedFontId::Math)];
+const MATH_FALLBACK: &[EmbeddedFontId] = &[EmbeddedFontId::Math];
 
-fn extract_content_stream(bytes: &[u8]) -> Result<&[u8], Box<dyn Error>> {
+fn extract_content_stream(doc: &Document, bytes: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+    if let Ok(content) = extract_content_stream_from_page(doc) {
+        return Ok(content);
+    }
+
     let open = b"\nstream\n";
     let close = b"\nendstream";
     let open_at = bytes
@@ -357,7 +361,27 @@ fn extract_content_stream(bytes: &[u8]) -> Result<&[u8], Box<dyn Error>> {
         .windows(close.len())
         .position(|w| w == close)
         .ok_or("no endstream")?;
-    Ok(&body[..close_at])
+    Ok(body[..close_at].to_vec())
+}
+
+fn extract_content_stream_from_page(doc: &Document) -> Result<Vec<u8>, Box<dyn Error>> {
+    let page_id = doc.page_iter().next().ok_or("no pages")?;
+    let page = doc.get_dictionary(page_id)?;
+    let contents = deref(doc, page.get(b"Contents")?)?;
+    match contents {
+        Object::Stream(stream) => Ok(stream.get_plain_content()?),
+        Object::Array(items) => {
+            let mut content = Vec::new();
+            for item in items {
+                let Object::Stream(stream) = deref(doc, item)? else {
+                    return Err("/Contents array item is not a stream".into());
+                };
+                content.extend(stream.get_plain_content()?);
+            }
+            Ok(content)
+        }
+        _ => Err("/Contents is not a stream or stream array".into()),
+    }
 }
 
 #[test]
@@ -413,8 +437,8 @@ fn mixed_run_content_stream_switches_tf_in_source_order() -> TestResult {
     // operators; the rawest check is a substring scan over the content
     // stream bytes for the resource names in source order.
     let (graph, _) = build_fallback_graph(EmbeddedFontId::Regular, MATH_FALLBACK, "a≤b");
-    let (_, bytes) = emit_graph(&graph)?;
-    let content = extract_content_stream(&bytes)?;
+    let (doc, bytes) = emit_graph(&graph)?;
+    let content = extract_content_stream(&doc, &bytes)?;
     let f15_first = content
         .windows(3)
         .position(|w| w == b"F15")
