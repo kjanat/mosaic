@@ -83,6 +83,14 @@ const HEADING_SPACE_BEFORE_PT: [f32; 3] = [16.0, 12.0, 10.0];
 const HEADING_SPACE_AFTER_PT: [f32; 3] = [10.0, 8.0, 6.0];
 /// Vertical gap between consecutive paragraphs.
 const PARA_SPACE_AFTER_PT: f32 = 4.0;
+/// Horizontal gutter reserved for the list marker (`•` for unordered,
+/// `1.` for ordered) on each nesting level. Doubles as the per-level
+/// indent step: nested items shift right by this many points before
+/// their own gutter is added. Sized to comfortably hold a one- or
+/// two-digit ordered marker at the default body size; lists with three-
+/// digit numbering will overflow the gutter visually until per-list
+/// gutter tuning lands.
+const LIST_MARKER_GUTTER_PT: f32 = 18.0;
 
 /// A single horizontal run of text on a page. The MVP 0 emitter
 /// produces one run per word; coalescing same-font neighbours is an
@@ -163,6 +171,7 @@ impl LayoutEngine {
             match node.kind {
                 NodeKind::Section => state.layout_heading(document, node),
                 NodeKind::Paragraph => state.layout_paragraph(document, node),
+                NodeKind::List => state.layout_list(document, node),
                 // `#set` blocks are stashed as `Raw` children of the
                 // root; folded into styles by `resolve_styles` above.
                 NodeKind::Raw if node.attributes.contains_key("set") => {}
@@ -410,6 +419,26 @@ struct LayoutState {
     diagnostics: Vec<Diagnostic>,
     page: PageStyle,
     text: TextStyle,
+    /// Left edge of the current text column. Equals `page.margin_pt`
+    /// at the top level; list layout pushes this rightward so item
+    /// text hangs into the gutter under its marker.
+    current_left_pt: f32,
+    /// Marker run to emit at the start of the next flushed line. Used
+    /// by list items to draw `•` / `1.` in the gutter to the left of
+    /// `current_left_pt` on the first line of each item. Cleared by
+    /// `flush_line` once the marker is committed to a page.
+    pending_marker: Option<PendingMarker>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingMarker {
+    /// X position (page-relative, points from the page's left edge)
+    /// where the marker's left edge should sit.
+    x_pt: f32,
+    /// Pre-shaped marker word. Width is informational only — the
+    /// marker is drawn outside `current_left_pt` so it doesn't reserve
+    /// space in the text column.
+    word: Word,
 }
 
 impl LayoutState {
@@ -422,11 +451,13 @@ impl LayoutState {
             diagnostics: Vec::new(),
             page,
             text,
+            current_left_pt: page.margin_pt,
+            pending_marker: None,
         }
     }
 
     fn column_width_pt(&self) -> f32 {
-        self.page.width_pt - 2.0 * self.page.margin_pt
+        self.page.width_pt - self.page.margin_pt - self.current_left_pt
     }
 
     fn finish(mut self) -> LayoutResult {
@@ -486,6 +517,77 @@ impl LayoutState {
         self.cursor_y += PARA_SPACE_AFTER_PT;
     }
 
+    /// Lay out a [`NodeKind::List`] and its [`NodeKind::ListItem`]
+    /// children with hanging indent. Each item gets a marker (`•` for
+    /// unordered, `1.` `2.` … for ordered) in the gutter to the left
+    /// of its text. Nested [`NodeKind::List`] children under each item
+    /// recurse with one more level of indent.
+    fn layout_list(&mut self, document: &Document, list_node: &Node) {
+        let ordered = matches!(
+            list_node.attributes.get("ordered"),
+            Some(AttrValue::Bool(true))
+        );
+        let regular = self.text.family.regular;
+        let size = self.text.size_pt;
+        let leading = self.text.leading;
+        let saved_left = self.current_left_pt;
+        let item_left = saved_left + LIST_MARKER_GUTTER_PT;
+
+        for (idx, item_id) in list_node.children.iter().enumerate() {
+            let Some(item) = document.get(*item_id) else {
+                continue;
+            };
+            if item.kind != NodeKind::ListItem {
+                continue;
+            }
+
+            let marker_text = if ordered {
+                format!("{}.", idx + 1)
+            } else {
+                "\u{2022}".to_owned()
+            };
+            let shaped = shape_text(regular, size, &marker_text);
+            let marker_word = Word {
+                text: marker_text,
+                font: regular,
+                size_pt: size,
+                width_pt: shaped.advance_pt,
+                glyphs: shaped.glyphs,
+            };
+
+            self.current_left_pt = item_left;
+            self.pending_marker = Some(PendingMarker {
+                x_pt: saved_left,
+                word: marker_word,
+            });
+
+            let words = self.collect_words(document, item, regular, size);
+            self.flow_words(&words, leading);
+            // Empty items have no words to trigger `flush_line`, so the
+            // marker would otherwise leak into the next item's first
+            // line. Drop it.
+            self.pending_marker = None;
+
+            for child_id in &item.children {
+                let Some(child) = document.get(*child_id) else {
+                    continue;
+                };
+                if child.kind == NodeKind::List {
+                    self.layout_list(document, child);
+                }
+            }
+        }
+
+        self.current_left_pt = saved_left;
+        // Only add trailing space at the top level of a list block.
+        // Nested lists inside a list item don't need their own gap
+        // because the surrounding item's leading already separates
+        // them from the next sibling item.
+        if (saved_left - self.page.margin_pt).abs() < f32::EPSILON {
+            self.cursor_y += PARA_SPACE_AFTER_PT;
+        }
+    }
+
     /// Walk `parent`'s inline children and produce a flat list of
     /// [`Word`]s. Inline whitespace collapses to a single split point
     /// (`split_ascii_whitespace` handles `\n`/`\r`/`\t` uniformly).
@@ -508,6 +610,10 @@ impl LayoutState {
                 NodeKind::Strong => self.text.family.bold,
                 NodeKind::Emphasis => self.text.family.italic,
                 NodeKind::Raw => self.text.family.monospace,
+                // Nested list blocks under a `ListItem` are laid out
+                // separately by `layout_list`; skip them here so they
+                // don't leak into the parent item's word stream.
+                NodeKind::List | NodeKind::ListItem => continue,
                 _ => default_font,
             };
             let raw = match child.attributes.get("text") {
@@ -580,11 +686,24 @@ impl LayoutState {
     /// Computes the line's typographic metrics from `line` itself so
     /// the caller doesn't have to track them in parallel.
     fn flush_line(&mut self, line: &[Word], leading: f32) {
-        let max_size = line.iter().map(|w| w.size_pt).fold(0.0_f32, f32::max);
+        // The marker participates in the line's vertical metrics so a
+        // taller marker still gets the right baseline. In practice the
+        // marker uses the body face at body size, but folding it in
+        // costs nothing and avoids surprises if list layout grows the
+        // ability to override marker size later.
+        let marker_size = self
+            .pending_marker
+            .as_ref()
+            .map_or(0.0_f32, |m| m.word.size_pt);
+        let marker_ascent = self
+            .pending_marker
+            .as_ref()
+            .map_or(0.0_f32, |m| ascent(m.word.font, m.word.size_pt));
+        let max_size = line.iter().map(|w| w.size_pt).fold(marker_size, f32::max);
         let max_ascent = line
             .iter()
             .map(|w| ascent(w.font, w.size_pt))
-            .fold(0.0_f32, f32::max);
+            .fold(marker_ascent, f32::max);
 
         // First line on a page: drop the baseline by the line's
         // ascent so the glyph tops sit at the top margin.
@@ -598,7 +717,22 @@ impl LayoutState {
             self.cursor_y = self.page.margin_pt + max_ascent;
         }
 
-        let mut x = self.page.margin_pt;
+        // Marker (`•` / `1.` …) is drawn in the gutter to the left of
+        // `current_left_pt` once the baseline is locked. Consumed on
+        // emit so subsequent wrapped lines of the same item don't
+        // restamp the marker.
+        if let Some(marker) = self.pending_marker.take() {
+            self.current_page.runs.push(TextRun {
+                x_pt: marker.x_pt,
+                baseline_from_top_pt: self.cursor_y,
+                size_pt: marker.word.size_pt,
+                font: marker.word.font,
+                text: marker.word.text,
+                glyphs: marker.word.glyphs,
+            });
+        }
+
+        let mut x = self.current_left_pt;
         for (i, word) in line.iter().enumerate() {
             if i > 0 {
                 x += text_width(word.font, word.size_pt, " ");
@@ -1434,5 +1568,194 @@ mod tests {
         let runs = &result.graph.pages[0].runs;
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].text, "body");
+    }
+
+    fn alloc_list(doc: &mut Document, parent: NodeId, ordered: bool) -> NodeId {
+        let mut attrs = AttrMap::new();
+        attrs.insert("ordered".to_owned(), AttrValue::Bool(ordered));
+        doc.alloc_child(
+            parent,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::List,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        )
+    }
+
+    fn alloc_list_item(doc: &mut Document, parent: NodeId, text: &str) -> NodeId {
+        let id = doc.alloc_child(
+            parent,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::ListItem,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
+        alloc_inline(doc, id, NodeKind::Text, text);
+        id
+    }
+
+    #[test]
+    fn unordered_list_emits_bullet_markers() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let root = doc.root;
+        let list = alloc_list(&mut doc, root, false);
+        alloc_list_item(&mut doc, list, "alpha");
+        alloc_list_item(&mut doc, list, "beta");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let bullets: Vec<&TextRun> = runs.iter().filter(|r| r.text == "\u{2022}").collect();
+        assert_eq!(bullets.len(), 2, "expected 2 bullets, got runs {runs:?}");
+        // Marker x sits at the page margin; item text hangs into the
+        // gutter.
+        for bullet in &bullets {
+            assert!(
+                (bullet.x_pt - MARGIN_PT).abs() < 0.5,
+                "bullet x = {}",
+                bullet.x_pt
+            );
+        }
+        let alpha = runs.iter().find(|r| r.text == "alpha").expect("alpha run");
+        assert!(
+            alpha.x_pt > bullets[0].x_pt,
+            "item text must be indented past marker: alpha.x = {}, bullet.x = {}",
+            alpha.x_pt,
+            bullets[0].x_pt
+        );
+    }
+
+    #[test]
+    fn ordered_list_numbers_from_one() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let root = doc.root;
+        let list = alloc_list(&mut doc, root, true);
+        alloc_list_item(&mut doc, list, "first");
+        alloc_list_item(&mut doc, list, "second");
+        alloc_list_item(&mut doc, list, "third");
+        let result = LayoutEngine::new().layout(&doc);
+        let runs = &result.graph.pages[0].runs;
+        let markers: Vec<&str> = runs
+            .iter()
+            .filter(|r| {
+                r.text.ends_with('.') && r.text.chars().next().is_some_and(|c| c.is_ascii_digit())
+            })
+            .map(|r| r.text.as_str())
+            .collect();
+        assert_eq!(markers, vec!["1.", "2.", "3."]);
+    }
+
+    #[test]
+    fn list_item_text_indented_past_marker_gutter() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let root = doc.root;
+        let list = alloc_list(&mut doc, root, false);
+        alloc_list_item(&mut doc, list, "hello");
+        let result = LayoutEngine::new().layout(&doc);
+        let runs = &result.graph.pages[0].runs;
+        let hello = runs.iter().find(|r| r.text == "hello").expect("hello run");
+        // Item text starts one gutter-width inside the page margin.
+        let expected = MARGIN_PT + LIST_MARKER_GUTTER_PT;
+        assert!(
+            (hello.x_pt - expected).abs() < 0.5,
+            "text x = {}, expected {expected}",
+            hello.x_pt
+        );
+    }
+
+    #[test]
+    fn nested_list_indents_one_more_level() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let root = doc.root;
+        let outer = alloc_list(&mut doc, root, false);
+        let outer_item = alloc_list_item(&mut doc, outer, "outer");
+        let inner = alloc_list(&mut doc, outer_item, false);
+        alloc_list_item(&mut doc, inner, "inner");
+        let result = LayoutEngine::new().layout(&doc);
+        let runs = &result.graph.pages[0].runs;
+        let bullets: Vec<&TextRun> = runs.iter().filter(|r| r.text == "\u{2022}").collect();
+        assert_eq!(bullets.len(), 2);
+        // Outer marker at the page margin; inner marker is one
+        // gutter-width deeper.
+        let (outer_b, inner_b) = (bullets[0], bullets[1]);
+        assert!((outer_b.x_pt - MARGIN_PT).abs() < 0.5);
+        assert!(
+            (inner_b.x_pt - (MARGIN_PT + LIST_MARKER_GUTTER_PT)).abs() < 0.5,
+            "inner marker x = {}",
+            inner_b.x_pt
+        );
+        // Inner text is at MARGIN_PT + 2 * gutter.
+        let inner = runs.iter().find(|r| r.text == "inner").unwrap();
+        let expected = MARGIN_PT + 2.0 * LIST_MARKER_GUTTER_PT;
+        assert!(
+            (inner.x_pt - expected).abs() < 0.5,
+            "inner text x = {}, expected {expected}",
+            inner.x_pt
+        );
+    }
+
+    #[test]
+    fn list_marker_baseline_matches_first_line_of_item() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let root = doc.root;
+        let list = alloc_list(&mut doc, root, false);
+        alloc_list_item(&mut doc, list, "one");
+        let result = LayoutEngine::new().layout(&doc);
+        let runs = &result.graph.pages[0].runs;
+        let bullet = runs.iter().find(|r| r.text == "\u{2022}").unwrap();
+        let one = runs.iter().find(|r| r.text == "one").unwrap();
+        assert!(
+            (bullet.baseline_from_top_pt - one.baseline_from_top_pt).abs() < 1e-3,
+            "bullet baseline {} vs text baseline {}",
+            bullet.baseline_from_top_pt,
+            one.baseline_from_top_pt
+        );
+    }
+
+    #[test]
+    fn list_text_wraps_within_indented_column() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let root = doc.root;
+        let list = alloc_list(&mut doc, root, false);
+        // Force wrap by stuffing many words into one item.
+        let long: String = (0..40).map(|i| format!("word{i} ")).collect();
+        alloc_list_item(&mut doc, list, long.trim());
+        let result = LayoutEngine::new().layout(&doc);
+        let runs = &result.graph.pages[0].runs;
+        let text_left = MARGIN_PT + LIST_MARKER_GUTTER_PT;
+        let text_right = A4_WIDTH_PT - MARGIN_PT;
+        // Every non-marker run sits inside the indented text column.
+        for run in runs.iter().filter(|r| r.text != "\u{2022}") {
+            assert!(
+                run.x_pt >= text_left - 0.5,
+                "run `{}` at x={} is left of indented column {}",
+                run.text,
+                run.x_pt,
+                text_left
+            );
+            let end = run.x_pt + text_width(run.font, run.size_pt, &run.text);
+            assert!(
+                end <= text_right + 1e-3,
+                "run `{}` ends at {} past right edge {}",
+                run.text,
+                end,
+                text_right
+            );
+        }
     }
 }
