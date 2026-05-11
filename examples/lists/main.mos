@@ -67,8 +67,9 @@ typographic convention for numbered lists:
 11. eleven,
 12. twelve.
 
-The gutter floor (`LIST_MARKER_GUTTER_PT`) holds at the default body
-size up to two-digit markers. Three-digit ordered lists trigger the
-adaptive gutter — the layout engine shapes every marker the list will
-emit and widens the gutter to fit the worst case — so a 200-item list
-still keeps its `200.` clear of the indented text column.
+The gutter floor (`LIST_MARKER_GUTTER_PT`) accommodates up to
+two-digit markers at the default body size. Three-digit ordered lists
+trigger the adaptive gutter — the layout engine shapes every marker
+the list will emit and widens the gutter to fit the worst case — so a
+200-item list still keeps its `200.` clear of the indented text
+column.
