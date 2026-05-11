@@ -8,6 +8,8 @@
 	"wrap_guides": [120],
 	"languages": {
 		"Markdown": { "language_servers": ["rumdl", "!markdownlint"], "wrap_guides": [100] },
+		"JSON": { "wrap_guides": [140] },
+		"JSONC": { "wrap_guides": [140] },
 		"TOML": { "wrap_guides": [140] },
 		"Rust": { "wrap_guides": [100] }
 	}
