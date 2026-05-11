@@ -13,16 +13,15 @@
 
 Mosaic recognises two list flavours at the block level. An unordered
 list is opened by a line starting with `- `; the marker renders as a
-`•` in the gutter to the left of the item's text, and continuation
-across line wraps keeps the same hanging indent:
+`•` in the gutter to the left of the item's text, and the layout
+engine line-breaks long items while keeping every wrapped line flush
+with the first line's left edge:
 
 - A short item.
-- A longer item that intentionally runs past the right margin so the
-  greedy line breaker wraps it onto a second line — the wrapped text
-  hangs flush with the first line's left edge, never sliding back
-  under the marker.
-- *Italic*, **bold**, and `inline code` flow through unchanged inside
-  an item.
+- A long item authored as a single source line — the greedy line breaker wraps it onto a second visual line where the wrapped text hangs flush with the first line's left edge, never sliding back under the marker.
+- *Italic*, **bold**, and `inline code` flow through unchanged inside an item.
+
+Source-line continuation (a second `.mos` line that's *not* a fresh marker line) is out of scope in this slice: such a line opens a new paragraph block at the page margin rather than continuing the current item. Author long items on a single source line and let the layout engine break them.
 
 == Nesting
 
@@ -46,15 +45,14 @@ engine numbers each item starting from 1, in source order:
 
 5. first step,
 9. second step,
-27. and a long third step that runs well past the right margin so the
-line breaker has to wrap it back onto a second line at the same
-indent as the first — proving the hanging indent survives across
-wraps in numbered lists too.
+27. and a long third step authored as a single source line that runs well past the right margin so the layout engine has to wrap it onto a second visual line at the same indent as the first — proving the hanging indent survives across wraps in numbered lists too.
 
-== Wide markers
+== Right-aligned markers
 
-The gutter sizes itself against the widest marker the list will emit,
-so long ordered runs don't crash their numbers into the text column:
+Markers right-align against the inside edge of the gutter so the dots
+line up vertically across items of differing widths. Single-digit
+items sit further right than `10.` or `12.`, which is the standard
+typographic convention for numbered lists:
 
 1. one,
 2. two,
@@ -68,3 +66,9 @@ so long ordered runs don't crash their numbers into the text column:
 10. ten,
 11. eleven,
 12. twelve.
+
+The gutter floor (`LIST_MARKER_GUTTER_PT`) holds at the default body
+size up to two-digit markers. Three-digit ordered lists trigger the
+adaptive gutter — the layout engine shapes every marker the list will
+emit and widens the gutter to fit the worst case — so a 200-item list
+still keeps its `200.` clear of the indented text column.
