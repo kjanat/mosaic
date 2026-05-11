@@ -410,6 +410,21 @@ fn shown_cids_for_font(content: &[u8], resource_name: &[u8]) -> Result<Vec<u16>,
     Ok(cids)
 }
 
+fn font_switches(content: &[u8]) -> Result<Vec<Vec<u8>>, Box<dyn Error>> {
+    let decoded = Content::decode(content)?;
+    let mut switches = Vec::new();
+    for operation in decoded.operations {
+        if operation.operator != "Tf" {
+            continue;
+        }
+        let Some(Object::Name(name)) = operation.operands.first() else {
+            return Err("Tf operator missing font-name operand".into());
+        };
+        switches.push(name.clone());
+    }
+    Ok(switches)
+}
+
 fn cmap_maps_cid_to(cmap_text: &str, cid: u16, rhs_hex: &str) -> bool {
     let lhs = format!("<{cid:04X}>");
     let mut in_block = false;
@@ -548,29 +563,16 @@ fn mixed_latin_math_emits_two_resource_slots() -> TestResult {
 
 #[test]
 fn mixed_run_content_stream_switches_tf_in_source_order() -> TestResult {
-    // The content stream for `a≤b` must contain `/F15 ... Tj /F20 ... Tj
-    // /F15 ... Tj`, in that order. lopdf's stream parsing splits across
-    // operators; the rawest check is a substring scan over the content
-    // stream bytes for the resource names in source order.
+    // The content stream for `a≤b` must set fonts as F15 → F20 → F15,
+    // in source order. Parse operators so CID bytes cannot masquerade
+    // as font resource names.
     let (graph, _) = build_fallback_graph(EmbeddedFontId::Regular, MATH_FALLBACK, "a≤b");
     let (doc, _) = emit_graph(&graph)?;
     let content = extract_content_stream(&doc)?;
-    let f15_first = content
-        .windows(3)
-        .position(|w| w == b"F15")
-        .ok_or("F15 not in content stream")?;
-    let f20 = content
-        .windows(3)
-        .position(|w| w == b"F20")
-        .ok_or("F20 not in content stream — fallback not emitted")?;
-    let f15_second = content[f15_first + 3..]
-        .windows(3)
-        .position(|w| w == b"F15")
-        .map(|p| p + f15_first + 3)
-        .ok_or("only one F15 occurrence — primary run did not resume after fallback")?;
+    let switches = font_switches(&content)?;
     ensure!(
-        f15_first < f20 && f20 < f15_second,
-        "Tf switches not in source order: F15@{f15_first} F20@{f20} F15@{f15_second}",
+        switches == vec![b"F15".to_vec(), b"F20".to_vec(), b"F15".to_vec()],
+        "Tf switches not in source order: {switches:?}",
     );
     Ok(())
 }
