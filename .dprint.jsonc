@@ -4,8 +4,8 @@
 	"exec": {
 		"cwd": "${configDir}",
 		"commands": [
-			{ "command": "npx -y tombi format - --stdin-filename {{file_path}}", "exts": ["toml"] },
-			{ "command": "rustfmt --edition 2024", "exts": ["rs"], "cacheKeyFiles": ["rustfmt.toml"] },
+			{ "command": "tombi format - --stdin-filename {{file_path}}", "exts": ["toml"] }, // If missing, run bunx tombi, or uvx tombi, o
+			{ "command": "rustfmt", "exts": ["rs"], "cacheKeyFiles": ["rustfmt.toml"] },
 		],
 	},
 	"excludes": [

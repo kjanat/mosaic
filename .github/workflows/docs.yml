@@ -1,9 +1,5 @@
 name: docs
-
-run-name: >-
-  ${{ format('docs: {0}',
-    case(github.event_name == 'workflow_dispatch', 'manual dispatch', github.event.head_commit.message)
-  ) }} by @${{ github.actor }}
+run-name: "${{ format('docs: {0}', case(github.event_name == 'workflow_dispatch', 'manual dispatch', github.event.head_commit.message)) }} by @${{ github.actor }}"
 
 on:
   push:
@@ -11,14 +7,9 @@ on:
     paths-ignore: ["**/*.md", "LICENSE", ".gitignore", ".dprint.jsonc", "tombi.toml"]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+permissions: read-all
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
+concurrency: { group: pages, cancel-in-progress: true }
 
 env:
   CARGO_TERM_COLOR: always
@@ -71,6 +62,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

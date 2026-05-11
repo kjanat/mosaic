@@ -1,5 +1,4 @@
 name: CI
-
 run-name: >-
   ${{ format('{0}: {1}',
     case(github.event_name == 'pull_request', format('PR #{0}', github.event.pull_request.number), github.ref_name),
@@ -13,8 +12,7 @@ on:
   pull_request:
     paths-ignore: ["**/*.md", "LICENSE", ".gitignore", ".dprint.jsonc", "tombi.toml"]
 
-permissions:
-  contents: read
+permissions: read-all
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -32,16 +30,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: tombi-toml/setup-tombi@v1
+      - uses: kjanat/install-dprint@v1
+      - uses: kjanat/install-shfmt@v1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+        with: { components: "rustfmt, clippy" }
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: rustfmt
-        run: cargo fmt --all -- --check
+      - name: fmt
+        run: dprint fmt --diff --allow-no-files --fail-on-change
 
       - name: clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -55,7 +55,7 @@ jobs:
       - name: Upload debug binaries
         uses: actions/upload-artifact@v7
         with:
-          name: mosaic-binaries-linux-x86_64
+          name: mosaic-binaries-linux-x86_64-${{ github.sha }}
           path: |
             target/debug/mos
             target/debug/mos-lsp
@@ -66,21 +66,18 @@ jobs:
         run: cargo doc --workspace --no-deps
 
   msrv:
-    name: build on MSRV (1.95)
+    name: build on MSRV
     runs-on: ubuntu-latest
-    env:
-      RUSTUP_TOOLCHAIN: "1.95"
+    env: { RUSTUP_TOOLCHAIN: 1.95 }
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install Rust 1.95
+      - name: Install Rust ${{ env.RUSTUP_TOOLCHAIN }}
         uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.95"
+        with: { toolchain: "${{ env.RUSTUP_TOOLCHAIN }}" }
 
       - uses: Swatinem/rust-cache@v2
-        with:
-          key: msrv
+        with: { key: msrv }
 
       - name: build
         run: cargo build --workspace --all-targets
