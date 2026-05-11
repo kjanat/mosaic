@@ -20,4 +20,4 @@ rr = "run --release"
 lint = "clippy --workspace --all-targets -- -D warnings"
 
 # Run the `mos` CLI from the workspace without typing `-p mosaic-cli`.
-mos = "run -q -p mosaic-cli --"
+mos = "run --release -q -p mosaic-cli --"
