@@ -25,9 +25,11 @@ Source-line continuation (a second `.mos` line that's *not* a fresh marker line)
 
 == Nesting
 
-Indenting a marker line by two spaces makes it a child of the most
-recent item at the outer indent. Indents nest arbitrarily deep, and
-ordered / unordered lists can mix freely across levels:
+A marker line indented deeper than its parent becomes a child of the
+most recent item at the outer indent — the parser compares relative
+indents, so any greater indentation works (two spaces is just the
+house convention). Indents nest arbitrarily deep, and marker kinds
+can change at deeper levels:
 
 - Outer item one.
   - First nested child.
@@ -37,6 +39,13 @@ ordered / unordered lists can mix freely across levels:
     1. ordered grandchild,
     2. and another.
 - Outer item three.
+
+Marker kinds do **not** mix at the *same* indent — switching from
+`- ` to `1. ` (or vice versa) at one level closes the first list and
+opens a second adjacent one:
+
+- unordered item, ends this list,
+1. ordered item, starts a new one.
 
 == Numbered lists renumber from 1
 
