@@ -26,8 +26,8 @@
 //!    - `WinAnsi natives`: have `winansi_byte(ch) = Some(b)`. The byte
 //!      `b` is **claimed** — it can't be repurposed for a `Differences`
 //!      remap because the content stream already uses it.
-//!    - `Extended`: no `winansi_byte`, but `glyph_name(ch)` resolves to
-//!      an AFM glyph name. Needs a remapped slot.
+//!    - `Extended`: no `winansi_byte`, but `extended_glyph_name(ch)`
+//!      resolves to an AFM glyph name. Needs a remapped slot.
 //!    - `Unmappable`: neither (Cyrillic, CJK, emoji). Won't occur in
 //!      practice — the layout engine substitutes these to `?` upstream.
 //!      We treat them defensively as `?` here.
@@ -166,7 +166,7 @@ fn plan_face(
             byte_for_char.insert(ch, byte);
             to_unicode.insert(byte, ch);
             claimed[usize::from(byte)] = true;
-        } else if mosaic_fonts::glyph_name(ch).is_some() {
+        } else if mosaic_fonts::extended_glyph_name(ch).is_some() {
             extended.push(ch);
         }
         // No `else`: layout substituted unmappable chars to `?`
@@ -199,14 +199,14 @@ fn plan_face(
     let mut overflowed: usize = 0;
 
     for ch in extended {
-        let Some(name) = mosaic_fonts::glyph_name(ch) else {
+        let Some(name) = mosaic_fonts::extended_glyph_name(ch) else {
             continue;
         };
         // Defensive: confirm the face actually carries this glyph.
         // For the 12 Latin Core 14 faces the AGL subset only points
         // at glyphs present in every Latin AFM, so this always
         // succeeds; the check guards against future expansion of
-        // `glyph_name` past the shared 315-name inventory.
+        // `extended_glyph_name` past the shared 315-name inventory.
         if face.glyph_width_by_name(name).is_none() {
             overflowed += 1;
             continue;

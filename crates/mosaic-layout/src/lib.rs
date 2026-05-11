@@ -686,7 +686,7 @@ fn read_str_attr<'a>(node: &'a Node, key: &str) -> Option<&'a str> {
 /// - `WinAnsi` natives (`mosaic_fonts::winansi_byte` returns
 ///   `Some`): ASCII, Latin-1, the Windows band (`0x80..=0x9F`), plus
 ///   `š`/`ž`/`Š`/`Ž`.
-/// - Extended glyphs (`mosaic_fonts::glyph_name` returns `Some`):
+/// - Extended glyphs (`mosaic_fonts::extended_glyph_name` returns `Some`):
 ///   the rest of Latin Extended-A (`Ł`, `ł`, `Ě`, `ě`, `Ő`, `ő`, …),
 ///   the Romanian comma-below set, spacing diacritics, math
 ///   operators, `fi`/`fl` ligatures. These have no `WinAnsi` byte
@@ -703,7 +703,8 @@ fn sanitize_text(raw: &str, span: &SourceSpan, diagnostics: &mut Vec<Diagnostic>
     for ch in raw.chars() {
         if ch == '\n' || ch == '\r' || ch == '\t' {
             out.push(' ');
-        } else if mosaic_fonts::winansi_byte(ch).is_some() || mosaic_fonts::glyph_name(ch).is_some()
+        } else if mosaic_fonts::winansi_byte(ch).is_some()
+            || mosaic_fonts::extended_glyph_name(ch).is_some()
         {
             out.push(ch);
         } else {
@@ -890,7 +891,7 @@ mod tests {
     fn extended_latin_passes_through_without_warning() {
         // Polish + Czech: every char is either a WinAnsi native
         // (`ó`, `r`, `i`, …) or an extended glyph reachable via
-        // `glyph_name` (`ł`, `Ł`, `ě`, `ř`, `ž` is WinAnsi at 0x9E).
+        // `extended_glyph_name` (`ł`, `Ł`, `ě`, `ř`; `ž` is WinAnsi at 0x9E).
         // No substitution, no W040.
         let mut doc = Document::new(PathBuf::from("test.mos"));
         make_paragraph(&mut doc, "Łódź — Příliš");

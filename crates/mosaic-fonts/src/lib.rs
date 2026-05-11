@@ -21,7 +21,7 @@
 //!   `Ě`, `ě`, `Ő`, `ő`, …), the comma-below Romanian set
 //!   (`Ș`/`ș`/`Ț`/`ț`), the spacing diacritics (`˘ˇ˙˝˛˚`), the math
 //!   operators (`−≤≥≠√∂∑∆◊`), the `fraction` slash `⁄`, and the
-//!   `fi`/`fl` ligatures. Look up with [`glyph_name`]. The PDF
+//!   `fi`/`fl` ligatures. Look up with [`extended_glyph_name`]. The PDF
 //!   backend addresses these through a per-document `/Differences`
 //!   encoding (the 256-slot ceiling caps about 100 extra glyphs per
 //!   face per document — well above any realistic European doc).
@@ -33,7 +33,7 @@
 
 #![deny(missing_docs)]
 
-pub use pdf_base14_metrics::{Base14Font, glyph_name, winansi_byte};
+pub use pdf_base14_metrics::{Base14Font, extended_glyph_name, winansi_byte};
 
 /// One of the 14 standard PDF fonts, wrapped in a newtype.
 ///
@@ -162,7 +162,7 @@ pub fn descent(font: Font, size: f32) -> f32 {
 /// Two lookup tiers: `WinAnsi` natives go through the baked
 /// `[Option<f32>; 256]` table (O(1)); extended glyphs reachable via
 /// `/Differences` (Latin Extended-A, math operators, ligatures —
-/// resolved through [`glyph_name`]) go through the baked sorted
+/// resolved through [`extended_glyph_name`]) go through the baked sorted
 /// `(name, width)` index (O(log n)). The PDF emit path mirrors this
 /// split: `WinAnsi` natives go out as their native byte, extended
 /// glyphs go out as remapped bytes in a `/Differences` array.
@@ -170,7 +170,7 @@ pub fn descent(font: Font, size: f32) -> f32 {
 /// # Panics
 ///
 /// Panics if `ch` is neither a `WinAnsi` native nor resolvable
-/// through [`glyph_name`] (Cyrillic, CJK, emoji, …) — the layout
+/// through [`extended_glyph_name`] (Cyrillic, CJK, emoji, …) — the layout
 /// engine substitutes those to `?` at the `sanitize_text` boundary
 /// before any measurement reaches here. Also panics if `font` is
 /// `Symbol`/`ZapfDingbats` (no `WinAnsi` table for those).
@@ -191,7 +191,7 @@ fn glyph_width_units(font: Font, ch: char) -> f32 {
         );
         return width.unwrap_or(0.0);
     }
-    let name_opt = glyph_name(ch);
+    let name_opt = extended_glyph_name(ch);
     assert!(
         name_opt.is_some(),
         "char {ch:?} (U+{:04X}) has no glyph in the Core 14 AFMs; \
@@ -302,7 +302,7 @@ mod tests {
     }
 
     #[test]
-    fn helvetica_lslash_resolves_through_glyph_name_lookup() {
+    fn helvetica_lslash_resolves_through_extended_glyph_name_lookup() {
         // Polish "ł" (U+0142) has no WinAnsi byte but exists in
         // Helvetica.afm as `lslash` (WX 222). The PDF backend will
         // address it through /Differences; the fonts crate measures

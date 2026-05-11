@@ -303,26 +303,46 @@ pub fn winansi_byte(ch: char) -> Option<u8> {
 #[doc(hidden)]
 pub const __WINANSI_CHAR_MAP: [Option<char>; 256] = winansi_char_map::WINANSI_CHAR_MAP;
 
-/// Returns the PostScript glyph name for `ch` if it is one of the
-/// non-`WinAnsi` glyphs known to live in every Adobe Core 14 Latin
-/// AFM: most of Latin Extended-A (`Ł`, `ł`, `Ě`, `ě`, `Ő`, `ő`, …,
-/// except those that already live in `WinAnsi` like `š`/`Š`/`ž`/`Ž`),
-/// the Latin Extended-B comma-below set `Ș`/`ș`/`Ț`/`ț`, the spacing
-/// diacritics `˘ˇ˙˝˛˚`, the math operators `−≤≥≠√∂∑∆◊`, the
-/// `fraction` slash `⁄`, and the `fi`/`fl` ligatures.
+/// Returns the PostScript glyph name for `ch` *if and only if* `ch`
+/// is in the **extended** tier — i.e. a Core 14 AFM glyph that has
+/// no `WinAnsi` byte and therefore must be reached through a custom
+/// `/Encoding` `/Differences` slot. The extended tier covers:
 ///
-/// Returns `None` for `WinAnsi` natives — `š` (U+0161), `ž` (U+017E),
-/// `Š`, `Ž`, the accented Latin-1 alphabet, `€`, `“`, ... live in
-/// `WinAnsi` and are reachable through [`winansi_byte`] instead.
-/// Returns `None` for codepoints with no glyph in any Core 14 font
-/// (Cyrillic, CJK, emoji, most non-European scripts) — for those the
-/// PDF backend substitutes `?` and emits a `W040` warning.
+/// - most of Latin Extended-A (`Ł`, `ł`, `Ě`, `ě`, `Ő`, `ő`, …,
+///   excluding those that already live in `WinAnsi` like
+///   `š`/`Š`/`ž`/`Ž`);
+/// - the Latin Extended-B comma-below set `Ș`/`ș`/`Ț`/`ț`;
+/// - the spacing diacritics `˘ˇ˙˝˛˚`;
+/// - the math operators `−≤≥≠√∂∑∆◊`;
+/// - the `fraction` slash `⁄` and the `fi`/`fl` ligatures.
 ///
-/// Used by the PDF backend's `/Differences`-based encoding planner to
-/// resolve non-`WinAnsi` codepoints to glyph names that can be placed
-/// in a custom encoding dictionary.
+/// Returns `None` for **two distinct cases that callers must
+/// distinguish**:
+///
+/// 1. **`WinAnsi` natives** — `š` (U+0161), `ž` (U+017E), `Š`, `Ž`,
+///    the accented Latin-1 alphabet, `€`, `“`, ... These *do* have
+///    PostScript glyph names in the AFM, but this function returns
+///    `None` for them because they're reachable through
+///    [`winansi_byte`] instead and don't need a `/Differences` slot.
+///    Callers querying "what's the AFM glyph name for `é`?" should
+///    use [`Base14Font::glyph_width_by_name`] on the result of
+///    [`winansi_glyph_name`]`(`[`winansi_byte`]`(ch)?)`, or just
+///    measure widths through [`Base14Font::winansi_width`].
+/// 2. **Unmappable codepoints** with no glyph in any Core 14 font
+///    (Cyrillic, CJK, emoji, most non-European scripts). The PDF
+///    backend substitutes these to `?` upstream and emits a `W040`
+///    warning.
+///
+/// The name `extended_glyph_name` is deliberately chosen over the
+/// shorter `glyph_name` to avoid surprising readers who reach for
+/// the function expecting "AFM name for any char." For *any-tier*
+/// AFM lookup the two-step (`winansi_glyph_name` ∘ `winansi_byte`)
+/// then-fallback-to-`extended_glyph_name` composition is the way.
+///
+/// Used by the PDF backend's `/Differences`-based encoding planner
+/// to allocate slots for the extended tier.
 #[must_use]
-pub fn glyph_name(ch: char) -> Option<&'static str> {
+pub fn extended_glyph_name(ch: char) -> Option<&'static str> {
     agl_subset::agl_glyph_name(ch)
 }
 
@@ -389,11 +409,16 @@ mod tests {
     }
 
     #[test]
-    fn public_glyph_name_resolves_polish_and_czech() {
-        assert_eq!(glyph_name('ł'), Some("lslash"));
-        assert_eq!(glyph_name('Ł'), Some("Lslash"));
-        assert_eq!(glyph_name('ě'), Some("ecaron"));
-        // ž is in WinAnsi, not in our subset.
-        assert_eq!(glyph_name('ž'), None);
+    fn extended_glyph_name_resolves_polish_and_czech() {
+        assert_eq!(extended_glyph_name('ł'), Some("lslash"));
+        assert_eq!(extended_glyph_name('Ł'), Some("Lslash"));
+        assert_eq!(extended_glyph_name('ě'), Some("ecaron"));
+        // ž is a WinAnsi native, not in the extended tier — by
+        // contract `extended_glyph_name` returns `None` even though
+        // the AFM does carry a `zcaron` glyph (reachable through
+        // `winansi_byte` / `winansi_glyph_name` instead).
+        assert_eq!(extended_glyph_name('ž'), None);
+        // 'A' is also a WinAnsi native and returns None.
+        assert_eq!(extended_glyph_name('A'), None);
     }
 }
