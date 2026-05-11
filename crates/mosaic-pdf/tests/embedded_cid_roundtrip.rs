@@ -238,3 +238,44 @@ fn re_exported_layout_id_matches_fonts_id() {
     // resolve to the same enum.
     assert_eq!(LayoutEmbeddedFontId::Regular, EmbeddedFontId::Regular,);
 }
+
+#[test]
+fn notdef_glyphs_dont_pollute_tounicode() -> TestResult {
+    // CJK + emoji aren't in Noto Sans Regular's coverage, so rustybuzz
+    // emits gid 0 (`.notdef`) for those codepoints. The ToUnicode CMap
+    // must not record a Unicode mapping for gid 0 — otherwise every
+    // unsupported character round-trips back to whichever source
+    // codepoint happened to be first.
+    let (doc, _) = render(EmbeddedFontId::Regular, "日本 🦀")?;
+    let type0 = font_dict(&doc, b"F15")?;
+    let Object::Reference(cmap_id) = type0.get(b"ToUnicode")? else {
+        return Err("expected indirect /ToUnicode".into());
+    };
+    let Object::Stream(cmap_stream) = doc.get_object(*cmap_id)? else {
+        return Err("ToUnicode is not a stream".into());
+    };
+    let cmap_text = String::from_utf8_lossy(&cmap_stream.content);
+    // `.notdef` is CID 0 under /CIDToGIDMap /Identity. No `<0000>`
+    // entry should appear on the LHS of any bfchar/bfrange mapping.
+    // Scan only the body of `begin{bfchar,bfrange}..end…` blocks; the
+    // `<0000> <FFFF>` codespacerange header is required and unrelated.
+    let mut in_block = false;
+    for line in cmap_text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("beginbfchar") || trimmed.starts_with("beginbfrange") {
+            in_block = true;
+            continue;
+        }
+        if trimmed.starts_with("endbfchar") || trimmed.starts_with("endbfrange") {
+            in_block = false;
+            continue;
+        }
+        if in_block && trimmed.starts_with("<0000>") {
+            return Err(format!(
+                "ToUnicode CMap maps gid 0 (.notdef): {trimmed}\nFull:\n{cmap_text}"
+            )
+            .into());
+        }
+    }
+    Ok(())
+}

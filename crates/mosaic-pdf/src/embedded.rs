@@ -129,6 +129,18 @@ fn accumulate_glyphs(
         let cluster_str = source.get(cluster..next_cluster).unwrap_or("");
         for (k, g) in glyphs[i..j].iter().enumerate() {
             gids.push(g.gid);
+            // GID 0 is `.notdef` — rustybuzz emits it for codepoints
+            // the face doesn't cover. Recording a Unicode mapping for
+            // it would round-trip every unsupported character back to
+            // whichever source text happened to land on GID 0 first
+            // (e.g. `日本` shaped against a Latin-only face would
+            // round-trip `.notdef` glyphs to `日`). Leaving it out of
+            // `gid_to_text` keeps the CMap silent on `.notdef`, which
+            // is the right behaviour: PDF readers treat a missing
+            // bfchar entry as "no Unicode equivalent".
+            if g.gid == 0 {
+                continue;
+            }
             gid_to_text.entry(g.gid).or_insert_with(|| {
                 if k == 0 {
                     cluster_str.to_owned()
