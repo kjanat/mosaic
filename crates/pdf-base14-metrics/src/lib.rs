@@ -42,9 +42,9 @@
 //! # License
 //!
 //! The crate's Rust source is MIT. The 14 vendored AFM files in
-//! `data/` ship under Adobe's permissive Core 14 AFM license — see
-//! `LICENSE-Adobe-Core14-AFM` in the crate root. The combined SPDX
-//! expression is `MIT AND LicenseRef-Adobe-Core14-AFM`.
+//! `data/afm/` ship under Adobe's permissive Core 14 AFM license
+//! (`APAFML`) — see `LICENSE-APAFML` in the crate root. The combined
+//! SPDX expression is `MIT AND APAFML`.
 
 #![deny(missing_docs)]
 
@@ -236,10 +236,9 @@ pub fn winansi_glyph_name(code: u8) -> Option<&'static str> {
 /// Returns the PDF `WinAnsiEncoding` byte that encodes `ch`, or
 /// `None` if `ch` has no slot in `WinAnsi`.
 ///
-/// The inverse of the byte→char mapping baked into
-/// `WINANSI_CHAR_MAP` at build time from `WINANSI_TABLE`
-/// (PDF 1.7 Annex D.2 Table D.2) cross-referenced with the
-/// [Adobe Glyph List]. Returns `None` for:
+/// The inverse of the byte→char mapping transcribed from
+/// PDF 1.7 Annex D.2 Table D.2 into
+/// `winansi_char_map::WINANSI_CHAR_MAP`. Returns `None` for:
 ///
 /// - Characters that have no glyph in `WinAnsi` (Cyrillic, CJK,
 ///   most accented Vietnamese, etc.).
@@ -248,24 +247,18 @@ pub fn winansi_glyph_name(code: u8) -> Option<&'static str> {
 ///
 /// O(n) scan over 256 slots — fine for callers that touch it once
 /// per text run, sensible to memoize for hotter paths.
-///
-/// [Adobe Glyph List]: https://github.com/adobe-type-tools/agl-aglfn
 #[must_use]
 pub fn winansi_byte(ch: char) -> Option<u8> {
-    WINANSI_CHAR_MAP
+    winansi_char_map::WINANSI_CHAR_MAP
         .iter()
         .position(|&c| c == Some(ch))
         .and_then(|i| u8::try_from(i).ok())
 }
 
-// Test-only visibility shims for `tests/winansi_vendor.rs`. Both
-// constants are `#[doc(hidden)]` so they don't leak into the public
-// docs, and live here only so an integration test can prove the
-// hand-curated table in `src/winansi_char_map.rs` matches the
-// AGL-derived oracle baked at build time. If/when the AGL build path
-// is retired, drop `__WINANSI_CHAR_MAP_AGL` along with the resolver.
+// Test-only visibility shim for `tests/winansi_vendor.rs`. The const
+// is `#[doc(hidden)]` so it doesn't leak into the public API surface,
+// and lives here only so the integration test can re-derive the same
+// map from the Adobe Glyph List at test runtime and assert
+// byte-for-byte equality.
 #[doc(hidden)]
-pub const __WINANSI_CHAR_MAP_AGL: [Option<char>; 256] = WINANSI_CHAR_MAP;
-#[doc(hidden)]
-pub const __WINANSI_CHAR_MAP_LITERAL: [Option<char>; 256] =
-    winansi_char_map::WINANSI_CHAR_MAP_LITERAL;
+pub const __WINANSI_CHAR_MAP: [Option<char>; 256] = winansi_char_map::WINANSI_CHAR_MAP;
