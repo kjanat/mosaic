@@ -21,7 +21,7 @@ pdf-writer = { workspace = true }
 # (the actual subsetting happens inside mosaic-fonts). Direct dep so
 # the type appears in the public emit-side API without re-exporting
 # the whole crate through mosaic-fonts.
-subsetter = "0.2"
+subsetter  = "0.2"
 
 [dev-dependencies]
 # `lopdf` only used in integration tests to parse the PDFs we produce
