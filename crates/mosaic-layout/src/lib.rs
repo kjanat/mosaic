@@ -8,9 +8,7 @@
 //! §22.1, §22.2). Boundary-state reuse for incremental builds
 //! (§22.3, §33) is also out of scope here.
 
-mod metrics;
-
-pub use metrics::{ALL_FONTS, Font, ascent, descent, glyph_width, glyph_width_units, text_width};
+pub use mosaic_fonts::{Base14Font, Font, ascent, descent, glyph_width, text_width};
 
 use mosaic_core::{
     AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeKind, Severity, SourceSpan,
@@ -438,7 +436,8 @@ impl LayoutState {
         if self.page_has_content {
             self.cursor_y += space_before;
         }
-        let mut words = self.collect_words(document, section, Font::HelveticaBold, size);
+        let mut words =
+            self.collect_words(document, section, Font(Base14Font::HelveticaBold), size);
         // Resolver-assigned section number is rendered as a leading
         // word so it gets the same font/size as the title and flows
         // through the existing line-break path. The trailing `.` is
@@ -446,12 +445,12 @@ impl LayoutState {
         // (manifest §4) overrides it once `#set` is interpreted.
         if let Some(number) = read_str_attr(section, "number") {
             let prefix = format!("{number}.");
-            let width_pt = text_width(Font::HelveticaBold, size, &prefix);
+            let width_pt = text_width(Font(Base14Font::HelveticaBold), size, &prefix);
             words.insert(
                 0,
                 Word {
                     text: prefix,
-                    font: Font::HelveticaBold,
+                    font: Font(Base14Font::HelveticaBold),
                     size_pt: size,
                     width_pt,
                 },
@@ -464,7 +463,7 @@ impl LayoutState {
     fn layout_paragraph(&mut self, document: &Document, paragraph: &Node) {
         let size = self.text.size_pt;
         let leading = self.text.leading;
-        let words = self.collect_words(document, paragraph, Font::Helvetica, size);
+        let words = self.collect_words(document, paragraph, Font(Base14Font::Helvetica), size);
         self.flow_words(&words, leading);
         self.cursor_y += PARA_SPACE_AFTER_PT;
     }
@@ -486,9 +485,9 @@ impl LayoutState {
                 continue;
             };
             let font = match child.kind {
-                NodeKind::Strong => Font::HelveticaBold,
-                NodeKind::Emphasis => Font::HelveticaOblique,
-                NodeKind::Raw => Font::Courier,
+                NodeKind::Strong => Font(Base14Font::HelveticaBold),
+                NodeKind::Emphasis => Font(Base14Font::HelveticaOblique),
+                NodeKind::Raw => Font(Base14Font::Courier),
                 _ => default_font,
             };
             let raw = match child.attributes.get("text") {
@@ -788,10 +787,10 @@ mod tests {
         let runs = &result.graph.pages[0].runs;
         assert!(runs.len() >= 2, "expected at least 2 runs, got {runs:?}");
         // Heading first, body below it.
-        assert!(matches!(runs[0].font, Font::HelveticaBold));
+        assert!(matches!(runs[0].font, Font(Base14Font::HelveticaBold)));
         assert_eq!(runs[0].text, "Hello");
         let body_run = runs.iter().find(|r| r.text == "body").expect("body run");
-        assert!(matches!(body_run.font, Font::Helvetica));
+        assert!(matches!(body_run.font, Font(Base14Font::Helvetica)));
         assert!(body_run.baseline_from_top_pt > runs[0].baseline_from_top_pt);
     }
 
@@ -828,7 +827,7 @@ mod tests {
             .iter()
             .find(|r| r.text == "italic")
             .expect("italic run");
-        assert!(matches!(italic.font, Font::HelveticaOblique));
+        assert!(matches!(italic.font, Font(Base14Font::HelveticaOblique)));
     }
 
     #[test]
@@ -877,12 +876,12 @@ mod tests {
         let result = LayoutEngine::new().layout(&doc);
         let runs = &result.graph.pages[0].runs;
         let code_run = runs.iter().find(|r| r.text == "code").expect("code run");
-        assert!(matches!(code_run.font, Font::Courier));
+        assert!(matches!(code_run.font, Font(Base14Font::Courier)));
         // Adjacent runs stay in the default Helvetica face so the
         // engine isn't accidentally promoting everything to Courier.
         assert!(matches!(
             runs.iter().find(|r| r.text == "before").unwrap().font,
-            Font::Helvetica
+            Font(Base14Font::Helvetica)
         ));
     }
 
@@ -932,7 +931,7 @@ mod tests {
         let mut first_word_page: Option<u32> = None;
         for page in &result.graph.pages {
             for run in &page.runs {
-                if run.text == "After" && matches!(run.font, Font::HelveticaBold) {
+                if run.text == "After" && matches!(run.font, Font(Base14Font::HelveticaBold)) {
                     heading_page = Some(page.number);
                 }
                 if run.text == "word0" && first_word_page.is_none() {
@@ -972,7 +971,7 @@ mod tests {
         alloc_inline(&mut doc, section, NodeKind::Text, "Background");
         let result = LayoutEngine::new().layout(&doc);
         let runs = &result.graph.pages[0].runs;
-        assert!(matches!(runs[0].font, Font::HelveticaBold));
+        assert!(matches!(runs[0].font, Font(Base14Font::HelveticaBold)));
         assert_eq!(runs[0].text, "2.1.");
         assert!(runs.iter().any(|r| r.text == "Background"));
         // The number's baseline matches the title's baseline because
@@ -1006,7 +1005,7 @@ mod tests {
         let result = LayoutEngine::new().layout(&doc);
         let runs = &result.graph.pages[0].runs;
         let reference = runs.iter().find(|r| r.text == "1.2").expect("ref run");
-        assert!(matches!(reference.font, Font::Helvetica));
+        assert!(matches!(reference.font, Font(Base14Font::Helvetica)));
     }
 
     fn alloc_set_block(doc: &mut Document, target: &str, args: &[(&str, AttrValue)]) -> NodeId {
