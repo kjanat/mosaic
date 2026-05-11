@@ -43,7 +43,7 @@ sidesteps that entirely: the comma-below glyphs come from the
 font we bundled, not from whatever Helvetica clone the reader
 fell back to.
 
-**Matematyka.** 2 + 3 ≤ 6, √16 = 4, ∂f/∂x ≠ 0, ∑(1..n). The
+**Matematyka.** 2 + 3 − 1 ≤ 6, √16 = 4, ∂f/∂x ≠ 0, ∑(1..n). The
 ≤, √, ∂, ≠, and ∑ are not part of the Noto Sans Regular cut.
 They are not part of the *Italic* or **Bold** cuts either.
 The minus sign U+2212 is, for reasons known only to the Noto
