@@ -17,7 +17,7 @@ use mosaic_core::{
     AttrMap, AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeId, NodeKind, Severity,
     SourceSpan, StyleId,
 };
-use mosaic_parse::{Inline, InlineKind, Item, SetArg, SetValue, SyntaxTree};
+use mosaic_parse::{DirectiveKind, Inline, InlineKind, Item, SetArg, SetValue, SyntaxTree};
 
 pub use resolve::resolve;
 
@@ -119,8 +119,19 @@ impl Evaluator {
                     );
                     lower_inlines(&mut document, para, inlines);
                 }
-                Item::Set { name, args, span } => match name.as_str() {
-                    "image" => {
+                Item::Set {
+                    kind,
+                    name,
+                    args,
+                    span,
+                } => match kind {
+                    // `DirectiveKind` (set by the parser) is the
+                    // discriminator here, *not* `name` — `#set image(...)`
+                    // and `#image(...)` are both parsed with `name ==
+                    // "image"`, and dispatching on the string would
+                    // route `#set image(width: 200pt)` into the image
+                    // loader and incorrectly raise E050 "missing path".
+                    DirectiveKind::Image => {
                         lower_image_directive(
                             &mut document,
                             root,
@@ -130,7 +141,7 @@ impl Evaluator {
                             &mut diagnostics,
                         );
                     }
-                    "figure" => {
+                    DirectiveKind::Figure => {
                         lower_figure_directive(
                             &mut document,
                             root,
@@ -140,7 +151,7 @@ impl Evaluator {
                             &mut diagnostics,
                         );
                     }
-                    _ => lower_set_directive(
+                    DirectiveKind::Set => lower_set_directive(
                         &mut document,
                         root,
                         name,
@@ -327,13 +338,14 @@ fn lower_figure_directive(
                     .with_span(arg.value_span.clone()),
                 ),
             },
-            "" => diagnostics.push(
-                Diagnostic::error(
-                    DiagnosticCode("E015"),
-                    "`#figure(...)` does not accept positional arguments; use `image: \"path\"`",
-                )
-                .with_span(arg.value_span.clone()),
-            ),
+            // A leading positional string is the same shorthand
+            // `#image(...)` accepts — `#figure("scan.png")` is the
+            // captioned-image short form, equivalent to
+            // `#figure(image: "scan.png")`. The parser already
+            // recognises this spelling, so the lowerer must too;
+            // otherwise the advertised public syntax dies at lower
+            // time (CodeRabbit caught this regression).
+            "" => image_args.push(arg.clone()),
             _ => diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode("E021"),
@@ -1089,17 +1101,59 @@ mod tests {
     }
 
     #[test]
+    fn figure_directive_accepts_positional_path() {
+        // `#figure("path.png")` is the captionless short form. The
+        // parser accepts it; the lowerer used to reject it with E015,
+        // which broke the spelling end-to-end.
+        let png_path = write_tiny_png("fig_pos.png");
+        let source = png_path.parent().unwrap().join("main.mos");
+        std::fs::write(&source, "#figure(\"fig_pos.png\")\n").unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let figure = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Figure)
+            .expect("Figure node");
+        // One child: just the image (no caption was supplied).
+        assert_eq!(figure.children.len(), 1);
+        let img = r.document.get(figure.children[0]).unwrap();
+        assert_eq!(img.kind, NodeKind::Image);
+        assert_eq!(
+            img.attributes.get("src"),
+            Some(&AttrValue::Str("fig_pos.png".to_owned()))
+        );
+        std::fs::remove_dir_all(png_path.parent().unwrap()).ok();
+    }
+
+    #[test]
     fn set_image_width_is_accepted_without_error() {
-        // Schema acceptance — even though MVP 1.5 doesn't apply
-        // `#set image(width: ...)` to bare images yet, the directive
-        // should not emit E020 (unknown target) or E021 (unknown key).
+        // `#set image(width: 200pt)` must lower as a style-config Raw
+        // node, *not* as an image directive (which would raise E050
+        // for the missing path). The parser tags the two shapes with
+        // distinct `DirectiveKind`s — this test guards the routing.
         let r = lower("#set image(width: 200pt)\n", &PathBuf::from("test.mos"));
         assert!(
-            !r.diagnostics
-                .iter()
-                .any(|d| d.code.0 == "E020" || d.code.0 == "E021"),
+            r.diagnostics.is_empty(),
             "unexpected diagnostics: {:?}",
             r.diagnostics
+        );
+        // No Image node — `#set image(...)` is style configuration,
+        // not a placement.
+        assert!(!r.document.nodes().any(|n| n.kind == NodeKind::Image));
+        // The Raw set node carries the image target + width slot.
+        let raw = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Raw && n.attributes.contains_key("set"))
+            .expect("set Raw node");
+        assert_eq!(
+            raw.attributes.get("set"),
+            Some(&AttrValue::Str("image".to_owned()))
+        );
+        assert_eq!(
+            raw.attributes.get("set.arg.width"),
+            Some(&AttrValue::Length(200.0))
         );
     }
 }

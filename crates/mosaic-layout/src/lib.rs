@@ -613,11 +613,52 @@ impl LayoutState {
         self.cursor_y += render_h + PARA_SPACE_AFTER_PT;
     }
 
-    /// Lay out a `Figure` block: each child Image is laid out as a
-    /// block, then any caption paragraph is rendered beneath it. The
-    /// figure as a whole tracks vertical cursor advancement so a
-    /// following paragraph picks up beneath the caption.
+    /// Lay out a `Figure` block: image children render as blocks, the
+    /// caption paragraph renders beneath them, and the whole figure
+    /// is kept on one page when the remaining space allows. If the
+    /// combined height of every child plus inter-block spacing
+    /// wouldn't fit on the current page, the figure begins a fresh
+    /// page so the image and its caption stay together.
     fn layout_figure(&mut self, document: &Document, figure: &Node) {
+        // Pre-flight the combined height. Image heights come from
+        // `intrinsic_image_size` (with the same column clamping
+        // `layout_image` applies), caption heights from a dry-run
+        // line-breaker. Inter-block spacing matches what each
+        // `layout_*` call adds.
+        let column_w = self.column_width_pt();
+        let mut total_h = 0.0_f32;
+        let mut block_count = 0_u32;
+        for child_id in &figure.children {
+            let Some(child) = document.get(*child_id) else {
+                continue;
+            };
+            let block_h = match child.kind {
+                NodeKind::Image => self.intrinsic_image_size(child).map_or(0.0, |(w, h)| {
+                    let render_w = w.min(column_w);
+                    if w > 0.0 && render_w < w {
+                        render_w * (h / w)
+                    } else {
+                        h
+                    }
+                }),
+                NodeKind::Paragraph => self.measure_paragraph_height(document, child),
+                _ => continue,
+            };
+            total_h += block_h;
+            block_count += 1;
+        }
+        // Each child's `layout_*` adds `PARA_SPACE_AFTER_PT` after it.
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "a figure with > 2^23 children is not a real document"
+        )]
+        if block_count > 0 {
+            total_h += PARA_SPACE_AFTER_PT * block_count as f32;
+        }
+        let available_y = self.page.height_pt - self.page.margin_pt;
+        if self.cursor_y + total_h > available_y && self.page_has_content {
+            self.start_new_page();
+        }
         for child_id in &figure.children {
             let Some(child) = document.get(*child_id) else {
                 continue;
@@ -628,6 +669,57 @@ impl LayoutState {
                 _ => {}
             }
         }
+    }
+
+    /// Measure the rendered height of `paragraph` without flushing
+    /// anything to the current page. Mirrors `flow_words`' greedy
+    /// line-breaking exactly so the figure pre-flight matches what
+    /// the real layout produces — any divergence would leak figures
+    /// onto the wrong page even after the page-break check fired.
+    fn measure_paragraph_height(&mut self, document: &Document, paragraph: &Node) -> f32 {
+        let size = self.text.size_pt;
+        let leading = self.text.leading;
+        let regular = self.text.family.regular;
+        let words = self.collect_words(document, paragraph, regular, size);
+        if words.is_empty() {
+            return 0.0;
+        }
+        let line_width = self.column_width_pt();
+        let mut lines: u32 = 1;
+        let mut line_width_used = 0.0_f32;
+        for word in &words {
+            if word.width_pt > line_width {
+                // Oversize words wrap at character boundaries; the
+                // line-break path emits ceil(advance / line_width)
+                // chunks, each on its own line. Round up via integer
+                // math without `as_f32` round-tripping.
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let chunks = (word.width_pt / line_width).ceil().max(1.0) as u32;
+                if line_width_used > 0.0 {
+                    lines += 1;
+                }
+                lines += chunks.saturating_sub(1);
+                line_width_used = 0.0;
+                continue;
+            }
+            let space_w = if line_width_used > 0.0 {
+                text_width(word.font, word.size_pt, " ")
+            } else {
+                0.0
+            };
+            if line_width_used > 0.0 && line_width_used + space_w + word.width_pt > line_width {
+                lines += 1;
+                line_width_used = word.width_pt;
+            } else {
+                line_width_used += space_w + word.width_pt;
+            }
+        }
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "line counts in any sane document fit well inside the f32 mantissa"
+        )]
+        let h = (lines as f32) * size * leading;
+        h
     }
 
     /// Resolve the rendered (`width_pt`, `height_pt`) for an Image node,
@@ -1856,5 +1948,114 @@ mod tests {
             .expect("caption run not found");
         // Caption baseline sits below the image top edge.
         assert!(caption_run.baseline_from_top_pt > page.images[0].top_from_top_pt);
+    }
+
+    /// Allocate a Figure node whose only children are one Image and a
+    /// short caption paragraph. Used by the keep-together test below.
+    fn make_figure_with_image_and_caption(
+        doc: &mut Document,
+        pixel_w: u32,
+        pixel_h: u32,
+        caption: &str,
+    ) -> NodeId {
+        let fig = doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Figure,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
+        let mut img_attrs = AttrMap::new();
+        img_attrs.insert("src".to_owned(), AttrValue::Str("fig.png".to_owned()));
+        img_attrs.insert(
+            "resolved_path".to_owned(),
+            AttrValue::Str(format!("/tmp/figkt-{pixel_w}x{pixel_h}.png")),
+        );
+        img_attrs.insert("pixel_width".to_owned(), AttrValue::Int(i64::from(pixel_w)));
+        img_attrs.insert(
+            "pixel_height".to_owned(),
+            AttrValue::Int(i64::from(pixel_h)),
+        );
+        img_attrs.insert(
+            "pixels".to_owned(),
+            AttrValue::Bytes(Arc::from(vec![0_u8; (pixel_w * pixel_h * 3) as usize])),
+        );
+        doc.alloc_child(
+            fig,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Image,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: img_attrs,
+            },
+        );
+        let cap = doc.alloc_child(
+            fig,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Paragraph,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
+        alloc_inline(doc, cap, NodeKind::Text, caption);
+        fig
+    }
+
+    #[test]
+    fn figure_image_and_caption_stay_on_the_same_page() {
+        // Place a long lead paragraph so the cursor lands near the
+        // bottom of page 1, then drop a figure whose image+caption
+        // together exceed the remaining vertical gap. The figure
+        // must move *as a unit* to page 2 — splitting the image
+        // from its caption would be the regression this test guards.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        // ~80 lines of body text gets us close to the bottom of A4
+        // (706pt gap ÷ ~15pt line ≈ 47 lines fit; 80 spills onto a
+        // second page with the cursor near the top there). To force
+        // a near-bottom state, use a paragraph long enough to spill
+        // to page 2 *and* leave only ~100pt left there.
+        let mut filler = String::new();
+        for i in 0..540 {
+            filler.push_str(&format!("word{i} "));
+        }
+        make_paragraph(&mut doc, filler.trim());
+        // A 400×300pt figure won't fit in 100pt of remaining gap.
+        make_figure_with_image_and_caption(&mut doc, 400, 300, "Tight caption.");
+        let result = LayoutEngine::new().layout(&doc);
+        let mut figure_page: Option<u32> = None;
+        let mut caption_page: Option<u32> = None;
+        for page in &result.graph.pages {
+            if !page.images.is_empty() && figure_page.is_none() {
+                figure_page = Some(page.number);
+            }
+            if page
+                .runs
+                .iter()
+                .any(|r| r.text == "Tight" || r.text == "caption.")
+                && caption_page.is_none()
+            {
+                caption_page = Some(page.number);
+            }
+        }
+        let figure_page = figure_page.expect("figure image not emitted");
+        let caption_page = caption_page.expect("caption run not emitted");
+        assert_eq!(
+            figure_page, caption_page,
+            "figure and caption ended up on different pages ({} vs {})",
+            figure_page, caption_page
+        );
     }
 }

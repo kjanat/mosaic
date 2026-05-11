@@ -183,16 +183,11 @@ pub(crate) fn build_pdf(
         })
         .collect();
 
-    // Pre-compress every image stream and allocate one indirect ref
-    // per unique image. Compressing once up front lets the caller hold
-    // onto the bytes for byte-stability assertions and avoids
-    // duplicating CPU when the same image is referenced from many
-    // pages.
-    let image_streams: Vec<Vec<u8>> = graph
-        .images
-        .iter()
-        .map(|h| images::flate_compress(&h.rgb8))
-        .collect();
+    // Allocate one indirect ref per unique image. Compression itself
+    // happens at emit time (see the loop below) so we don't hold every
+    // compressed stream in memory simultaneously — `graph.images` is
+    // already the deduped set, and an image-heavy document can blow
+    // peak RAM if we buffer all compressed copies before writing them.
     let image_refs: Vec<Ref> = graph.images.iter().map(|_| alloc()).collect();
 
     let page_refs: Vec<(Ref, Ref)> = graph.pages.iter().map(|_| (alloc(), alloc())).collect();
@@ -246,13 +241,13 @@ pub(crate) fn build_pdf(
 
     // Emit each Image XObject. Order matches `graph.images` (and
     // therefore the `alloc()` order above), keeping byte output
-    // deterministic.
-    for (handle, (id, compressed)) in graph
-        .images
-        .iter()
-        .zip(image_refs.iter().zip(image_streams.iter()))
-    {
-        images::emit_image_xobject(&mut pdf, *id, handle, compressed);
+    // deterministic. Each image is compressed in this loop and the
+    // compressed buffer dropped at the end of the iteration, so peak
+    // memory holds at most one compressed image at a time on top of
+    // the (Arc-shared) decoded pixel buffer the handle already owns.
+    for (handle, id) in graph.images.iter().zip(image_refs.iter()) {
+        let compressed = images::flate_compress(&handle.rgb8);
+        images::emit_image_xobject(&mut pdf, *id, handle, &compressed);
     }
 
     for (face, font_id) in &base14_refs {

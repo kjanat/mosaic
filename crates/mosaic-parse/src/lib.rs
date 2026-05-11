@@ -50,14 +50,33 @@ pub enum Item {
         label: Option<String>,
         span: SourceSpan,
     },
-    /// `#set name(...)`. The body is lexed into typed `(key, value)`
-    /// args; semantic validation (known target/key, type coercion,
-    /// sanity floors) happens in the lowerer.
+    /// `#set name(...)`, `#image(...)`, `#figure(...)`. The body is
+    /// lexed into typed `(key, value)` args; semantic validation
+    /// (known target/key, type coercion, sanity floors) happens in
+    /// the lowerer. `kind` distinguishes the `#set`-style configuration
+    /// directive from standalone calls like `#image` and `#figure`,
+    /// which the lowerer dispatches to dedicated paths.
     Set {
+        kind: DirectiveKind,
         name: String,
         args: Vec<SetArg>,
         span: SourceSpan,
     },
+}
+
+/// Tag for the three directive shapes [`Item::Set`] can represent —
+/// the `#set <target>(...)` configuration directive vs the standalone
+/// `#image(...)` and `#figure(...)` calls. The lowerer dispatches on
+/// this rather than the [`Item::Set::name`] string so `#set image(...)`
+/// can never collide with `#image(...)`.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum DirectiveKind {
+    /// `#set <name>(...)` — sets defaults on a style target.
+    Set,
+    /// `#image("path", ...)` — raster image directive.
+    Image,
+    /// `#figure(image: ..., caption: ...)` — captioned image container.
+    Figure,
 }
 
 /// One named argument inside a `#set name(key: value, ...)` block.
@@ -135,11 +154,30 @@ impl Item {
         }
     }
 
-    /// Borrow the `#set` payload if `self` is [`Item::Set`].
+    /// Borrow the directive payload if `self` is [`Item::Set`].
+    ///
+    /// The returned tuple is `(name, args, span)`; the caller can also
+    /// reach [`DirectiveKind`] via [`Self::directive_kind`]. The
+    /// accessor name is retained for back-compat — every existing
+    /// caller pre-dates the `#image`/`#figure` directives and only
+    /// looks at name/args/span.
     #[must_use]
     pub fn as_set(&self) -> Option<(&str, &[SetArg], &SourceSpan)> {
-        if let Self::Set { name, args, span } = self {
+        if let Self::Set {
+            name, args, span, ..
+        } = self
+        {
             Some((name.as_str(), args.as_slice(), span))
+        } else {
+            None
+        }
+    }
+
+    /// Borrow the [`DirectiveKind`] tag if `self` is [`Item::Set`].
+    #[must_use]
+    pub fn directive_kind(&self) -> Option<DirectiveKind> {
+        if let Self::Set { kind, .. } = self {
+            Some(*kind)
         } else {
             None
         }
@@ -397,7 +435,7 @@ impl<'a> Parser<'a> {
             self.skip_line();
             return;
         }
-        self.finish_directive_block(line_start, i, name, "set", false);
+        self.finish_directive_block(line_start, i, DirectiveKind::Set, name, "set", false);
     }
 
     /// Parse a directive whose keyword stands on its own — `#image(...)`,
@@ -421,7 +459,21 @@ impl<'a> Parser<'a> {
             self.skip_line();
             return;
         }
-        self.finish_directive_block(line_start, i, kw.to_owned(), kw, true);
+        let kind = match kw {
+            "image" => DirectiveKind::Image,
+            "figure" => DirectiveKind::Figure,
+            // `at_directive_keyword` returns only the strings handled
+            // above. Reaching this arm would indicate a parser-internal
+            // mismatch between the keyword recogniser and the dispatch
+            // table — fall back to `Set` rather than panicking in
+            // release so user input can never crash the parser, but
+            // a `debug_assert!` fires in tests.
+            other => {
+                debug_assert!(false, "parse_call_block: unexpected keyword `{other}`");
+                DirectiveKind::Set
+            }
+        };
+        self.finish_directive_block(line_start, i, kind, kw.to_owned(), kw, true);
     }
 
     /// Shared tail of [`Self::parse_set_block`] and
@@ -438,6 +490,7 @@ impl<'a> Parser<'a> {
         &mut self,
         line_start: usize,
         paren_pos: usize,
+        kind: DirectiveKind,
         name: String,
         display_kw: &str,
         allow_positional: bool,
@@ -449,7 +502,12 @@ impl<'a> Parser<'a> {
             let inner_end = end - 1;
             let args = self.parse_set_body(inner_start, inner_end, allow_positional);
             let span = self.span(line_start, end);
-            self.items.push(Item::Set { name, args, span });
+            self.items.push(Item::Set {
+                kind,
+                name,
+                args,
+                span,
+            });
             self.pos = end;
             while self.pos < bytes.len() && (bytes[self.pos] == b' ' || bytes[self.pos] == b'\t') {
                 self.pos += 1;
