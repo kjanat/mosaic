@@ -459,9 +459,9 @@ impl FontFamily {
 /// for those characters in Base14 runs). No diagnostic; callers wanting
 /// real coverage should pick an embedded family.
 ///
-/// For embedded faces this shapes via `rustybuzz` and sums the
-/// resulting glyph advances. Mark positioning offsets do not contribute
-/// to advance.
+/// For embedded faces this shapes via `rustybuzz` for glyph selection
+/// and sums the resulting PDF-emittable glyph advances. Positioning
+/// offsets are currently normalized away so layout matches PDF output.
 #[must_use]
 pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
     match font {
@@ -549,8 +549,8 @@ pub struct WordSubRun {
     /// `WinAnsi`-byte encoding instead).
     pub glyphs: Vec<ShapedGlyph>,
     /// Total horizontal advance of this sub-run, in PDF user-space
-    /// units. Sum of `glyphs[i].advance_units` scaled by `size_pt /
-    /// units_per_em`.
+    /// units. Sum of PDF-emittable `glyphs[i].advance_units` scaled by
+    /// `size_pt / units_per_em`.
     pub advance_pt: f32,
 }
 
@@ -814,18 +814,19 @@ fn embedded_upem(font: Font) -> f32 {
 }
 
 /// Convert a font-unit advance to PDF user-space points at `size_pt`,
-/// given the face's units-per-em. `rustybuzz` types advances as `i32`
-/// but OpenType's `hmtx` table stores `advanceWidth` as `UFWord`
-/// (unsigned 16-bit), so the underlying value is always in `0..=65535`.
-/// Saturating through `u16` here lets us cross to `f32` losslessly
-/// through `f32::From<u16>` and preserves the full `hmtx` range —
-/// the prior `i16` saturation truncated wide glyphs in the
-/// `32768..=65535` band to `i16::MAX`. The saturation clamps the
-/// (practically unreachable) out-of-`u16` case to a finite advance
-/// instead of a loose precision-lossy `i32 as f32` cast.
+/// given the face's units-per-em. Values are carried as `i32` because
+/// shapers use signed advances, but current embedded output normalizes
+/// to PDF-emittable `hmtx` advances in `0..=65535`. Preserve sign here
+/// anyway so future positioned shaping cannot turn a negative adjustment
+/// into a huge positive width.
 fn advance_units_to_pt(advance_units: i32, size_pt: f32, upem: f32) -> f32 {
-    let advance_u16 = u16::try_from(advance_units).unwrap_or(u16::MAX);
-    f32::from(advance_u16) * size_pt / upem
+    let magnitude = u16::try_from(advance_units.unsigned_abs()).unwrap_or(u16::MAX);
+    let advance = f32::from(magnitude);
+    if advance_units.is_negative() {
+        -advance * size_pt / upem
+    } else {
+        advance * size_pt / upem
+    }
 }
 
 /// Width of a single glyph in `font` at `size` points. For Base14
@@ -1059,6 +1060,24 @@ mod tests {
         let font = Font::Embedded(EmbeddedFontId::Regular);
         let w = text_width(font, 12.0, "Привет");
         assert!(w > 0.0);
+    }
+
+    #[test]
+    fn embedded_shape_advances_match_pdf_width_path() {
+        let ef = EmbeddedFontId::Regular.data();
+        let glyphs = shape(ef, "AV");
+        assert!(!glyphs.is_empty());
+        for glyph in &glyphs {
+            assert_eq!(glyph.advance_units, i32::from(ef.advance_units(glyph.gid)));
+            assert_eq!(glyph.x_offset_units, 0);
+            assert_eq!(glyph.y_offset_units, 0);
+        }
+    }
+
+    #[test]
+    fn advance_units_to_pt_preserves_negative_sign() {
+        let actual = advance_units_to_pt(-1000, 12.0, 1000.0);
+        assert!((actual + 12.0).abs() < f32::EPSILON, "got {actual}");
     }
 
     #[test]
