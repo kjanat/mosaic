@@ -20,66 +20,74 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     x_pt: 68.0,
                     baseline_from_top_pt: 90.0,
                     size_pt: 16.0,
-                    font: Font(Base14Font::HelveticaBold),
+                    font: Font::Base14(Base14Font::HelveticaBold),
                     text: "Romanian comma-below demo".to_owned(),
+                    glyphs: Vec::new(),
                 },
                 TextRun {
                     x_pt: 68.0,
                     baseline_from_top_pt: 130.0,
                     size_pt: 11.0,
-                    font: Font(Base14Font::Helvetica),
+                    font: Font::Base14(Base14Font::Helvetica),
                     text: "With comma-below (correct Romanian):".to_owned(),
+                    glyphs: Vec::new(),
                 },
                 TextRun {
                     x_pt: 68.0,
                     baseline_from_top_pt: 152.0,
                     size_pt: 18.0,
-                    font: Font(Base14Font::TimesRoman),
+                    font: Font::Base14(Base14Font::TimesRoman),
                     // Ș=U+0218, ș=U+0219, Ț=U+021A, ț=U+021B
                     text: "Șapte șopârle țipă în țară.".to_owned(),
+                    glyphs: Vec::new(),
                 },
                 TextRun {
                     x_pt: 68.0,
                     baseline_from_top_pt: 200.0,
                     size_pt: 11.0,
-                    font: Font(Base14Font::Helvetica),
+                    font: Font::Base14(Base14Font::Helvetica),
                     text: "Without (ASCII fallback, no diacritic):".to_owned(),
+                    glyphs: Vec::new(),
                 },
                 TextRun {
                     x_pt: 68.0,
                     baseline_from_top_pt: 222.0,
                     size_pt: 18.0,
-                    font: Font(Base14Font::TimesRoman),
+                    font: Font::Base14(Base14Font::TimesRoman),
                     text: "Sapte sopirle tipa in tara.".to_owned(),
+                    glyphs: Vec::new(),
                 },
                 TextRun {
                     x_pt: 68.0,
                     baseline_from_top_pt: 280.0,
                     size_pt: 11.0,
-                    font: Font(Base14Font::Helvetica),
+                    font: Font::Base14(Base14Font::Helvetica),
                     text: "Bonus: historical cedilla codepoints rendered \
                            with the glyph each AFM ships."
                         .to_owned(),
+                    glyphs: Vec::new(),
                 },
                 TextRun {
                     x_pt: 68.0,
                     baseline_from_top_pt: 304.0,
                     size_pt: 18.0,
-                    font: Font(Base14Font::TimesRoman),
+                    font: Font::Base14(Base14Font::TimesRoman),
                     // U+015E Ş (Scedilla, distinct cedilla glyph),
                     // U+0162 Ţ (Tcommaaccent, AFM has no Tcedilla so
                     //           routes here despite the codepoint name).
                     text: "Ş vs Ș    ş vs ș    Ţ vs Ț    ţ vs ț".to_owned(),
+                    glyphs: Vec::new(),
                 },
                 TextRun {
                     x_pt: 68.0,
                     baseline_from_top_pt: 360.0,
                     size_pt: 9.0,
-                    font: Font(Base14Font::HelveticaOblique),
+                    font: Font::Base14(Base14Font::HelveticaOblique),
                     text: "Look at the bottom of each S/T: the right form has \
                            a comma hanging beneath (Scommaaccent/Tcommaaccent), \
                            the left has the cedilla hook (Scedilla)."
                         .to_owned(),
+                    glyphs: Vec::new(),
                 },
             ],
         }],

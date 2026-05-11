@@ -120,11 +120,16 @@ impl EncodingPlanner {
         self.used.entry(face).or_default().insert(ch);
     }
 
-    /// Convenience: feed every char of every text run.
+    /// Convenience: feed every char of every text run. Embedded-font
+    /// runs are skipped; they take the Type 0 CID path and don't
+    /// participate in `/Differences` planning.
     pub(crate) fn observe_runs(&mut self, runs: &[TextRun]) {
         for run in runs {
+            let Some(face) = run.font.base14() else {
+                continue;
+            };
             for ch in run.text.chars() {
-                self.observe(run.font.into(), ch);
+                self.observe(face, ch);
             }
         }
     }
@@ -138,7 +143,7 @@ impl EncodingPlanner {
     pub(crate) fn finalize(self, diagnostics: &mut Vec<Diagnostic>) -> HashMap<Font, DocEncoding> {
         let mut out = HashMap::with_capacity(self.used.len());
         for (face, chars) in self.used {
-            out.insert(Font(face), plan_face(face, &chars, diagnostics));
+            out.insert(Font::Base14(face), plan_face(face, &chars, diagnostics));
         }
         out
     }
@@ -285,7 +290,7 @@ mod tests {
         }
         let mut diags = Vec::new();
         let mut out = p.finalize(&mut diags);
-        let enc = out.remove(&Font(face)).unwrap_or_default();
+        let enc = out.remove(&Font::Base14(face)).unwrap_or_default();
         (enc, diags)
     }
 

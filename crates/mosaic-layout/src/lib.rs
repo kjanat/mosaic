@@ -8,11 +8,12 @@
 //! §22.1, §22.2). Boundary-state reuse for incremental builds
 //! (§22.3, §33) is also out of scope here.
 
-pub use mosaic_fonts::{Base14Font, Font, ascent, descent, glyph_width, text_width};
-
-use mosaic_core::{
-    AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeKind, Severity, SourceSpan,
+pub use mosaic_fonts::{
+    Base14Font, EmbeddedFontId, Font, FontFamily, ShapedGlyph, ascent, descent, glyph_width,
+    shape_text, text_width,
 };
+
+use mosaic_core::{AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeKind, Severity};
 
 /// A4 page width in PDF points (1pt = 1/72 inch). Kept as a public
 /// constant so external callers can still read the default; the layout
@@ -51,10 +52,15 @@ impl Default for PageStyle {
 /// Body text style resolved from `#set text(...)`. `leading` applies
 /// to body paragraphs only; headings keep their own multiplier so a
 /// `#set text(leading: 2.0)` doesn't balloon section titles.
+///
+/// `family` is the resolved [`FontFamily`] from `#set text(font: ...)`.
+/// Headings use the family's bold cut; `*emphasis*` uses italic;
+/// `` `raw` `` uses monospace; everything else is `family.regular`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextStyle {
     pub size_pt: f32,
     pub leading: f32,
+    pub family: FontFamily,
 }
 
 impl Default for TextStyle {
@@ -62,6 +68,7 @@ impl Default for TextStyle {
         Self {
             size_pt: BODY_SIZE_PT,
             leading: BODY_LEADING,
+            family: FontFamily::noto_sans(),
         }
     }
 }
@@ -93,10 +100,15 @@ pub struct TextRun {
     pub size_pt: f32,
     /// Font face for this run.
     pub font: Font,
-    /// Text content. Already filtered to PDF `WinAnsiEncoding`-
-    /// representable characters by the engine — non-`WinAnsi` has
-    /// been substituted with `?`.
+    /// Original UTF-8 text. Used by the PDF backend's `/ToUnicode`
+    /// `CMap` (so copy-paste from the rendered PDF round-trips back to
+    /// the source) and by the Base14 emit path (which encodes through
+    /// `WinAnsiEncoding` + per-document `/Differences`).
     pub text: String,
+    /// Shaped glyph stream for embedded-font runs. Empty for Base14
+    /// runs, which emit through the byte-encoded `WinAnsi` path
+    /// instead.
+    pub glyphs: Vec<ShapedGlyph>,
 }
 
 /// One laid-out page.
@@ -269,6 +281,9 @@ fn apply_text_set(
     if let Some(AttrValue::Float(v)) = node.attributes.get("set.arg.leading") {
         next.leading = pt_to_f32(*v);
     }
+    if let Some(AttrValue::Str(name)) = node.attributes.get("set.arg.font") {
+        next.family = FontFamily::resolve(name, Some(node.span.clone()), diagnostics);
+    }
     if next.size_pt <= 0.0 {
         diagnostics.push(reject(
             node,
@@ -437,8 +452,8 @@ impl LayoutState {
         if self.page_has_content {
             self.cursor_y += space_before;
         }
-        let mut words =
-            self.collect_words(document, section, Font(Base14Font::HelveticaBold), size);
+        let bold = self.text.family.bold;
+        let mut words = self.collect_words(document, section, bold, size);
         // Resolver-assigned section number is rendered as a leading
         // word so it gets the same font/size as the title and flows
         // through the existing line-break path. The trailing `.` is
@@ -446,14 +461,15 @@ impl LayoutState {
         // (manifest §4) overrides it once `#set` is interpreted.
         if let Some(number) = read_str_attr(section, "number") {
             let prefix = format!("{number}.");
-            let width_pt = text_width(Font(Base14Font::HelveticaBold), size, &prefix);
+            let shaped = shape_text(bold, size, &prefix);
             words.insert(
                 0,
                 Word {
                     text: prefix,
-                    font: Font(Base14Font::HelveticaBold),
+                    font: bold,
                     size_pt: size,
-                    width_pt,
+                    width_pt: shaped.advance_pt,
+                    glyphs: shaped.glyphs,
                 },
             );
         }
@@ -464,15 +480,18 @@ impl LayoutState {
     fn layout_paragraph(&mut self, document: &Document, paragraph: &Node) {
         let size = self.text.size_pt;
         let leading = self.text.leading;
-        let words = self.collect_words(document, paragraph, Font(Base14Font::Helvetica), size);
+        let regular = self.text.family.regular;
+        let words = self.collect_words(document, paragraph, regular, size);
         self.flow_words(&words, leading);
         self.cursor_y += PARA_SPACE_AFTER_PT;
     }
 
     /// Walk `parent`'s inline children and produce a flat list of
-    /// [`Word`]s. Inline newlines collapse to spaces; non-`WinAnsi`
-    /// chars are replaced with `?` and a `W040` warning is emitted
-    /// once per inline that contained any.
+    /// [`Word`]s. Inline whitespace collapses to a single split point
+    /// (`split_ascii_whitespace` handles `\n`/`\r`/`\t` uniformly).
+    /// Each word is shaped once here; the resulting glyphs and width
+    /// flow through to [`TextRun`] without re-shaping during line
+    /// breaking.
     fn collect_words(
         &mut self,
         document: &Document,
@@ -486,26 +505,26 @@ impl LayoutState {
                 continue;
             };
             let font = match child.kind {
-                NodeKind::Strong => Font(Base14Font::HelveticaBold),
-                NodeKind::Emphasis => Font(Base14Font::HelveticaOblique),
-                NodeKind::Raw => Font(Base14Font::Courier),
+                NodeKind::Strong => self.text.family.bold,
+                NodeKind::Emphasis => self.text.family.italic,
+                NodeKind::Raw => self.text.family.monospace,
                 _ => default_font,
             };
             let raw = match child.attributes.get("text") {
                 Some(AttrValue::Str(s)) => s.as_str(),
                 _ => continue,
             };
-            let cleaned = sanitize_text(raw, &child.span, &mut self.diagnostics);
-            for piece in cleaned.split_ascii_whitespace() {
+            for piece in raw.split_ascii_whitespace() {
                 if piece.is_empty() {
                     continue;
                 }
-                let width_pt = text_width(font, size, piece);
+                let shaped = shape_text(font, size, piece);
                 out.push(Word {
                     text: piece.to_owned(),
                     font,
                     size_pt: size,
-                    width_pt,
+                    width_pt: shaped.advance_pt,
+                    glyphs: shaped.glyphs,
                 });
             }
         }
@@ -590,6 +609,7 @@ impl LayoutState {
                 size_pt: word.size_pt,
                 font: word.font,
                 text: word.text.clone(),
+                glyphs: word.glyphs.clone(),
             });
             x += word.width_pt;
         }
@@ -598,7 +618,9 @@ impl LayoutState {
     }
 
     /// Emit a word that's wider than the column by chopping it on
-    /// character boundaries. Each chunk goes on its own line.
+    /// character boundaries. Each chunk is reshaped from scratch so
+    /// embedded faces get correct per-cluster ligature breaking and
+    /// Base14 faces stay on the AFM path.
     fn flush_oversize_word(&mut self, word: &Word, leading: f32) {
         let line_width = self.column_width_pt();
         let mut buf = String::new();
@@ -607,12 +629,14 @@ impl LayoutState {
             let w = glyph_width(word.font, word.size_pt, ch);
             if buf_width + w > line_width && !buf.is_empty() {
                 let chunk = std::mem::take(&mut buf);
+                let shaped = shape_text(word.font, word.size_pt, &chunk);
                 self.flush_line(
                     &[Word {
                         text: chunk,
                         font: word.font,
                         size_pt: word.size_pt,
-                        width_pt: buf_width,
+                        width_pt: shaped.advance_pt,
+                        glyphs: shaped.glyphs,
                     }],
                     leading,
                 );
@@ -622,12 +646,14 @@ impl LayoutState {
             buf_width += w;
         }
         if !buf.is_empty() {
+            let shaped = shape_text(word.font, word.size_pt, &buf);
             self.flush_line(
                 &[Word {
                     text: buf,
                     font: word.font,
                     size_pt: word.size_pt,
-                    width_pt: buf_width,
+                    width_pt: shaped.advance_pt,
+                    glyphs: shaped.glyphs,
                 }],
                 leading,
             );
@@ -653,6 +679,10 @@ struct Word {
     /// constructed in `collect_words` so the line-breaker doesn't
     /// re-measure on every comparison.
     width_pt: f32,
+    /// Shaped glyph stream for embedded-font words. Empty for Base14
+    /// words. Flows through unchanged into [`TextRun`] so the PDF
+    /// backend never re-shapes.
+    glyphs: Vec<ShapedGlyph>,
 }
 
 fn blank_page(number: u32, style: PageStyle) -> Page {
@@ -678,56 +708,6 @@ fn read_str_attr<'a>(node: &'a Node, key: &str) -> Option<&'a str> {
     }
 }
 
-/// Replace any character with no glyph in the Adobe Core 14 Latin
-/// AFMs with `?` and emit a `W040` warning. Also normalises
-/// CR/LF/tab to space so word-splitting is uniform.
-///
-/// Two tiers pass through unchanged:
-/// - `WinAnsi` natives (`mosaic_fonts::winansi_byte` returns
-///   `Some`): ASCII, Latin-1, the Windows band (`0x80..=0x9F`), plus
-///   `š`/`ž`/`Š`/`Ž`.
-/// - Extended glyphs (`mosaic_fonts::extended_glyph_name` returns `Some`):
-///   the rest of Latin Extended-A (`Ł`, `ł`, `Ě`, `ě`, `Ő`, `ő`, …),
-///   the Romanian comma-below set, spacing diacritics, math
-///   operators, `fi`/`fl` ligatures. These have no `WinAnsi` byte
-///   but exist in every Core 14 Latin AFM under a glyph name; the
-///   PDF backend addresses them through a per-document
-///   `/Differences` encoding.
-///
-/// Anything else — Cyrillic, CJK, Vietnamese accents, emoji, etc. —
-/// has no glyph in any Core 14 font and substitutes to `?`.
-/// Embedded fonts (issue #9) lift that ceiling.
-fn sanitize_text(raw: &str, span: &SourceSpan, diagnostics: &mut Vec<Diagnostic>) -> String {
-    let mut out = String::with_capacity(raw.len());
-    let mut substituted = false;
-    for ch in raw.chars() {
-        if ch == '\n' || ch == '\r' || ch == '\t' {
-            out.push(' ');
-        } else if mosaic_fonts::winansi_byte(ch).is_some()
-            || mosaic_fonts::extended_glyph_name(ch).is_some()
-        {
-            out.push(ch);
-        } else {
-            out.push('?');
-            substituted = true;
-        }
-    }
-    if substituted {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            code: DiagnosticCode("W040"),
-            message: "character has no glyph in the Adobe Core 14 fonts \
-                      (Cyrillic, CJK, emoji, …) replaced with `?` — \
-                      embedded fonts land in MVP 2"
-                .to_owned(),
-            span: Some(span.clone()),
-            notes: Vec::new(),
-            suggestions: Vec::new(),
-        });
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -751,6 +731,31 @@ mod tests {
             Node {
                 id: NodeId::default(),
                 kind,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        );
+    }
+
+    /// Tests that assert Base14 font variants on `TextRun` need to opt
+    /// out of the default Noto Sans family. Prepend a `#set
+    /// text(font: "Helvetica")` block so the family resolves to
+    /// Base14 Helvetica.
+    fn pin_helvetica(doc: &mut Document) {
+        let mut attrs = AttrMap::new();
+        attrs.insert("set".to_owned(), AttrValue::Str("text".to_owned()));
+        attrs.insert(
+            "set.arg.font".to_owned(),
+            AttrValue::Str("Helvetica".to_owned()),
+        );
+        doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Raw,
                 span: SourceSpan::placeholder(PathBuf::from("test.mos")),
                 content_hash: ContentHash::default(),
                 style_id: StyleId::default(),
@@ -799,6 +804,7 @@ mod tests {
     #[test]
     fn heading_then_paragraph_emits_runs_in_order() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
         make_section(&mut doc, 1, "Hello");
         make_paragraph(&mut doc, "body");
         let result = LayoutEngine::new().layout(&doc);
@@ -807,10 +813,13 @@ mod tests {
         let runs = &result.graph.pages[0].runs;
         assert!(runs.len() >= 2, "expected at least 2 runs, got {runs:?}");
         // Heading first, body below it.
-        assert!(matches!(runs[0].font, Font(Base14Font::HelveticaBold)));
+        assert!(matches!(
+            runs[0].font,
+            Font::Base14(Base14Font::HelveticaBold)
+        ));
         assert_eq!(runs[0].text, "Hello");
         let body_run = runs.iter().find(|r| r.text == "body").expect("body run");
-        assert!(matches!(body_run.font, Font(Base14Font::Helvetica)));
+        assert!(matches!(body_run.font, Font::Base14(Base14Font::Helvetica)));
         assert!(body_run.baseline_from_top_pt > runs[0].baseline_from_top_pt);
     }
 
@@ -838,6 +847,7 @@ mod tests {
     #[test]
     fn emphasis_run_uses_oblique() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
         let para = make_paragraph(&mut doc, "before");
         alloc_inline(&mut doc, para, NodeKind::Emphasis, "italic");
         alloc_inline(&mut doc, para, NodeKind::Text, "after");
@@ -847,7 +857,10 @@ mod tests {
             .iter()
             .find(|r| r.text == "italic")
             .expect("italic run");
-        assert!(matches!(italic.font, Font(Base14Font::HelveticaOblique)));
+        assert!(matches!(
+            italic.font,
+            Font::Base14(Base14Font::HelveticaOblique)
+        ));
     }
 
     #[test]
@@ -869,22 +882,23 @@ mod tests {
     }
 
     #[test]
-    fn unmappable_substitutes_and_warns() {
+    fn cyrillic_flows_through_embedded_default_without_substitution() {
+        // The default text family is bundled Noto Sans, which covers
+        // Cyrillic. The run carries the original UTF-8 text verbatim
+        // and a non-empty shaped glyph stream; no W040 (the diagnostic
+        // is retired) and no `?` substitution.
         let mut doc = Document::new(PathBuf::from("test.mos"));
-        // Cyrillic "Привет" has no glyph in any Core 14 font — every
-        // char substitutes. Polish/Czech now pass through; see
-        // `extended_latin_passes_through_without_warning`.
         make_paragraph(&mut doc, "Привет");
         let result = LayoutEngine::new().layout(&doc);
-        assert_eq!(result.diagnostics.len(), 1);
-        assert_eq!(result.diagnostics[0].code.0, "W040");
         assert!(
-            result.diagnostics[0].message.contains("Core 14"),
-            "W040 message should reference Core 14, got {:?}",
-            result.diagnostics[0].message
+            result.diagnostics.is_empty(),
+            "expected no diagnostics, got {:?}",
+            result.diagnostics
         );
         let runs = &result.graph.pages[0].runs;
-        assert!(runs.iter().any(|r| r.text == "??????"));
+        let cyr = runs.iter().find(|r| r.text == "Привет").expect("cyr run");
+        assert!(matches!(cyr.font, Font::Embedded(_)));
+        assert!(!cyr.glyphs.is_empty(), "expected shaped glyphs");
     }
 
     #[test]
@@ -912,14 +926,18 @@ mod tests {
     }
 
     #[test]
-    fn cjk_and_emoji_substitute_and_warn() {
-        // No glyph in Core 14 AFMs — should substitute and warn.
+    fn cjk_and_emoji_flow_through_without_diagnostics() {
+        // W040 is retired. CJK and emoji are not covered by bundled
+        // Noto Sans Regular either, but the layout engine no longer
+        // filters them — they pass through to the shaped glyph stream
+        // (rustybuzz emits `.notdef` glyphs for missing coverage,
+        // which the PDF backend embeds harmlessly).
         let mut doc = Document::new(PathBuf::from("test.mos"));
         make_paragraph(&mut doc, "日本語 🦀");
         let result = LayoutEngine::new().layout(&doc);
         assert!(
-            result.diagnostics.iter().any(|d| d.code.0 == "W040"),
-            "expected a W040 diagnostic, got {:?}",
+            !result.diagnostics.iter().any(|d| d.code.0 == "W040"),
+            "W040 should be retired, got {:?}",
             result.diagnostics
         );
     }
@@ -957,18 +975,19 @@ mod tests {
     #[test]
     fn raw_inline_uses_courier() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
         let para = make_paragraph(&mut doc, "before");
         alloc_inline(&mut doc, para, NodeKind::Raw, "code");
         alloc_inline(&mut doc, para, NodeKind::Text, "after");
         let result = LayoutEngine::new().layout(&doc);
         let runs = &result.graph.pages[0].runs;
         let code_run = runs.iter().find(|r| r.text == "code").expect("code run");
-        assert!(matches!(code_run.font, Font(Base14Font::Courier)));
+        assert!(matches!(code_run.font, Font::Base14(Base14Font::Courier)));
         // Adjacent runs stay in the default Helvetica face so the
         // engine isn't accidentally promoting everything to Courier.
         assert!(matches!(
             runs.iter().find(|r| r.text == "before").unwrap().font,
-            Font(Base14Font::Helvetica)
+            Font::Base14(Base14Font::Helvetica)
         ));
     }
 
@@ -1001,6 +1020,7 @@ mod tests {
         // paragraph word in document order, and the first paragraph
         // word and the heading must end up on different pages.
         let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
         let mut text = String::new();
         for i in 0..1500 {
             text.push_str(&format!("word{i} "));
@@ -1018,7 +1038,9 @@ mod tests {
         let mut first_word_page: Option<u32> = None;
         for page in &result.graph.pages {
             for run in &page.runs {
-                if run.text == "After" && matches!(run.font, Font(Base14Font::HelveticaBold)) {
+                if run.text == "After"
+                    && matches!(run.font, Font::Base14(Base14Font::HelveticaBold))
+                {
                     heading_page = Some(page.number);
                 }
                 if run.text == "word0" && first_word_page.is_none() {
@@ -1040,6 +1062,7 @@ mod tests {
         // must emit a leading bold run with that number plus a trailing
         // dot, ahead of the heading text.
         let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
         let mut attrs = AttrMap::new();
         attrs.insert("level".to_owned(), AttrValue::Int(2));
         attrs.insert("number".to_owned(), AttrValue::Str("2.1".to_owned()));
@@ -1058,7 +1081,10 @@ mod tests {
         alloc_inline(&mut doc, section, NodeKind::Text, "Background");
         let result = LayoutEngine::new().layout(&doc);
         let runs = &result.graph.pages[0].runs;
-        assert!(matches!(runs[0].font, Font(Base14Font::HelveticaBold)));
+        assert!(matches!(
+            runs[0].font,
+            Font::Base14(Base14Font::HelveticaBold)
+        ));
         assert_eq!(runs[0].text, "2.1.");
         assert!(runs.iter().any(|r| r.text == "Background"));
         // The number's baseline matches the title's baseline because
@@ -1073,6 +1099,7 @@ mod tests {
         // resolver) flows through `collect_words` like any other inline
         // — no separate code path. The font defaults to the body face.
         let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
         let para = make_paragraph(&mut doc, "see");
         let mut attrs = AttrMap::new();
         attrs.insert("label".to_owned(), AttrValue::Str("intro".to_owned()));
@@ -1092,7 +1119,10 @@ mod tests {
         let result = LayoutEngine::new().layout(&doc);
         let runs = &result.graph.pages[0].runs;
         let reference = runs.iter().find(|r| r.text == "1.2").expect("ref run");
-        assert!(matches!(reference.font, Font(Base14Font::Helvetica)));
+        assert!(matches!(
+            reference.font,
+            Font::Base14(Base14Font::Helvetica)
+        ));
     }
 
     fn alloc_set_block(doc: &mut Document, target: &str, args: &[(&str, AttrValue)]) -> NodeId {
