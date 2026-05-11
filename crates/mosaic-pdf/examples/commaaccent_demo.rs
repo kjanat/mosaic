@@ -5,6 +5,7 @@
 //! `/Differences` planner) and one with the diacritics stripped to
 //! ASCII (`S`/`s`/`T`/`t`) for visual comparison.
 
+use mosaic_core::Severity;
 use mosaic_layout::{Base14Font, Font, Page, PageGraph, TextRun};
 use mosaic_pdf::PdfMetadata;
 
@@ -86,12 +87,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let out = std::path::PathBuf::from("/tmp/commaaccent-demo.pdf");
     let diags = mosaic_pdf::emit(&graph, &PdfMetadata::default(), &out)?;
-    // The example always succeeds quietly — readers care about the
-    // produced `/tmp/commaaccent-demo.pdf`, not the console. Any
-    // diagnostics surfaced here would indicate a bug in the layout
-    // or planner, so escalate as an error to fail-fast.
-    if !diags.is_empty() {
-        return Err(format!("unexpected diagnostics: {diags:?}").into());
+    // Mirror the CLI's severity gate (see
+    // `crates/mosaic-cli/src/main.rs` — exits non-zero only on
+    // `Severity::Error`). Warnings (e.g. a future W041 overflow)
+    // are non-fatal and pass through silently; the workspace's
+    // `-D warnings` clippy rule blocks `println!`/`eprintln!` on
+    // examples, so per-diagnostic logging isn't an option without
+    // a lint-suppression annotation we're not allowed to add.
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    if !errors.is_empty() {
+        return Err(format!("emit produced error diagnostics: {errors:?}").into());
     }
     Ok(())
 }
