@@ -533,23 +533,26 @@ impl LayoutState {
         let saved_left = self.current_left_pt;
 
         // Size the gutter against the widest marker this list will
-        // emit (e.g. `100.` for a 100-item ordered list). A fixed
-        // gutter would crash the long markers into the text column.
+        // emit. A fixed gutter would crash long markers (`100.`,
+        // `1000.`, …) into the text column. We can't shortcut to the
+        // last index even for ordered lists: with proportional
+        // numerals an earlier marker like `88.` may shape wider than
+        // `100.`, so shape every marker and take the max.
         // `LIST_MARKER_GUTTER_PT` is the floor so small lists still
         // get visual breathing room and stay aligned with neighbouring
         // unordered lists at the same depth.
-        let item_count = list_node
-            .children
-            .iter()
-            .filter_map(|id| document.get(*id))
-            .filter(|n| n.kind == NodeKind::ListItem)
-            .count();
-        let widest_marker_text = if ordered {
-            format!("{item_count}.")
+        let widest_marker_pt = if ordered {
+            list_node
+                .children
+                .iter()
+                .filter_map(|id| document.get(*id))
+                .filter(|n| n.kind == NodeKind::ListItem)
+                .enumerate()
+                .map(|(idx, _)| shape_text(regular, size, &format!("{}.", idx + 1)).advance_pt)
+                .fold(0.0_f32, f32::max)
         } else {
-            "\u{2022}".to_owned()
+            shape_text(regular, size, "\u{2022}").advance_pt
         };
-        let widest_marker_pt = shape_text(regular, size, &widest_marker_text).advance_pt;
         let marker_gap_pt = text_width(regular, size, " ");
         let gutter = (widest_marker_pt + marker_gap_pt).max(LIST_MARKER_GUTTER_PT);
         let item_left = saved_left + gutter;
