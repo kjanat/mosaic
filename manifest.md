@@ -34,9 +34,9 @@ compiler plus incremental layout solver.
 
 ---
 
-# 1. Implementation language
+## 1. Implementation language
 
-## Use Rust for the engine
+### Use Rust for the engine
 
 Rust is the right default for the core engine.
 
@@ -75,7 +75,7 @@ No giant monolith. No “everything is global mutable state.” We have suffered
 
 ---
 
-# 2. Source language
+## 2. Source language
 
 The source language should be declarative first, programmable second.
 
@@ -133,9 +133,9 @@ TeX syntax is powerful, but it is also what happens when a printer demon gets te
 
 ---
 
-# 3. Language design
+## 3. Language design
 
-## 3.1 Markup mode
+### 3.1 Markup mode
 
 Basic structure should be lightweight:
 
@@ -149,7 +149,7 @@ Regular paragraph text with *emphasis*, **strong text**, `inline code`, and @cit
 See @fig:scan and @eq:bayes.
 ```
 
-## 3.2 Function calls
+### 3.2 Function calls
 
 All nontrivial document constructs use explicit function calls:
 
@@ -161,7 +161,7 @@ All nontrivial document constructs use explicit function calls:
 ) <fig:ctpa>
 ```
 
-## 3.3 Labels
+### 3.3 Labels
 
 Labels are attached to semantic objects:
 
@@ -183,7 +183,7 @@ See @eq:bayes.
 The engine knows whether `@eq:bayes` is an equation, figure, section, theorem, table, or whatever
 else humans have decided needs numbering.
 
-## 3.4 Math syntax
+### 3.4 Math syntax
 
 Use a clean math mode inspired by Typst, AsciiMath, and LaTeX, but not blindly compatible.
 
@@ -213,7 +213,7 @@ That part matters. Math should become structured data, not opaque glyph soup.
 
 ---
 
-# 4. No arbitrary macro hell
+## 4. No arbitrary macro hell
 
 Mosaic should not have TeX-style macro expansion as the foundation.
 
@@ -254,11 +254,11 @@ Global style modifications must be explicit:
 
 ---
 
-# 5. Internal document model
+## 5. Internal document model
 
 Everything becomes nodes.
 
-## 5.1 Core node types
+### 5.1 Core node types
 
 ```rust
 enum NodeKind {
@@ -313,9 +313,9 @@ Stable IDs are essential for incremental builds.
 
 ---
 
-# 6. Compilation pipeline
+## 6. Compilation pipeline
 
-## Stage 1: Parse
+### Stage 1: Parse
 
 Input:
 
@@ -340,7 +340,7 @@ The parser should preserve:
 
 This enables editor tooling, autoformatting, and good diagnostics.
 
-## Stage 2: Lower to semantic graph
+### Stage 2: Lower to semantic graph
 
 Turn syntax into typed document nodes.
 
@@ -360,7 +360,7 @@ SectionNode {
 }
 ```
 
-## Stage 3: Resolve semantic structure
+### Stage 3: Resolve semantic structure
 
 Resolve:
 
@@ -379,7 +379,7 @@ This stage should not do page layout yet.
 
 Semantic numbering should be mostly independent of pagination.
 
-## Stage 4: Resolve external data
+### Stage 4: Resolve external data
 
 Load:
 
@@ -397,7 +397,7 @@ All external data becomes tracked dependencies.
 If `references.bib` changes, the engine knows what depends on it. Revolutionary stuff, meaning
 normal software engineering.
 
-## Stage 5: Inline layout
+### Stage 5: Inline layout
 
 Resolve:
 
@@ -427,7 +427,7 @@ struct InlineBox {
 Use HarfBuzz or equivalent shaping. Do not invent font shaping unless the goal is lifelong
 suffering.
 
-## Stage 6: Block layout
+### Stage 6: Block layout
 
 Turn paragraphs, figures, equations, lists, tables, and code blocks into block boxes.
 
@@ -442,7 +442,7 @@ enum Block {
 }
 ```
 
-## Stage 7: Pagination and float solving
+### Stage 7: Pagination and float solving
 
 This is where the real beast lives.
 
@@ -476,7 +476,7 @@ struct Page {
 }
 ```
 
-## Stage 8: Global stabilization
+### Stage 8: Global stabilization
 
 Resolve things that depend on final pagination:
 
@@ -493,7 +493,7 @@ If these change layout, run targeted invalidation.
 
 Not full rebuild. Not external ritual. Internal fixpoint.
 
-## Stage 9: Emit output
+### Stage 9: Emit output
 
 Backends:
 
@@ -510,7 +510,7 @@ rectangles.
 
 ---
 
-# 7. Dependency graph
+## 7. Dependency graph
 
 This is the heart.
 
@@ -572,7 +572,7 @@ Clean nodes are reused from cache.
 
 ---
 
-# 8. Incremental build model
+## 8. Incremental build model
 
 The build process should feel like this:
 
@@ -620,11 +620,11 @@ cross-references right” like a haunted thermostat.
 
 ---
 
-# 9. Layout priorities
+## 9. Layout priorities
 
 Mosaic should expose layout constraints explicitly.
 
-## 9.1 Constraint classes
+### 9.1 Constraint classes
 
 ```text
 hard
@@ -646,7 +646,7 @@ Example:
 )
 ```
 
-## 9.2 Hard constraints
+### 9.2 Hard constraints
 
 Must never be violated:
 
@@ -659,7 +659,7 @@ Must never be violated:
 - counters deterministic
 ```
 
-## 9.3 Strong constraints
+### 9.3 Strong constraints
 
 Violate only with warning:
 
@@ -670,7 +670,7 @@ Violate only with warning:
 - keep table row together
 ```
 
-## 9.4 Weak constraints
+### 9.4 Weak constraints
 
 Used for visual quality:
 
@@ -697,7 +697,7 @@ document’s afterlife.
 
 ---
 
-# 10. Float model
+## 10. Float model
 
 Floats need first-class semantics.
 
@@ -737,7 +737,7 @@ This turns float placement into an explicit optimization problem instead of a ca
 
 ---
 
-# 11. Tables
+## 11. Tables
 
 Tables are awful. Obviously. They are spreadsheets pretending to be typography.
 
@@ -783,7 +783,7 @@ Do not make table layout an afterthought. That is how every report generator bec
 
 ---
 
-# 12. Bibliography system
+## 12. Bibliography system
 
 Bibliography must be built in.
 
@@ -836,7 +836,7 @@ can affect later citations. Fine. Track it explicitly.
 
 ---
 
-# 13. Indexes and glossaries
+## 13. Indexes and glossaries
 
 Built in.
 
@@ -856,9 +856,9 @@ No external `makeindex`. No auxiliary goblin dance.
 
 ---
 
-# 14. Package system
+## 14. Package system
 
-## 14.1 Package manifest
+### 14.1 Package manifest
 
 Every project has:
 
@@ -879,7 +879,7 @@ clinical        = "1.2"
 vancouver-style = "2.0"
 ```
 
-## 14.2 Lockfile
+### 14.2 Lockfile
 
 ```text
 mosaic.lock
@@ -887,7 +887,7 @@ mosaic.lock
 
 Required for reproducible builds.
 
-## 14.3 Package registry
+### 14.3 Package registry
 
 Packages should contain:
 
@@ -923,9 +923,9 @@ reinvented npm but with footnotes.
 
 ---
 
-# 15. Build system
+## 15. Build system
 
-## 15.1 Commands
+### 15.1 Commands
 
 Implemented (MVP 0 scaffold; see §30):
 
@@ -949,7 +949,7 @@ mos bundle   # archival `.mosaicbundle` (§15.3); MVP 5
 mos convert  # best-effort LaTeX import (§29); post-MVP
 ```
 
-## 15.2 Build output
+### 15.2 Build output
 
 Default structure:
 
@@ -968,7 +968,7 @@ project/
   .mosaic-cache/
 ```
 
-## 15.3 Reproducible builds
+### 15.3 Reproducible builds
 
 A build should depend on:
 
@@ -1015,7 +1015,7 @@ No font piracy, because apparently even letters have lawyers.
 
 ---
 
-# 16. Diagnostics
+## 16. Diagnostics
 
 Diagnostics need to be first-class.
 
@@ -1062,7 +1062,7 @@ Knuthian.
 
 ---
 
-# 17. Editor integration
+## 17. Editor integration
 
 Build an LSP from the beginning.
 
@@ -1098,7 +1098,7 @@ Or embed it into PDF metadata when possible.
 
 ---
 
-# 18. Formatting conventions
+## 18. Formatting conventions
 
 Use an opinionated formatter.
 
@@ -1126,7 +1126,7 @@ We are building civilization, not minified JavaScript with page numbers.
 
 ---
 
-# 19. Style system
+## 19. Style system
 
 Styles should cascade, but predictably.
 
@@ -1157,7 +1157,7 @@ No arbitrary “last macro wins after expansion unless the moon is in retrograde
 
 ---
 
-# 20. Template system
+## 20. Template system
 
 Templates are normal packages.
 
@@ -1179,9 +1179,9 @@ Templates should expose parameters, not demand users edit class-file entrails.
 
 ---
 
-# 21. Output backends
+## 21. Output backends
 
-## 21.1 PDF backend
+### 21.1 PDF backend
 
 The PDF backend should handle:
 
@@ -1200,7 +1200,7 @@ The PDF backend should handle:
 Use existing libraries where possible, but be prepared to write backend code. PDF is a cursed
 bureaucracy in file format form.
 
-## 21.2 HTML backend
+### 21.2 HTML backend
 
 HTML output should preserve semantics:
 
@@ -1218,12 +1218,12 @@ HTML output should preserve semantics:
 Not:
 
 ```html
-<div style="position:absolute; left:72.1px; top:183.7px">
+<div style="position: absolute; left: 72.1px; top: 183.7px">
 ```
 
 Unless exporting fixed-layout HTML pages.
 
-## 21.3 Debug backend
+### 21.3 Debug backend
 
 This is important.
 
@@ -1247,9 +1247,9 @@ coherently.
 
 ---
 
-# 22. The layout algorithm
+## 22. The layout algorithm
 
-## 22.1 Inline layout
+### 22.1 Inline layout
 
 Use Knuth-Plass line breaking as a base.
 
@@ -1279,7 +1279,7 @@ line breaking
 inline boxes
 ```
 
-## 22.2 Page breaking
+### 22.2 Page breaking
 
 Classic TeX has strong paragraph line breaking. Page breaking and floats are less elegant.
 
@@ -1319,7 +1319,7 @@ changed paragraph on page 40
 
 This is the exact trick: convergence by boundary stability.
 
-## 22.3 Boundary state
+### 22.3 Boundary state
 
 Each page or region has a boundary signature:
 
@@ -1343,7 +1343,7 @@ This is how you avoid recompiling the whole damn document because one sentence g
 
 ---
 
-# 23. Fixpoint model
+## 23. Fixpoint model
 
 Some values depend on final layout:
 
@@ -1399,7 +1399,7 @@ Not four separate CLI runs like a peasant.
 
 ---
 
-# 24. Determinism
+## 24. Determinism
 
 Builds must be deterministic.
 
@@ -1430,13 +1430,13 @@ Either freeze the date or error.
 
 ---
 
-# 25. Scripting model
+## 25. Scripting model
 
 You need programmability, but not madness.
 
 Options:
 
-## Option A: custom small language
+### Option A: custom small language
 
 Pros:
 
@@ -1453,7 +1453,7 @@ Cons:
 - humans will complain regardless
 ```
 
-## Option B: embedded Rhai / Starlark / WASM
+### Option B: embedded Rhai / Starlark / WASM
 
 Best serious choice:
 
@@ -1494,7 +1494,7 @@ trait MosaicPlugin {
 
 ---
 
-# 26. Project conventions
+## 26. Project conventions
 
 Recommended project layout:
 
@@ -1532,7 +1532,7 @@ Assets are addressed relative to project root unless otherwise stated.
 
 ---
 
-# 27. Versioning and compatibility
+## 27. Versioning and compatibility
 
 Mosaic files should declare language version:
 
@@ -1554,7 +1554,7 @@ engine while everyone pretends this is noble rather than a hostage situation.
 
 ---
 
-# 28. Testing documents
+## 28. Testing documents
 
 Documents and packages need tests.
 
@@ -1591,7 +1591,7 @@ Visual tests should compare layout trees, not raw PDFs. Raw PDF diffs are a pran
 
 ---
 
-# 29. Migration path
+## 29. Migration path
 
 You need migration, but do not make full LaTeX compatibility the core promise.
 
@@ -1619,9 +1619,9 @@ syntax highlighting.
 
 ---
 
-# 30. MVP roadmap
+## 30. MVP roadmap
 
-## MVP 0: Core compiler skeleton
+### MVP 0: Core compiler skeleton
 
 Goal:
 
@@ -1646,7 +1646,7 @@ Features:
 
 No floats yet. No bibliography yet. No heroic bullshit.
 
-## MVP 1: References and counters
+### MVP 1: References and counters
 
 Add:
 
@@ -1659,7 +1659,7 @@ Add:
 - internal fixpoint loop
 ```
 
-## MVP 2: Real text layout
+### MVP 2: Real text layout
 
 Add:
 
@@ -1671,7 +1671,7 @@ Add:
 - paragraph layout cache
 ```
 
-## MVP 3: Figures and floats
+### MVP 3: Figures and floats
 
 Add:
 
@@ -1683,7 +1683,7 @@ Add:
 - debug float diagnostics
 ```
 
-## MVP 4: Bibliography
+### MVP 4: Bibliography
 
 Add:
 
@@ -1694,7 +1694,7 @@ Add:
 - bibliography rendering
 ```
 
-## MVP 5: Incremental builds
+### MVP 5: Incremental builds
 
 Add:
 
@@ -1706,7 +1706,7 @@ Add:
 - watch mode
 ```
 
-## MVP 6: Editor integration
+### MVP 6: Editor integration
 
 Add:
 
@@ -1721,7 +1721,7 @@ beautiful architecture document and never render “hello world.”
 
 ---
 
-# 31. Minimal Rust architecture
+## 31. Minimal Rust architecture
 
 Something like:
 
@@ -1785,7 +1785,7 @@ should complain with dignity, which is apparently an advanced feature.
 
 ---
 
-# 32. Cache design
+## 32. Cache design
 
 Cache keys should include:
 
@@ -1827,7 +1827,7 @@ This lets you reuse paragraph layout across builds.
 
 ---
 
-# 33. Page reflow algorithm
+## 33. Page reflow algorithm
 
 Pseudo-code:
 
@@ -1862,7 +1862,7 @@ If page 12 changes but page 15’s boundary state matches the old build, pages 1
 
 ---
 
-# 34. Handling non-convergence
+## 34. Handling non-convergence
 
 Some documents can oscillate.
 
@@ -1909,7 +1909,7 @@ There. Helpful. Unlike “Label(s) may have changed,” which is just TeX’s wa
 
 ---
 
-# 35. Design non-goals
+## 35. Design non-goals
 
 Important.
 
@@ -1935,7 +1935,7 @@ Stay in it.
 
 ---
 
-# 36. What to prioritize
+## 36. What to prioritize
 
 In order:
 
@@ -1957,7 +1957,7 @@ Congratulations, you have built the Minotaur and the maze at the same time.
 
 ---
 
-# 37. The killer feature
+## 37. The killer feature
 
 The killer feature is not syntax.
 
@@ -1978,7 +1978,7 @@ Not “we have prettier macros.” Nobody sane cares. Sadly, many people are not
 
 ---
 
-# 38. The one-sentence proposal
+## 38. The one-sentence proposal
 
 **Mosaic is a Rust-based, semantic, incremental typesetting compiler that represents documents as
 dependency graphs, solves layout using explicit constraints and priorities, performs internal
