@@ -42,7 +42,7 @@ The math, fine, you were good at math. I will give you that. But
 I am also done feeling like a fraud for pasting a single ≤ into
 a paragraph and being forced to load amsmath, amssymb, and a
 third package whose name I have forgotten because the universe
-took it from me. Mosaic shapes math operators (≤ ≥ ≠ √ ∂ ∑ −)
+took it from me. Mosaic shapes math operators (≤ ≥ ≠ √ ∂ ∑)
 through automatic per-glyph fallback to the bundled Noto Sans
 Math cut — mid-word, mid-sentence, no `#set text(font: ...)`,
 no `\usepackage{}`, no `$ … $`. The body face does not contain
@@ -83,7 +83,7 @@ not say `\documentclass{article}` anywhere.
 
 #figure(
   image: "demo.png",
-  caption: "Exhibit A. A small bundled PNG, decoded and emitted as a flate-compressed DeviceRGB image XObject. Submitted without further comment.",
+  caption: "Exhibit A. A PNG, appearing here, below the sentence that references it, as God intended and LaTeX refused.",
 )
 
 Yours, with twenty-three open browser tabs of Stack Exchange

@@ -44,12 +44,16 @@ font we bundled, not from whatever Helvetica clone the reader
 fell back to.
 
 **Matematyka.** 2 + 3 ≤ 6, √16 = 4, ∂f/∂x ≠ 0, ∑(1..n). The
-math operators are not part of the Noto Sans Regular cut. They
-are not part of the **Italic** or **Bold** cuts either. They
-route — automatically, mid-line, with no `#set text(font:
-...)` ceremony — through the bundled Noto Sans Math cut, which
-the layout engine selects per-cluster whenever the primary
-face returns `.notdef`. Latin → Math → Latin happens inside a
+≤, √, ∂, ≠, and ∑ are not part of the Noto Sans Regular cut.
+They are not part of the *Italic* or **Bold** cuts either.
+The minus sign U+2212 is, for reasons known only to the Noto
+Sans design team, present in all three Latin cuts — the lone
+math stowaway, fully kerned, attending a party it was not
+invited to. We are not asking why. The rest route —
+automatically, mid-line, with no `#set text(font: ...)`
+ceremony — through the bundled Noto Sans Math cut, which the
+layout engine selects per-cluster whenever the primary face
+returns `.notdef`. Latin → Math → Latin happens inside a
 single visual word without you having to think about it.
 
 If any line above looks wrong to you, copy it out of the PDF
