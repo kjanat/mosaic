@@ -252,18 +252,27 @@ fn emit_encoding_dict(pdf: &mut Pdf, id: Ref, enc: &DocEncoding) {
 /// copy-paste and full-text search work for both `WinAnsi` natives
 /// and `/Differences`-remapped slots.
 fn emit_to_unicode_cmap(pdf: &mut Pdf, id: Ref, enc: &DocEncoding) {
-    let mut cmap: UnicodeCmap<u8> = UnicodeCmap::new(
-        Name(b"Adobe-Identity-UCS"),
-        SystemInfo {
-            registry: Str(b"Adobe"),
-            ordering: Str(b"UCS"),
-            supplement: 0,
-        },
-    );
+    // The `SystemInfo` here is embedded inside the PostScript-y CMap
+    // stream content (the `%%BeginResource: CMap …` header that
+    // `UnicodeCmap::new` writes). The `/CMapName` and `/CIDSystemInfo`
+    // entries set further down go on the stream dictionary itself —
+    // both are required by PDF 1.7 §9.7.5.4 / §9.10.3 (pdf-writer
+    // documents `.name()` and `.system_info()` as "Required"), even
+    // though readers we've tested tolerate their absence because the
+    // PS content carries the same info.
+    let system_info = SystemInfo {
+        registry: Str(b"Adobe"),
+        ordering: Str(b"UCS"),
+        supplement: 0,
+    };
+    let mut cmap: UnicodeCmap<u8> = UnicodeCmap::new(Name(b"Adobe-Identity-UCS"), system_info);
     for &(byte, ch) in &enc.to_unicode_entries {
         cmap.pair(byte, ch);
     }
-    pdf.cmap(id, &cmap.finish());
+    let cmap_bytes = cmap.finish();
+    let mut cmap_writer = pdf.cmap(id, &cmap_bytes);
+    cmap_writer.name(Name(b"Adobe-Identity-UCS"));
+    cmap_writer.system_info(system_info);
 }
 
 /// Build the per-page content stream. The layout engine measures

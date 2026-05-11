@@ -86,9 +86,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let out = std::path::PathBuf::from("/tmp/commaaccent-demo.pdf");
     let diags = mosaic_pdf::emit(&graph, &PdfMetadata::default(), &out)?;
+    // The example always succeeds quietly — readers care about the
+    // produced `/tmp/commaaccent-demo.pdf`, not the console. Any
+    // diagnostics surfaced here would indicate a bug in the layout
+    // or planner, so escalate as an error to fail-fast.
     if !diags.is_empty() {
-        eprintln!("diagnostics: {diags:?}");
+        return Err(format!("unexpected diagnostics: {diags:?}").into());
     }
-    println!("wrote {}", out.display());
     Ok(())
 }
