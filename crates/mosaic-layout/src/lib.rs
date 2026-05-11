@@ -610,7 +610,17 @@ impl LayoutState {
             height_pt: render_h,
         });
         self.page_has_content = true;
-        self.cursor_y += render_h + PARA_SPACE_AFTER_PT;
+        // Advance the cursor past the image. `flush_line` interprets
+        // `cursor_y` as the *baseline* of the next text line (not its
+        // top), so the next paragraph after the image would otherwise
+        // place its baseline at `image_bottom + PARA_SPACE_AFTER_PT`
+        // and its glyph tops at `image_bottom + PARA_SPACE_AFTER_PT -
+        // ascent`, eating into the image. Adding one body-text ascent
+        // here shifts the baseline far enough below `image_bottom`
+        // that the caption's glyph tops land at exactly
+        // `image_bottom + PARA_SPACE_AFTER_PT`.
+        let body_ascent = ascent(self.text.family.regular, self.text.size_pt);
+        self.cursor_y += render_h + PARA_SPACE_AFTER_PT + body_ascent;
     }
 
     /// Lay out a `Figure` block: image children render as blocks, the
@@ -626,6 +636,7 @@ impl LayoutState {
         // line-breaker. Inter-block spacing matches what each
         // `layout_*` call adds.
         let column_w = self.column_width_pt();
+        let body_ascent = ascent(self.text.family.regular, self.text.size_pt);
         let mut total_h = 0.0_f32;
         let mut block_count = 0_u32;
         for child_id in &figure.children {
@@ -633,13 +644,17 @@ impl LayoutState {
                 continue;
             };
             let block_h = match child.kind {
+                // Images advance the cursor by `render_h + body_ascent`
+                // (plus the per-block PARA_SPACE_AFTER_PT added below).
+                // See `layout_image` for why the ascent is there.
                 NodeKind::Image => self.intrinsic_image_size(child).map_or(0.0, |(w, h)| {
                     let render_w = w.min(column_w);
-                    if w > 0.0 && render_w < w {
+                    let render_h = if w > 0.0 && render_w < w {
                         render_w * (h / w)
                     } else {
                         h
-                    }
+                    };
+                    render_h + body_ascent
                 }),
                 NodeKind::Paragraph => self.measure_paragraph_height(document, child),
                 _ => continue,
