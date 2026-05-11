@@ -52,6 +52,7 @@ pub use afm::{BBox, CharacterMetric, FontMetrics, KerningPair};
 
 use std::borrow::Cow;
 
+mod winansi_char_map;
 mod winansi_table;
 
 // The generated file references `BBox`, `CharacterMetric`,
@@ -256,3 +257,15 @@ pub fn winansi_byte(ch: char) -> Option<u8> {
         .position(|&c| c == Some(ch))
         .and_then(|i| u8::try_from(i).ok())
 }
+
+// Test-only visibility shims for `tests/winansi_vendor.rs`. Both
+// constants are `#[doc(hidden)]` so they don't leak into the public
+// docs, and live here only so an integration test can prove the
+// hand-curated table in `src/winansi_char_map.rs` matches the
+// AGL-derived oracle baked at build time. If/when the AGL build path
+// is retired, drop `__WINANSI_CHAR_MAP_AGL` along with the resolver.
+#[doc(hidden)]
+pub const __WINANSI_CHAR_MAP_AGL: [Option<char>; 256] = WINANSI_CHAR_MAP;
+#[doc(hidden)]
+pub const __WINANSI_CHAR_MAP_LITERAL: [Option<char>; 256] =
+    winansi_char_map::WINANSI_CHAR_MAP_LITERAL;
