@@ -16,22 +16,22 @@ categories.workspace   = true
 # the bundled font TTFs, the OFL license, and the SOURCES manifest so
 # they ship in the crates.io tarball.
 include                = [
-  "src/**/*.rs",
-  "data/NotoSans-Regular.ttf",
-  "data/NotoSans-Bold.ttf",
-  "data/NotoSans-Italic.ttf",
-  "data/NotoSans-BoldItalic.ttf",
-  "data/LICENSE-Noto-Sans",
-  "data/SOURCES.md",
   "Cargo.toml",
+  "data/LICENSE-Noto-Sans",
+  "data/NotoSans-Bold.ttf",
+  "data/NotoSans-BoldItalic.ttf",
+  "data/NotoSans-Italic.ttf",
+  "data/NotoSans-Regular.ttf",
+  "data/SOURCES.md",
+  "src/**/*.rs",
 ]
 
 [dependencies]
 mosaic-core        = { workspace = true }
 pdf-base14-metrics = { workspace = true }
 rustybuzz          = "0.20"
-ttf-parser         = "0.25"
 subsetter          = "0.2"
+ttf-parser         = "0.25"
 
 [lints]
 workspace = true

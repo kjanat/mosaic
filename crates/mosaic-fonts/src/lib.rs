@@ -9,7 +9,7 @@
 //!   of extended Latin glyphs each face carries (Latin Extended-A
 //!   beyond `WinAnsi`, the math operators, `fi`/`fl` ligatures) goes
 //!   out through a per-document `/Differences` remap that
-//!   [`mosaic-pdf`] plans. Characters outside both tiers — Cyrillic,
+//!   `mosaic-pdf` plans. Characters outside both tiers — Cyrillic,
 //!   CJK, emoji — silently substitute to `?` in both the width and
 //!   emit paths (no warning, no panic; callers that want non-Latin
 //!   should pick the embedded family).
