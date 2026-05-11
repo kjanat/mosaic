@@ -71,7 +71,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // on `println!` while still producing the exact bytes Cargo expects.
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
-    // Re-run if the WinAnsi table, the AGL data, or this script itself changes.
+    // Re-run if this script, the WinAnsi glyph-name table, or any of the
+    // 14 vendored AFM files changes.
     writeln!(stdout, "cargo:rerun-if-changed=build.rs")?;
     writeln!(stdout, "cargo:rerun-if-changed=src/winansi_table.rs")?;
     for (_, file, _) in FONTS {
