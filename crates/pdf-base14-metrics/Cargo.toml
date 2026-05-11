@@ -7,12 +7,28 @@ description            = "Pre-parsed Adobe Core 14 PDF font metrics (Helvetica, 
 readme.workspace       = true
 homepage.workspace     = true
 repository.workspace   = true
-# `Adobe-Core14-AFM` is not a registered SPDX identifier, so use the
-# `LicenseRef-` form per SPDX §10. The license text is in
-# `LICENSE-Adobe-Core14-AFM` at the crate root.
-license                = "MIT AND LicenseRef-Adobe-Core14-AFM"
+# All three components are SPDX-registered identifiers (v3.6+):
+# - MIT: our own code.
+# - APAFML: Adobe PostScript AFM License — the Core 14 AFM data (`data/afm/*.afm`).
+#   License text in `LICENSE-APAFML`.
+# - BSD-3-Clause: Adobe Glyph List data (`data/agl/glyphlist.txt`),
+#   vendored from `adobe-type-tools/agl-aglfn`.
+#   License text in `LICENSE-AGL`.
+license                = "MIT AND APAFML AND BSD-3-Clause"
 keywords.workspace     = true
 categories.workspace   = true
+# Vendored-data crate: enumerate the exact file manifest that ships to crates.io.
+# The defaults would package the same set today (every git-tracked file under the crate dir),
+# but `include` makes the contract explicit and is forward-safe — a stray `data/notes.md`
+# committed later won't silently leak into the published artifact.
+include                = [
+  "LICENSE*",
+  "build.rs",
+  "data/afm/*.afm",
+  "data/agl/*.txt",
+  "src/**/*.rs",
+  "tests/**/*.rs",
+]
 
 [dependencies]
 afm = { workspace = true }

@@ -21,3 +21,9 @@
 This file is a placeholder so the project layout is exercisable
 once the parser lands in MVP 0. See `manifest.md` §2 for the syntax
 this is sketching toward.
+
+The renderer now supports PDF WinAnsi text: café culture, the
+§1 legal citation, German Straße addresses, ¶ pilcrows, ©
+copyright marks, and curly "smart" quotes all render at their
+correct advance widths. Outside WinAnsi (Cyrillic, CJK, Greek)
+still substitutes with `?` and warns until font embedding lands.

@@ -93,8 +93,9 @@ pub struct TextRun {
     pub size_pt: f32,
     /// Font face for this run.
     pub font: Font,
-    /// Text content. Already filtered to printable ASCII by the
-    /// engine — non-ASCII has been substituted with `?`.
+    /// Text content. Already filtered to PDF `WinAnsiEncoding`-
+    /// representable characters by the engine — non-`WinAnsi` has
+    /// been substituted with `?`.
     pub text: String,
 }
 
@@ -114,7 +115,7 @@ pub struct PageGraph {
 }
 
 /// Result of laying out a [`Document`]: a [`PageGraph`] plus any
-/// warnings the engine emitted (e.g. non-ASCII substitutions). Mirrors
+/// warnings the engine emitted (e.g. non-`WinAnsi` substitutions). Mirrors
 /// `mosaic_eval::LowerResult` so the CLI can render diagnostics
 /// uniformly.
 #[derive(Debug)]
@@ -469,9 +470,9 @@ impl LayoutState {
     }
 
     /// Walk `parent`'s inline children and produce a flat list of
-    /// [`Word`]s. Inline newlines collapse to spaces; non-ASCII chars
-    /// are replaced with `?` and a `W040` warning is emitted once per
-    /// inline that contained any.
+    /// [`Word`]s. Inline newlines collapse to spaces; non-`WinAnsi`
+    /// chars are replaced with `?` and a `W040` warning is emitted
+    /// once per inline that contained any.
     fn collect_words(
         &mut self,
         document: &Document,
@@ -677,18 +678,19 @@ fn read_str_attr<'a>(node: &'a Node, key: &str) -> Option<&'a str> {
     }
 }
 
-/// Replace any non-ASCII character with `?` and emit a `W040`
-/// warning if at least one substitution happened. Also normalises
-/// CR/LF (already done by the parser, but defensive — newlines and
-/// tabs collapse to spaces so word-splitting is uniform).
+/// Replace any character without a PDF `WinAnsiEncoding` slot with
+/// `?` and emit a `W040` warning if at least one substitution
+/// happened. Also normalises CR/LF/tab to space so word-splitting is
+/// uniform. `WinAnsi` covers ASCII, Latin-1, and the Windows-specific
+/// `0x80..=0x9F` band (Euro, smart quotes, bullet, …); anything else
+/// — Cyrillic, CJK, etc. — needs font embedding (issue #9).
 fn sanitize_text(raw: &str, span: &SourceSpan, diagnostics: &mut Vec<Diagnostic>) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut substituted = false;
     for ch in raw.chars() {
-        let code = u32::from(ch);
         if ch == '\n' || ch == '\r' || ch == '\t' {
             out.push(' ');
-        } else if (0x20..=0x7E).contains(&code) {
+        } else if mosaic_fonts::winansi_byte(ch).is_some() {
             out.push(ch);
         } else {
             out.push('?');
@@ -699,7 +701,9 @@ fn sanitize_text(raw: &str, span: &SourceSpan, diagnostics: &mut Vec<Diagnostic>
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             code: DiagnosticCode("W040"),
-            message: "non-ASCII text replaced with `?` — full Unicode lands in MVP 2".to_owned(),
+            message: "character not representable in WinAnsi (PDF base-font encoding) \
+                      replaced with `?` — embedded fonts land in MVP 2"
+                .to_owned(),
             span: Some(span.clone()),
             notes: Vec::new(),
             suggestions: Vec::new(),
@@ -849,14 +853,42 @@ mod tests {
     }
 
     #[test]
-    fn non_ascii_substitutes_and_warns() {
+    fn non_winansi_substitutes_and_warns() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
-        make_paragraph(&mut doc, "café");
+        // Cyrillic "Привет" has no WinAnsi slot — every char substitutes.
+        make_paragraph(&mut doc, "Привет");
         let result = LayoutEngine::new().layout(&doc);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].code.0, "W040");
+        assert!(
+            result.diagnostics[0].message.contains("WinAnsi"),
+            "W040 message should reference WinAnsi, got {:?}",
+            result.diagnostics[0].message
+        );
         let runs = &result.graph.pages[0].runs;
-        assert!(runs.iter().any(|r| r.text == "caf?"));
+        assert!(runs.iter().any(|r| r.text == "??????"));
+    }
+
+    #[test]
+    fn winansi_chars_pass_through_without_warning() {
+        // café / §1 / Straße all live in WinAnsi (Latin-1 + section
+        // sign + germandbls). No substitution, no W040.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_paragraph(&mut doc, "café §1 Straße");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(
+            result.diagnostics.is_empty(),
+            "expected no diagnostics, got {:?}",
+            result.diagnostics
+        );
+        let text: String = result.graph.pages[0]
+            .runs
+            .iter()
+            .map(|r| r.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(text.contains("café"), "got {text}");
+        assert!(text.contains("Straße"), "got {text}");
     }
 
     #[test]

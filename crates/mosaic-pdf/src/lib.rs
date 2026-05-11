@@ -1,13 +1,13 @@
 //! PDF backend for Mosaic (manifest §21.1).
 //!
 //! MVP 0 emits a fixed-A4 PDF declaring all 14 standard PDF base fonts (Helvetica/Times/Courier
-//! families + Symbol + ZapfDingbats) so we don't need font subsetting or embedding.
+//! families + Symbol + `ZapfDingbats`) so we don't need font subsetting or embedding.
 //! Tagged PDF, PDF/A, hyperlinks, bookmarks, and font embedding are deferred.
 
 use std::path::Path;
 
 use mosaic_core::{CoreError, Diagnostic, DiagnosticCode, Result, Severity};
-use mosaic_layout::{Font, PageGraph, TextRun};
+use mosaic_layout::{Base14Font, Font, PageGraph, TextRun};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 
 /// Document-level metadata that gets written to the PDF Info
@@ -111,8 +111,19 @@ pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> Vec<u8> {
     }
 
     for (face, font_id) in &font_refs {
-        pdf.type1_font(*font_id)
-            .base_font(Name(face.pdf_base_name().as_bytes()));
+        let mut font_dict = pdf.type1_font(*font_id);
+        font_dict.base_font(Name(face.pdf_base_name().as_bytes()));
+        // PDF readers default Type1 font dicts to the font's built-in
+        // encoding when `/Encoding` is absent. For Helvetica/Times/Courier
+        // that means StandardEncoding — NOT WinAnsi — so any byte ≥ 0x80
+        // (Euro, smart quotes, accented Latin, …) would render as a
+        // wrong glyph. Declare WinAnsiEncoding to match the byte stream
+        // emitted by `build_content_stream`. Symbol and ZapfDingbats
+        // use their own PostScript encodings; overriding to WinAnsi
+        // would be a category error (Symbol's `A` is Alpha, etc.).
+        if !matches!(face.0, Base14Font::Symbol | Base14Font::ZapfDingbats) {
+            font_dict.encoding_predefined(Name(b"WinAnsiEncoding"));
+        }
     }
 
     // Info dictionary: only emit fields we actually have. `pdf-writer`
@@ -146,10 +157,38 @@ fn build_content_stream(page_height_pt: f32, runs: &[TextRun]) -> Vec<u8> {
         // Identity rotation/scaling, translate to (x, page_height - baseline).
         let y_from_bottom = page_height_pt - run.baseline_from_top_pt;
         content.set_text_matrix([1.0, 0.0, 0.0, 1.0, run.x_pt, y_from_bottom]);
-        content.show(Str(run.text.as_bytes()));
+        let bytes = to_winansi_bytes(&run.text);
+        content.show(Str(&bytes));
     }
     content.end_text();
     content.finish().to_vec()
+}
+
+/// Convert `text` (UTF-8) to PDF `WinAnsiEncoding` bytes so the
+/// content stream agrees with the `/Encoding /WinAnsiEncoding` we
+/// declared on the Latin font dictionaries. Every char in `text` is
+/// guaranteed `WinAnsi`-encodable by `mosaic-layout::sanitize_text`
+/// before reaching this point; the `assert!` is a belt-and-suspenders
+/// guard against a regression in the sanitization boundary.
+fn to_winansi_bytes(text: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(text.len());
+    for ch in text.chars() {
+        // Same `assert!` + `unwrap_or(0)` dance as
+        // `mosaic-fonts::glyph_width_units`: workspace
+        // `clippy::panic = "warn"` rules out `let Some(..) else
+        // { panic!(..) }`, and `unwrap_used = "warn"` rules out
+        // `.unwrap()`. The `0` fallback is statically unreachable
+        // given the assert above.
+        let byte_opt = mosaic_fonts::winansi_byte(ch);
+        assert!(
+            byte_opt.is_some(),
+            "text reached PDF emit with non-WinAnsi char {ch:?} (U+{:04X}); \
+             sanitize_text must have a regression",
+            u32::from(ch)
+        );
+        out.push(byte_opt.unwrap_or(0));
+    }
+    out
 }
 
 #[cfg(test)]

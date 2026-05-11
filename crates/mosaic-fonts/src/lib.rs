@@ -7,14 +7,18 @@
 //! that widening will still be a breaking change for call sites that touch
 //! `.0`, the newtype just keeps those call sites localised.
 //!
-//! Only printable ASCII (`0x20..=0x7E`) is measurable here. Callers must
-//! substitute anything else upstream — the layout engine emits `W040` and
-//! rewrites to `?` at a single boundary so non-ASCII never reaches
-//! [`text_width`]. Broader Unicode → `WinAnsi` coverage is issue #8.
+//! Any character with a PDF `WinAnsiEncoding` slot is measurable here:
+//! ASCII (`0x20..=0x7E`), the Windows-specific band (`0x80..=0x9F` —
+//! Euro, smart quotes, bullet, trademark, …), and Latin-1
+//! (`0xA0..=0xFF` — `é`, `ß`, `§`, accented Latin, …). Callers must
+//! substitute anything outside `WinAnsi` upstream — the layout engine
+//! emits `W040` and rewrites to `?` at a single boundary so
+//! non-`WinAnsi` chars never reach [`text_width`]. Broader Unicode
+//! (Cyrillic, CJK, …) coverage requires font embedding and is issue #9.
 
 #![deny(missing_docs)]
 
-pub use pdf_base14_metrics::Base14Font;
+pub use pdf_base14_metrics::{Base14Font, winansi_byte};
 
 /// One of the 14 standard PDF fonts, wrapped in a newtype.
 ///
@@ -98,9 +102,10 @@ impl From<Font> for Base14Font {
 ///
 /// # Panics
 ///
-/// Panics if any character in `text` is outside printable ASCII
-/// (`0x20..=0x7E`); callers must substitute non-ASCII upstream. Also
-/// panics if `font` has no `WinAnsi` mapping (`Symbol`, `ZapfDingbats`).
+/// Panics if any character in `text` has no PDF `WinAnsiEncoding`
+/// slot (Cyrillic, CJK, etc.); callers must substitute non-`WinAnsi`
+/// characters upstream. Also panics if `font` is `Symbol` or
+/// `ZapfDingbats`, since those use their own encodings.
 #[must_use]
 pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
     let mut units: f32 = 0.0;
@@ -114,8 +119,8 @@ pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
 ///
 /// # Panics
 ///
-/// Panics if `ch` is outside printable ASCII (`0x20..=0x7E`), or if
-/// `font` has no `WinAnsi` mapping (`Symbol`, `ZapfDingbats`).
+/// Panics if `ch` has no PDF `WinAnsiEncoding` slot, or if `font` is
+/// `Symbol`/`ZapfDingbats` (those use their own encodings).
 #[must_use]
 pub fn glyph_width(font: Font, size: f32, ch: char) -> f32 {
     glyph_width_units(font, ch) * size / 1000.0
@@ -140,25 +145,25 @@ pub fn descent(font: Font, size: f32) -> f32 {
 ///
 /// # Panics
 ///
-/// Panics if `ch` is outside printable ASCII (`0x20..=0x7E`), or if
-/// `font` has no `WinAnsi` mapping for the resulting byte (`Symbol`,
-/// `ZapfDingbats`).
+/// Panics if `ch` has no PDF `WinAnsiEncoding` slot (the layout
+/// engine must substitute non-`WinAnsi` upstream), or if `font` is
+/// `Symbol`/`ZapfDingbats` (no `WinAnsi` table for those — their own
+/// PostScript encodings would have to be plumbed separately).
 fn glyph_width_units(font: Font, ch: char) -> f32 {
-    let cp = u32::from(ch);
+    // Two-stage assert-then-`unwrap_or` dance: workspace
+    // `clippy::panic = "warn"` rules out the `let Some(..) else
+    // { panic!(..) }` idiom (the bare `panic!` macro trips the lint),
+    // and `clippy::unwrap_used = "warn"` rules out `.unwrap()`. So we
+    // assert the Option is Some (clippy is fine with `assert!`),
+    // then `unwrap_or` with a statically-unreachable fallback.
+    let byte_opt = winansi_byte(ch);
     assert!(
-        (0x20..=0x7E).contains(&cp),
-        "non-ASCII char {ch:?} reached metrics; \
-         the layout engine must substitute non-ASCII before measuring"
+        byte_opt.is_some(),
+        "char {ch:?} (U+{:04X}) has no WinAnsi slot; \
+         the layout engine must substitute non-WinAnsi chars before measuring",
+        u32::from(ch)
     );
-    // Post-assert: `cp` is in `0x20..=0x7E`, which fits in `u8`. Using
-    // `try_from` + `unwrap_or(0)` avoids `cast_possible_truncation` (vs
-    // `as u8`) and `unwrap_used` (vs `.unwrap()`); the `0` fallback is
-    // statically unreachable, and if the upstream assert is ever
-    // weakened so chars > `u8::MAX` slip through, byte `0x00` is a
-    // WinAnsi control char with no mapping — the second `assert!`
-    // below surfaces the regression naming the bogus byte. Clippy's
-    // `unreachable = "warn"` rules out `unreachable!()` here.
-    let byte = u8::try_from(cp).unwrap_or(0);
+    let byte = byte_opt.unwrap_or(0);
     let width = font.0.winansi_width(byte);
     assert!(
         width.is_some(),
@@ -227,9 +232,38 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "non-ASCII char")]
-    fn non_ascii_panics() {
-        let _ = text_width(HELV, 12.0, "µ");
+    fn helvetica_eacute_matches_adobe_core14_afm() {
+        // Helvetica.afm: `C -1 ; WX 556 ; N eacute` (and the `Eacute`
+        // glyph at 667). WinAnsi byte 0xE9 -> "eacute", 0xC9 -> "Eacute".
+        let lower = text_width(HELV, 1000.0, "é");
+        assert!((lower - 556.0).abs() < 1e-3, "got {lower}");
+        let upper = text_width(HELV, 1000.0, "É");
+        assert!((upper - 667.0).abs() < 1e-3, "got {upper}");
+    }
+
+    #[test]
+    fn helvetica_winansi_band_widths() {
+        // ß (germandbls, byte 0xDF) is 611 in Helvetica.afm.
+        let germandbls = text_width(HELV, 1000.0, "ß");
+        assert!((germandbls - 611.0).abs() < 1e-3, "got {germandbls}");
+        // § (section, byte 0xA7) is 556.
+        let section = text_width(HELV, 1000.0, "§");
+        assert!((section - 556.0).abs() < 1e-3, "got {section}");
+        // © (copyright, byte 0xA9) is 737.
+        let copy = text_width(HELV, 1000.0, "©");
+        assert!((copy - 737.0).abs() < 1e-3, "got {copy}");
+        // Euro (Windows-specific band, byte 0x80) is 556.
+        let euro = text_width(HELV, 1000.0, "€");
+        assert!((euro - 556.0).abs() < 1e-3, "got {euro}");
+    }
+
+    #[test]
+    #[should_panic(expected = "has no WinAnsi slot")]
+    fn cyrillic_panics() {
+        // "П" (Cyrillic Pe, U+041F) has no WinAnsi slot; the
+        // layout engine should substitute via sanitize_text before
+        // measurements ever reach the fonts crate.
+        let _ = text_width(HELV, 12.0, "П");
     }
 
     #[test]

@@ -231,3 +231,28 @@ impl Base14Font {
 pub fn winansi_glyph_name(code: u8) -> Option<&'static str> {
     winansi_table::WINANSI_TABLE[code as usize]
 }
+
+/// Returns the PDF `WinAnsiEncoding` byte that encodes `ch`, or
+/// `None` if `ch` has no slot in `WinAnsi`.
+///
+/// The inverse of the byte→char mapping baked into
+/// `WINANSI_CHAR_MAP` at build time from `WINANSI_TABLE`
+/// (PDF 1.7 Annex D.2 Table D.2) cross-referenced with the
+/// [Adobe Glyph List]. Returns `None` for:
+///
+/// - Characters that have no glyph in `WinAnsi` (Cyrillic, CJK,
+///   most accented Vietnamese, etc.).
+/// - The six `WinAnsi` gap bytes (`0x7F`, `0x81`, `0x8D`, `0x8F`,
+///   `0x90`, `0x9D`).
+///
+/// O(n) scan over 256 slots — fine for callers that touch it once
+/// per text run, sensible to memoize for hotter paths.
+///
+/// [Adobe Glyph List]: https://github.com/adobe-type-tools/agl-aglfn
+#[must_use]
+pub fn winansi_byte(ch: char) -> Option<u8> {
+    WINANSI_CHAR_MAP
+        .iter()
+        .position(|&c| c == Some(ch))
+        .and_then(|i| u8::try_from(i).ok())
+}
