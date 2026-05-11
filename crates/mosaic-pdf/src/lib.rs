@@ -13,8 +13,9 @@
 //! A matching `/ToUnicode` `CMap` is emitted so the bytes we mint
 //! decode back to real Unicode in copy/paste and search.
 //!
-//! See [`encoding`] for the planner. PDF/A, tagged PDF, hyperlinks,
-//! bookmarks, and full font embedding (issue #9) are deferred.
+//! See the private `encoding` module for the planner. PDF/A, tagged
+//! PDF, hyperlinks, bookmarks, and full font embedding (issue #9)
+//! are deferred.
 
 mod encoding;
 
