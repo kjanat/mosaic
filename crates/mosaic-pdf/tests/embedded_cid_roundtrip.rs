@@ -17,9 +17,13 @@
 //! 5. The content stream uses hex-string CID pairs (`<HHHH ...>`), not
 //!    ASCII literal strings.
 
-use std::{error::Error, path::PathBuf};
+use std::{
+    error::Error,
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
-use lopdf::{Document, Object};
+use lopdf::{Dictionary, Document, Object, content::Content};
 use mosaic_core::{AttrMap, AttrValue, ContentHash, Node, NodeId, NodeKind, SourceSpan, StyleId};
 use mosaic_fonts::EmbeddedFontId;
 use mosaic_layout::{
@@ -30,12 +34,22 @@ use mosaic_pdf::PdfMetadata;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 macro_rules! ensure {
     ($cond:expr, $($arg:tt)*) => {
         if !$cond {
             return Err(format!($($arg)*).into());
         }
     };
+}
+
+fn temp_pdf_path() -> PathBuf {
+    let seq = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "mosaic-embedded-rt-{}-{seq}.pdf",
+        std::process::id(),
+    ))
 }
 
 /// Build a `PageGraph` through the real layout path so fallback tests
@@ -85,12 +99,7 @@ fn build_fallback_graph(
 }
 
 fn emit_graph(graph: &PageGraph) -> Result<(Document, Vec<u8>), Box<dyn Error>> {
-    let tmp = std::env::temp_dir().join(format!(
-        "mosaic-embedded-rt-{}.pdf",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos())
-    ));
+    let tmp = temp_pdf_path();
     let diags = mosaic_pdf::emit(graph, &PdfMetadata::default(), &tmp)
         .map_err(|e| format!("emit: {e:?}"))?;
     if !diags.is_empty() {
@@ -120,12 +129,7 @@ fn render(face: EmbeddedFontId, text: &str) -> Result<(Document, Vec<u8>), Box<d
         }],
         images: Vec::new(),
     };
-    let tmp = std::env::temp_dir().join(format!(
-        "mosaic-embedded-rt-{}.pdf",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos())
-    ));
+    let tmp = temp_pdf_path();
     let diags = mosaic_pdf::emit(&graph, &PdfMetadata::default(), &tmp)
         .map_err(|e| format!("emit: {e:?}"))?;
     if !diags.is_empty() {
@@ -147,7 +151,7 @@ fn deref<'d>(doc: &'d Document, obj: &'d Object) -> Result<&'d Object, Box<dyn E
 fn font_dict<'d>(
     doc: &'d Document,
     resource_name: &[u8],
-) -> Result<&'d lopdf::Dictionary, Box<dyn Error>> {
+) -> Result<&'d Dictionary, Box<dyn Error>> {
     let page_id = doc.page_iter().next().ok_or("no pages")?;
     let page = doc.get_dictionary(page_id)?;
     let resources = deref(doc, page.get(b"Resources")?)?.as_dict()?;
@@ -332,7 +336,7 @@ fn notdef_glyphs_dont_pollute_tounicode() -> TestResult {
     let mut in_block = false;
     for line in cmap_text.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("beginbfchar") || trimmed.starts_with("beginbfrange") {
+        if trimmed.ends_with("beginbfchar") || trimmed.ends_with("beginbfrange") {
             in_block = true;
             continue;
         }
@@ -356,26 +360,7 @@ fn notdef_glyphs_dont_pollute_tounicode() -> TestResult {
 
 const MATH_FALLBACK: &[EmbeddedFontId] = &[EmbeddedFontId::Math];
 
-fn extract_content_stream(doc: &Document, bytes: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
-    if let Ok(content) = extract_content_stream_from_page(doc) {
-        return Ok(content);
-    }
-
-    let open = b"\nstream\n";
-    let close = b"\nendstream";
-    let open_at = bytes
-        .windows(open.len())
-        .position(|w| w == open)
-        .ok_or("no content stream")?;
-    let body = &bytes[open_at + open.len()..];
-    let close_at = body
-        .windows(close.len())
-        .position(|w| w == close)
-        .ok_or("no endstream")?;
-    Ok(body[..close_at].to_vec())
-}
-
-fn extract_content_stream_from_page(doc: &Document) -> Result<Vec<u8>, Box<dyn Error>> {
+fn extract_content_stream(doc: &Document) -> Result<Vec<u8>, Box<dyn Error>> {
     let page_id = doc.page_iter().next().ok_or("no pages")?;
     let page = doc.get_dictionary(page_id)?;
     let contents = deref(doc, page.get(b"Contents")?)?;
@@ -393,6 +378,126 @@ fn extract_content_stream_from_page(doc: &Document) -> Result<Vec<u8>, Box<dyn E
         }
         _ => Err("/Contents is not a stream or stream array".into()),
     }
+}
+
+fn shown_cids_for_font(content: &[u8], resource_name: &[u8]) -> Result<Vec<u16>, Box<dyn Error>> {
+    let decoded = Content::decode(content)?;
+    let mut current_font: Option<Vec<u8>> = None;
+    let mut cids = Vec::new();
+    for operation in decoded.operations {
+        match operation.operator.as_str() {
+            "Tf" => {
+                if let Some(Object::Name(name)) = operation.operands.first() {
+                    current_font = Some(name.clone());
+                }
+            }
+            "Tj" if current_font.as_deref() == Some(resource_name) => {
+                let Some(Object::String(bytes, _)) = operation.operands.first() else {
+                    return Err("Tj operator missing string operand".into());
+                };
+                if bytes.len() % 2 != 0 {
+                    return Err(
+                        format!("embedded CID string has odd byte length: {bytes:?}").into(),
+                    );
+                }
+                for pair in bytes.chunks_exact(2) {
+                    cids.push((u16::from(pair[0]) << 8) | u16::from(pair[1]));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(cids)
+}
+
+fn cmap_maps_cid_to(cmap_text: &str, cid: u16, rhs_hex: &str) -> bool {
+    let lhs = format!("<{cid:04X}>");
+    let mut in_block = false;
+    for line in cmap_text.lines() {
+        let trimmed = line.trim();
+        if trimmed.ends_with("beginbfchar") || trimmed.ends_with("beginbfrange") {
+            in_block = true;
+            continue;
+        }
+        if trimmed.starts_with("endbfchar") || trimmed.starts_with("endbfrange") {
+            in_block = false;
+            continue;
+        }
+        if !in_block || !trimmed.starts_with(&lhs) {
+            continue;
+        }
+        let Some(last_open) = trimmed.rfind('<') else {
+            continue;
+        };
+        let Some(last_close) = trimmed[last_open..].find('>') else {
+            continue;
+        };
+        if &trimmed[last_open + 1..last_open + last_close] == rhs_hex {
+            return true;
+        }
+    }
+    false
+}
+
+fn embedded_descendant<'d>(
+    doc: &'d Document,
+    resource_name: &[u8],
+) -> Result<&'d Dictionary, Box<dyn Error>> {
+    let type0 = font_dict(doc, resource_name)?;
+    let descendants = type0.get(b"DescendantFonts")?.as_array()?;
+    let Object::Reference(cid_id) = descendants[0] else {
+        return Err("expected indirect descendant".into());
+    };
+    Ok(doc.get_dictionary(cid_id)?)
+}
+
+fn object_number_as_f32(obj: &Object) -> Result<f32, Box<dyn Error>> {
+    match obj {
+        Object::Integer(n) => Ok(f32::from(i16::try_from(*n)?)),
+        Object::Real(n) => Ok(*n),
+        other => Err(format!("expected numeric width, got {other:?}").into()),
+    }
+}
+
+fn object_integer_as_u16(obj: &Object) -> Result<u16, Box<dyn Error>> {
+    match obj {
+        Object::Integer(n) => Ok(u16::try_from(*n)?),
+        other => Err(format!("expected integer CID, got {other:?}").into()),
+    }
+}
+
+fn cid_width(cid_font: &Dictionary, cid: u16) -> Result<Option<f32>, Box<dyn Error>> {
+    let widths = cid_font.get(b"W")?.as_array()?;
+    let mut i = 0;
+    while i < widths.len() {
+        let first = object_integer_as_u16(&widths[i])?;
+        let Some(second) = widths.get(i + 1) else {
+            return Err("malformed /W array: missing second item".into());
+        };
+        match second {
+            Object::Array(values) => {
+                for (offset, value) in values.iter().enumerate() {
+                    let offset_u16 = u16::try_from(offset)?;
+                    if first.checked_add(offset_u16) == Some(cid) {
+                        return Ok(Some(object_number_as_f32(value)?));
+                    }
+                }
+                i += 2;
+            }
+            Object::Integer(last) => {
+                let last_u16 = u16::try_from(*last)?;
+                let Some(value) = widths.get(i + 2) else {
+                    return Err("malformed /W range: missing width".into());
+                };
+                if first <= cid && cid <= last_u16 {
+                    return Ok(Some(object_number_as_f32(value)?));
+                }
+                i += 3;
+            }
+            other => return Err(format!("malformed /W array item: {other:?}").into()),
+        }
+    }
+    Ok(None)
 }
 
 #[test]
@@ -448,8 +553,8 @@ fn mixed_run_content_stream_switches_tf_in_source_order() -> TestResult {
     // operators; the rawest check is a substring scan over the content
     // stream bytes for the resource names in source order.
     let (graph, _) = build_fallback_graph(EmbeddedFontId::Regular, MATH_FALLBACK, "a≤b");
-    let (doc, bytes) = emit_graph(&graph)?;
-    let content = extract_content_stream(&doc, &bytes)?;
+    let (doc, _) = emit_graph(&graph)?;
+    let content = extract_content_stream(&doc)?;
     let f15_first = content
         .windows(3)
         .position(|w| w == b"F15")
@@ -487,17 +592,25 @@ fn math_subrun_tounicode_maps_only_its_own_codepoint() -> TestResult {
         return Err("F20 ToUnicode is not a stream".into());
     };
     let cmap_text = String::from_utf8_lossy(&cmap_stream.content);
-    // `≤` is U+2264.
+    let content = extract_content_stream(&doc)?;
+    let math_cids = shown_cids_for_font(&content, b"F20")?;
     ensure!(
-        cmap_text.contains("2264"),
-        "F20 ToUnicode missing U+2264 (≤):\n{cmap_text}",
+        math_cids.len() == 1,
+        "expected one F20 CID for `≤`, got {math_cids:?}",
+    );
+    let math_cid = math_cids[0];
+    // `≤` is U+2264, and the actual CID emitted in the F20 `Tj`
+    // operation must be the CID mapped by F20's CMap.
+    ensure!(
+        cmap_maps_cid_to(&cmap_text, math_cid, "2264"),
+        "F20 ToUnicode does not map emitted CID {math_cid:04X} to U+2264 (≤):\n{cmap_text}",
     );
     // The Latin letters `a` (0x61) and `b` (0x62) must NOT appear as
     // bfchar RHS values in F20's CMap — they live in F15 only.
     let mut in_block = false;
     for line in cmap_text.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("beginbfchar") || trimmed.starts_with("beginbfrange") {
+        if trimmed.ends_with("beginbfchar") || trimmed.ends_with("beginbfrange") {
             in_block = true;
             continue;
         }
@@ -540,7 +653,24 @@ fn unsupported_codepoint_stays_notdef_without_panic() -> TestResult {
         "expected single sub-run when fallback chain has no match, got {}",
         graph.pages[0].runs.len(),
     );
+    ensure!(
+        graph.pages[0].runs[0].glyphs.iter().any(|g| g.gid == 0),
+        "expected unsupported emoji to shape to .notdef gid 0, got {:?}",
+        graph.pages[0].runs[0].glyphs,
+    );
     let (doc, _) = emit_graph(&graph)?;
+    let content = extract_content_stream(&doc)?;
+    let primary_cids = shown_cids_for_font(&content, b"F15")?;
+    ensure!(
+        primary_cids.contains(&0),
+        "expected .notdef CID 0000 in F15 content stream, got {primary_cids:?}",
+    );
+    let cid_font = embedded_descendant(&doc, b"F15")?;
+    let notdef_width = cid_width(cid_font, 0)?.ok_or("missing /W entry for .notdef CID 0000")?;
+    ensure!(
+        notdef_width.partial_cmp(&0.0) == Some(std::cmp::Ordering::Greater),
+        ".notdef CID 0000 width should match shaped advance, got {notdef_width}",
+    );
     let primary = font_dict(&doc, b"F15")?;
     let Object::Reference(cmap_id) = primary.get(b"ToUnicode")? else {
         return Err("expected indirect /ToUnicode on F15".into());

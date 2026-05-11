@@ -47,6 +47,11 @@ pub(crate) struct EmbeddedFontPlan {
     pub id: EmbeddedFontId,
     pub subset_bytes: Vec<u8>,
     pub remapper: GlyphRemapper,
+    /// Original GIDs used in content streams, including GID 0
+    /// (`.notdef`) when unsupported codepoints were shaped. This is
+    /// wider than `gid_to_text`: `.notdef` needs a PDF width but no
+    /// `/ToUnicode` mapping.
+    pub used_gids: Vec<u16>,
     /// Original GID → source text for that glyph's cluster. For
     /// ligatures (1 glyph, N codepoints) the value is the multi-char
     /// cluster string. For 1:1 mappings (typical LTR) it's a
@@ -99,6 +104,7 @@ pub(crate) fn plan_embedded(runs: &[TextRun]) -> Result<Vec<EmbeddedFontPlan>> {
             id,
             subset_bytes,
             remapper,
+            used_gids: gids,
             gid_to_text,
         });
     }
@@ -190,8 +196,8 @@ pub(crate) fn emit_embedded(pdf: &mut Pdf, plan: &EmbeddedFontPlan, refs: Embedd
         // subset GIDs.
         let upem = f32::from(font.units_per_em);
         let mut entries: Vec<(u16, f32)> = plan
-            .gid_to_text
-            .keys()
+            .used_gids
+            .iter()
             .filter_map(|&orig_gid| {
                 let subset_gid = plan.remapper.get(orig_gid)?;
                 let advance_units = font.advance_units(orig_gid);
@@ -200,6 +206,7 @@ pub(crate) fn emit_embedded(pdf: &mut Pdf, plan: &EmbeddedFontPlan, refs: Embedd
             })
             .collect();
         entries.sort_by_key(|e| e.0);
+        entries.dedup_by_key(|e| e.0);
         let mut i = 0;
         while i < entries.len() {
             let start = entries[i].0;

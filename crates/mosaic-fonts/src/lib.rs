@@ -20,12 +20,12 @@
 //!   Unicode-aware document: copy/paste round-trips through Cyrillic,
 //!   Greek, accented Latin, and anything else Noto Sans covers.
 //!
-//! Five cuts ship in this crate's `data/` directory: four Noto Sans
+//! Six cuts ship in this crate's `data/` directory: four Noto Sans
 //! style cuts (Regular, Bold, Italic, `BoldItalic`) for proportional
-//! body text plus one Noto Sans Mono Regular cut for `` `raw` `` runs
-//! (see `SOURCES.md` under the crate root). Style selection happens
-//! through [`FontFamily`], which the layout engine receives from the
-//! eval lowerer.
+//! body text, one Noto Sans Mono Regular cut for `` `raw` `` runs, and
+//! one Noto Sans Math cut for per-glyph fallback (see `SOURCES.md`
+//! under the crate root). Style selection happens through [`FontFamily`],
+//! which the layout engine receives from the eval lowerer.
 
 #![deny(missing_docs)]
 
@@ -254,7 +254,7 @@ impl Font {
         }
     }
 
-    /// Stable per-resource name (`F1`..`F14` for Base14, `F15`..`F19`
+    /// Stable per-resource name (`F1`..`F14` for Base14, `F15`..`F20`
     /// for embedded). Page font dictionaries map these to indirect
     /// font refs.
     #[must_use]
