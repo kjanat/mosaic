@@ -8,6 +8,9 @@
 //! - inline `*emphasis*`, `**strong**`, and `` `inline code` ``,
 //! - `#set name(...)` blocks, recorded with span and name but interpreted
 //!   later by the evaluator,
+//! - `#image(...)` and `#figure(...)` directives, sharing the same
+//!   `key: value` body grammar as `#set` plus an optional leading
+//!   positional string literal (`#image("path.png")`),
 //! - `<label>` attached to the preceding block (trailing on a heading or
 //!   leading on a paragraph), and `@label` cross-references as inline
 //!   [`InlineKind::Reference`] runs (manifest §3.3 and the MVP 1
@@ -47,10 +50,14 @@ pub enum Item {
         label: Option<String>,
         span: SourceSpan,
     },
-    /// `#set name(...)`. The body is lexed into typed `(key, value)`
-    /// args; semantic validation (known target/key, type coercion,
-    /// sanity floors) happens in the lowerer.
+    /// `#set name(...)`, `#image(...)`, `#figure(...)`. The body is
+    /// lexed into typed `(key, value)` args; semantic validation
+    /// (known target/key, type coercion, sanity floors) happens in
+    /// the lowerer. `kind` distinguishes the `#set`-style configuration
+    /// directive from standalone calls like `#image` and `#figure`,
+    /// which the lowerer dispatches to dedicated paths.
     Set {
+        kind: DirectiveKind,
         name: String,
         args: Vec<SetArg>,
         span: SourceSpan,
@@ -78,13 +85,87 @@ pub struct ListItem {
     pub span: SourceSpan,
 }
 
-/// One named argument inside a `#set name(key: value, ...)` block.
+/// Tag for the three directive shapes [`Item::Set`] can represent —
+/// the `#set <target>(...)` configuration directive vs the standalone
+/// `#image(...)` and `#figure(...)` calls. The lowerer dispatches on
+/// this rather than the [`Item::Set::name`] string so `#set image(...)`
+/// can never collide with `#image(...)`.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum DirectiveKind {
+    /// `#set <name>(...)` — sets defaults on a style target.
+    Set,
+    /// `#image("path", ...)` — raster image directive.
+    Image,
+    /// `#figure(image: ..., caption: ...)` — captioned image container.
+    Figure,
+}
+
+/// One argument inside a directive body — either a `key: value`
+/// pair (the only form `#set` accepts) or a positional value (a
+/// leading string literal allowed on `#image(...)` / `#figure(...)`).
+///
+/// This used to be a struct with an empty-string `key` standing in
+/// for "positional," but that sentinel was a brittle public contract:
+/// any consumer that forgot the special-case would silently treat a
+/// positional path as a named arg called `""`. The enum form makes
+/// the two shapes explicit so the compiler can enforce exhaustive
+/// matches.
 #[derive(Debug, Clone)]
-pub struct SetArg {
-    pub key: String,
-    pub value: SetValue,
-    pub key_span: SourceSpan,
-    pub value_span: SourceSpan,
+pub enum SetArg {
+    /// A `key: value` argument. `key_span` covers the identifier
+    /// before the colon; `value_span` covers the literal.
+    Named {
+        key: String,
+        value: SetValue,
+        key_span: SourceSpan,
+        value_span: SourceSpan,
+    },
+    /// A leading positional value. The parser currently only accepts
+    /// string literals here (used for `#image("path.png")`); other
+    /// literal kinds in a positional slot would surface as a parse
+    /// error rather than land in this variant.
+    Positional {
+        value: SetValue,
+        value_span: SourceSpan,
+    },
+}
+
+impl SetArg {
+    /// Borrow the value carried by this argument, regardless of shape.
+    #[must_use]
+    pub fn value(&self) -> &SetValue {
+        match self {
+            Self::Named { value, .. } | Self::Positional { value, .. } => value,
+        }
+    }
+
+    /// The span covering the argument's value literal.
+    #[must_use]
+    pub fn value_span(&self) -> &SourceSpan {
+        match self {
+            Self::Named { value_span, .. } | Self::Positional { value_span, .. } => value_span,
+        }
+    }
+
+    /// The key identifier for [`Self::Named`]; `None` for
+    /// [`Self::Positional`].
+    #[must_use]
+    pub fn key(&self) -> Option<&str> {
+        match self {
+            Self::Named { key, .. } => Some(key.as_str()),
+            Self::Positional { .. } => None,
+        }
+    }
+
+    /// The span covering the key identifier, for [`Self::Named`].
+    /// `None` for [`Self::Positional`].
+    #[must_use]
+    pub fn key_span(&self) -> Option<&SourceSpan> {
+        match self {
+            Self::Named { key_span, .. } => Some(key_span),
+            Self::Positional { .. } => None,
+        }
+    }
 }
 
 /// Literal values recognised inside a `#set` body. Full expression
@@ -153,11 +234,30 @@ impl Item {
         }
     }
 
-    /// Borrow the `#set` payload if `self` is [`Item::Set`].
+    /// Borrow the directive payload if `self` is [`Item::Set`].
+    ///
+    /// The returned tuple is `(name, args, span)`; the caller can also
+    /// reach [`DirectiveKind`] via [`Self::directive_kind`]. The
+    /// accessor name is retained for back-compat — every existing
+    /// caller pre-dates the `#image`/`#figure` directives and only
+    /// looks at name/args/span.
     #[must_use]
     pub fn as_set(&self) -> Option<(&str, &[SetArg], &SourceSpan)> {
-        if let Self::Set { name, args, span } = self {
+        if let Self::Set {
+            name, args, span, ..
+        } = self
+        {
             Some((name.as_str(), args.as_slice(), span))
+        } else {
+            None
+        }
+    }
+
+    /// Borrow the [`DirectiveKind`] tag if `self` is [`Item::Set`].
+    #[must_use]
+    pub fn directive_kind(&self) -> Option<DirectiveKind> {
+        if let Self::Set { kind, .. } = self {
+            Some(*kind)
         } else {
             None
         }
@@ -241,8 +341,8 @@ impl<'a> Parser<'a> {
                 self.skip_line();
                 continue;
             }
-            if self.at_set_keyword() {
-                self.parse_set_block();
+            if let Some(kw) = self.at_directive_keyword() {
+                self.parse_directive_block(kw);
             } else if self.starts_with("=") {
                 self.parse_heading();
             } else if self.at_list_marker() {
@@ -272,18 +372,34 @@ impl<'a> Parser<'a> {
         self.src.as_bytes()[self.pos..].starts_with(prefix.as_bytes())
     }
 
-    /// Returns true if the current position spells the `#set` keyword
-    /// followed by a token boundary (whitespace, EOF, or `(`). Without
-    /// the boundary check, prefixes like `#setting` would be routed to
-    /// `parse_set_block` and emit spurious diagnostics.
-    fn at_set_keyword(&self) -> bool {
-        if !self.starts_with("#set") {
-            return false;
+    /// Returns the matched keyword (`"set"`, `"image"`, `"figure"`) if
+    /// the current position spells one of the recognised directive
+    /// keywords followed by a token boundary (whitespace, EOF, or `(`).
+    /// The boundary check guards against prefixes like `#setting` or
+    /// `#imagery` being misrouted into the directive path.
+    fn at_directive_keyword(&self) -> Option<&'static str> {
+        const KEYWORDS: &[&str] = &["set", "image", "figure"];
+        if !self.starts_with("#") {
+            return None;
         }
-        match self.src.as_bytes().get(self.pos + 4) {
-            None => true,
-            Some(&b) => b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' || b == b'(',
+        let after_hash = self.pos + 1;
+        let bytes = self.src.as_bytes();
+        for kw in KEYWORDS {
+            let end = after_hash + kw.len();
+            if end > bytes.len() {
+                continue;
+            }
+            if &bytes[after_hash..end] != kw.as_bytes() {
+                continue;
+            }
+            let boundary = bytes
+                .get(end)
+                .is_none_or(|&b| b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' || b == b'(');
+            if boundary {
+                return Some(kw);
+            }
         }
+        None
     }
 
     /// Returns true if the current line is blank (contains only ASCII
@@ -367,6 +483,20 @@ impl<'a> Parser<'a> {
         self.pos = line_end;
     }
 
+    /// Parse a `#<kw>(...)` directive block where `kw` is one of the
+    /// keywords matched by [`Self::at_directive_keyword`].
+    ///
+    /// `#set` is the only directive that carries a separate inner
+    /// identifier (`#set page(...)`); for `#image` and `#figure` the
+    /// directive keyword itself is the [`Item::Set::name`] payload.
+    fn parse_directive_block(&mut self, kw: &'static str) {
+        if kw == "set" {
+            self.parse_set_block();
+        } else {
+            self.parse_call_block(kw);
+        }
+    }
+
     fn parse_set_block(&mut self) {
         let (line_start, _content_end, _line_end) = self.current_line_bounds();
         let bytes = self.src.as_bytes();
@@ -407,20 +537,80 @@ impl<'a> Parser<'a> {
             self.skip_line();
             return;
         }
-        let body_start = i;
+        self.finish_directive_block(line_start, i, DirectiveKind::Set, name, "set", false);
+    }
+
+    /// Parse a directive whose keyword stands on its own — `#image(...)`,
+    /// `#figure(...)` — so there is no inner identifier to consume.
+    fn parse_call_block(&mut self, kw: &'static str) {
+        let (line_start, _content_end, _line_end) = self.current_line_bounds();
+        let bytes = self.src.as_bytes();
+        debug_assert!(self.src[line_start + 1..].starts_with(kw));
+        let mut i = line_start + 1 + kw.len();
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'(' {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E011"),
+                    format!("expected `(` after `#{kw}`"),
+                )
+                .with_span(self.span(line_start, i)),
+            );
+            self.skip_line();
+            return;
+        }
+        let kind = match kw {
+            "image" => DirectiveKind::Image,
+            "figure" => DirectiveKind::Figure,
+            // `at_directive_keyword` returns only the strings handled
+            // above. Reaching this arm would indicate a parser-internal
+            // mismatch between the keyword recogniser and the dispatch
+            // table — fall back to `Set` rather than panicking in
+            // release so user input can never crash the parser, but
+            // a `debug_assert!` fires in tests.
+            other => {
+                debug_assert!(false, "parse_call_block: unexpected keyword `{other}`");
+                DirectiveKind::Set
+            }
+        };
+        self.finish_directive_block(line_start, i, kind, kw.to_owned(), kw, true);
+    }
+
+    /// Shared tail of [`Self::parse_set_block`] and
+    /// [`Self::parse_call_block`]: consume the balanced parenthesised
+    /// body starting at `paren_pos`, push the resulting [`Item::Set`],
+    /// and report any trailing-content diagnostic. `display_kw` is the
+    /// keyword spelling used in user-facing messages (`set`, `image`,
+    /// `figure`); for `#set` it's "set" and the directive's own inner
+    /// identifier already appears in `name`. `allow_positional` controls
+    /// whether a leading positional string literal may appear; `#set`
+    /// strictly requires `key: value` pairs (so a stray positional is
+    /// an E015), but `#image("path.png")` is a common ergonomic spelling.
+    fn finish_directive_block(
+        &mut self,
+        line_start: usize,
+        paren_pos: usize,
+        kind: DirectiveKind,
+        name: String,
+        display_kw: &str,
+        allow_positional: bool,
+    ) {
+        let bytes = self.src.as_bytes();
+        let body_start = paren_pos;
         if let Some(end) = self.scan_balanced_parens(body_start) {
-            // `body_start` points at `(`, `end` is one past `)`.
             let inner_start = body_start + 1;
             let inner_end = end - 1;
-            let args = self.parse_set_body(inner_start, inner_end);
+            let args = self.parse_set_body(inner_start, inner_end, allow_positional);
             let span = self.span(line_start, end);
-            self.items.push(Item::Set { name, args, span });
+            self.items.push(Item::Set {
+                kind,
+                name,
+                args,
+                span,
+            });
             self.pos = end;
-            // Consume only horizontal whitespace after the closing `)`.
-            // Anything else on the line is unexpected and gets a
-            // recoverable diagnostic — silently dropping trailing
-            // tokens would hide user mistakes like
-            // `#set page(...) leftover`.
             while self.pos < bytes.len() && (bytes[self.pos] == b' ' || bytes[self.pos] == b'\t') {
                 self.pos += 1;
             }
@@ -435,19 +625,16 @@ impl<'a> Parser<'a> {
                 self.diagnostics.push(
                     Diagnostic::error(
                         DiagnosticCode("E013"),
-                        "unexpected trailing content after `#set ... )`",
+                        format!("unexpected trailing content after `#{display_kw} ... )`"),
                     )
                     .with_span(self.span(self.pos, content_end)),
                 );
-                // Leave the trailing bytes in place; the outer loop
-                // will parse them as a paragraph so they remain
-                // visible to downstream stages.
             }
         } else {
             self.diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode("E012"),
-                    format!("unterminated `#set {name}(...)` block"),
+                    format!("unterminated `#{display_kw}(...)` block"),
                 )
                 .with_span(self.span(line_start, bytes.len())),
             );
@@ -494,19 +681,58 @@ impl<'a> Parser<'a> {
         None
     }
 
-    /// Lex `src[start..end]` (the contents of `#set name( ... )`) into
-    /// a list of `key: value` pairs. Recoverable: emits `E014`/`E015`
-    /// for malformed literals or structural problems and continues
-    /// scanning so a single typo doesn't drop the whole block.
-    fn parse_set_body(&mut self, start: usize, end: usize) -> Vec<SetArg> {
+    /// Lex `src[start..end]` (the contents of `#<kw>( ... )`) into
+    /// a list of arguments. Most arguments are `key: value` pairs;
+    /// directive callers (`#image`, `#figure`) may also pass a leading
+    /// positional value, which is stored as a [`SetArg`] with an empty
+    /// `key` field. Recoverable: emits `E014`/`E015` for malformed
+    /// literals or structural problems and continues scanning so a
+    /// single typo doesn't drop the whole block.
+    fn parse_set_body(&mut self, start: usize, end: usize, allow_positional: bool) -> Vec<SetArg> {
         let bytes = self.src.as_bytes();
         let mut args: Vec<SetArg> = Vec::new();
         let mut i = start;
+        let mut first = true;
         loop {
             i = skip_set_ws(bytes, i, end);
             if i >= end {
                 break;
             }
+            // Positional argument: only allowed as the very first
+            // entry, and only when the value is a string literal. This
+            // is enough to spell `#image("path.png")` ergonomically
+            // without inventing a whole positional-argument grammar;
+            // the lowerer rejects unexpected positional args per
+            // directive.
+            if allow_positional && first && bytes[i] == b'"' {
+                let value_start = i;
+                let parsed = self.parse_set_value(&mut i, end);
+                let value_span = self.span(value_start, i);
+                if let Some(value) = parsed {
+                    args.push(SetArg::Positional { value, value_span });
+                }
+                first = false;
+                i = skip_set_ws(bytes, i, end);
+                if i < end {
+                    if bytes[i] == b',' {
+                        i += 1;
+                    } else {
+                        self.diagnostics.push(
+                            Diagnostic::error(
+                                DiagnosticCode("E015"),
+                                "expected `,` or `)` between directive arguments",
+                            )
+                            .with_span(self.span(i, (i + 1).min(end))),
+                        );
+                        i = skip_to_comma(bytes, i, end);
+                        if i < end && bytes[i] == b',' {
+                            i += 1;
+                        }
+                    }
+                }
+                continue;
+            }
+            first = false;
             // Key.
             let key_start = i;
             while i < end && (bytes[i].is_ascii_alphanumeric() || matches!(bytes[i], b'_' | b'-')) {
@@ -516,7 +742,7 @@ impl<'a> Parser<'a> {
                 self.diagnostics.push(
                     Diagnostic::error(
                         DiagnosticCode("E015"),
-                        "expected `key: value` in `#set` arguments",
+                        "expected `key: value` in directive arguments",
                     )
                     .with_span(self.span(i, (i + 1).min(end))),
                 );
@@ -534,7 +760,7 @@ impl<'a> Parser<'a> {
                 self.diagnostics.push(
                     Diagnostic::error(
                         DiagnosticCode("E015"),
-                        format!("expected `:` after `{key}` in `#set` arguments"),
+                        format!("expected `:` after `{key}` in directive arguments"),
                     )
                     .with_span(key_span.clone()),
                 );
@@ -551,7 +777,7 @@ impl<'a> Parser<'a> {
             let parsed = self.parse_set_value(&mut i, end);
             let value_span = self.span(value_start, i);
             if let Some(value) = parsed {
-                args.push(SetArg {
+                args.push(SetArg::Named {
                     key,
                     value,
                     key_span,
@@ -567,7 +793,7 @@ impl<'a> Parser<'a> {
                     self.diagnostics.push(
                         Diagnostic::error(
                             DiagnosticCode("E015"),
-                            "expected `,` or `)` between `#set` arguments",
+                            "expected `,` or `)` between directive arguments",
                         )
                         .with_span(self.span(i, (i + 1).min(end))),
                     );
@@ -591,7 +817,7 @@ impl<'a> Parser<'a> {
             self.diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode("E014"),
-                    "expected a value in `#set` arguments",
+                    "expected a value in directive arguments",
                 )
                 .with_span(self.span(*i, *i)),
             );
@@ -694,7 +920,7 @@ impl<'a> Parser<'a> {
                 self.diagnostics.push(
                     Diagnostic::error(
                         DiagnosticCode("E014"),
-                        "expected a number after `-` in `#set` value",
+                        "expected a number after `-` in directive value",
                     )
                     .with_span(self.span(num_start, *i)),
                 );
@@ -773,7 +999,7 @@ impl<'a> Parser<'a> {
         self.diagnostics.push(
             Diagnostic::error(
                 DiagnosticCode("E014"),
-                format!("unexpected character `{}` in `#set` value", b as char),
+                format!("unexpected character `{}` in directive value", b as char),
             )
             .with_span(self.span(*i, *i + 1)),
         );
@@ -793,12 +1019,13 @@ impl<'a> Parser<'a> {
             if self.at_blank_line() {
                 break;
             }
-            // A heading, `#set`, or list marker always begins a fresh
-            // block, so they terminate any in-progress paragraph too.
+            // A heading, directive, or list marker always begins a
+            // fresh block, so they terminate any in-progress paragraph
+            // too.
             if self.starts_with("=") && self.heading_level_of_current_line().is_some() {
                 break;
             }
-            if self.at_set_keyword() {
+            if self.at_directive_keyword().is_some() {
                 break;
             }
             if self.at_list_marker() {
@@ -1168,7 +1395,7 @@ fn skip_set_ws(bytes: &[u8], from: usize, end: usize) -> usize {
 }
 
 /// Advance to the next `,` or end-of-body, used for error recovery
-/// inside `#set` argument parsing.
+/// inside directive argument parsing.
 fn skip_to_comma(bytes: &[u8], from: usize, end: usize) -> usize {
     let mut i = from;
     while i < end && bytes[i] != b',' {
@@ -1404,8 +1631,8 @@ mod tests {
         let (name, args, _) = r.tree.items[0].as_set().unwrap();
         assert_eq!(name, "page");
         assert_eq!(args.len(), 1);
-        assert_eq!(args[0].key, "paper");
-        assert_eq!(args[0].value, SetValue::Str("A4".to_owned()));
+        assert_eq!(args[0].key(), Some("paper"));
+        assert_eq!(args[0].value(), &SetValue::Str("A4".to_owned()));
     }
 
     #[test]
@@ -1417,10 +1644,10 @@ mod tests {
         let (name, args, _) = r.tree.items[0].as_set().unwrap();
         assert_eq!(name, "document");
         assert_eq!(args.len(), 2);
-        assert_eq!(args[0].key, "title");
-        assert_eq!(args[0].value, SetValue::Str("x".to_owned()));
-        assert_eq!(args[1].key, "author");
-        assert_eq!(args[1].value, SetValue::Str("y".to_owned()));
+        assert_eq!(args[0].key(), Some("title"));
+        assert_eq!(args[0].value(), &SetValue::Str("x".to_owned()));
+        assert_eq!(args[1].key(), Some("author"));
+        assert_eq!(args[1].value(), &SetValue::Str("y".to_owned()));
         assert_eq!(r.tree.items[1].as_heading().unwrap().0, 1);
     }
 
@@ -1430,11 +1657,17 @@ mod tests {
         let r = parse_str(src);
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         let (_, page_args, _) = r.tree.items[0].as_set().unwrap();
-        assert_eq!(page_args[0].value, SetValue::Length(24.0, LengthUnit::Mm));
+        assert_eq!(
+            page_args[0].value(),
+            &SetValue::Length(24.0, LengthUnit::Mm)
+        );
         let (_, text_args, _) = r.tree.items[1].as_set().unwrap();
-        assert_eq!(text_args[0].value, SetValue::Length(11.0, LengthUnit::Pt));
-        assert_eq!(text_args[1].value, SetValue::Float(1.35));
-        assert_eq!(text_args[2].value, SetValue::Length(2.0, LengthUnit::Em));
+        assert_eq!(
+            text_args[0].value(),
+            &SetValue::Length(11.0, LengthUnit::Pt)
+        );
+        assert_eq!(text_args[1].value(), &SetValue::Float(1.35));
+        assert_eq!(text_args[2].value(), &SetValue::Length(2.0, LengthUnit::Em));
     }
 
     #[test]
@@ -1442,8 +1675,11 @@ mod tests {
         let r = parse_str("#set foo(count: 42, alignment: bottom-center)\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         let (_, args, _) = r.tree.items[0].as_set().unwrap();
-        assert_eq!(args[0].value, SetValue::Int(42));
-        assert_eq!(args[1].value, SetValue::Ident("bottom-center".to_owned()));
+        assert_eq!(args[0].value(), &SetValue::Int(42));
+        assert_eq!(
+            args[1].value(),
+            &SetValue::Ident("bottom-center".to_owned())
+        );
     }
 
     #[test]
@@ -1459,7 +1695,7 @@ mod tests {
         let r = parse_str("#set foo(s: \"a\\\"b\\nc\\\\d\")\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         let (_, args, _) = r.tree.items[0].as_set().unwrap();
-        assert_eq!(args[0].value, SetValue::Str("a\"b\nc\\d".to_owned()));
+        assert_eq!(args[0].value(), &SetValue::Str("a\"b\nc\\d".to_owned()));
     }
 
     #[test]
@@ -1703,6 +1939,98 @@ mod tests {
         let text = inlines.iter().find(|i| i.kind == InlineKind::Text).unwrap();
         assert_eq!(text.text, "alpha\nbeta");
         assert_eq!(&src[text.span.start..text.span.end], "alpha\r\nbeta");
+    }
+
+    #[test]
+    fn image_directive_with_positional_path() {
+        let r = parse_str("#image(\"scan.png\")\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(name, "image");
+        assert_eq!(args.len(), 1);
+        // Positional arg: `.key()` returns `None`, and the variant
+        // pattern-matches as `SetArg::Positional`. Both forms are
+        // exercised so test sites that prefer pattern-matching and
+        // sites that prefer accessor methods both see the contract.
+        assert!(matches!(args[0], SetArg::Positional { .. }));
+        assert_eq!(args[0].key(), None);
+        assert_eq!(args[0].value(), &SetValue::Str("scan.png".to_owned()));
+    }
+
+    #[test]
+    fn image_directive_with_positional_and_keyed_args() {
+        let r = parse_str("#image(\"scan.png\", alt: \"a CTPA scan\", width: 200pt)\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(name, "image");
+        assert_eq!(args.len(), 3);
+        assert_eq!(args[0].key(), None);
+        assert_eq!(args[1].key(), Some("alt"));
+        assert_eq!(args[2].key(), Some("width"));
+        assert_eq!(args[2].value(), &SetValue::Length(200.0, LengthUnit::Pt));
+    }
+
+    #[test]
+    fn figure_directive_with_keyed_args() {
+        let r = parse_str("#figure(image: \"scan.png\", caption: \"A scan.\")\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(name, "figure");
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0].key(), Some("image"));
+        assert_eq!(args[0].value(), &SetValue::Str("scan.png".to_owned()));
+        assert_eq!(args[1].key(), Some("caption"));
+    }
+
+    #[test]
+    fn figure_directive_positional_path() {
+        // Pins the `#figure("…")` spelling the directive grammar
+        // advertises — the eval layer treats the first positional arg
+        // the same way `#image(...)` does, so the parser-level shape
+        // must match `#image`'s.
+        let r = parse_str("#figure(\"scan.png\")\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(name, "figure");
+        assert_eq!(args.len(), 1);
+        assert!(matches!(args[0], SetArg::Positional { .. }));
+        assert_eq!(args[0].value(), &SetValue::Str("scan.png".to_owned()));
+    }
+
+    #[test]
+    fn directive_prefix_without_token_boundary_stays_paragraph() {
+        // `#imagery` and `#figures` are not directive keywords. They
+        // must not be routed to the directive path.
+        let r = parse_str("#imagery here\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert!(r.tree.items[0].as_paragraph().is_some());
+    }
+
+    #[test]
+    fn unterminated_image_directive_errors_with_e012() {
+        let r = parse_str("#image(\n  alt: \"x\"\n");
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.code.0 == "E012" && d.message.contains("#image")),
+            "expected E012 mentioning #image, got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn directive_terminates_paragraph() {
+        // A paragraph in progress must stop at the next directive so
+        // the directive parses cleanly instead of being slurped into
+        // the paragraph body.
+        let r = parse_str("body line\n#image(\"x.png\")\nmore\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        // Expect: paragraph, image, paragraph.
+        assert_eq!(r.tree.items.len(), 3);
+        assert!(r.tree.items[0].as_paragraph().is_some());
+        let (kind, _, _) = r.tree.items[1].as_set().unwrap();
+        assert_eq!(kind, "image");
+        assert!(r.tree.items[2].as_paragraph().is_some());
     }
 
     #[test]

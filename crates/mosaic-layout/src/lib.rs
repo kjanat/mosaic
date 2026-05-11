@@ -13,7 +13,11 @@ pub use mosaic_fonts::{
     shape_text, text_width,
 };
 
-use mosaic_core::{AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeKind, Severity};
+use std::sync::Arc;
+
+use mosaic_core::{
+    AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeId, NodeKind, Severity,
+};
 
 /// A4 page width in PDF points (1pt = 1/72 inch). Kept as a public
 /// constant so external callers can still read the default; the layout
@@ -92,6 +96,50 @@ const PARA_SPACE_AFTER_PT: f32 = 4.0;
 /// gutter tuning lands.
 const LIST_MARKER_GUTTER_PT: f32 = 18.0;
 
+/// Decoded raster image data shared between every page that places
+/// the same source image. Held by [`Arc`] so a single PNG referenced
+/// from multiple `#image(...)` directives shares one buffer end-to-end.
+#[derive(Clone, Debug)]
+pub struct ImageHandle {
+    /// Stable index assigned by the layout engine. The PDF backend
+    /// uses it as the suffix on the `/Im<n>` resource-dict key and the
+    /// `XObject`'s indirect ref allocation order, so callers don't have
+    /// to hash the path themselves.
+    pub id: u32,
+    /// Resolved absolute path from the lowerer. Used as the dedup key
+    /// across multiple `#image(...)` calls with the same source.
+    pub resolved_path: String,
+    /// Decoded pixel width.
+    pub pixel_width: u32,
+    /// Decoded pixel height.
+    pub pixel_height: u32,
+    /// Flat RGB8 pixel buffer (`3 * pixel_width * pixel_height` bytes).
+    /// Shared via `Arc<[u8]>` so cloning a handle (e.g. when the same
+    /// image is referenced from multiple `#image`/`#figure` directives,
+    /// or when a future caching layer hands the document back) is cheap.
+    /// The eval crate hands ownership over as an `Arc<[u8]>` already
+    /// (see `AttrValue::Bytes`), so the slice never gets copied here.
+    pub rgb8: Arc<[u8]>,
+}
+
+/// One image placement on a page. The PDF backend emits this as a
+/// `q ... cm /Im<id> Do Q` block in the content stream.
+#[derive(Clone, Debug)]
+pub struct ImagePlacement {
+    pub handle: ImageHandle,
+    /// X coordinate of the image's left edge, measured from the page's
+    /// left edge in points.
+    pub x_pt: f32,
+    /// Y coordinate of the image's **top** edge, measured from the page's
+    /// **top** edge in points. The PDF backend flips to bottom-origin
+    /// once when emitting (same convention as [`TextRun`]).
+    pub top_from_top_pt: f32,
+    /// Rendered width in points.
+    pub width_pt: f32,
+    /// Rendered height in points.
+    pub height_pt: f32,
+}
+
 /// A single horizontal run of text on a page. The MVP 0 emitter
 /// produces one run per word; coalescing same-font neighbours is an
 /// MVP 2 optimisation.
@@ -126,12 +174,21 @@ pub struct Page {
     pub width_pt: f32,
     pub height_pt: f32,
     pub runs: Vec<TextRun>,
+    /// Raster image placements on this page. Stored as a separate
+    /// vector so PDF emit can walk every placement without filtering
+    /// the text-run stream — the two streams are independent.
+    pub images: Vec<ImagePlacement>,
 }
 
 /// The paginated output graph (manifest §6 stage 7).
 #[derive(Clone, Debug, Default)]
 pub struct PageGraph {
     pub pages: Vec<Page>,
+    /// Master list of every unique image referenced anywhere in
+    /// `pages`, ordered by [`ImageHandle::id`]. The PDF backend walks
+    /// this once to emit `XObject`s; per-page [`ImagePlacement::handle`]
+    /// references are just thin pointers into the same table.
+    pub images: Vec<ImageHandle>,
 }
 
 /// Result of laying out a [`Document`]: a [`PageGraph`] plus any
@@ -171,12 +228,14 @@ impl LayoutEngine {
             match node.kind {
                 NodeKind::Section => state.layout_heading(document, node),
                 NodeKind::Paragraph => state.layout_paragraph(document, node),
+                NodeKind::Image => state.layout_image(*child_id, node),
+                NodeKind::Figure => state.layout_figure(document, node),
                 NodeKind::List => state.layout_list(document, node),
                 // `#set` blocks are stashed as `Raw` children of the
                 // root; folded into styles by `resolve_styles` above.
                 NodeKind::Raw if node.attributes.contains_key("set") => {}
                 _ => {
-                    // Unknown top-level kinds (Figure, Table, etc.)
+                    // Unknown top-level kinds (Table, Equation, etc.)
                     // arrive in MVP 1+; ignore so MVP 0 doesn't panic
                     // on forward-compatible input.
                 }
@@ -419,6 +478,10 @@ struct LayoutState {
     diagnostics: Vec<Diagnostic>,
     page: PageStyle,
     text: TextStyle,
+    /// Image dedup table: resolved path → handle. Two `#image(...)`
+    /// directives that reference the same on-disk file share one
+    /// [`ImageHandle`] (and therefore one `XObject` in the emitted PDF).
+    image_handles: Vec<ImageHandle>,
     /// Left edge of the current text column. Equals `page.margin_pt`
     /// at the top level; list layout pushes this rightward so item
     /// text hangs into the gutter under its marker.
@@ -451,6 +514,7 @@ impl LayoutState {
             diagnostics: Vec::new(),
             page,
             text,
+            image_handles: Vec::new(),
             current_left_pt: page.margin_pt,
             pending_marker: None,
         }
@@ -469,7 +533,10 @@ impl LayoutState {
             self.pages.push(self.current_page);
         }
         LayoutResult {
-            graph: PageGraph { pages: self.pages },
+            graph: PageGraph {
+                pages: self.pages,
+                images: self.image_handles,
+            },
             diagnostics: self.diagnostics,
         }
     }
@@ -515,6 +582,268 @@ impl LayoutState {
         let words = self.collect_words(document, paragraph, regular, size);
         self.flow_words(&words, leading);
         self.cursor_y += PARA_SPACE_AFTER_PT;
+    }
+
+    /// Lay out a top-level `Image` node as a block. The image is
+    /// horizontally centred within the column and capped at the column
+    /// width — author-declared `width`/`height` attrs override the
+    /// natural pixel-at-72-DPI size proportionally.
+    fn layout_image(&mut self, node_id: NodeId, image: &Node) {
+        let Some((width_pt, height_pt)) = self.intrinsic_image_size(image) else {
+            return;
+        };
+        let Some(handle) = self.intern_image(image) else {
+            self.diagnostics.push(Diagnostic {
+                severity: Severity::Warning,
+                code: DiagnosticCode("W050"),
+                message: format!(
+                    "image node {:?} missing decoded pixel data; skipping",
+                    node_id
+                ),
+                span: Some(image.span.clone()),
+                notes: Vec::new(),
+                suggestions: Vec::new(),
+            });
+            return;
+        };
+        // Clamp width to column first so the page-break check below
+        // tests the *rendered* height, not the intrinsic one. Otherwise
+        // a 1000×1000 pixel image (1000pt natural at 72 DPI) would
+        // trigger a page break thinking it needs 1000pt, even though
+        // it ultimately renders at ~459pt × ~459pt after clamping.
+        let column_w = self.column_width_pt();
+        let render_w = width_pt.min(column_w);
+        let aspect = if width_pt > 0.0 {
+            height_pt / width_pt
+        } else {
+            1.0
+        };
+        let render_h = if render_w < width_pt {
+            render_w * aspect
+        } else {
+            height_pt
+        };
+        // Reserve vertical space; page-break if the image wouldn't fit
+        // in the remaining gap. Images that exceed the full vertical
+        // gap render on their own page (clipped at the bottom margin
+        // is acceptable for MVP; smarter scaling lands with §10 floats).
+        let available_y = self.page.height_pt - self.page.margin_pt;
+        if self.cursor_y + render_h > available_y && self.page_has_content {
+            self.start_new_page();
+        }
+        // Centre horizontally within the column.
+        let x = self.page.margin_pt + (column_w - render_w) * 0.5;
+        self.current_page.images.push(ImagePlacement {
+            handle,
+            x_pt: x,
+            top_from_top_pt: self.cursor_y,
+            width_pt: render_w,
+            height_pt: render_h,
+        });
+        self.page_has_content = true;
+        // Advance the cursor past the image. `flush_line` interprets
+        // `cursor_y` as the *baseline* of the next text line (not its
+        // top), so the next paragraph after the image would otherwise
+        // place its baseline at `image_bottom + PARA_SPACE_AFTER_PT`
+        // and its glyph tops at `image_bottom + PARA_SPACE_AFTER_PT -
+        // ascent`, eating into the image. Adding one body-text ascent
+        // here shifts the baseline far enough below `image_bottom`
+        // that the caption's glyph tops land at exactly
+        // `image_bottom + PARA_SPACE_AFTER_PT`.
+        let body_ascent = ascent(self.text.family.regular, self.text.size_pt);
+        self.cursor_y += render_h + PARA_SPACE_AFTER_PT + body_ascent;
+    }
+
+    /// Lay out a `Figure` block: image children render as blocks, the
+    /// caption paragraph renders beneath them, and the whole figure
+    /// is kept on one page when the remaining space allows. If the
+    /// combined height of every child plus inter-block spacing
+    /// wouldn't fit on the current page, the figure begins a fresh
+    /// page so the image and its caption stay together.
+    fn layout_figure(&mut self, document: &Document, figure: &Node) {
+        // Pre-flight the combined height. Image heights come from
+        // `intrinsic_image_size` (with the same column clamping
+        // `layout_image` applies), caption heights from a dry-run
+        // line-breaker. Inter-block spacing matches what each
+        // `layout_*` call adds.
+        let column_w = self.column_width_pt();
+        let body_ascent = ascent(self.text.family.regular, self.text.size_pt);
+        let mut total_h = 0.0_f32;
+        let mut block_count = 0_u32;
+        for child_id in &figure.children {
+            let Some(child) = document.get(*child_id) else {
+                continue;
+            };
+            let block_h = match child.kind {
+                // Images advance the cursor by `render_h + body_ascent`
+                // (plus the per-block PARA_SPACE_AFTER_PT added below).
+                // See `layout_image` for why the ascent is there.
+                NodeKind::Image => self.intrinsic_image_size(child).map_or(0.0, |(w, h)| {
+                    let render_w = w.min(column_w);
+                    let render_h = if w > 0.0 && render_w < w {
+                        render_w * (h / w)
+                    } else {
+                        h
+                    };
+                    render_h + body_ascent
+                }),
+                NodeKind::Paragraph => self.measure_paragraph_height(document, child),
+                _ => continue,
+            };
+            total_h += block_h;
+            block_count += 1;
+        }
+        // Each child's `layout_*` adds `PARA_SPACE_AFTER_PT` after it.
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "a figure with > 2^23 children is not a real document"
+        )]
+        if block_count > 0 {
+            total_h += PARA_SPACE_AFTER_PT * block_count as f32;
+        }
+        let available_y = self.page.height_pt - self.page.margin_pt;
+        if self.cursor_y + total_h > available_y && self.page_has_content {
+            self.start_new_page();
+        }
+        for child_id in &figure.children {
+            let Some(child) = document.get(*child_id) else {
+                continue;
+            };
+            match child.kind {
+                NodeKind::Image => self.layout_image(*child_id, child),
+                NodeKind::Paragraph => self.layout_paragraph(document, child),
+                _ => {}
+            }
+        }
+    }
+
+    /// Measure the rendered height of `paragraph` without flushing
+    /// anything to the current page. Mirrors `flow_words`' greedy
+    /// line-breaking exactly so the figure pre-flight matches what
+    /// the real layout produces — any divergence would leak figures
+    /// onto the wrong page even after the page-break check fired.
+    fn measure_paragraph_height(&mut self, document: &Document, paragraph: &Node) -> f32 {
+        let size = self.text.size_pt;
+        let leading = self.text.leading;
+        let regular = self.text.family.regular;
+        let words = self.collect_words(document, paragraph, regular, size);
+        if words.is_empty() {
+            return 0.0;
+        }
+        let line_width = self.column_width_pt();
+        let mut lines: u32 = 1;
+        let mut line_width_used = 0.0_f32;
+        for word in &words {
+            if word.width_pt > line_width {
+                // Oversize words wrap at character boundaries; the
+                // line-break path emits ceil(advance / line_width)
+                // chunks, each on its own line. Round up via integer
+                // math without `as_f32` round-tripping.
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let chunks = (word.width_pt / line_width).ceil().max(1.0) as u32;
+                if line_width_used > 0.0 {
+                    lines += 1;
+                }
+                lines += chunks.saturating_sub(1);
+                line_width_used = 0.0;
+                continue;
+            }
+            let space_w = if line_width_used > 0.0 {
+                text_width(word.font, word.size_pt, " ")
+            } else {
+                0.0
+            };
+            if line_width_used > 0.0 && line_width_used + space_w + word.width_pt > line_width {
+                lines += 1;
+                line_width_used = word.width_pt;
+            } else {
+                line_width_used += space_w + word.width_pt;
+            }
+        }
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "line counts in any sane document fit well inside the f32 mantissa"
+        )]
+        let h = (lines as f32) * size * leading;
+        h
+    }
+
+    /// Resolve the rendered (`width_pt`, `height_pt`) for an Image node,
+    /// folding in author-declared dimensions and the 72-DPI natural
+    /// fallback. Returns `None` when the node has no pixel dimensions
+    /// recorded (which only happens if the lowerer failed to decode
+    /// the file, in which case it should have dropped the node).
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "pixel dimensions clamp well below the f32 mantissa cap"
+    )]
+    fn intrinsic_image_size(&self, image: &Node) -> Option<(f32, f32)> {
+        let pw = read_int_attr(image, "pixel_width")?;
+        let ph = read_int_attr(image, "pixel_height")?;
+        if pw <= 0 || ph <= 0 {
+            return None;
+        }
+        let natural_w = pw as f32; // 1 pt per pixel ≈ 72 DPI
+        let natural_h = ph as f32;
+        let declared_w = read_length_attr(image, "width");
+        let declared_h = read_length_attr(image, "height");
+        let aspect = natural_h / natural_w;
+        // When both dimensions are declared, fit the image inside the
+        // requested box without distorting — scale uniformly by the
+        // tighter of the two ratios. This is the `object-fit: contain`
+        // convention rather than LaTeX's "stretch to exact box."
+        // Users that want non-uniform scaling can pre-process the
+        // bitmap; preserving aspect at the typesetter is the more
+        // forgiving default when a quick `width: 200pt, height:
+        // 200pt` would otherwise silently squash a 2:1 figure.
+        let (w, h) = match (declared_w, declared_h) {
+            (Some(w), Some(h)) => {
+                let scale = (w / natural_w).min(h / natural_h);
+                (natural_w * scale, natural_h * scale)
+            }
+            (Some(w), None) => (w, w * aspect),
+            (None, Some(h)) => (h / aspect, h),
+            (None, None) => (natural_w, natural_h),
+        };
+        Some((w, h))
+    }
+
+    /// Look up the image in the dedup table, or intern a new handle.
+    /// Returns `None` if the node is missing the decoded pixel buffer
+    /// (broken lowerer invariant — diagnose at the call site).
+    fn intern_image(&mut self, image: &Node) -> Option<ImageHandle> {
+        let resolved_path = match image.attributes.get("resolved_path") {
+            Some(AttrValue::Str(s)) => s.clone(),
+            _ => match image.attributes.get("src") {
+                Some(AttrValue::Str(s)) => s.clone(),
+                _ => return None,
+            },
+        };
+        if let Some(existing) = self
+            .image_handles
+            .iter()
+            .find(|h| h.resolved_path == resolved_path)
+        {
+            return Some(existing.clone());
+        }
+        let pw = read_int_attr(image, "pixel_width")?;
+        let ph = read_int_attr(image, "pixel_height")?;
+        let pixels: Arc<[u8]> = match image.attributes.get("pixels") {
+            // `Arc<[u8]>::clone()` only bumps a refcount; the slice
+            // itself stays shared with the source node.
+            Some(AttrValue::Bytes(b)) => Arc::clone(b),
+            _ => return None,
+        };
+        let id = u32::try_from(self.image_handles.len()).unwrap_or(u32::MAX);
+        let handle = ImageHandle {
+            id,
+            resolved_path,
+            pixel_width: u32::try_from(pw).ok()?,
+            pixel_height: u32::try_from(ph).ok()?,
+            rgb8: pixels,
+        };
+        self.image_handles.push(handle.clone());
+        Some(handle)
     }
 
     /// Lay out a [`NodeKind::List`] and its [`NodeKind::ListItem`]
@@ -865,6 +1194,7 @@ fn blank_page(number: u32, style: PageStyle) -> Page {
         width_pt: style.width_pt,
         height_pt: style.height_pt,
         runs: Vec::new(),
+        images: Vec::new(),
     }
 }
 
@@ -878,6 +1208,20 @@ fn read_level(section: &Node) -> Option<u8> {
 fn read_str_attr<'a>(node: &'a Node, key: &str) -> Option<&'a str> {
     match node.attributes.get(key) {
         Some(AttrValue::Str(s)) => Some(s.as_str()),
+        _ => None,
+    }
+}
+
+fn read_int_attr(node: &Node, key: &str) -> Option<i64> {
+    match node.attributes.get(key) {
+        Some(AttrValue::Int(n)) => Some(*n),
+        _ => None,
+    }
+}
+
+fn read_length_attr(node: &Node, key: &str) -> Option<f32> {
+    match node.attributes.get(key) {
+        Some(AttrValue::Length(pt)) => Some(pt_to_f32(*pt)),
         _ => None,
     }
 }
@@ -1610,6 +1954,50 @@ mod tests {
         assert_eq!(runs[0].text, "body");
     }
 
+    /// Allocate an Image node with the lowerer-shaped attributes the
+    /// layout engine expects: `src/resolved_path/pixel_{w,h}/pixels/`.
+    /// Used by every image-block test below.
+    fn make_image(
+        doc: &mut Document,
+        path: &str,
+        pixel_w: u32,
+        pixel_h: u32,
+        declared_width_pt: Option<f64>,
+        declared_height_pt: Option<f64>,
+    ) -> NodeId {
+        let pixels: Arc<[u8]> = Arc::from(vec![0; (pixel_w * pixel_h * 3) as usize]);
+        let mut attrs = AttrMap::new();
+        attrs.insert("src".to_owned(), AttrValue::Str(path.to_owned()));
+        attrs.insert(
+            "resolved_path".to_owned(),
+            AttrValue::Str(format!("/tmp/{path}")),
+        );
+        attrs.insert("pixel_width".to_owned(), AttrValue::Int(i64::from(pixel_w)));
+        attrs.insert(
+            "pixel_height".to_owned(),
+            AttrValue::Int(i64::from(pixel_h)),
+        );
+        attrs.insert("pixels".to_owned(), AttrValue::Bytes(pixels));
+        if let Some(w) = declared_width_pt {
+            attrs.insert("width".to_owned(), AttrValue::Length(w));
+        }
+        if let Some(h) = declared_height_pt {
+            attrs.insert("height".to_owned(), AttrValue::Length(h));
+        }
+        doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Image,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        )
+    }
+
     fn alloc_list(doc: &mut Document, parent: NodeId, ordered: bool) -> NodeId {
         let mut attrs = AttrMap::new();
         attrs.insert("ordered".to_owned(), AttrValue::Bool(ordered));
@@ -1627,6 +2015,294 @@ mod tests {
         )
     }
 
+    #[test]
+    fn image_block_natural_size_at_72dpi() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_image(&mut doc, "x.png", 100, 60, None, None);
+        let result = LayoutEngine::new().layout(&doc);
+        let page = &result.graph.pages[0];
+        assert_eq!(page.images.len(), 1);
+        let img = &page.images[0];
+        // 100 px → 100 pt at 72 DPI; 60 px → 60 pt.
+        assert!((img.width_pt - 100.0).abs() < 0.5);
+        assert!((img.height_pt - 60.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn image_block_declared_width_preserves_aspect_ratio() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_image(&mut doc, "x.png", 200, 100, Some(80.0), None);
+        let result = LayoutEngine::new().layout(&doc);
+        let img = &result.graph.pages[0].images[0];
+        // 200:100 = 2:1, so width 80pt → height 40pt.
+        assert!((img.width_pt - 80.0).abs() < 0.5);
+        assert!((img.height_pt - 40.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn image_block_both_dims_fits_inside_box_preserving_aspect() {
+        // 2:1 source with `width: 80pt, height: 80pt`: the result must
+        // be 80×40 (fit inside the box, scale by the tighter ratio),
+        // *not* 80×80 (which would squash the bitmap). Guards the
+        // CodeRabbit fix that switched to `object-fit: contain`
+        // semantics for both-dims-declared.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_image(&mut doc, "x.png", 200, 100, Some(80.0), Some(80.0));
+        let result = LayoutEngine::new().layout(&doc);
+        let img = &result.graph.pages[0].images[0];
+        assert!((img.width_pt - 80.0).abs() < 0.5, "w = {}", img.width_pt);
+        assert!((img.height_pt - 40.0).abs() < 0.5, "h = {}", img.height_pt);
+    }
+
+    #[test]
+    fn image_block_both_dims_taller_box_fits_by_width() {
+        // Symmetric case: 2:1 source with `width: 40pt, height: 80pt`.
+        // The width is the tighter constraint (ratio 40/200 = 0.2 vs
+        // 80/100 = 0.8), so the scale picks 0.2 → 40×20.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_image(&mut doc, "x.png", 200, 100, Some(40.0), Some(80.0));
+        let result = LayoutEngine::new().layout(&doc);
+        let img = &result.graph.pages[0].images[0];
+        assert!((img.width_pt - 40.0).abs() < 0.5, "w = {}", img.width_pt);
+        assert!((img.height_pt - 20.0).abs() < 0.5, "h = {}", img.height_pt);
+    }
+
+    #[test]
+    fn image_block_clamped_to_column_width() {
+        // An image wider than the column should shrink (proportionally)
+        // to fit. A4 has ~459 pt of column width with the default 24mm
+        // margins.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_image(&mut doc, "x.png", 4000, 2000, None, None);
+        let result = LayoutEngine::new().layout(&doc);
+        let img = &result.graph.pages[0].images[0];
+        let col = A4_WIDTH_PT - 2.0 * MARGIN_PT;
+        assert!(img.width_pt <= col + 0.5);
+        // Aspect ratio preserved.
+        let aspect = 4000.0_f32 / 2000.0;
+        let expected_h = img.width_pt / aspect;
+        assert!((img.height_pt - expected_h).abs() < 0.5);
+    }
+
+    #[test]
+    fn oversized_image_after_paragraph_does_not_force_extra_page() {
+        // Regression guard: the page-break check used to fire on the
+        // unclamped intrinsic height. A 1000×1000-pixel image
+        // (1000pt natural at 72 DPI, well over A4's ~706pt vertical
+        // gap) would spuriously land on its own page even though the
+        // column-width clamp scales it down to ~459pt — which fits
+        // alongside a short preceding paragraph. Now the check tests
+        // the *rendered* height, so both blocks share page 1.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_paragraph(&mut doc, "lead paragraph");
+        make_image(&mut doc, "big.png", 1000, 1000, None, None);
+        let result = LayoutEngine::new().layout(&doc);
+        assert_eq!(
+            result.graph.pages.len(),
+            1,
+            "expected a single page, got {}",
+            result.graph.pages.len()
+        );
+        assert_eq!(result.graph.pages[0].images.len(), 1);
+        assert!(!result.graph.pages[0].runs.is_empty());
+    }
+
+    #[test]
+    fn image_dedup_emits_one_handle_per_resolved_path() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_image(&mut doc, "same.png", 50, 50, None, None);
+        make_image(&mut doc, "same.png", 50, 50, None, None);
+        let result = LayoutEngine::new().layout(&doc);
+        assert_eq!(result.graph.images.len(), 1);
+        // Both placements reference the same handle id.
+        let placements: Vec<&ImagePlacement> = result
+            .graph
+            .pages
+            .iter()
+            .flat_map(|p| p.images.iter())
+            .collect();
+        assert_eq!(placements.len(), 2);
+        assert_eq!(placements[0].handle.id, placements[1].handle.id);
+    }
+
+    #[test]
+    fn figure_lays_out_image_then_caption() {
+        // A Figure with an Image and a caption Paragraph as children
+        // should produce one image placement and at least one text run
+        // (the caption) on the same page, with the caption beneath the
+        // image.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let fig = doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Figure,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
+        // Inline-allocate an image as a child of the figure.
+        let mut img_attrs = AttrMap::new();
+        img_attrs.insert("src".to_owned(), AttrValue::Str("fig.png".to_owned()));
+        img_attrs.insert(
+            "resolved_path".to_owned(),
+            AttrValue::Str("/tmp/fig.png".to_owned()),
+        );
+        img_attrs.insert("pixel_width".to_owned(), AttrValue::Int(80));
+        img_attrs.insert("pixel_height".to_owned(), AttrValue::Int(50));
+        img_attrs.insert(
+            "pixels".to_owned(),
+            AttrValue::Bytes(Arc::from(vec![0_u8; 80 * 50 * 3])),
+        );
+        doc.alloc_child(
+            fig,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Image,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: img_attrs,
+            },
+        );
+        let cap = doc.alloc_child(
+            fig,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Paragraph,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
+        alloc_inline(&mut doc, cap, NodeKind::Text, "Caption text.");
+        let result = LayoutEngine::new().layout(&doc);
+        let page = &result.graph.pages[0];
+        assert_eq!(page.images.len(), 1);
+        let caption_run = page
+            .runs
+            .iter()
+            .find(|r| r.text == "Caption" || r.text == "text.")
+            .expect("caption run not found");
+        // Caption baseline sits below the image top edge.
+        assert!(caption_run.baseline_from_top_pt > page.images[0].top_from_top_pt);
+    }
+
+    /// Allocate a Figure node whose only children are one Image and a
+    /// short caption paragraph. Used by the keep-together test below.
+    fn make_figure_with_image_and_caption(
+        doc: &mut Document,
+        pixel_w: u32,
+        pixel_h: u32,
+        caption: &str,
+    ) -> NodeId {
+        let fig = doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Figure,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
+        let mut img_attrs = AttrMap::new();
+        img_attrs.insert("src".to_owned(), AttrValue::Str("fig.png".to_owned()));
+        img_attrs.insert(
+            "resolved_path".to_owned(),
+            AttrValue::Str(format!("/tmp/figkt-{pixel_w}x{pixel_h}.png")),
+        );
+        img_attrs.insert("pixel_width".to_owned(), AttrValue::Int(i64::from(pixel_w)));
+        img_attrs.insert(
+            "pixel_height".to_owned(),
+            AttrValue::Int(i64::from(pixel_h)),
+        );
+        img_attrs.insert(
+            "pixels".to_owned(),
+            AttrValue::Bytes(Arc::from(vec![0_u8; (pixel_w * pixel_h * 3) as usize])),
+        );
+        doc.alloc_child(
+            fig,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Image,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: img_attrs,
+            },
+        );
+        let cap = doc.alloc_child(
+            fig,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Paragraph,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
+        alloc_inline(doc, cap, NodeKind::Text, caption);
+        fig
+    }
+
+    #[test]
+    fn figure_image_and_caption_stay_on_the_same_page() {
+        // Place a long lead paragraph so the cursor lands near the
+        // bottom of page 1, then drop a figure whose image+caption
+        // together exceed the remaining vertical gap. The figure
+        // must move *as a unit* to page 2 — splitting the image
+        // from its caption would be the regression this test guards.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        // ~80 lines of body text gets us close to the bottom of A4
+        // (706pt gap ÷ ~15pt line ≈ 47 lines fit; 80 spills onto a
+        // second page with the cursor near the top there). To force
+        // a near-bottom state, use a paragraph long enough to spill
+        // to page 2 *and* leave only ~100pt left there.
+        let mut filler = String::new();
+        for i in 0..540 {
+            filler.push_str(&format!("word{i} "));
+        }
+        make_paragraph(&mut doc, filler.trim());
+        // A 400×300pt figure won't fit in 100pt of remaining gap.
+        make_figure_with_image_and_caption(&mut doc, 400, 300, "Tight caption.");
+        let result = LayoutEngine::new().layout(&doc);
+        let mut figure_page: Option<u32> = None;
+        let mut caption_page: Option<u32> = None;
+        for page in &result.graph.pages {
+            if !page.images.is_empty() && figure_page.is_none() {
+                figure_page = Some(page.number);
+            }
+            if page
+                .runs
+                .iter()
+                .any(|r| r.text == "Tight" || r.text == "caption.")
+                && caption_page.is_none()
+            {
+                caption_page = Some(page.number);
+            }
+        }
+        let figure_page = figure_page.expect("figure image not emitted");
+        let caption_page = caption_page.expect("caption run not emitted");
+        assert_eq!(
+            figure_page, caption_page,
+            "figure and caption ended up on different pages ({} vs {})",
+            figure_page, caption_page
+        );
+    }
     fn alloc_list_item(doc: &mut Document, parent: NodeId, text: &str) -> NodeId {
         let id = doc.alloc_child(
             parent,

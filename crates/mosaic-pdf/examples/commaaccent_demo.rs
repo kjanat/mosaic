@@ -90,7 +90,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     glyphs: Vec::new(),
                 },
             ],
+            images: Vec::new(),
         }],
+        images: Vec::new(),
     };
 
     let out = std::path::PathBuf::from("/tmp/commaaccent-demo.pdf");

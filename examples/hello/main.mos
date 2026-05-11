@@ -56,3 +56,8 @@ Ordered lists renumber from 1, regardless of the digits typed in source:
 5. first step,
 9. second step,
 27. and a long third step that runs well past the right margin so the line breaker has to wrap it back onto a second line at the same indent as the first — proving the hanging indent survives across wraps.
+
+#figure(
+  image: "demo.png",
+  caption: "A tiny bundled PNG, decoded and emitted as a flate-compressed DeviceRGB image XObject.",
+)

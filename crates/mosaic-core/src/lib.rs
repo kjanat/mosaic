@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Stable identifier for a document node.
 ///
@@ -36,7 +37,14 @@ pub enum NodeKind {
     Strong,
     Math,
     Equation,
+    /// A captioned container — an image plus a caption paragraph, laid
+    /// out together with the caption beneath. Cross-references via
+    /// `@fig:foo` will target this kind once MVP 3 lands.
     Figure,
+    /// A raster image (PNG / JPEG in MVP 1.5). The decoded pixel data
+    /// and natural dimensions live on the node's attributes; see the
+    /// `mosaic-eval` resolver for the exact attribute names.
+    Image,
     Table,
     Citation,
     Reference,
@@ -81,6 +89,18 @@ pub enum AttrValue {
     /// them to a single canonical scalar so layout never has to know
     /// about units.
     Length(f64),
+    /// Opaque binary payload — currently used to carry decoded raster
+    /// image pixels (RGB8) onto an [`NodeKind::Image`] node so the PDF
+    /// backend can emit them as an Image `XObject` without re-reading the
+    /// source file.
+    ///
+    /// Stored as `Arc<[u8]>` so a node carrying decoded pixels is cheap
+    /// to clone (e.g. across cache boundaries or when the same image
+    /// would otherwise be duplicated through the document graph). The
+    /// layout engine still dedups by resolved path, so most documents
+    /// hold one buffer per image regardless; the `Arc` is insurance
+    /// against accidental copies on the eval → layout boundary.
+    Bytes(Arc<[u8]>),
 }
 
 /// A byte-range location in a source file (manifest §6 stage 1).

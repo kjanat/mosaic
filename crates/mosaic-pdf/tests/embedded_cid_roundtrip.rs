@@ -48,7 +48,9 @@ fn render(face: EmbeddedFontId, text: &str) -> Result<(Document, Vec<u8>), Box<d
                 text: text.to_owned(),
                 glyphs: mosaic_fonts::shape(face.data(), text),
             }],
+            images: Vec::new(),
         }],
+        images: Vec::new(),
     };
     let tmp = std::env::temp_dir().join(format!(
         "mosaic-embedded-rt-{}.pdf",

@@ -12,6 +12,10 @@ keywords.workspace     = true
 categories.workspace   = true
 
 [dependencies]
+# PNG + JPEG decode for `#image(...)` directives. Default features are
+# turned off so we don't pull in TIFF, AVIF, WebP, etc. — image format
+# coverage beyond PNG/JPEG is a separate later slice.
+image        = { workspace = true }
 mosaic-core  = { workspace = true }
 mosaic-parse = { workspace = true }
 

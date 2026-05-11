@@ -319,6 +319,139 @@ fn build_creates_output_directory() {
     assert!(dir.path().join("build/main.pdf").exists());
 }
 
+/// Build a 4×3 RGBA PNG by hand without depending on an `image` crate
+/// in this crate's dev-dependencies. The bytes here are a minimal
+/// PNG: 8-byte signature, IHDR, IDAT (with a zlib-wrapped
+/// uncompressed deflate block), and IEND. The colour space is
+/// RGBA8.
+fn write_tiny_png(path: &Path) {
+    // Construct the IDAT body — for a 4×3 image with one filter byte
+    // per row + 4 RGBA bytes per pixel × 4 pixels = 17 bytes per row.
+    let width: u32 = 4;
+    let height: u32 = 3;
+    let mut raw: Vec<u8> = Vec::new();
+    for y in 0..height {
+        raw.push(0); // filter byte: None
+        for x in 0..width {
+            // Quasi-random pattern; we only care that the bytes
+            // decode losslessly.
+            let r = ((x * 50 + y * 30) & 0xff) as u8;
+            let g = ((x * 30 + y * 70) & 0xff) as u8;
+            let b = ((x * 90 + y * 20) & 0xff) as u8;
+            raw.extend_from_slice(&[r, g, b, 255]);
+        }
+    }
+    // zlib wrap + uncompressed deflate block (BTYPE=00).
+    let mut zlib_body: Vec<u8> = Vec::new();
+    zlib_body.push(0x78);
+    zlib_body.push(0x01); // CMF + FLG (no preset dict, fastest)
+    // Deflate uncompressed blocks: BFINAL=1, BTYPE=00, then LEN (u16
+    // LE), NLEN, and the raw data. The PNG spec requires a single
+    // zlib stream; a single stored block is enough for tiny inputs.
+    zlib_body.push(0x01); // BFINAL=1, BTYPE=00
+    let len = u16::try_from(raw.len()).unwrap();
+    zlib_body.extend_from_slice(&len.to_le_bytes());
+    zlib_body.extend_from_slice(&(!len).to_le_bytes());
+    zlib_body.extend_from_slice(&raw);
+    // Adler-32 of `raw`.
+    let mut a: u32 = 1;
+    let mut b: u32 = 0;
+    for &byte in &raw {
+        a = (a + u32::from(byte)) % 65521;
+        b = (b + a) % 65521;
+    }
+    zlib_body.extend_from_slice(&((b << 16) | a).to_be_bytes());
+
+    let mut png: Vec<u8> = Vec::new();
+    png.extend_from_slice(b"\x89PNG\r\n\x1a\n");
+    let write_chunk = |out: &mut Vec<u8>, ty: &[u8; 4], data: &[u8]| {
+        out.extend_from_slice(&(u32::try_from(data.len()).unwrap()).to_be_bytes());
+        out.extend_from_slice(ty);
+        out.extend_from_slice(data);
+        let mut crc = 0xffff_ffff_u32;
+        for &b in ty.iter().chain(data.iter()) {
+            crc ^= u32::from(b);
+            for _ in 0..8 {
+                crc = if crc & 1 != 0 {
+                    (crc >> 1) ^ 0xedb8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        out.extend_from_slice(&(crc ^ 0xffff_ffff).to_be_bytes());
+    };
+    // IHDR: width(4), height(4), bit-depth(1), colour-type(1),
+    // compression(1), filter(1), interlace(1). 6 = RGBA.
+    let mut ihdr = Vec::new();
+    ihdr.extend_from_slice(&width.to_be_bytes());
+    ihdr.extend_from_slice(&height.to_be_bytes());
+    ihdr.extend_from_slice(&[8, 6, 0, 0, 0]);
+    write_chunk(&mut png, b"IHDR", &ihdr);
+    write_chunk(&mut png, b"IDAT", &zlib_body);
+    write_chunk(&mut png, b"IEND", &[]);
+    std::fs::write(path, png).expect("write PNG fixture");
+}
+
+#[test]
+fn build_emits_pdf_with_image_xobject() {
+    // End-to-end: a Mosaic source with `#image(...)` + `#figure(...)`
+    // produces a PDF whose Image XObject carries the expected
+    // /Width, /Height, /ColorSpace, and /Filter entries.
+    let dir = temp_dir("mos-build-image");
+    write_tiny_png(&dir.path().join("scan.png"));
+    write_file(
+        dir.path(),
+        "main.mos",
+        "#set text(font: \"Helvetica\")\n\
+         = Picture\n\n\
+         #image(\"scan.png\")\n\n\
+         #figure(image: \"scan.png\", caption: \"A tiny scan.\")\n",
+    );
+    let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    let pdf_path = dir.path().join("build").join("main.pdf");
+    let bytes = std::fs::read(&pdf_path).expect("pdf written");
+    let doc = lopdf::Document::load_mem(&bytes).expect("lopdf parse");
+    // The dedup pass should fold two `scan.png` references into a
+    // single Image XObject.
+    let mut image_streams = 0;
+    let mut dims = (0_i64, 0_i64);
+    for obj in doc.objects.values() {
+        if let lopdf::Object::Stream(s) = obj
+            && let Ok(lopdf::Object::Name(n)) = s.dict.get(b"Subtype")
+            && n == b"Image"
+        {
+            image_streams += 1;
+            dims.0 = s.dict.get(b"Width").unwrap().as_i64().unwrap();
+            dims.1 = s.dict.get(b"Height").unwrap().as_i64().unwrap();
+        }
+    }
+    assert_eq!(image_streams, 1, "expected one dedup'd Image XObject");
+    assert_eq!(dims, (4, 3), "Image XObject /Width and /Height mismatch");
+    // The page content streams reference the image via /Im0 Do.
+    let pages = doc.get_pages();
+    let mut found_do = false;
+    for &page_id in pages.values() {
+        let content = doc.get_page_content(page_id).expect("content");
+        if content.windows(b"/Im0 Do".len()).any(|w| w == b"/Im0 Do") {
+            found_do = true;
+            break;
+        }
+    }
+    assert!(found_do, "/Im0 Do operator not found in content stream");
+}
+
+#[test]
+fn build_fails_when_image_path_is_missing() {
+    // E051 from the resolver: missing image file => non-zero exit.
+    let dir = temp_dir("mos-build-missing-img");
+    write_file(dir.path(), "main.mos", "#image(\"does-not-exist.png\")\n");
+    let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_ne!(code, 0);
+    assert!(stderr.contains("E051"), "stderr={stderr:?}");
+}
+
 mod tempdir {
     //! Tiny scoped tempdir helper. Avoids pulling in a runtime
     //! dependency for one test file.

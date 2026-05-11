@@ -6,16 +6,20 @@
 //! runs the [`resolve`] pass to assign section numbers and rewrite
 //! `@label` cross-references (§6 stage 3, MVP 1).
 
+mod image;
 mod resolve;
 mod set_schema;
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use mosaic_core::{
     AttrMap, AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeId, NodeKind, Severity,
-    StyleId,
+    SourceSpan, StyleId,
 };
-use mosaic_parse::{Inline, InlineKind, Item, ListItem, SetArg, SetValue, SyntaxTree};
+use mosaic_parse::{
+    DirectiveKind, Inline, InlineKind, Item, ListItem, SetArg, SetValue, SyntaxTree,
+};
 
 pub use resolve::resolve;
 
@@ -124,59 +128,51 @@ impl Evaluator {
                 } => {
                     lower_list(&mut document, root, *ordered, items, span);
                 }
-                Item::Set { name, args, span } => {
-                    let mut attributes: AttrMap = BTreeMap::new();
-                    attributes.insert("set".to_owned(), AttrValue::Str(name.clone()));
-                    let Some(target) = set_schema::lookup_target(name) else {
-                        diagnostics.push(
-                            Diagnostic::error(
-                                DiagnosticCode("E020"),
-                                format!(
-                                    "unknown `#set` target `{name}` (expected `page`, `text`, or `document`)"
-                                ),
-                            )
-                            .with_span(span.clone()),
-                        );
-                        // Still emit the Raw node so downstream stages
-                        // can see the directive existed (useful for
-                        // diagnostic spans pointing at it later).
-                        document.alloc_child(
+                Item::Set {
+                    kind,
+                    name,
+                    args,
+                    span,
+                } => match kind {
+                    // `DirectiveKind` (set by the parser) is the
+                    // discriminator here, *not* `name` — `#set image(...)`
+                    // and `#image(...)` are both parsed with `name ==
+                    // "image"`, and dispatching on the string would
+                    // route `#set image(width: 200pt)` into the image
+                    // loader and incorrectly raise E050 "missing path".
+                    DirectiveKind::Image => {
+                        lower_image_directive(
+                            &mut document,
                             root,
-                            Node {
-                                id: NodeId::default(),
-                                kind: NodeKind::Raw,
-                                span: span.clone(),
-                                content_hash: Default::default(),
-                                style_id: StyleId::default(),
-                                children: Vec::new(),
-                                attributes,
-                            },
-                        );
-                        continue;
-                    };
-                    for arg in args {
-                        lower_set_arg(
-                            target,
-                            arg,
-                            &mut attributes,
-                            &mut metadata,
-                            &mut current_text_size_pt,
+                            args,
+                            span,
+                            &tree.file,
+                            current_text_size_pt,
                             &mut diagnostics,
                         );
                     }
-                    document.alloc_child(
+                    DirectiveKind::Figure => {
+                        lower_figure_directive(
+                            &mut document,
+                            root,
+                            args,
+                            span,
+                            &tree.file,
+                            current_text_size_pt,
+                            &mut diagnostics,
+                        );
+                    }
+                    DirectiveKind::Set => lower_set_directive(
+                        &mut document,
                         root,
-                        Node {
-                            id: NodeId::default(),
-                            kind: NodeKind::Raw,
-                            span: span.clone(),
-                            content_hash: Default::default(),
-                            style_id: StyleId::default(),
-                            children: Vec::new(),
-                            attributes,
-                        },
-                    );
-                }
+                        name,
+                        args,
+                        span,
+                        &mut metadata,
+                        &mut current_text_size_pt,
+                        &mut diagnostics,
+                    ),
+                },
             }
         }
 
@@ -186,6 +182,439 @@ impl Evaluator {
             metadata,
         }
     }
+}
+
+/// Lower a `#set name(...)` directive into a `Raw` node carrying the
+/// resolved attribute payload. The split exists so the dispatch in
+/// [`Evaluator::evaluate`] only has to thread state through three
+/// directive-shaped helpers instead of one large match arm.
+#[allow(clippy::too_many_arguments)]
+fn lower_set_directive(
+    document: &mut Document,
+    root: NodeId,
+    name: &str,
+    args: &[SetArg],
+    span: &SourceSpan,
+    metadata: &mut DocumentMetadata,
+    current_text_size_pt: &mut f64,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut attributes: AttrMap = BTreeMap::new();
+    attributes.insert("set".to_owned(), AttrValue::Str(name.to_owned()));
+    let Some(target) = set_schema::lookup_target(name) else {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode("E020"),
+                format!(
+                    "unknown `#set` target `{name}` (expected `page`, `text`, `document`, or `image`)"
+                ),
+            )
+            .with_span(span.clone()),
+        );
+        document.alloc_child(
+            root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Raw,
+                span: span.clone(),
+                content_hash: Default::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes,
+            },
+        );
+        return;
+    };
+    for arg in args {
+        // The parser refuses positional args for `#set` already, so
+        // reaching the Positional arm here would mean a future caller
+        // forgot the `allow_positional=false` flag. Diagnose loudly.
+        if matches!(arg, SetArg::Positional { .. }) {
+            diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E015"),
+                    format!("`#set {name}` does not accept positional arguments"),
+                )
+                .with_span(arg.value_span().clone()),
+            );
+            continue;
+        }
+        lower_set_arg(
+            target,
+            arg,
+            &mut attributes,
+            metadata,
+            current_text_size_pt,
+            diagnostics,
+        );
+    }
+    document.alloc_child(
+        root,
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Raw,
+            span: span.clone(),
+            content_hash: Default::default(),
+            style_id: StyleId::default(),
+            children: Vec::new(),
+            attributes,
+        },
+    );
+}
+
+/// Lower a top-level `#image(...)` directive into a single
+/// [`NodeKind::Image`] node hanging off the document root. The decoded
+/// pixel buffer and pixel dimensions are stashed in attributes so the
+/// layout engine and PDF backend don't have to re-open the source file.
+fn lower_image_directive(
+    document: &mut Document,
+    root: NodeId,
+    args: &[SetArg],
+    span: &SourceSpan,
+    source_file: &std::path::Path,
+    em_pt: f64,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some((attributes, _label)) =
+        build_image_attributes(args, span, source_file, em_pt, diagnostics)
+    else {
+        return;
+    };
+    document.alloc_child(
+        root,
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Image,
+            span: span.clone(),
+            content_hash: Default::default(),
+            style_id: StyleId::default(),
+            children: Vec::new(),
+            attributes,
+        },
+    );
+}
+
+/// Lower a `#figure(image: ..., caption: ...)` directive into a
+/// [`NodeKind::Figure`] node with two children: an Image node (built
+/// the same way `#image(...)` would build it) and a caption paragraph.
+/// The caption is rendered beneath the image by the layout engine.
+fn lower_figure_directive(
+    document: &mut Document,
+    root: NodeId,
+    args: &[SetArg],
+    span: &SourceSpan,
+    source_file: &std::path::Path,
+    em_pt: f64,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    // Pluck the image-specifying args (`image:` path, optional
+    // `width`/`height`/`alt`) into a synthetic SetArg list so the
+    // existing builder can reuse them. A leading positional string
+    // (the `SetArg::Positional` arm below) is also accepted as the
+    // image path — `#figure("x.png")` is the captionless short form,
+    // equivalent to `#figure(image: "x.png")`.
+    let mut image_args: Vec<SetArg> = Vec::new();
+    let mut caption: Option<(String, SourceSpan)> = None;
+    let mut figure_label: Option<String> = None;
+    for arg in args {
+        match arg {
+            // A leading positional string is the same shorthand
+            // `#image(...)` accepts — `#figure("scan.png")` is the
+            // captioned-image short form, equivalent to
+            // `#figure(image: "scan.png")`.
+            SetArg::Positional { .. } => image_args.push(arg.clone()),
+            SetArg::Named {
+                key,
+                value,
+                key_span,
+                value_span,
+            } => match key.as_str() {
+                "image" => {
+                    // Rewrite the named `image:` arg as the positional
+                    // slot `build_image_attributes` expects.
+                    image_args.push(SetArg::Positional {
+                        value: value.clone(),
+                        value_span: value_span.clone(),
+                    });
+                }
+                "width" | "height" | "alt" => {
+                    image_args.push(arg.clone());
+                }
+                "caption" => match value {
+                    SetValue::Str(s) => {
+                        caption = Some((s.clone(), value_span.clone()));
+                    }
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#figure(caption: ...)` expects a string",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
+                "label" => match value {
+                    SetValue::Str(s) => figure_label = Some(s.clone()),
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#figure(label: ...)` expects a string",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E021"),
+                        format!(
+                            "unknown argument `{key}` for `#figure` (valid: image, caption, alt, width, height, label)"
+                        ),
+                    )
+                    .with_span(key_span.clone()),
+                ),
+            },
+        }
+    }
+
+    // Build the image attributes *before* allocating the Figure node.
+    // If the image can't be loaded (E050/E051/E052), we'd otherwise
+    // leave a stray Figure on the document root — a caption-only
+    // figure is not a meaningful artifact and would still render the
+    // caption next to whatever the user thought they were captioning.
+    // The caller already emitted the relevant diagnostic; dropping
+    // the figure means the document keeps its other content intact
+    // without a phantom block.
+    let Some((image_attrs, _label)) =
+        build_image_attributes(&image_args, span, source_file, em_pt, diagnostics)
+    else {
+        return;
+    };
+
+    let mut figure_attrs: AttrMap = BTreeMap::new();
+    if let Some(label) = figure_label {
+        figure_attrs.insert("label".to_owned(), AttrValue::Str(label));
+    }
+    let figure_id = document.alloc_child(
+        root,
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Figure,
+            span: span.clone(),
+            content_hash: Default::default(),
+            style_id: StyleId::default(),
+            children: Vec::new(),
+            attributes: figure_attrs,
+        },
+    );
+    document.alloc_child(
+        figure_id,
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Image,
+            span: span.clone(),
+            content_hash: Default::default(),
+            style_id: StyleId::default(),
+            children: Vec::new(),
+            attributes: image_attrs,
+        },
+    );
+    if let Some((text, caption_span)) = caption {
+        let caption_id = document.alloc_child(
+            figure_id,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Paragraph,
+                span: caption_span.clone(),
+                content_hash: Default::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: {
+                    let mut a = AttrMap::new();
+                    // Tag the caption so the layout engine can give it
+                    // distinct styling later. For now it renders as a
+                    // plain paragraph beneath the image.
+                    a.insert("role".to_owned(), AttrValue::Str("caption".to_owned()));
+                    a
+                },
+            },
+        );
+        let mut child_attrs = AttrMap::new();
+        child_attrs.insert("text".to_owned(), AttrValue::Str(text));
+        document.alloc_child(
+            caption_id,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Text,
+                span: caption_span,
+                content_hash: Default::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: child_attrs,
+            },
+        );
+    }
+}
+
+/// Walk a directive's argument list and produce the attribute map for
+/// an [`NodeKind::Image`] node, including the decoded pixel buffer.
+/// Returns `None` (and emits diagnostics) if the path argument is
+/// missing or the bytes can't be decoded — the caller drops the node
+/// in that case rather than emitting a half-built image.
+fn build_image_attributes(
+    args: &[SetArg],
+    span: &SourceSpan,
+    source_file: &std::path::Path,
+    em_pt: f64,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<(AttrMap, Option<String>)> {
+    let mut src_path: Option<(String, SourceSpan)> = None;
+    let mut alt: Option<String> = None;
+    let mut declared_width: Option<f64> = None;
+    let mut declared_height: Option<f64> = None;
+    let mut label: Option<String> = None;
+    for arg in args {
+        match arg {
+            // Positional first arg — the path literal.
+            SetArg::Positional { value, value_span } => match value {
+                SetValue::Str(s) => src_path = Some((s.clone(), value_span.clone())),
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E022"),
+                        "`#image(...)` expects a string path",
+                    )
+                    .with_span(value_span.clone()),
+                ),
+            },
+            SetArg::Named {
+                key,
+                value,
+                key_span,
+                value_span,
+            } => match key.as_str() {
+                "src" | "path" => match value {
+                    SetValue::Str(s) => src_path = Some((s.clone(), value_span.clone())),
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#image(...)` expects a string path",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
+                "alt" => match value {
+                    SetValue::Str(s) => alt = Some(s.clone()),
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#image(alt: ...)` expects a string",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
+                "width" => {
+                    if let Some(v) =
+                        coerce_positive_length(value, em_pt, "width", value_span, diagnostics)
+                    {
+                        declared_width = Some(v);
+                    }
+                }
+                "height" => {
+                    if let Some(v) =
+                        coerce_positive_length(value, em_pt, "height", value_span, diagnostics)
+                    {
+                        declared_height = Some(v);
+                    }
+                }
+                "label" => match value {
+                    SetValue::Str(s) => label = Some(s.clone()),
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#image(label: ...)` expects a string",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E021"),
+                        format!(
+                            "unknown argument `{key}` for `#image` (valid: src, alt, width, height, label)"
+                        ),
+                    )
+                    .with_span(key_span.clone()),
+                ),
+            },
+        }
+    }
+    let Some((path, _path_span)) = src_path else {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode("E050"),
+                "`#image(...)` requires a path (e.g. `#image(\"scan.png\")`)",
+            )
+            .with_span(span.clone()),
+        );
+        return None;
+    };
+    // A bare empty / whitespace-only path string is the same user
+    // mistake as omitting the path entirely — they wrote `#image("")`
+    // and meant to fill in a filename. Surface it as E050 so the
+    // diagnostic points at the missing path, not at an `E051` ("cannot
+    // read empty path") from the I/O layer.
+    if path.trim().is_empty() {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode("E050"),
+                "`#image(...)` requires a non-empty path (e.g. `#image(\"scan.png\")`)",
+            )
+            .with_span(span.clone()),
+        );
+        return None;
+    }
+    let (resolved, decoded) = match image::load(&path, source_file, span) {
+        Ok(v) => v,
+        Err(diag) => {
+            diagnostics.push(*diag);
+            return None;
+        }
+    };
+
+    let mut attrs: AttrMap = BTreeMap::new();
+    attrs.insert("src".to_owned(), AttrValue::Str(path));
+    attrs.insert(
+        "resolved_path".to_owned(),
+        AttrValue::Str(resolved.to_string_lossy().into_owned()),
+    );
+    if let Some(a) = alt {
+        attrs.insert("alt".to_owned(), AttrValue::Str(a));
+    }
+    if let Some(w) = declared_width {
+        attrs.insert("width".to_owned(), AttrValue::Length(w));
+    }
+    if let Some(h) = declared_height {
+        attrs.insert("height".to_owned(), AttrValue::Length(h));
+    }
+    if let Some(l) = &label {
+        attrs.insert("label".to_owned(), AttrValue::Str(l.clone()));
+    }
+    attrs.insert(
+        "pixel_width".to_owned(),
+        AttrValue::Int(i64::from(decoded.width)),
+    );
+    attrs.insert(
+        "pixel_height".to_owned(),
+        AttrValue::Int(i64::from(decoded.height)),
+    );
+    attrs.insert(
+        "color_space".to_owned(),
+        AttrValue::Str("DeviceRGB".to_owned()),
+    );
+    attrs.insert("bits_per_component".to_owned(), AttrValue::Int(8));
+    attrs.insert(
+        "pixels".to_owned(),
+        AttrValue::Bytes(Arc::from(decoded.rgb8)),
+    );
+    Some((attrs, label))
 }
 
 /// Convert one parser-level `SetArg` into an attribute on the Raw node
@@ -200,43 +629,56 @@ fn lower_set_arg(
     current_text_size_pt: &mut f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let Some(slot) = target.slot(&arg.key) else {
+    // `#set` only carries `key: value` args — the caller already
+    // filters positionals via the `matches!(arg, SetArg::Positional)`
+    // gate in `lower_set_directive`. Destructuring here makes the
+    // assumption explicit; a debug-assert flags any future caller
+    // that misses the filter.
+    let SetArg::Named {
+        key,
+        value: raw_value,
+        key_span,
+        value_span,
+    } = arg
+    else {
+        debug_assert!(false, "lower_set_arg received Positional arg");
+        return;
+    };
+    let Some(slot) = target.slot(key) else {
         diagnostics.push(
             Diagnostic::error(
                 DiagnosticCode("E021"),
                 format!(
-                    "unknown argument `{}` for `#set {}` (valid: {})",
-                    arg.key,
+                    "unknown argument `{key}` for `#set {}` (valid: {})",
                     target.name(),
                     target.keys().join(", ")
                 ),
             )
-            .with_span(arg.key_span.clone()),
+            .with_span(key_span.clone()),
         );
         return;
     };
-    let Some(value) = coerce_value(slot, &arg.value, *current_text_size_pt) else {
+    let Some(value) = coerce_value(slot, raw_value, *current_text_size_pt) else {
         diagnostics.push(
             Diagnostic::error(
                 DiagnosticCode("E022"),
                 format!(
-                    "`#set {} ({}: …)` expects {}, got {}",
+                    "`#set {} ({key}: …)` expects {}, got {}",
                     target.name(),
-                    arg.key,
                     slot.expected(),
-                    describe_value(&arg.value),
+                    describe_value(raw_value),
                 ),
             )
-            .with_span(arg.value_span.clone()),
+            .with_span(value_span.clone()),
         );
         return;
     };
-    if let Some(msg) = sanity_floor_warning(target, &arg.key, &value) {
+    if let Some(msg) = sanity_floor_warning(target, key, &value) {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             code: DiagnosticCode("W024"),
             message: msg,
-            span: Some(arg.value_span.clone()),
+            span: Some(value_span.clone()),
             notes: Vec::new(),
             suggestions: Vec::new(),
         });
@@ -244,7 +686,7 @@ fn lower_set_arg(
     // Side effects: track text.size for em resolution; capture
     // document metadata.
     if matches!(target, set_schema::Target::Text)
-        && arg.key == "size"
+        && key == "size"
         && let AttrValue::Length(pt) = &value
     {
         *current_text_size_pt = *pt;
@@ -252,14 +694,14 @@ fn lower_set_arg(
     if matches!(target, set_schema::Target::Document)
         && let AttrValue::Str(s) = &value
     {
-        match arg.key.as_str() {
+        match key.as_str() {
             "title" => metadata.title = Some(s.clone()),
             "author" => metadata.author = Some(s.clone()),
             "language" => metadata.language = Some(s.clone()),
             _ => {}
         }
     }
-    attributes.insert(format!("set.arg.{}", arg.key), value);
+    attributes.insert(format!("set.arg.{key}"), value);
 }
 
 /// Coerce a parser literal to the type required by the target slot.
@@ -303,6 +745,46 @@ fn length_to_pt(value: f64, unit: mosaic_parse::LengthUnit, em_pt: f64) -> f64 {
         mosaic_parse::LengthUnit::Mm => value * 72.0 / 25.4,
         mosaic_parse::LengthUnit::Em => value * em_pt,
     }
+}
+
+/// Coerce a `#image(width|height: ...)` argument to a strictly positive
+/// length in points. Bare numerics resolve as pt for ergonomics
+/// (mirrors `coerce_value`). Non-numeric values, zero, and negative
+/// values all produce `E022` so layout never sees a zero/negative
+/// image box.
+fn coerce_positive_length(
+    value: &SetValue,
+    em_pt: f64,
+    key: &str,
+    value_span: &SourceSpan,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<f64> {
+    let pt = match value {
+        SetValue::Length(v, unit) => length_to_pt(*v, *unit, em_pt),
+        SetValue::Float(v) => *v,
+        SetValue::Int(v) => int_to_f64(*v),
+        _ => {
+            diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E022"),
+                    format!("`#image({key}: ...)` expects a length"),
+                )
+                .with_span(value_span.clone()),
+            );
+            return None;
+        }
+    };
+    if pt <= 0.0 {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode("E022"),
+                format!("`#image({key}: ...)` expects a positive length"),
+            )
+            .with_span(value_span.clone()),
+        );
+        return None;
+    }
+    Some(pt)
 }
 
 fn describe_value(v: &SetValue) -> &'static str {
@@ -360,7 +842,7 @@ fn lower_list(
     parent: NodeId,
     ordered: bool,
     items: &[ListItem],
-    span: &mosaic_core::SourceSpan,
+    span: &SourceSpan,
 ) {
     let mut attributes: AttrMap = BTreeMap::new();
     attributes.insert("ordered".to_owned(), AttrValue::Bool(ordered));
@@ -603,6 +1085,337 @@ mod tests {
         let r = lower("= A\n\n= B\n\npara\n", &PathBuf::from("test.mos"));
         let root = r.document.get(r.document.root).unwrap();
         assert_eq!(root.children.len(), 3);
+    }
+
+    /// Hand-craft a tiny PNG in a temp dir so the eval tests don't
+    /// depend on `examples/` paths or the workspace layout.
+    /// `::image::` (rather than `image::`) routes through the extern
+    /// `image` crate; the bare `image` identifier inside the eval
+    /// crate resolves to the local `mod image` we declared up top.
+    fn write_tiny_png(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "mosaic-eval-image-{}-{}",
+            name,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        let mut buf = ::image::RgbaImage::new(3, 2);
+        for x in 0_u32..3 {
+            for y in 0_u32..2 {
+                let r = u8::try_from(x * 80).unwrap_or(0);
+                let g = u8::try_from(y * 120).unwrap_or(0);
+                buf.put_pixel(x, y, ::image::Rgba([r, g, 200, 255]));
+            }
+        }
+        buf.save(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn image_directive_attaches_decoded_pixels() {
+        let png_path = write_tiny_png("tiny.png");
+        let source = png_path.parent().unwrap().join("main.mos");
+        std::fs::write(&source, "#image(\"tiny.png\")\n").unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let image_node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Image)
+            .expect("Image node");
+        assert_eq!(
+            image_node.attributes.get("src"),
+            Some(&AttrValue::Str("tiny.png".to_owned()))
+        );
+        assert_eq!(
+            image_node.attributes.get("pixel_width"),
+            Some(&AttrValue::Int(3))
+        );
+        assert_eq!(
+            image_node.attributes.get("pixel_height"),
+            Some(&AttrValue::Int(2))
+        );
+        match image_node.attributes.get("pixels") {
+            Some(AttrValue::Bytes(b)) => assert_eq!(b.len(), 3 * 3 * 2),
+            other => panic!("expected pixel bytes, got {other:?}"),
+        }
+        std::fs::remove_dir_all(png_path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn image_directive_records_explicit_dimensions() {
+        let png_path = write_tiny_png("dims.png");
+        let source = png_path.parent().unwrap().join("main.mos");
+        std::fs::write(
+            &source,
+            "#image(\"dims.png\", width: 100pt, height: 60pt, alt: \"a tiny image\")\n",
+        )
+        .unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let image_node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Image)
+            .expect("Image node");
+        assert_eq!(
+            image_node.attributes.get("width"),
+            Some(&AttrValue::Length(100.0))
+        );
+        assert_eq!(
+            image_node.attributes.get("height"),
+            Some(&AttrValue::Length(60.0))
+        );
+        assert_eq!(
+            image_node.attributes.get("alt"),
+            Some(&AttrValue::Str("a tiny image".to_owned()))
+        );
+        std::fs::remove_dir_all(png_path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn image_em_width_resolves_against_current_text_size() {
+        // Regression: `#image(width: 2em)` after `#set text(size: 20pt)`
+        // must yield 40pt, not 22pt (which is what the old hardcoded
+        // 11pt em base produced). The lowerer now threads the tracked
+        // body text size through to `build_image_attributes`.
+        let png_path = write_tiny_png("em.png");
+        let dir = png_path.parent().unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(
+            &source,
+            "#set text(size: 20pt)\n#image(\"em.png\", width: 2em)\n",
+        )
+        .unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let image_node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Image)
+            .expect("Image node");
+        match image_node.attributes.get("width") {
+            Some(AttrValue::Length(pt)) => assert!(
+                (pt - 40.0).abs() < 0.01,
+                "width = {pt}pt, expected 40pt (2em at 20pt)"
+            ),
+            other => panic!("expected width Length, got {other:?}"),
+        }
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn missing_image_path_emits_e050() {
+        let r = lower("#image()\n", &PathBuf::from("/tmp/no-such.mos"));
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E050"),
+            "expected E050, got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unreadable_image_emits_e051() {
+        let r = lower(
+            "#image(\"does-not-exist.png\")\n",
+            &PathBuf::from("/tmp/no-such-dir/main.mos"),
+        );
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E051"),
+            "expected E051, got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn empty_image_path_emits_e050_not_io_error() {
+        // `#image("")` is a missing-path mistake, not an I/O failure.
+        // The diagnostic surface treats it the same as omitting the
+        // path entirely so the user sees a clear "needs a path"
+        // message instead of `E051`/`E052` noise.
+        let r = lower("#image(\"\")\n", &PathBuf::from("/tmp/whatever/main.mos"));
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E050"),
+            "expected E050, got {:?}",
+            r.diagnostics
+        );
+        // No E051/E052 should leak through.
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| matches!(d.code.0, "E051" | "E052")),
+            "unexpected I/O diagnostic: {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn non_positive_image_width_emits_e022() {
+        // `width: 0pt` and `width: -10pt` would otherwise produce a
+        // zero/negative image box that sails into layout and PDF
+        // emit. Reject at lower time with E022.
+        for src in [
+            "#image(\"x.png\", width: 0pt)\n",
+            "#image(\"x.png\", width: -10pt)\n",
+            "#image(\"x.png\", width: 0)\n",
+            "#image(\"x.png\", width: -1)\n",
+        ] {
+            let r = lower(src, &PathBuf::from("/tmp/whatever/main.mos"));
+            assert!(
+                r.diagnostics.iter().any(|d| d.code.0 == "E022"),
+                "expected E022 for `{src}`, got {:?}",
+                r.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn non_positive_image_height_emits_e022() {
+        for src in [
+            "#image(\"x.png\", height: 0pt)\n",
+            "#image(\"x.png\", height: -1mm)\n",
+        ] {
+            let r = lower(src, &PathBuf::from("/tmp/whatever/main.mos"));
+            assert!(
+                r.diagnostics.iter().any(|d| d.code.0 == "E022"),
+                "expected E022 for `{src}`, got {:?}",
+                r.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn undecodable_image_emits_e052() {
+        let dir = std::env::temp_dir().join(format!(
+            "mosaic-eval-bad-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("bad.png");
+        std::fs::write(&png, b"not really a PNG").unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(&source, "#image(\"bad.png\")\n").unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E052"),
+            "expected E052, got {:?}",
+            r.diagnostics
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn figure_directive_creates_figure_with_image_and_caption() {
+        let png_path = write_tiny_png("fig.png");
+        let source = png_path.parent().unwrap().join("main.mos");
+        std::fs::write(
+            &source,
+            "#figure(image: \"fig.png\", caption: \"A tiny picture.\")\n",
+        )
+        .unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let figure = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Figure)
+            .expect("Figure node");
+        assert_eq!(figure.children.len(), 2);
+        let img = r.document.get(figure.children[0]).unwrap();
+        assert_eq!(img.kind, NodeKind::Image);
+        let caption = r.document.get(figure.children[1]).unwrap();
+        assert_eq!(caption.kind, NodeKind::Paragraph);
+        assert_eq!(
+            caption.attributes.get("role"),
+            Some(&AttrValue::Str("caption".to_owned()))
+        );
+        let caption_text = r.document.get(caption.children[0]).unwrap();
+        assert_eq!(
+            caption_text.attributes.get("text"),
+            Some(&AttrValue::Str("A tiny picture.".to_owned()))
+        );
+        std::fs::remove_dir_all(png_path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn figure_with_missing_image_does_not_leak_empty_node() {
+        // If `#figure(image: "broken.png", caption: "...")` fails to
+        // load the image, the caller still emits E051; the lowerer
+        // must NOT leave a Figure (or its caption paragraph) hanging
+        // on the document root. A caption-only figure renders next
+        // to whatever the user thought they were captioning, which
+        // is worse than no output for the failed block.
+        let r = lower(
+            "#figure(image: \"does-not-exist.png\", caption: \"missing\")\n",
+            &PathBuf::from("/tmp/no-such-dir/main.mos"),
+        );
+        assert!(r.diagnostics.iter().any(|d| d.code.0 == "E051"));
+        assert!(
+            !r.document.nodes().any(|n| n.kind == NodeKind::Figure),
+            "Figure node leaked after image load failure",
+        );
+    }
+
+    #[test]
+    fn figure_directive_accepts_positional_path() {
+        // `#figure("path.png")` is the captionless short form. The
+        // parser accepts it; the lowerer used to reject it with E015,
+        // which broke the spelling end-to-end.
+        let png_path = write_tiny_png("fig_pos.png");
+        let source = png_path.parent().unwrap().join("main.mos");
+        std::fs::write(&source, "#figure(\"fig_pos.png\")\n").unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let figure = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Figure)
+            .expect("Figure node");
+        // One child: just the image (no caption was supplied).
+        assert_eq!(figure.children.len(), 1);
+        let img = r.document.get(figure.children[0]).unwrap();
+        assert_eq!(img.kind, NodeKind::Image);
+        assert_eq!(
+            img.attributes.get("src"),
+            Some(&AttrValue::Str("fig_pos.png".to_owned()))
+        );
+        std::fs::remove_dir_all(png_path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn set_image_width_is_accepted_without_error() {
+        // `#set image(width: 200pt)` must lower as a style-config Raw
+        // node, *not* as an image directive (which would raise E050
+        // for the missing path). The parser tags the two shapes with
+        // distinct `DirectiveKind`s — this test guards the routing.
+        let r = lower("#set image(width: 200pt)\n", &PathBuf::from("test.mos"));
+        assert!(
+            r.diagnostics.is_empty(),
+            "unexpected diagnostics: {:?}",
+            r.diagnostics
+        );
+        // No Image node — `#set image(...)` is style configuration,
+        // not a placement.
+        assert!(!r.document.nodes().any(|n| n.kind == NodeKind::Image));
+        // The Raw set node carries the image target + width slot.
+        let raw = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Raw && n.attributes.contains_key("set"))
+            .expect("set Raw node");
+        assert_eq!(
+            raw.attributes.get("set"),
+            Some(&AttrValue::Str("image".to_owned()))
+        );
+        assert_eq!(
+            raw.attributes.get("set.arg.width"),
+            Some(&AttrValue::Length(200.0))
+        );
     }
 
     #[test]

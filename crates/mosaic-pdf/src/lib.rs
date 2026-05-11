@@ -19,6 +19,7 @@
 
 mod embedded;
 mod encoding;
+mod images;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -182,6 +183,13 @@ pub(crate) fn build_pdf(
         })
         .collect();
 
+    // Allocate one indirect ref per unique image. Compression itself
+    // happens at emit time (see the loop below) so we don't hold every
+    // compressed stream in memory simultaneously — `graph.images` is
+    // already the deduped set, and an image-heavy document can blow
+    // peak RAM if we buffer all compressed copies before writing them.
+    let image_refs: Vec<Ref> = graph.images.iter().map(|_| alloc()).collect();
+
     let page_refs: Vec<(Ref, Ref)> = graph.pages.iter().map(|_| (alloc(), alloc())).collect();
 
     pdf.catalog(catalog_id).pages(page_tree_id);
@@ -198,26 +206,48 @@ pub(crate) fn build_pdf(
         page_obj.contents(*content_id);
         {
             let mut resources = page_obj.resources();
-            let mut fonts = resources.fonts();
-            for (face, font_id) in &base14_refs {
-                fonts.pair(Name(face.pdf_resource_name()), *font_id);
+            {
+                let mut fonts = resources.fonts();
+                for (face, font_id) in &base14_refs {
+                    fonts.pair(Name(face.pdf_resource_name()), *font_id);
+                }
+                // Embedded faces actually referenced in this document.
+                // Each page's resource dict lists every embedded face used
+                // anywhere in the document, not just on this page, so
+                // resource dicts stay identical across pages. Iterate
+                // `EmbeddedFontId::ALL` for deterministic order.
+                for id in EmbeddedFontId::ALL {
+                    if let Some(refs) = embedded_refs.get(&id) {
+                        fonts.pair(Name(id.pdf_resource_name()), refs.font);
+                    }
+                }
             }
-            // Embedded faces actually referenced in this document.
-            // Each page's resource dict lists every embedded face used
-            // anywhere in the document, not just on this page, so
-            // resource dicts stay identical across pages. Iterate
-            // `EmbeddedFontId::ALL` for deterministic order.
-            for id in EmbeddedFontId::ALL {
-                if let Some(refs) = embedded_refs.get(&id) {
-                    fonts.pair(Name(id.pdf_resource_name()), refs.font);
+            // Image XObjects. Every page lists every image referenced
+            // anywhere in the document so resource dicts stay byte-
+            // stable across pages — same pattern as the font dicts.
+            if !graph.images.is_empty() {
+                let mut x_objects = resources.x_objects();
+                for (handle, image_id) in graph.images.iter().zip(image_refs.iter()) {
+                    let name = images::resource_name(handle);
+                    x_objects.pair(Name(name.as_bytes()), *image_id);
                 }
             }
         }
         page_obj.finish();
 
-        let stream_bytes =
-            build_content_stream(page.height_pt, &page.runs, &encodings, &embedded_by_id);
+        let stream_bytes = build_content_stream(page.height_pt, page, &encodings, &embedded_by_id);
         pdf.stream(*content_id, &stream_bytes);
+    }
+
+    // Emit each Image XObject. Order matches `graph.images` (and
+    // therefore the `alloc()` order above), keeping byte output
+    // deterministic. Each image is compressed in this loop and the
+    // compressed buffer dropped at the end of the iteration, so peak
+    // memory holds at most one compressed image at a time on top of
+    // the (Arc-shared) decoded pixel buffer the handle already owns.
+    for (handle, id) in graph.images.iter().zip(image_refs.iter()) {
+        let compressed = images::flate_compress(&handle.rgb8);
+        images::emit_image_xobject(&mut pdf, *id, handle, &compressed);
     }
 
     for (face, font_id) in &base14_refs {
@@ -353,18 +383,28 @@ fn emit_to_unicode_cmap(pdf: &mut Pdf, id: Ref, enc: &DocEncoding) {
 /// (`WinAnsi` byte + `/Differences` remap; characters outside both
 /// tiers silently render as `?`). Embedded-font runs encode the
 /// shaped glyph stream as big-endian `u16` CIDs.
+///
+/// Image placements (raster `XObject`s) emit *outside* the text object
+/// — `BT/ET` brackets only permit text operators, so each image
+/// placement is wrapped in its own `q ... Q` save/restore pair before
+/// the text block starts. Putting images first means subsequent text
+/// can overlay (e.g. a caption beneath the image is unaffected, but
+/// in-line annotations atop a figure would land on top).
 fn build_content_stream(
     page_height_pt: f32,
-    runs: &[TextRun],
+    page: &mosaic_layout::Page,
     encodings: &HashMap<Font, DocEncoding>,
     embedded_by_id: &HashMap<EmbeddedFontId, &EmbeddedFontPlan>,
 ) -> Vec<u8> {
     let mut content = Content::new();
-    if runs.is_empty() {
+    for placement in &page.images {
+        images::emit_placement(&mut content, page_height_pt, placement);
+    }
+    if page.runs.is_empty() {
         return content.finish().to_vec();
     }
     content.begin_text();
-    for run in runs {
+    for run in &page.runs {
         content.set_font(Name(run.font.pdf_resource_name()), run.size_pt);
         let y_from_bottom = page_height_pt - run.baseline_from_top_pt;
         content.set_text_matrix([1.0, 0.0, 0.0, 1.0, run.x_pt, y_from_bottom]);
@@ -471,7 +511,9 @@ mod tests {
                         glyphs: Vec::new(),
                     },
                 ],
+                images: Vec::new(),
             }],
+            images: Vec::new(),
         }
     }
 
@@ -543,7 +585,9 @@ mod tests {
                     text: "Łódź Příliš ě".to_owned(),
                     glyphs: Vec::new(),
                 }],
+                images: Vec::new(),
             }],
+            images: Vec::new(),
         }
     }
 
@@ -687,6 +731,150 @@ mod tests {
         ensure!(bytes.starts_with(b"%PDF-"), "missing PDF header");
         std::fs::remove_dir_all(&dir).ok();
         Ok(())
+    }
+
+    /// Build a graph with one image: a 4×2 red-and-blue checker
+    /// flattened to RGB8, sized at 40×20 pt. Reused across multiple
+    /// emit tests below.
+    fn image_graph() -> PageGraph {
+        use mosaic_layout::{ImageHandle, ImagePlacement};
+        use std::sync::Arc;
+        // 4 columns × 2 rows; alternating red/blue cells.
+        let mut rgb8 = Vec::with_capacity(4 * 2 * 3);
+        for y in 0..2 {
+            for x in 0..4 {
+                if (x + y) % 2 == 0 {
+                    rgb8.extend_from_slice(&[255, 0, 0]);
+                } else {
+                    rgb8.extend_from_slice(&[0, 0, 255]);
+                }
+            }
+        }
+        let handle = ImageHandle {
+            id: 0,
+            resolved_path: "/tmp/checker.png".to_owned(),
+            pixel_width: 4,
+            pixel_height: 2,
+            rgb8: Arc::from(rgb8),
+        };
+        PageGraph {
+            pages: vec![Page {
+                number: 1,
+                width_pt: 595.276_f32,
+                height_pt: 841.89_f32,
+                runs: Vec::new(),
+                images: vec![ImagePlacement {
+                    handle: handle.clone(),
+                    x_pt: 68.0,
+                    top_from_top_pt: 100.0,
+                    width_pt: 40.0,
+                    height_pt: 20.0,
+                }],
+            }],
+            images: vec![handle],
+        }
+    }
+
+    #[test]
+    fn image_xobject_carries_width_height_and_devicergb() {
+        let (bytes, diags) = build_pdf(&image_graph(), &PdfMetadata::default()).unwrap();
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        // The Image XObject must declare /Subtype /Image, /Width 4,
+        // /Height 2, /ColorSpace /DeviceRGB, /BitsPerComponent 8, and
+        // /Filter /FlateDecode.
+        for needle in [
+            b"/Subtype /Image" as &[u8],
+            b"/Width 4",
+            b"/Height 2",
+            b"/ColorSpace /DeviceRGB",
+            b"/BitsPerComponent 8",
+            b"/Filter /FlateDecode",
+        ] {
+            assert!(
+                bytes.windows(needle.len()).any(|w| w == needle),
+                "missing {:?} in PDF",
+                std::str::from_utf8(needle).unwrap_or("?")
+            );
+        }
+    }
+
+    #[test]
+    fn image_placement_emits_do_operator_referencing_xobject() {
+        let (bytes, _) = build_pdf(&image_graph(), &PdfMetadata::default()).unwrap();
+        // The page's resource dict must list /Im0; the content stream
+        // must reference /Im0 via the Do operator.
+        assert!(
+            bytes.windows(b"/Im0 ".len()).any(|w| w == b"/Im0 "),
+            "/Im0 resource name not found"
+        );
+        assert!(
+            bytes.windows(b"/Im0 Do".len()).any(|w| w == b"/Im0 Do"),
+            "/Im0 Do operator not found in content stream"
+        );
+    }
+
+    #[test]
+    fn duplicate_image_emits_one_xobject() {
+        // Two placements of the same image should still produce one
+        // shared XObject — the layout pass already dedup'd them, so the
+        // PDF backend never sees two ImageHandle entries.
+        use mosaic_layout::{ImageHandle, ImagePlacement};
+        use std::sync::Arc;
+        let handle = ImageHandle {
+            id: 0,
+            resolved_path: "/tmp/shared.png".to_owned(),
+            pixel_width: 1,
+            pixel_height: 1,
+            rgb8: Arc::from(vec![10_u8, 20, 30]),
+        };
+        let graph = PageGraph {
+            pages: vec![Page {
+                number: 1,
+                width_pt: 595.276_f32,
+                height_pt: 841.89_f32,
+                runs: Vec::new(),
+                images: vec![
+                    ImagePlacement {
+                        handle: handle.clone(),
+                        x_pt: 10.0,
+                        top_from_top_pt: 50.0,
+                        width_pt: 5.0,
+                        height_pt: 5.0,
+                    },
+                    ImagePlacement {
+                        handle: handle.clone(),
+                        x_pt: 100.0,
+                        top_from_top_pt: 50.0,
+                        width_pt: 5.0,
+                        height_pt: 5.0,
+                    },
+                ],
+            }],
+            images: vec![handle],
+        };
+        let (bytes, _) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
+        let xobject_marker = b"/Subtype /Image";
+        let count = bytes
+            .windows(xobject_marker.len())
+            .filter(|w| *w == xobject_marker)
+            .count();
+        assert_eq!(count, 1, "expected exactly one Image XObject, got {count}");
+        // Both placements show up as /Im0 Do.
+        let do_count = bytes
+            .windows(b"/Im0 Do".len())
+            .filter(|w| *w == b"/Im0 Do")
+            .count();
+        assert_eq!(
+            do_count, 2,
+            "expected two /Im0 Do operators, got {do_count}"
+        );
+    }
+
+    #[test]
+    fn image_only_pdf_remains_byte_deterministic() {
+        let (a, _) = build_pdf(&image_graph(), &PdfMetadata::default()).unwrap();
+        let (b, _) = build_pdf(&image_graph(), &PdfMetadata::default()).unwrap();
+        assert_eq!(a, b, "image emit must be byte-stable across runs");
     }
 
     #[test]
