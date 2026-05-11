@@ -7,18 +7,33 @@
 //! that widening will still be a breaking change for call sites that touch
 //! `.0`, the newtype just keeps those call sites localised.
 //!
-//! Any character with a PDF `WinAnsiEncoding` slot is measurable here:
-//! ASCII (`0x20..=0x7E`), the Windows-specific band (`0x80..=0x9F` —
-//! Euro, smart quotes, bullet, trademark, …), and Latin-1
-//! (`0xA0..=0xFF` — `é`, `ß`, `§`, accented Latin, …). Callers must
-//! substitute anything outside `WinAnsi` upstream — the layout engine
-//! emits `W040` and rewrites to `?` at a single boundary so
-//! non-`WinAnsi` chars never reach [`text_width`]. Broader Unicode
-//! (Cyrillic, CJK, …) coverage requires font embedding and is issue #9.
+//! Any character measurable through this crate falls into one of two
+//! tiers, both of which the PDF backend can render through the Core 14
+//! base fonts without embedding font data:
+//!
+//! - `WinAnsi` natives: ASCII (`0x20..=0x7E`), the Windows-specific
+//!   band (`0x80..=0x9F` — Euro, smart quotes, bullet, trademark, …),
+//!   and Latin-1 (`0xA0..=0xFF` — `é`, `ß`, `§`, accented Latin, …),
+//!   plus `š`/`ž`/`Š`/`Ž` (Czech and friends at 0x8A/0x9A/0x8E/0x9E).
+//!   Look up with [`winansi_byte`].
+//! - Extended glyphs that exist in the Adobe Core 14 Latin AFMs but
+//!   have no `WinAnsi` byte: the rest of Latin Extended-A (`Ł`, `ł`,
+//!   `Ě`, `ě`, `Ő`, `ő`, …), the comma-below Romanian set
+//!   (`Ș`/`ș`/`Ț`/`ț`), the spacing diacritics (`˘ˇ˙˝˛˚`), the math
+//!   operators (`−≤≥≠√∂∑∆◊`), the `fraction` slash `⁄`, and the
+//!   `fi`/`fl` ligatures. Look up with [`glyph_name`]. The PDF
+//!   backend addresses these through a per-document `/Differences`
+//!   encoding (the 256-slot ceiling caps about 100 extra glyphs per
+//!   face per document — well above any realistic European doc).
+//!
+//! Anything past those two tiers — Cyrillic, CJK, Vietnamese accents,
+//! emoji — has no glyph in any Core 14 font and requires font
+//! embedding (issue #9). The layout engine substitutes those to `?`
+//! with a `W040` warning.
 
 #![deny(missing_docs)]
 
-pub use pdf_base14_metrics::{Base14Font, winansi_byte};
+pub use pdf_base14_metrics::{Base14Font, glyph_name, winansi_byte};
 
 /// One of the 14 standard PDF fonts, wrapped in a newtype.
 ///
@@ -102,10 +117,11 @@ impl From<Font> for Base14Font {
 ///
 /// # Panics
 ///
-/// Panics if any character in `text` has no PDF `WinAnsiEncoding`
-/// slot (Cyrillic, CJK, etc.); callers must substitute non-`WinAnsi`
-/// characters upstream. Also panics if `font` is `Symbol` or
-/// `ZapfDingbats`, since those use their own encodings.
+/// Panics if any character in `text` is unmappable — no `WinAnsi`
+/// slot and no glyph name in the Core 14 Latin AFMs (Cyrillic, CJK,
+/// emoji, …). Callers must substitute unmappable characters upstream.
+/// Also panics if `font` is `Symbol` or `ZapfDingbats`, since those
+/// use their own encodings.
 #[must_use]
 pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
     let mut units: f32 = 0.0;
@@ -119,8 +135,8 @@ pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
 ///
 /// # Panics
 ///
-/// Panics if `ch` has no PDF `WinAnsiEncoding` slot, or if `font` is
-/// `Symbol`/`ZapfDingbats` (those use their own encodings).
+/// Panics if `ch` is unmappable (see [`text_width`]), or if `font` is
+/// `Symbol`/`ZapfDingbats`.
 #[must_use]
 pub fn glyph_width(font: Font, size: f32, ch: char) -> f32 {
     glyph_width_units(font, ch) * size / 1000.0
@@ -143,12 +159,21 @@ pub fn descent(font: Font, size: f32) -> f32 {
 
 /// Width of a single character in 1/1000 em as the AFM `f32` type.
 ///
+/// Two lookup tiers: `WinAnsi` natives go through the baked
+/// `[Option<f32>; 256]` table (O(1)); extended glyphs reachable via
+/// `/Differences` (Latin Extended-A, math operators, ligatures —
+/// resolved through [`glyph_name`]) go through the baked sorted
+/// `(name, width)` index (O(log n)). The PDF emit path mirrors this
+/// split: `WinAnsi` natives go out as their native byte, extended
+/// glyphs go out as remapped bytes in a `/Differences` array.
+///
 /// # Panics
 ///
-/// Panics if `ch` has no PDF `WinAnsiEncoding` slot (the layout
-/// engine must substitute non-`WinAnsi` upstream), or if `font` is
-/// `Symbol`/`ZapfDingbats` (no `WinAnsi` table for those — their own
-/// PostScript encodings would have to be plumbed separately).
+/// Panics if `ch` is neither a `WinAnsi` native nor resolvable
+/// through [`glyph_name`] (Cyrillic, CJK, emoji, …) — the layout
+/// engine substitutes those to `?` at the `sanitize_text` boundary
+/// before any measurement reaches here. Also panics if `font` is
+/// `Symbol`/`ZapfDingbats` (no `WinAnsi` table for those).
 fn glyph_width_units(font: Font, ch: char) -> f32 {
     // Two-stage assert-then-`unwrap_or` dance: workspace
     // `clippy::panic = "warn"` rules out the `let Some(..) else
@@ -156,19 +181,29 @@ fn glyph_width_units(font: Font, ch: char) -> f32 {
     // and `clippy::unwrap_used = "warn"` rules out `.unwrap()`. So we
     // assert the Option is Some (clippy is fine with `assert!`),
     // then `unwrap_or` with a statically-unreachable fallback.
-    let byte_opt = winansi_byte(ch);
+    if let Some(byte) = winansi_byte(ch) {
+        let width = font.0.winansi_width(byte);
+        assert!(
+            width.is_some(),
+            "font {:?} has no WinAnsi mapping for byte {byte:#04x} ({ch:?}); \
+             Symbol and ZapfDingbats are unsupported by mosaic-fonts MVP-2",
+            font.0
+        );
+        return width.unwrap_or(0.0);
+    }
+    let name_opt = glyph_name(ch);
     assert!(
-        byte_opt.is_some(),
-        "char {ch:?} (U+{:04X}) has no WinAnsi slot; \
-         the layout engine must substitute non-WinAnsi chars before measuring",
+        name_opt.is_some(),
+        "char {ch:?} (U+{:04X}) has no glyph in the Core 14 AFMs; \
+         the layout engine must substitute it before measuring",
         u32::from(ch)
     );
-    let byte = byte_opt.unwrap_or(0);
-    let width = font.0.winansi_width(byte);
+    let name = name_opt.unwrap_or("");
+    let width = font.0.glyph_width_by_name(name);
     assert!(
         width.is_some(),
-        "font {:?} has no WinAnsi mapping for byte {byte:#04x} ({ch:?}); \
-         Symbol and ZapfDingbats are unsupported by mosaic-fonts MVP-2",
+        "font {:?} has no glyph named {name:?} for char {ch:?}; \
+         Symbol and ZapfDingbats don't carry extended Latin glyphs",
         font.0
     );
     width.unwrap_or(0.0)
@@ -258,12 +293,44 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "has no WinAnsi slot")]
+    #[should_panic(expected = "has no glyph in the Core 14 AFMs")]
     fn cyrillic_panics() {
-        // "П" (Cyrillic Pe, U+041F) has no WinAnsi slot; the
-        // layout engine should substitute via sanitize_text before
+        // "П" (Cyrillic Pe, U+041F) has no glyph in any Core 14 font;
+        // the layout engine substitutes via sanitize_text before
         // measurements ever reach the fonts crate.
         let _ = text_width(HELV, 12.0, "П");
+    }
+
+    #[test]
+    fn helvetica_lslash_resolves_through_glyph_name_lookup() {
+        // Polish "ł" (U+0142) has no WinAnsi byte but exists in
+        // Helvetica.afm as `lslash` (WX 222). The PDF backend will
+        // address it through /Differences; the fonts crate measures
+        // it through the baked name-keyed index.
+        let w = text_width(HELV, 1000.0, "ł");
+        assert!((w - 222.0).abs() < 1e-3, "got {w}");
+        // "Łódź" is Polish: Ł(556) ó(556) d(556) ź(500)
+        let lodz = text_width(HELV, 1000.0, "Łódź");
+        assert!(
+            (lodz - (556.0 + 556.0 + 556.0 + 500.0)).abs() < 1e-3,
+            "got {lodz}"
+        );
+    }
+
+    #[test]
+    fn helvetica_czech_ecaron_resolves() {
+        // Czech "ě" (U+011B) → glyph `ecaron`, WX 556.
+        let w = text_width(HELV, 1000.0, "ě");
+        assert!((w - 556.0).abs() < 1e-3, "got {w}");
+    }
+
+    #[test]
+    fn courier_extended_glyphs_are_monospace() {
+        // Courier's extended glyphs share the 600-unit advance.
+        let lslash = text_width(COURIER, 1000.0, "ł");
+        let ecaron = text_width(COURIER, 1000.0, "ě");
+        assert!((lslash - 600.0).abs() < 1e-3, "got {lslash}");
+        assert!((ecaron - 600.0).abs() < 1e-3, "got {ecaron}");
     }
 
     #[test]

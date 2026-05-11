@@ -197,14 +197,23 @@ fn run_build(entry: &Path) -> ExitCode {
         author: result.metadata.author.clone(),
         language: result.metadata.language,
     };
-    if let Err(err) = mosaic_pdf::emit(&layout.graph, &metadata, &out) {
-        match err {
-            mosaic_core::CoreError::Diagnostic(d) => render_diagnostic(&d, &src),
-            mosaic_core::CoreError::Unimplemented(msg) => {
-                eprintln!("mos build: {msg}");
+    match mosaic_pdf::emit(&layout.graph, &metadata, &out) {
+        Ok(pdf_diagnostics) => {
+            // PDF emit currently surfaces only `W041` (extended glyph
+            // budget exhausted); render alongside layout diagnostics.
+            for diag in &pdf_diagnostics {
+                render_diagnostic(diag, &src);
             }
         }
-        return ExitCode::FAILURE;
+        Err(err) => {
+            match err {
+                mosaic_core::CoreError::Diagnostic(d) => render_diagnostic(&d, &src),
+                mosaic_core::CoreError::Unimplemented(msg) => {
+                    eprintln!("mos build: {msg}");
+                }
+            }
+            return ExitCode::FAILURE;
+        }
     }
 
     println!(

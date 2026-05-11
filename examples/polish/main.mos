@@ -1,0 +1,28 @@
+#set document(
+  title: "Łódź — extended Latin smoke test",
+  author: "Mosaic contributors",
+  language: "pl",
+)
+
+#set page(
+  paper: "A4",
+  margin: 24mm,
+)
+
+= Łódź — Příliš žluťoučký kůň
+
+Polski: Zażółć gęślą jaźń. Łódź leży nad Wisłą, a Kraków
+nie. Pchnąć w tę łódź jeża lub ośm skrzyń fig.
+
+Čeština: Příliš žluťoučký kůň úpěl ďábelské ódy. Vrh syn
+trh.
+
+Magyar: Árvíztűrő tükörfúrógép. Egy hűtlen vejét fülöncsípő,
+dühös mexikói úr.
+
+Română: Bună ziua! Mâine plec la mare cu fătul meu.
+
+Matematyka: 2 + 3 ≤ 6, √16 = 4, ∂f/∂x ≠ 0, ∑(1..n).
+
+Wszystkie te znaki używają tej samej, wbudowanej w czytnik
+PDF czcionki Helvetica — bez osadzania danych czcionki.

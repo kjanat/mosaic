@@ -52,6 +52,7 @@ pub use afm::{BBox, CharacterMetric, FontMetrics, KerningPair};
 
 use std::borrow::Cow;
 
+mod agl_subset;
 mod winansi_char_map;
 mod winansi_table;
 
@@ -168,7 +169,9 @@ impl Base14Font {
     /// This is an O(n) linear scan over the font's character metrics
     /// (~315 entries for the Latin faces). Prefer
     /// [`Self::winansi_width`] when querying by byte — that path
-    /// goes through a pre-baked O(1) table.
+    /// goes through a pre-baked O(1) table. For the Latin Core 12
+    /// faces, [`Self::glyph_width_by_name`] goes through a baked
+    /// sorted index instead and is O(log n).
     #[must_use]
     pub fn glyph_width(self, name: &str) -> Option<f32> {
         self.metrics()
@@ -176,6 +179,43 @@ impl Base14Font {
             .iter()
             .find(|c| c.name == name)
             .map(|c| c.width_x)
+    }
+
+    /// Width of the glyph with the given PostScript name, looked up
+    /// through a baked sorted index. O(log n), allocation-free,
+    /// safe to call once per character per PDF page in tight loops.
+    ///
+    /// Returns `None` for [`Self::Symbol`] and [`Self::ZapfDingbats`]
+    /// — their AFMs are intentionally unindexed because those faces
+    /// don't participate in `/Differences`-style remapping. Callers
+    /// that need Symbol/Dingbat widths must use [`Self::glyph_width`].
+    #[must_use]
+    pub fn glyph_width_by_name(self, name: &str) -> Option<f32> {
+        let table = self.name_width_table()?;
+        table
+            .binary_search_by(|(n, _)| (*n).cmp(name))
+            .ok()
+            .map(|i| table[i].1)
+    }
+
+    /// Returns the baked `(name, width)` index for Latin Core 12
+    /// faces, or `None` for `Symbol`/`ZapfDingbats`.
+    fn name_width_table(self) -> Option<&'static [(&'static str, f32)]> {
+        match self {
+            Self::Symbol | Self::ZapfDingbats => None,
+            Self::Helvetica => Some(HELVETICA_NAME_WIDTHS),
+            Self::HelveticaBold => Some(HELVETICA_BOLD_NAME_WIDTHS),
+            Self::HelveticaOblique => Some(HELVETICA_OBLIQUE_NAME_WIDTHS),
+            Self::HelveticaBoldOblique => Some(HELVETICA_BOLDOBLIQUE_NAME_WIDTHS),
+            Self::TimesRoman => Some(TIMES_ROMAN_NAME_WIDTHS),
+            Self::TimesBold => Some(TIMES_BOLD_NAME_WIDTHS),
+            Self::TimesItalic => Some(TIMES_ITALIC_NAME_WIDTHS),
+            Self::TimesBoldItalic => Some(TIMES_BOLDITALIC_NAME_WIDTHS),
+            Self::Courier => Some(COURIER_NAME_WIDTHS),
+            Self::CourierBold => Some(COURIER_BOLD_NAME_WIDTHS),
+            Self::CourierOblique => Some(COURIER_OBLIQUE_NAME_WIDTHS),
+            Self::CourierBoldOblique => Some(COURIER_BOLDOBLIQUE_NAME_WIDTHS),
+        }
     }
 
     /// Width of the glyph at PDF `WinAnsiEncoding` byte `code`, in
@@ -262,3 +302,98 @@ pub fn winansi_byte(ch: char) -> Option<u8> {
 // byte-for-byte equality.
 #[doc(hidden)]
 pub const __WINANSI_CHAR_MAP: [Option<char>; 256] = winansi_char_map::WINANSI_CHAR_MAP;
+
+/// Returns the PostScript glyph name for `ch` if it is one of the
+/// non-`WinAnsi` glyphs known to live in every Adobe Core 14 Latin
+/// AFM: most of Latin Extended-A (`Ł`, `ł`, `Ě`, `ě`, `Ő`, `ő`, …,
+/// except those that already live in `WinAnsi` like `š`/`Š`/`ž`/`Ž`),
+/// the Latin Extended-B comma-below set `Ș`/`ș`/`Ț`/`ț`, the spacing
+/// diacritics `˘ˇ˙˝˛˚`, the math operators `−≤≥≠√∂∑∆◊`, the
+/// `fraction` slash `⁄`, and the `fi`/`fl` ligatures.
+///
+/// Returns `None` for `WinAnsi` natives — `š` (U+0161), `ž` (U+017E),
+/// `Š`, `Ž`, the accented Latin-1 alphabet, `€`, `“`, ... live in
+/// `WinAnsi` and are reachable through [`winansi_byte`] instead.
+/// Returns `None` for codepoints with no glyph in any Core 14 font
+/// (Cyrillic, CJK, emoji, most non-European scripts) — for those the
+/// PDF backend substitutes `?` and emits a `W040` warning.
+///
+/// Used by the PDF backend's `/Differences`-based encoding planner to
+/// resolve non-`WinAnsi` codepoints to glyph names that can be placed
+/// in a custom encoding dictionary.
+#[must_use]
+pub fn glyph_name(ch: char) -> Option<&'static str> {
+    agl_subset::agl_glyph_name(ch)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glyph_width_by_name_matches_linear_scan_for_every_helvetica_glyph() {
+        let face = Base14Font::Helvetica;
+        for c in face.metrics().character_metrics.iter() {
+            let by_name = face.glyph_width_by_name(c.name.as_ref());
+            assert_eq!(
+                by_name,
+                Some(c.width_x),
+                "by-name mismatch for {:?}",
+                c.name
+            );
+        }
+    }
+
+    #[test]
+    fn glyph_width_by_name_resolves_non_winansi_glyphs() {
+        // Helvetica.afm:  C -1 ; WX 222 ; N lslash ; ...  (well, lslash
+        // is actually encoded at C 248 in AdobeStandardEncoding, but
+        // either way the width is the same.) The PDF spec lets us
+        // address it through /Differences.
+        let face = Base14Font::Helvetica;
+        assert_eq!(face.glyph_width_by_name("lslash"), Some(222.0));
+        assert_eq!(face.glyph_width_by_name("Lslash"), Some(556.0));
+        assert_eq!(face.glyph_width_by_name("ecaron"), Some(556.0));
+        assert_eq!(face.glyph_width_by_name("rcaron"), Some(333.0));
+    }
+
+    #[test]
+    fn glyph_width_by_name_returns_none_for_unknown_glyph() {
+        assert_eq!(Base14Font::Helvetica.glyph_width_by_name(""), None);
+        assert_eq!(
+            Base14Font::Helvetica.glyph_width_by_name("notarealglyph"),
+            None
+        );
+    }
+
+    #[test]
+    fn glyph_width_by_name_returns_none_for_symbol_and_dingbats() {
+        // Documented contract: those faces don't participate in
+        // /Differences-based remapping.
+        assert_eq!(Base14Font::Symbol.glyph_width_by_name("A"), None);
+        assert_eq!(Base14Font::ZapfDingbats.glyph_width_by_name("A"), None);
+    }
+
+    #[test]
+    fn courier_carries_the_same_extended_glyph_set_as_helvetica() {
+        // The 12 Latin Core 14 faces share an identical 315-name glyph
+        // inventory (verified by `diff` on the AFM CharSets); the
+        // planner can rely on "if Helvetica has it, Courier does too"
+        // when deciding whether to remap a slot.
+        for name in &["lslash", "ecaron", "tcommaaccent", "ohungarumlaut"] {
+            assert!(
+                Base14Font::Courier.glyph_width_by_name(name).is_some(),
+                "Courier missing {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn public_glyph_name_resolves_polish_and_czech() {
+        assert_eq!(glyph_name('ł'), Some("lslash"));
+        assert_eq!(glyph_name('Ł'), Some("Lslash"));
+        assert_eq!(glyph_name('ě'), Some("ecaron"));
+        // ž is in WinAnsi, not in our subset.
+        assert_eq!(glyph_name('ž'), None);
+    }
+}

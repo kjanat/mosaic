@@ -678,19 +678,33 @@ fn read_str_attr<'a>(node: &'a Node, key: &str) -> Option<&'a str> {
     }
 }
 
-/// Replace any character without a PDF `WinAnsiEncoding` slot with
-/// `?` and emit a `W040` warning if at least one substitution
-/// happened. Also normalises CR/LF/tab to space so word-splitting is
-/// uniform. `WinAnsi` covers ASCII, Latin-1, and the Windows-specific
-/// `0x80..=0x9F` band (Euro, smart quotes, bullet, …); anything else
-/// — Cyrillic, CJK, etc. — needs font embedding (issue #9).
+/// Replace any character with no glyph in the Adobe Core 14 Latin
+/// AFMs with `?` and emit a `W040` warning. Also normalises
+/// CR/LF/tab to space so word-splitting is uniform.
+///
+/// Two tiers pass through unchanged:
+/// - `WinAnsi` natives (`mosaic_fonts::winansi_byte` returns
+///   `Some`): ASCII, Latin-1, the Windows band (`0x80..=0x9F`), plus
+///   `š`/`ž`/`Š`/`Ž`.
+/// - Extended glyphs (`mosaic_fonts::glyph_name` returns `Some`):
+///   the rest of Latin Extended-A (`Ł`, `ł`, `Ě`, `ě`, `Ő`, `ő`, …),
+///   the Romanian comma-below set, spacing diacritics, math
+///   operators, `fi`/`fl` ligatures. These have no `WinAnsi` byte
+///   but exist in every Core 14 Latin AFM under a glyph name; the
+///   PDF backend addresses them through a per-document
+///   `/Differences` encoding.
+///
+/// Anything else — Cyrillic, CJK, Vietnamese accents, emoji, etc. —
+/// has no glyph in any Core 14 font and substitutes to `?`.
+/// Embedded fonts (issue #9) lift that ceiling.
 fn sanitize_text(raw: &str, span: &SourceSpan, diagnostics: &mut Vec<Diagnostic>) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut substituted = false;
     for ch in raw.chars() {
         if ch == '\n' || ch == '\r' || ch == '\t' {
             out.push(' ');
-        } else if mosaic_fonts::winansi_byte(ch).is_some() {
+        } else if mosaic_fonts::winansi_byte(ch).is_some() || mosaic_fonts::glyph_name(ch).is_some()
+        {
             out.push(ch);
         } else {
             out.push('?');
@@ -701,8 +715,9 @@ fn sanitize_text(raw: &str, span: &SourceSpan, diagnostics: &mut Vec<Diagnostic>
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             code: DiagnosticCode("W040"),
-            message: "character not representable in WinAnsi (PDF base-font encoding) \
-                      replaced with `?` — embedded fonts land in MVP 2"
+            message: "character has no glyph in the Adobe Core 14 fonts \
+                      (Cyrillic, CJK, emoji, …) replaced with `?` — \
+                      embedded fonts land in MVP 2"
                 .to_owned(),
             span: Some(span.clone()),
             notes: Vec::new(),
@@ -853,20 +868,59 @@ mod tests {
     }
 
     #[test]
-    fn non_winansi_substitutes_and_warns() {
+    fn unmappable_substitutes_and_warns() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
-        // Cyrillic "Привет" has no WinAnsi slot — every char substitutes.
+        // Cyrillic "Привет" has no glyph in any Core 14 font — every
+        // char substitutes. Polish/Czech now pass through; see
+        // `extended_latin_passes_through_without_warning`.
         make_paragraph(&mut doc, "Привет");
         let result = LayoutEngine::new().layout(&doc);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].code.0, "W040");
         assert!(
-            result.diagnostics[0].message.contains("WinAnsi"),
-            "W040 message should reference WinAnsi, got {:?}",
+            result.diagnostics[0].message.contains("Core 14"),
+            "W040 message should reference Core 14, got {:?}",
             result.diagnostics[0].message
         );
         let runs = &result.graph.pages[0].runs;
         assert!(runs.iter().any(|r| r.text == "??????"));
+    }
+
+    #[test]
+    fn extended_latin_passes_through_without_warning() {
+        // Polish + Czech: every char is either a WinAnsi native
+        // (`ó`, `r`, `i`, …) or an extended glyph reachable via
+        // `glyph_name` (`ł`, `Ł`, `ě`, `ř`, `ž` is WinAnsi at 0x9E).
+        // No substitution, no W040.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_paragraph(&mut doc, "Łódź — Příliš");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(
+            result.diagnostics.is_empty(),
+            "expected no diagnostics, got {:?}",
+            result.diagnostics
+        );
+        let text: String = result.graph.pages[0]
+            .runs
+            .iter()
+            .map(|r| r.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(text.contains("Łódź"), "got {text}");
+        assert!(text.contains("Příliš"), "got {text}");
+    }
+
+    #[test]
+    fn cjk_and_emoji_substitute_and_warn() {
+        // No glyph in Core 14 AFMs — should substitute and warn.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_paragraph(&mut doc, "日本語 🦀");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(
+            result.diagnostics.iter().any(|d| d.code.0 == "W040"),
+            "expected a W040 diagnostic, got {:?}",
+            result.diagnostics
+        );
     }
 
     #[test]

@@ -18,5 +18,10 @@ mosaic-layout = { workspace = true }
 
 pdf-writer = { workspace = true }
 
+[dev-dependencies]
+# `lopdf` only used in integration tests to parse the PDFs we produce
+# and assert the encoding/content-stream round-trips.
+lopdf = { workspace = true }
+
 [lints]
 workspace = true
