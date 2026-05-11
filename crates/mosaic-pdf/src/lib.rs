@@ -117,13 +117,19 @@ pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> (Vec<u8>, 
     // For each Latin face that needs a `/Differences` map, pre-allocate
     // the indirect refs for the custom encoding dict and the
     // `/ToUnicode` CMap stream. Symbol/Dingbats and unused faces get
-    // no extra refs.
+    // no extra refs. Iterate `Font::ALL` (not `&encodings`) so the
+    // `alloc()` order — and therefore the byte layout of the produced
+    // PDF — is deterministic across runs. `HashMap` iteration order is
+    // hasher-seed-dependent and would otherwise shuffle indirect IDs
+    // between builds.
     let mut encoding_refs: HashMap<Font, (Ref, Ref)> = HashMap::new();
-    for (font, enc) in &encodings {
-        if enc.has_differences() {
+    for font in Font::ALL {
+        if let Some(enc) = encodings.get(&font)
+            && enc.has_differences()
+        {
             let enc_ref = alloc();
             let cmap_ref = alloc();
-            encoding_refs.insert(*font, (enc_ref, cmap_ref));
+            encoding_refs.insert(font, (enc_ref, cmap_ref));
         }
     }
 
@@ -184,8 +190,13 @@ pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> (Vec<u8>, 
     }
 
     // Emit the custom /Encoding dicts and /ToUnicode CMap streams.
-    for (font, enc) in &encodings {
-        let Some(&(enc_ref, cmap_ref)) = encoding_refs.get(font) else {
+    // Same `Font::ALL` walk as the allocation pass above keeps emit
+    // order deterministic.
+    for font in Font::ALL {
+        let Some(enc) = encodings.get(&font) else {
+            continue;
+        };
+        let Some(&(enc_ref, cmap_ref)) = encoding_refs.get(&font) else {
             continue;
         };
         emit_encoding_dict(&mut pdf, enc_ref, enc);
@@ -501,24 +512,57 @@ mod tests {
         // 0x7F therefore appears in the document as the ASCII pair
         // `7F`. This is a smoke check that the encoder routed Ł to
         // a remapped slot rather than substituting `?` (0x3F).
+        //
+        // Both assertions operate on the page content stream slice
+        // only — scanning the whole PDF would let the `/ToUnicode`
+        // CMap (`<7F> <0141>`) satisfy the `7F` needle even if the
+        // content stream had silently substituted to `?`. Surgical
+        // slicing keeps the smoke test honest.
         let (bytes, _) = build_pdf(&extended_latin_graph(), &PdfMetadata::default());
-        // Look for the hex digraph `7F` inside any hex string in the
-        // file. We don't try to be surgical about which hex string;
-        // a false positive across object boundaries is acceptable
-        // for a smoke test of this size.
+        let content_stream = first_content_stream(&bytes).expect("content stream not found");
         let needle = b"7F";
         assert!(
-            bytes.windows(needle.len()).any(|w| w == needle),
+            content_stream.windows(needle.len()).any(|w| w == needle),
             "content stream should reference remapped slot 0x7F"
         );
-        // And the run must NOT have been all-substituted to `?`s
-        // (0x3F repeated). If `?` count >= run length, something
-        // collapsed.
-        let qmark_count = bytes.iter().filter(|&&b| b == b'?').count();
+        let qmark_count = content_stream.iter().filter(|&&b| b == b'?').count();
         assert!(
             qmark_count < 5,
             "too many `?` in PDF ({qmark_count}); did Ł/ř/ě/ź get substituted?"
         );
+    }
+
+    #[test]
+    fn build_pdf_is_byte_for_byte_deterministic() {
+        // Regression guard for the HashMap-iteration-order bug that
+        // shuffled indirect IDs between builds. Two `build_pdf` calls
+        // on the same graph must produce identical bytes; otherwise
+        // golden tests and reproducible CI artifacts break.
+        let (a, _) = build_pdf(&extended_latin_graph(), &PdfMetadata::default());
+        let (b, _) = build_pdf(&extended_latin_graph(), &PdfMetadata::default());
+        assert_eq!(
+            a,
+            b,
+            "build_pdf is non-deterministic: byte lengths {} vs {}",
+            a.len(),
+            b.len()
+        );
+    }
+
+    /// Locate the first `stream` ... `endstream` body in a PDF byte
+    /// blob and return the bytes between them. `build_pdf` emits the
+    /// page content stream before any `/ToUnicode` `CMap` stream
+    /// (see the object-order comment in [`build_pdf`]), so the first
+    /// match is always the page content. Markers anchor on the
+    /// surrounding `\n` so the substring inside `endstream` doesn't
+    /// false-match the opener.
+    fn first_content_stream(bytes: &[u8]) -> Option<&[u8]> {
+        let open = b"\nstream\n";
+        let close = b"\nendstream";
+        let open_at = bytes.windows(open.len()).position(|w| w == open)?;
+        let body = &bytes[open_at + open.len()..];
+        let close_at = body.windows(close.len()).position(|w| w == close)?;
+        Some(&body[..close_at])
     }
 
     fn unique_temp_path(label: &str) -> std::path::PathBuf {
