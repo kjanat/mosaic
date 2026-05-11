@@ -742,6 +742,12 @@ impl LayoutState {
         let declared_w = read_length_attr(image, "width");
         let declared_h = read_length_attr(image, "height");
         let aspect = natural_h / natural_w;
+        // When the author specifies *both* dimensions, render to the
+        // exact box even if that distorts the image. This matches
+        // LaTeX `\includegraphics[width=W, height=H]` and Typst's
+        // `image(width: W, height: H)` — users explicitly opt out of
+        // aspect-preservation by supplying both. The single-dimension
+        // arms below preserve aspect ratio from the supplied side.
         let (w, h) = match (declared_w, declared_h) {
             (Some(w), Some(h)) => (w, h),
             (Some(w), None) => (w, w * aspect),

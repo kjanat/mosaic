@@ -138,6 +138,7 @@ impl Evaluator {
                             args,
                             span,
                             &tree.file,
+                            current_text_size_pt,
                             &mut diagnostics,
                         );
                     }
@@ -148,6 +149,7 @@ impl Evaluator {
                             args,
                             span,
                             &tree.file,
+                            current_text_size_pt,
                             &mut diagnostics,
                         );
                     }
@@ -261,9 +263,11 @@ fn lower_image_directive(
     args: &[SetArg],
     span: &SourceSpan,
     source_file: &std::path::Path,
+    em_pt: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let Some((attributes, _label)) = build_image_attributes(args, span, source_file, diagnostics)
+    let Some((attributes, _label)) =
+        build_image_attributes(args, span, source_file, em_pt, diagnostics)
     else {
         return;
     };
@@ -291,6 +295,7 @@ fn lower_figure_directive(
     args: &[SetArg],
     span: &SourceSpan,
     source_file: &std::path::Path,
+    em_pt: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     // Pluck the image-specifying args (`image:` path, optional
@@ -359,6 +364,20 @@ fn lower_figure_directive(
         }
     }
 
+    // Build the image attributes *before* allocating the Figure node.
+    // If the image can't be loaded (E050/E051/E052), we'd otherwise
+    // leave a stray Figure on the document root — a caption-only
+    // figure is not a meaningful artifact and would still render the
+    // caption next to whatever the user thought they were captioning.
+    // The caller already emitted the relevant diagnostic; dropping
+    // the figure means the document keeps its other content intact
+    // without a phantom block.
+    let Some((image_attrs, _label)) =
+        build_image_attributes(&image_args, span, source_file, em_pt, diagnostics)
+    else {
+        return;
+    };
+
     let mut figure_attrs: AttrMap = BTreeMap::new();
     if let Some(label) = figure_label {
         figure_attrs.insert("label".to_owned(), AttrValue::Str(label));
@@ -375,21 +394,18 @@ fn lower_figure_directive(
             attributes: figure_attrs,
         },
     );
-
-    if let Some((attrs, _)) = build_image_attributes(&image_args, span, source_file, diagnostics) {
-        document.alloc_child(
-            figure_id,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Image,
-                span: span.clone(),
-                content_hash: Default::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
-        );
-    }
+    document.alloc_child(
+        figure_id,
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Image,
+            span: span.clone(),
+            content_hash: Default::default(),
+            style_id: StyleId::default(),
+            children: Vec::new(),
+            attributes: image_attrs,
+        },
+    );
     if let Some((text, caption_span)) = caption {
         let caption_id = document.alloc_child(
             figure_id,
@@ -436,6 +452,7 @@ fn build_image_attributes(
     args: &[SetArg],
     span: &SourceSpan,
     source_file: &std::path::Path,
+    em_pt: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<(AttrMap, Option<String>)> {
     let mut src_path: Option<(String, SourceSpan)> = None;
@@ -468,7 +485,7 @@ fn build_image_attributes(
             },
             "width" => match &arg.value {
                 SetValue::Length(v, unit) => {
-                    declared_width = Some(length_to_pt(*v, *unit, 11.0));
+                    declared_width = Some(length_to_pt(*v, *unit, em_pt));
                 }
                 SetValue::Float(v) => declared_width = Some(*v),
                 SetValue::Int(v) => declared_width = Some(int_to_f64(*v)),
@@ -482,7 +499,7 @@ fn build_image_attributes(
             },
             "height" => match &arg.value {
                 SetValue::Length(v, unit) => {
-                    declared_height = Some(length_to_pt(*v, *unit, 11.0));
+                    declared_height = Some(length_to_pt(*v, *unit, em_pt));
                 }
                 SetValue::Float(v) => declared_height = Some(*v),
                 SetValue::Int(v) => declared_height = Some(int_to_f64(*v)),
@@ -1023,6 +1040,37 @@ mod tests {
     }
 
     #[test]
+    fn image_em_width_resolves_against_current_text_size() {
+        // Regression: `#image(width: 2em)` after `#set text(size: 20pt)`
+        // must yield 40pt, not 22pt (which is what the old hardcoded
+        // 11pt em base produced). The lowerer now threads the tracked
+        // body text size through to `build_image_attributes`.
+        let png_path = write_tiny_png("em.png");
+        let dir = png_path.parent().unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(
+            &source,
+            "#set text(size: 20pt)\n#image(\"em.png\", width: 2em)\n",
+        )
+        .unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let image_node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Image)
+            .expect("Image node");
+        match image_node.attributes.get("width") {
+            Some(AttrValue::Length(pt)) => assert!(
+                (pt - 40.0).abs() < 0.01,
+                "width = {pt}pt, expected 40pt (2em at 20pt)"
+            ),
+            other => panic!("expected width Length, got {other:?}"),
+        }
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
     fn missing_image_path_emits_e050() {
         let r = lower("#image()\n", &PathBuf::from("/tmp/no-such.mos"));
         assert!(
@@ -1098,6 +1146,25 @@ mod tests {
             Some(&AttrValue::Str("A tiny picture.".to_owned()))
         );
         std::fs::remove_dir_all(png_path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn figure_with_missing_image_does_not_leak_empty_node() {
+        // If `#figure(image: "broken.png", caption: "...")` fails to
+        // load the image, the caller still emits E051; the lowerer
+        // must NOT leave a Figure (or its caption paragraph) hanging
+        // on the document root. A caption-only figure renders next
+        // to whatever the user thought they were captioning, which
+        // is worse than no output for the failed block.
+        let r = lower(
+            "#figure(image: \"does-not-exist.png\", caption: \"missing\")\n",
+            &PathBuf::from("/tmp/no-such-dir/main.mos"),
+        );
+        assert!(r.diagnostics.iter().any(|d| d.code.0 == "E051"));
+        assert!(
+            !r.document.nodes().any(|n| n.kind == NodeKind::Figure),
+            "Figure node leaked after image load failure",
+        );
     }
 
     #[test]
