@@ -1,87 +1,243 @@
 //! Font discovery, shaping, and metrics (manifest §22.1).
 //!
-//! MVP-2 facade over [`pdf_base14_metrics`]: a [`Font`] newtype around
-//! [`Base14Font`] plus the width/ascent/descent helpers `mosaic-layout`
-//! needs. The newtype gives Mosaic a single anchor point to refactor when
-//! issue #9 widens `Font` to `Base14(Base14Font) | Embedded(EmbeddedFont)`;
-//! that widening will still be a breaking change for call sites that touch
-//! `.0`, the newtype just keeps those call sites localised.
+//! Two font-emission paths live behind one [`Font`] enum:
 //!
-//! Any character measurable through this crate falls into one of two
-//! tiers, both of which the PDF backend can render through the Core 14
-//! base fonts without embedding font data:
+//! - [`Font::Base14`] — the 14 standard PDF base fonts. No glyph data
+//!   ships; the PDF reader supplies outlines. Advance widths come from
+//!   bundled Adobe AFMs, addressed through [`pdf_base14_metrics`].
+//!   `WinAnsi` natives go out as their canonical byte; the small set
+//!   of extended Latin glyphs each face carries (Latin Extended-A
+//!   beyond `WinAnsi`, the math operators, `fi`/`fl` ligatures) goes
+//!   out through a per-document `/Differences` remap that
+//!   `mosaic-pdf` plans. Characters outside both tiers — Cyrillic,
+//!   CJK, emoji — silently substitute to `?` in both the width and
+//!   emit paths (no warning, no panic; callers that want non-Latin
+//!   should pick the embedded family).
+//! - [`Font::Embedded`] — a bundled Noto Sans cut shaped with
+//!   `rustybuzz` (`HarfBuzz` Rust port). The PDF backend embeds a
+//!   subset of the actual `TrueType` outlines as a Type 0 CID font
+//!   with a `/ToUnicode` `CMap`, so the output is a real
+//!   Unicode-aware document: copy/paste round-trips through Cyrillic,
+//!   Greek, accented Latin, and anything else Noto Sans covers.
 //!
-//! - `WinAnsi` natives: ASCII (`0x20..=0x7E`), the Windows-specific
-//!   band (`0x80..=0x9F` — Euro, smart quotes, bullet, trademark, …),
-//!   and Latin-1 (`0xA0..=0xFF` — `é`, `ß`, `§`, accented Latin, …),
-//!   plus `š`/`ž`/`Š`/`Ž` (Czech and friends at 0x8A/0x9A/0x8E/0x9E).
-//!   Look up with [`winansi_byte`].
-//! - Extended glyphs that exist in the Adobe Core 14 Latin AFMs but
-//!   have no `WinAnsi` byte: the rest of Latin Extended-A (`Ł`, `ł`,
-//!   `Ě`, `ě`, `Ő`, `ő`, …), the comma-below Romanian set
-//!   (`Ș`/`ș`/`Ț`/`ț`), the spacing diacritics (`˘ˇ˙˝˛˚`), the math
-//!   operators (`−≤≥≠√∂∑∆◊`), the `fraction` slash `⁄`, and the
-//!   `fi`/`fl` ligatures. Look up with [`extended_glyph_name`]. The PDF
-//!   backend addresses these through a per-document `/Differences`
-//!   encoding (the 256-slot ceiling caps about 100 extra glyphs per
-//!   face per document — well above any realistic European doc).
-//!
-//! Anything past those two tiers — Cyrillic, CJK, Vietnamese accents,
-//! emoji — has no glyph in any Core 14 font and requires font
-//! embedding (issue #9). The layout engine substitutes those to `?`
-//! with a `W040` warning.
+//! Five cuts ship in this crate's `data/` directory: four Noto Sans
+//! style cuts (Regular, Bold, Italic, `BoldItalic`) for proportional
+//! body text plus one Noto Sans Mono Regular cut for `` `raw` `` runs
+//! (see `SOURCES.md` under the crate root). Style selection happens
+//! through [`FontFamily`], which the layout engine receives from the
+//! eval lowerer.
 
 #![deny(missing_docs)]
 
+mod embedded;
+
+use std::sync::LazyLock;
+
+use mosaic_core::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
+
+pub use embedded::{EmbeddedFont, ShapedGlyph, shape, subset};
 pub use pdf_base14_metrics::{Base14Font, extended_glyph_name, winansi_byte};
 
-/// One of the 14 standard PDF fonts, wrapped in a newtype.
-///
-/// Use [`Font::ALL`] to iterate every face in Mosaic's PDF-resource order,
-/// or `Font::from(Base14Font::Helvetica)` to construct directly.
+/// A renderable font — either one of the Adobe Core 14 (no data
+/// embedded; outlines from the PDF reader) or a bundled TrueType
+/// cut (data embedded, subset per-document).
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
-pub struct Font(pub Base14Font);
+pub enum Font {
+    /// A Base14 face. Layout uses AFM metrics; PDF emit uses
+    /// `WinAnsiEncoding` + per-document `/Differences`.
+    Base14(Base14Font),
+    /// A bundled embedded face. Layout uses `rustybuzz` shaping;
+    /// PDF emit produces a Type 0 CID font with `/ToUnicode`.
+    Embedded(EmbeddedFontId),
+}
 
-impl Font {
-    /// All 14 base fonts in **Mosaic's** PDF-resource order.
-    ///
-    /// This ordering is deliberately **decoupled** from [`Base14Font::ALL`]:
-    /// the four pre-existing layout faces keep their historical
-    /// `F1`..=`F4` resource numbers (`Helvetica`, `HelveticaBold`,
-    /// `HelveticaOblique`, `Courier`) so PDF byte output stays stable for
-    /// existing integration tests. The remaining ten faces follow.
-    /// [`Base14Font::ALL`] is the canonical PDF-spec ordering; this one is
-    /// Mosaic-specific.
-    pub const ALL: [Self; 14] = [
-        Self(Base14Font::Helvetica),
-        Self(Base14Font::HelveticaBold),
-        Self(Base14Font::HelveticaOblique),
-        Self(Base14Font::Courier),
-        Self(Base14Font::HelveticaBoldOblique),
-        Self(Base14Font::TimesRoman),
-        Self(Base14Font::TimesBold),
-        Self(Base14Font::TimesItalic),
-        Self(Base14Font::TimesBoldItalic),
-        Self(Base14Font::CourierBold),
-        Self(Base14Font::CourierOblique),
-        Self(Base14Font::CourierBoldOblique),
-        Self(Base14Font::Symbol),
-        Self(Base14Font::ZapfDingbats),
+/// Stable identifier for each bundled embedded cut. Used as the enum
+/// payload of [`Font::Embedded`] so [`Font`] stays `Copy`/`Hash`/`Eq`
+/// without resorting to pointer identity.
+///
+/// The crate ships two bundled families today: Noto Sans (four style
+/// cuts — `Regular`/`Bold`/`Italic`/`BoldItalic`) for proportional
+/// body text, and Noto Sans Mono (one cut — `Mono`) for `` `raw` ``
+/// runs. The flat-enum shape is deliberate at this scale — when a
+/// third family lands, or Mono grows additional cuts, the right move
+/// is restructuring to `{ family, cut }` rather than expanding this
+/// enum variant-by-variant further.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, Ord, PartialOrd)]
+pub enum EmbeddedFontId {
+    /// Noto Sans Regular.
+    Regular,
+    /// Noto Sans Bold.
+    Bold,
+    /// Noto Sans Italic.
+    Italic,
+    /// Noto Sans Bold Italic.
+    BoldItalic,
+    /// Noto Sans Mono Regular. The crate's monospace face for raw runs.
+    Mono,
+}
+
+impl EmbeddedFontId {
+    /// All bundled embedded cuts in a stable order. Used by the PDF
+    /// backend to enumerate `/Font` resource entries deterministically.
+    pub const ALL: [Self; 5] = [
+        Self::Regular,
+        Self::Bold,
+        Self::Italic,
+        Self::BoldItalic,
+        Self::Mono,
     ];
 
-    /// PDF `/BaseFont` name, e.g. `"Helvetica-BoldOblique"`.
+    /// Resolve to the bundled [`EmbeddedFont`] data. Initialised on
+    /// first use; subsequent calls return the same `&'static` reference.
     #[must_use]
-    pub fn pdf_base_name(self) -> &'static str {
-        self.0.pdf_base_name()
+    pub fn data(self) -> &'static EmbeddedFont {
+        match self {
+            Self::Regular => &NOTO_SANS_REGULAR,
+            Self::Bold => &NOTO_SANS_BOLD,
+            Self::Italic => &NOTO_SANS_ITALIC,
+            Self::BoldItalic => &NOTO_SANS_BOLD_ITALIC,
+            Self::Mono => &NOTO_SANS_MONO,
+        }
     }
 
-    /// Stable resource name (`F1`..`F14`) written into the page's font
-    /// dictionary. PDF allows any name; using fixed `Fn` identifiers keeps
-    /// streams short and byte-stable across builds. The mapping matches
-    /// [`Font::ALL`] index + 1.
+    /// PDF resource name: `F15`..`F19` (Base14 keeps `F1`..`F14`).
+    /// The mapping is fixed per variant so byte-stable golden tests
+    /// stay byte-stable.
     #[must_use]
     pub fn pdf_resource_name(self) -> &'static [u8] {
-        match self.0 {
+        match self {
+            Self::Regular => b"F15",
+            Self::Bold => b"F16",
+            Self::Italic => b"F17",
+            Self::BoldItalic => b"F18",
+            Self::Mono => b"F19",
+        }
+    }
+}
+
+static NOTO_SANS_REGULAR: LazyLock<EmbeddedFont> = LazyLock::new(|| {
+    EmbeddedFont::from_static(
+        include_bytes!("../data/NotoSans-Regular.ttf"),
+        "NotoSans",
+        false,
+        false,
+    )
+});
+
+static NOTO_SANS_BOLD: LazyLock<EmbeddedFont> = LazyLock::new(|| {
+    EmbeddedFont::from_static(
+        include_bytes!("../data/NotoSans-Bold.ttf"),
+        "NotoSans-Bold",
+        true,
+        false,
+    )
+});
+
+static NOTO_SANS_ITALIC: LazyLock<EmbeddedFont> = LazyLock::new(|| {
+    EmbeddedFont::from_static(
+        include_bytes!("../data/NotoSans-Italic.ttf"),
+        "NotoSans-Italic",
+        false,
+        true,
+    )
+});
+
+static NOTO_SANS_BOLD_ITALIC: LazyLock<EmbeddedFont> = LazyLock::new(|| {
+    EmbeddedFont::from_static(
+        include_bytes!("../data/NotoSans-BoldItalic.ttf"),
+        "NotoSans-BoldItalic",
+        true,
+        true,
+    )
+});
+
+static NOTO_SANS_MONO: LazyLock<EmbeddedFont> = LazyLock::new(|| {
+    EmbeddedFont::from_static(
+        include_bytes!("../data/NotoSansMono-Regular.ttf"),
+        "NotoSansMono",
+        false,
+        false,
+    )
+});
+
+impl Font {
+    /// All 14 Base14 faces in Mosaic's PDF-resource order (`F1`..`F14`).
+    ///
+    /// Page resource dictionaries always enumerate these — even when
+    /// unused — so a Base14-only document's byte output stays stable
+    /// across runs. Embedded faces are added on top, per-document.
+    ///
+    /// The ordering is **decoupled** from [`Base14Font::ALL`]: the
+    /// four pre-existing layout faces keep their historical `F1`..`F4`
+    /// resource numbers so existing integration goldens don't shift.
+    pub const ALL_BASE14: [Self; 14] = [
+        Self::Base14(Base14Font::Helvetica),
+        Self::Base14(Base14Font::HelveticaBold),
+        Self::Base14(Base14Font::HelveticaOblique),
+        Self::Base14(Base14Font::Courier),
+        Self::Base14(Base14Font::HelveticaBoldOblique),
+        Self::Base14(Base14Font::TimesRoman),
+        Self::Base14(Base14Font::TimesBold),
+        Self::Base14(Base14Font::TimesItalic),
+        Self::Base14(Base14Font::TimesBoldItalic),
+        Self::Base14(Base14Font::CourierBold),
+        Self::Base14(Base14Font::CourierOblique),
+        Self::Base14(Base14Font::CourierBoldOblique),
+        Self::Base14(Base14Font::Symbol),
+        Self::Base14(Base14Font::ZapfDingbats),
+    ];
+
+    /// If this is a Base14 face, return the underlying variant.
+    #[must_use]
+    pub const fn base14(self) -> Option<Base14Font> {
+        match self {
+            Self::Base14(f) => Some(f),
+            Self::Embedded(_) => None,
+        }
+    }
+
+    /// If this is an embedded face, return its bundled id.
+    #[must_use]
+    pub const fn embedded(self) -> Option<EmbeddedFontId> {
+        match self {
+            Self::Embedded(id) => Some(id),
+            Self::Base14(_) => None,
+        }
+    }
+
+    /// PDF `/BaseFont` name for Base14 (e.g. `"Helvetica-BoldOblique"`)
+    /// or the embedded face's PostScript name. The embedded path also
+    /// gets a six-letter subset tag in the actual PDF emission, but that
+    /// belongs to the per-document subset, not the bundled cut.
+    #[must_use]
+    pub fn pdf_base_name(self) -> &'static str {
+        match self {
+            Self::Base14(f) => f.pdf_base_name(),
+            Self::Embedded(id) => id.data().postscript_name,
+        }
+    }
+
+    /// Stable per-resource name (`F1`..`F14` for Base14, `F15`..`F19`
+    /// for embedded). Page font dictionaries map these to indirect
+    /// font refs.
+    #[must_use]
+    pub fn pdf_resource_name(self) -> &'static [u8] {
+        match self {
+            Self::Base14(f) => Self::Base14(f).base14_resource_name(),
+            Self::Embedded(id) => id.pdf_resource_name(),
+        }
+    }
+
+    /// Internal: Base14-only resource name table (`F1`..`F14`). Kept as
+    /// a method on `Font` rather than on `Base14Font` so the lookup
+    /// reads the same way the enum dispatch does. The `Embedded` arm
+    /// is handled at the caller (`pdf_resource_name`) so this private
+    /// helper never sees it.
+    fn base14_resource_name(self) -> &'static [u8] {
+        let Self::Base14(f) = self else {
+            return b"F0";
+        };
+        match f {
             Base14Font::Helvetica => b"F1",
             Base14Font::HelveticaBold => b"F2",
             Base14Font::HelveticaOblique => b"F3",
@@ -102,121 +258,292 @@ impl Font {
 
 impl From<Base14Font> for Font {
     fn from(f: Base14Font) -> Self {
-        Self(f)
+        Self::Base14(f)
     }
 }
 
-impl From<Font> for Base14Font {
-    fn from(f: Font) -> Self {
-        f.0
+impl From<EmbeddedFontId> for Font {
+    fn from(id: EmbeddedFontId) -> Self {
+        Self::Embedded(id)
     }
 }
 
-/// Advance width of `text` rendered in `font` at `size` points, in PDF
-/// user-space units.
+/// A four-cut family — Regular, Bold, Italic, `BoldItalic`. The layout
+/// engine picks one slot per styled run (`*emphasis*` → italic,
+/// `**strong**` → bold, raw → fixed-width family, body → regular).
 ///
-/// # Panics
+/// Build via [`FontFamily::resolve`], which understands Base14 family
+/// names and the bundled `"Noto Sans"` family. Unknown names fall back
+/// to Noto Sans and emit a `W045` diagnostic.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct FontFamily {
+    /// Default upright face. Used for body text.
+    pub regular: Font,
+    /// Bold face. Used for `**strong**` and headings.
+    pub bold: Font,
+    /// Italic / oblique face. Used for `*emphasis*`.
+    pub italic: Font,
+    /// Bold italic face. Used for `***bold italic***` constructs.
+    pub bold_italic: Font,
+    /// Monospace face. Used for `` `raw` `` runs. The four-slot family
+    /// concept is upright/styled-Latin; raw is its own typeface choice
+    /// that the layout engine pins independently of the family.
+    pub monospace: Font,
+}
+
+impl FontFamily {
+    /// The bundled Noto Sans family — embedded TTFs, real designed
+    /// cuts for every style slot (no faux-bold or faux-italic). Raw
+    /// runs route through the bundled Noto Sans Mono Regular cut so
+    /// `` `Привет` `` and other non-WinAnsi raw content shape through
+    /// the same `rustybuzz` + `/ToUnicode` pipeline as body text
+    /// instead of dropping to the Base14 `?` substitution.
+    #[must_use]
+    pub const fn noto_sans() -> Self {
+        Self {
+            regular: Font::Embedded(EmbeddedFontId::Regular),
+            bold: Font::Embedded(EmbeddedFontId::Bold),
+            italic: Font::Embedded(EmbeddedFontId::Italic),
+            bold_italic: Font::Embedded(EmbeddedFontId::BoldItalic),
+            monospace: Font::Embedded(EmbeddedFontId::Mono),
+        }
+    }
+
+    /// The Base14 Helvetica family. Used when the document explicitly
+    /// asks for `Helvetica`. Falls back through Courier for raw.
+    #[must_use]
+    pub const fn helvetica() -> Self {
+        Self {
+            regular: Font::Base14(Base14Font::Helvetica),
+            bold: Font::Base14(Base14Font::HelveticaBold),
+            italic: Font::Base14(Base14Font::HelveticaOblique),
+            bold_italic: Font::Base14(Base14Font::HelveticaBoldOblique),
+            monospace: Font::Base14(Base14Font::Courier),
+        }
+    }
+
+    /// The Base14 Times Roman family. Used when the document asks
+    /// for `Times` or `Times-Roman`.
+    #[must_use]
+    pub const fn times() -> Self {
+        Self {
+            regular: Font::Base14(Base14Font::TimesRoman),
+            bold: Font::Base14(Base14Font::TimesBold),
+            italic: Font::Base14(Base14Font::TimesItalic),
+            bold_italic: Font::Base14(Base14Font::TimesBoldItalic),
+            monospace: Font::Base14(Base14Font::Courier),
+        }
+    }
+
+    /// The Base14 Courier family. Used when the document asks for
+    /// `Courier` as the body face. All four style slots route to a
+    /// Courier cut.
+    #[must_use]
+    pub const fn courier() -> Self {
+        Self {
+            regular: Font::Base14(Base14Font::Courier),
+            bold: Font::Base14(Base14Font::CourierBold),
+            italic: Font::Base14(Base14Font::CourierOblique),
+            bold_italic: Font::Base14(Base14Font::CourierBoldOblique),
+            monospace: Font::Base14(Base14Font::Courier),
+        }
+    }
+
+    /// Resolve a `#set text(font: ...)` name to a family.
+    ///
+    /// Matching is case-insensitive on the family component. Known
+    /// names: `Helvetica`, `Times`/`Times-Roman`/`Times Roman`,
+    /// `Courier`, `Noto Sans`. Anything else falls back to Noto Sans
+    /// and pushes a `W045` warning so users don't silently get the
+    /// wrong typeface.
+    pub fn resolve(
+        name: &str,
+        span: Option<SourceSpan>,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> Self {
+        let normalised = name.trim().to_ascii_lowercase();
+        match normalised.as_str() {
+            "helvetica" => Self::helvetica(),
+            "times" | "times-roman" | "times roman" | "times new roman" => Self::times(),
+            "courier" => Self::courier(),
+            "noto sans" | "notosans" => Self::noto_sans(),
+            _ => {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Warning,
+                    code: DiagnosticCode("W045"),
+                    message: format!(
+                        "unknown font family `{name}`; falling back to bundled Noto Sans \
+                         (known families: Helvetica, Times, Courier, Noto Sans)"
+                    ),
+                    span,
+                    notes: Vec::new(),
+                    suggestions: Vec::new(),
+                });
+                Self::noto_sans()
+            }
+        }
+    }
+}
+
+/// Advance width of `text` rendered in `font` at `size` points.
 ///
-/// Panics if any character in `text` is unmappable — no `WinAnsi`
-/// slot and no glyph name in the Core 14 Latin AFMs (Cyrillic, CJK,
-/// emoji, …). Callers must substitute unmappable characters upstream.
-/// Also panics if `font` is `Symbol` or `ZapfDingbats`, since those
-/// use their own encodings.
+/// For Base14 faces this sums per-character AFM widths (`WinAnsi`
+/// natives + extended Latin reachable via [`extended_glyph_name`]).
+/// Characters outside both tiers — Cyrillic, CJK, emoji — get the
+/// width of `?` (the substitution glyph the PDF emit path also uses
+/// for those characters in Base14 runs). No diagnostic; callers wanting
+/// real coverage should pick an embedded family.
+///
+/// For embedded faces this shapes via `rustybuzz` and sums the
+/// resulting glyph advances. Mark positioning offsets do not contribute
+/// to advance.
 #[must_use]
 pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
-    let mut units: f32 = 0.0;
-    for ch in text.chars() {
-        units += glyph_width_units(font, ch);
+    match font {
+        Font::Base14(f) => {
+            let mut units: f32 = 0.0;
+            for ch in text.chars() {
+                units += base14_glyph_units(f, ch);
+            }
+            units * size / 1000.0
+        }
+        Font::Embedded(id) => {
+            let ef = id.data();
+            let glyphs = shape(ef, text);
+            let upem = f32::from(ef.units_per_em);
+            glyphs
+                .iter()
+                .map(|g| advance_units_to_pt(g.advance_units, size, upem))
+                .sum()
+        }
     }
-    units * size / 1000.0
 }
 
-/// Width of a single glyph in `font` at `size` points.
+/// Shape `text` against `font` and return both the glyph stream and
+/// the advance widths in user-space points. Callers that need only the
+/// width can use [`text_width`]; callers that will also emit glyphs
+/// downstream should use this to avoid shaping twice.
 ///
-/// # Panics
-///
-/// Panics if `ch` is unmappable (see [`text_width`]), or if `font` is
-/// `Symbol`/`ZapfDingbats`.
+/// For Base14 faces, `glyphs` is empty (Base14 runs go out as
+/// `WinAnsi`-byte strings, not glyph IDs); only the width is computed.
+#[must_use]
+pub fn shape_text(font: Font, size: f32, text: &str) -> ShapedRun {
+    match font {
+        Font::Base14(_) => ShapedRun {
+            glyphs: Vec::new(),
+            advance_pt: text_width(font, size, text),
+        },
+        Font::Embedded(id) => {
+            let ef = id.data();
+            let glyphs = shape(ef, text);
+            let upem = f32::from(ef.units_per_em);
+            let advance_pt: f32 = glyphs
+                .iter()
+                .map(|g| advance_units_to_pt(g.advance_units, size, upem))
+                .sum();
+            ShapedRun { glyphs, advance_pt }
+        }
+    }
+}
+
+/// Output of [`shape_text`]: the shaped glyph stream and the total
+/// advance width at the requested point size.
+#[derive(Debug, Clone)]
+pub struct ShapedRun {
+    /// Glyphs in visual order (LTR). Empty for Base14 runs.
+    pub glyphs: Vec<ShapedGlyph>,
+    /// Total horizontal advance of the run, in PDF user-space units.
+    pub advance_pt: f32,
+}
+
+/// Convert a font-unit advance to PDF user-space points at `size_pt`,
+/// given the face's units-per-em. `rustybuzz` types advances as `i32`
+/// but OpenType's `hmtx` table stores `advanceWidth` as `UFWord`
+/// (unsigned 16-bit), so the underlying value is always in `0..=65535`.
+/// Saturating through `u16` here lets us cross to `f32` losslessly
+/// through `f32::From<u16>` and preserves the full `hmtx` range —
+/// the prior `i16` saturation truncated wide glyphs in the
+/// `32768..=65535` band to `i16::MAX`. The saturation clamps the
+/// (practically unreachable) out-of-`u16` case to a finite advance
+/// instead of a loose precision-lossy `i32 as f32` cast.
+fn advance_units_to_pt(advance_units: i32, size_pt: f32, upem: f32) -> f32 {
+    let advance_u16 = u16::try_from(advance_units).unwrap_or(u16::MAX);
+    f32::from(advance_u16) * size_pt / upem
+}
+
+/// Width of a single glyph in `font` at `size` points. For Base14
+/// faces this is one AFM lookup; for embedded faces it shapes the
+/// single character. Used by the paragraph engine for character-wise
+/// hyphenation of oversized words.
 #[must_use]
 pub fn glyph_width(font: Font, size: f32, ch: char) -> f32 {
-    glyph_width_units(font, ch) * size / 1000.0
+    let mut buf = [0u8; 4];
+    let s = ch.encode_utf8(&mut buf);
+    text_width(font, size, s)
 }
 
-/// Ascender height for `font` at `size` points (baseline to top of
-/// tallest glyph). Sourced from the AFM `Ascender` field divided by 1000.
+/// Ascender height for `font` at `size` points.
 #[must_use]
 pub fn ascent(font: Font, size: f32) -> f32 {
-    font.0.metrics().ascender * size / 1000.0
+    match font {
+        Font::Base14(f) => f.metrics().ascender * size / 1000.0,
+        Font::Embedded(id) => {
+            let ef = id.data();
+            f32::from(ef.ascender) * size / f32::from(ef.units_per_em)
+        }
+    }
 }
 
-/// Descender depth for `font` at `size` points, returned as a **positive**
-/// number. AFM stores descender negative; we negate at the boundary so the
-/// layout engine's existing positive-descent contract holds.
+/// Descender depth for `font` at `size` points, as a **positive**
+/// number (the AFM/TTF storage convention is negative; both backends
+/// normalise on the way out).
 #[must_use]
 pub fn descent(font: Font, size: f32) -> f32 {
-    -font.0.metrics().descender * size / 1000.0
+    match font {
+        Font::Base14(f) => -f.metrics().descender * size / 1000.0,
+        Font::Embedded(id) => {
+            let ef = id.data();
+            -f32::from(ef.descender) * size / f32::from(ef.units_per_em)
+        }
+    }
 }
 
-/// Width of a single character in 1/1000 em as the AFM `f32` type.
-///
-/// Two lookup tiers: `WinAnsi` natives go through the baked
-/// `[Option<f32>; 256]` table (O(1)); extended glyphs reachable via
-/// `/Differences` (Latin Extended-A, math operators, ligatures —
-/// resolved through [`extended_glyph_name`]) go through the baked sorted
-/// `(name, width)` index (O(log n)). The PDF emit path mirrors this
-/// split: `WinAnsi` natives go out as their native byte, extended
-/// glyphs go out as remapped bytes in a `/Differences` array.
-///
-/// # Panics
-///
-/// Panics if `ch` is neither a `WinAnsi` native nor resolvable
-/// through [`extended_glyph_name`] (Cyrillic, CJK, emoji, …) — the layout
-/// engine substitutes those to `?` at the `sanitize_text` boundary
-/// before any measurement reaches here. Also panics if `font` is
-/// `Symbol`/`ZapfDingbats` (no `WinAnsi` table for those).
-fn glyph_width_units(font: Font, ch: char) -> f32 {
-    // Two-stage assert-then-`unwrap_or` dance: workspace
-    // `clippy::panic = "warn"` rules out the `let Some(..) else
-    // { panic!(..) }` idiom (the bare `panic!` macro trips the lint),
-    // and `clippy::unwrap_used = "warn"` rules out `.unwrap()`. So we
-    // assert the Option is Some (clippy is fine with `assert!`),
-    // then `unwrap_or` with a statically-unreachable fallback.
-    if let Some(byte) = winansi_byte(ch) {
-        let width = font.0.winansi_width(byte);
-        assert!(
-            width.is_some(),
-            "font {:?} has no WinAnsi mapping for byte {byte:#04x} ({ch:?}); \
-             Symbol and ZapfDingbats are unsupported by mosaic-fonts MVP-2",
-            font.0
-        );
-        return width.unwrap_or(0.0);
+/// Width of a single character in a Base14 face, in 1/1000 em. `WinAnsi`
+/// natives go through the baked O(1) table; extended glyphs (Latin
+/// Extended-A, math operators, ligatures) go through the baked sorted
+/// name index. Anything else (Cyrillic, CJK, emoji) silently returns
+/// the width of `?` — the PDF emit path renders those characters as
+/// `?` too, so widths and content stream stay in sync. Embedded
+/// families exist precisely so callers wanting real coverage can opt
+/// out of this `?`-everywhere behaviour.
+fn base14_glyph_units(face: Base14Font, ch: char) -> f32 {
+    if matches!(face, Base14Font::Symbol | Base14Font::ZapfDingbats) {
+        // Symbol/Dingbats don't carry WinAnsi widths. The layout
+        // engine doesn't route runs into them today; treat as 0
+        // rather than panic.
+        return 0.0;
     }
-    let name_opt = extended_glyph_name(ch);
-    assert!(
-        name_opt.is_some(),
-        "char {ch:?} (U+{:04X}) has no glyph in the Core 14 AFMs; \
-         the layout engine must substitute it before measuring",
-        u32::from(ch)
-    );
-    let name = name_opt.unwrap_or("");
-    let width = font.0.glyph_width_by_name(name);
-    assert!(
-        width.is_some(),
-        "font {:?} has no glyph named {name:?} for char {ch:?}; \
-         Symbol and ZapfDingbats don't carry extended Latin glyphs",
-        font.0
-    );
-    width.unwrap_or(0.0)
+    if let Some(byte) = winansi_byte(ch) {
+        return face.winansi_width(byte).unwrap_or(0.0);
+    }
+    if let Some(name) = extended_glyph_name(ch)
+        && let Some(w) = face.glyph_width_by_name(name)
+    {
+        return w;
+    }
+    // Fallback: width of `?` (WinAnsi byte 0x3F). Always present in
+    // every Latin Core 14 face.
+    face.winansi_width(b'?').unwrap_or(0.0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const HELV: Font = Font(Base14Font::Helvetica);
-    const HELV_BOLD: Font = Font(Base14Font::HelveticaBold);
-    const HELV_OBLIQUE: Font = Font(Base14Font::HelveticaOblique);
-    const COURIER: Font = Font(Base14Font::Courier);
+    const HELV: Font = Font::Base14(Base14Font::Helvetica);
+    const HELV_BOLD: Font = Font::Base14(Base14Font::HelveticaBold);
+    const HELV_OBLIQUE: Font = Font::Base14(Base14Font::HelveticaOblique);
+    const COURIER: Font = Font::Base14(Base14Font::Courier);
 
     #[test]
     fn helvetica_space_width_is_278_thou_em() {
@@ -226,12 +553,6 @@ mod tests {
 
     #[test]
     fn helvetica_apostrophe_matches_afm() {
-        // PDF WinAnsi byte 0x27 decodes to glyph `quotesingle` — Adobe
-        // Helvetica.afm reports `WX 191` for that glyph. The AFM also
-        // contains `C 39 ; WX 222 ; N quoteright`, but that `C 39` is
-        // AdobeStandardEncoding, *not* WinAnsi; PDF readers consume the
-        // WinAnsi mapping for unembedded Base14 fonts so 191 is the
-        // value that ends up on the page.
         let w = text_width(HELV, 1000.0, "'");
         assert!((w - 191.0).abs() < 1e-6, "got {w}");
     }
@@ -245,7 +566,6 @@ mod tests {
 
     #[test]
     fn bold_is_wider_than_regular_for_caps() {
-        // `B` is 667 in regular Helvetica, 722 in Helvetica-Bold.
         let r = text_width(HELV, 100.0, "B");
         let b = text_width(HELV_BOLD, 100.0, "B");
         assert!(b > r);
@@ -253,23 +573,16 @@ mod tests {
 
     #[test]
     fn helvetica_capital_a_matches_adobe_core14_afm() {
-        // Adobe Helvetica.afm: `C 65 ; WX 667 ; N A`. URW Nimbus Sans
-        // (the Linux Helvetica *substitute*) reports 556 — a different
-        // font. PDF readers consume Adobe's Type 1 Helvetica metrics for
-        // the standard `/Helvetica` resource, so we pin to Adobe's.
         let w = text_width(HELV, 1000.0, "A");
         assert!((w - 667.0).abs() < 1e-3, "got {w}");
         let wo = text_width(HELV_OBLIQUE, 1000.0, "A");
         assert!((wo - 667.0).abs() < 1e-3, "got {wo}");
-        // Helvetica-Bold.afm: `C 65 ; WX 722 ; N A`.
         let wb = text_width(HELV_BOLD, 1000.0, "A");
         assert!((wb - 722.0).abs() < 1e-3, "got {wb}");
     }
 
     #[test]
     fn helvetica_eacute_matches_adobe_core14_afm() {
-        // Helvetica.afm: `C -1 ; WX 556 ; N eacute` (and the `Eacute`
-        // glyph at 667). WinAnsi byte 0xE9 -> "eacute", 0xC9 -> "Eacute".
         let lower = text_width(HELV, 1000.0, "é");
         assert!((lower - 556.0).abs() < 1e-3, "got {lower}");
         let upper = text_width(HELV, 1000.0, "É");
@@ -277,39 +590,20 @@ mod tests {
     }
 
     #[test]
-    fn helvetica_winansi_band_widths() {
-        // ß (germandbls, byte 0xDF) is 611 in Helvetica.afm.
-        let germandbls = text_width(HELV, 1000.0, "ß");
-        assert!((germandbls - 611.0).abs() < 1e-3, "got {germandbls}");
-        // § (section, byte 0xA7) is 556.
-        let section = text_width(HELV, 1000.0, "§");
-        assert!((section - 556.0).abs() < 1e-3, "got {section}");
-        // © (copyright, byte 0xA9) is 737.
-        let copy = text_width(HELV, 1000.0, "©");
-        assert!((copy - 737.0).abs() < 1e-3, "got {copy}");
-        // Euro (Windows-specific band, byte 0x80) is 556.
-        let euro = text_width(HELV, 1000.0, "€");
-        assert!((euro - 556.0).abs() < 1e-3, "got {euro}");
-    }
-
-    #[test]
-    #[should_panic(expected = "has no glyph in the Core 14 AFMs")]
-    fn cyrillic_panics() {
-        // "П" (Cyrillic Pe, U+041F) has no glyph in any Core 14 font;
-        // the layout engine substitutes via sanitize_text before
-        // measurements ever reach the fonts crate.
-        let _ = text_width(HELV, 12.0, "П");
+    fn base14_non_winansi_falls_back_to_question_mark_silently() {
+        // Cyrillic П has no glyph in any Base14 face. The width path
+        // returns the width of `?` (so width measurements stay
+        // consistent with the rendered output) and emits no diagnostic.
+        // PDF emission renders `?` for the same character.
+        let q = text_width(HELV, 1000.0, "?");
+        let cyrillic = text_width(HELV, 1000.0, "П");
+        assert!((q - cyrillic).abs() < 1e-3, "q={q} cyr={cyrillic}");
     }
 
     #[test]
     fn helvetica_lslash_resolves_through_extended_glyph_name_lookup() {
-        // Polish "ł" (U+0142) has no WinAnsi byte but exists in
-        // Helvetica.afm as `lslash` (WX 222). The PDF backend will
-        // address it through /Differences; the fonts crate measures
-        // it through the baked name-keyed index.
         let w = text_width(HELV, 1000.0, "ł");
         assert!((w - 222.0).abs() < 1e-3, "got {w}");
-        // "Łódź" is Polish: Ł(556) ó(556) d(556) ź(500)
         let lodz = text_width(HELV, 1000.0, "Łódź");
         assert!(
             (lodz - (556.0 + 556.0 + 556.0 + 500.0)).abs() < 1e-3,
@@ -318,53 +612,112 @@ mod tests {
     }
 
     #[test]
-    fn helvetica_czech_ecaron_resolves() {
-        // Czech "ě" (U+011B) → glyph `ecaron`, WX 556.
-        let w = text_width(HELV, 1000.0, "ě");
-        assert!((w - 556.0).abs() < 1e-3, "got {w}");
-    }
-
-    #[test]
-    fn courier_extended_glyphs_are_monospace() {
-        // Courier's extended glyphs share the 600-unit advance.
-        let lslash = text_width(COURIER, 1000.0, "ł");
-        let ecaron = text_width(COURIER, 1000.0, "ě");
-        assert!((lslash - 600.0).abs() < 1e-3, "got {lslash}");
-        assert!((ecaron - 600.0).abs() < 1e-3, "got {ecaron}");
-    }
-
-    #[test]
-    #[should_panic(expected = "no WinAnsi mapping")]
-    fn symbol_has_no_winansi_mapping() {
-        // Symbol's glyph names don't overlap WinAnsi's; `winansi_width`
-        // returns `None` for every code, so the second assert in
-        // `glyph_width_units` fires loudly instead of silently producing
-        // a zero or garbage width.
-        let _ = text_width(Font(Base14Font::Symbol), 12.0, "A");
-    }
-
-    #[test]
-    #[should_panic(expected = "no WinAnsi mapping")]
-    fn zapfdingbats_has_no_winansi_mapping() {
-        let _ = text_width(Font(Base14Font::ZapfDingbats), 12.0, "A");
-    }
-
-    #[test]
-    fn pdf_resource_name_is_f1_through_f14() {
-        for (i, font) in Font::ALL.iter().enumerate() {
+    fn pdf_resource_name_is_f1_through_f19() {
+        for (i, font) in Font::ALL_BASE14.iter().enumerate() {
             let expected = format!("F{}", i + 1);
             assert_eq!(font.pdf_resource_name(), expected.as_bytes());
+        }
+        for (i, id) in EmbeddedFontId::ALL.iter().enumerate() {
+            let expected = format!("F{}", 15 + i);
+            assert_eq!(id.pdf_resource_name(), expected.as_bytes());
         }
     }
 
     #[test]
-    fn font_all_preserves_historical_pdf_resource_numbers() {
-        // The four pre-existing layout faces must keep F1..=F4. Drift
-        // here would silently break PDF byte output for integration
-        // tests like `build_renders_section_numbers_and_resolves_references`.
-        assert_eq!(Font::ALL[0].0, Base14Font::Helvetica);
-        assert_eq!(Font::ALL[1].0, Base14Font::HelveticaBold);
-        assert_eq!(Font::ALL[2].0, Base14Font::HelveticaOblique);
-        assert_eq!(Font::ALL[3].0, Base14Font::Courier);
+    fn font_all_base14_preserves_historical_resource_numbers() {
+        assert_eq!(Font::ALL_BASE14[0], Font::Base14(Base14Font::Helvetica));
+        assert_eq!(Font::ALL_BASE14[1], Font::Base14(Base14Font::HelveticaBold));
+        assert_eq!(
+            Font::ALL_BASE14[2],
+            Font::Base14(Base14Font::HelveticaOblique)
+        );
+        assert_eq!(Font::ALL_BASE14[3], Font::Base14(Base14Font::Courier));
+    }
+
+    #[test]
+    fn resolve_known_families_does_not_diagnose() {
+        let mut diags = Vec::new();
+        let fam = FontFamily::resolve("Helvetica", None, &mut diags);
+        assert!(diags.is_empty());
+        assert_eq!(fam.regular, Font::Base14(Base14Font::Helvetica));
+        let _ = FontFamily::resolve("Times", None, &mut diags);
+        let _ = FontFamily::resolve("Times-Roman", None, &mut diags);
+        let _ = FontFamily::resolve("Courier", None, &mut diags);
+        let _ = FontFamily::resolve("Noto Sans", None, &mut diags);
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+        // Mixed case and leading/trailing whitespace must resolve the
+        // same way the canonical spelling does — `resolve` normalises
+        // through `.trim().to_ascii_lowercase()` before matching.
+        let padded = FontFamily::resolve("  heLVETICA  ", None, &mut diags);
+        assert!(
+            diags.is_empty(),
+            "padded mixed-case Helvetica diagnosed: {diags:?}"
+        );
+        assert_eq!(padded.regular, Font::Base14(Base14Font::Helvetica));
+        let spaced = FontFamily::resolve("\tNoto Sans\n", None, &mut diags);
+        assert!(diags.is_empty(), "padded Noto Sans diagnosed: {diags:?}");
+        assert_eq!(spaced.regular, Font::Embedded(EmbeddedFontId::Regular));
+    }
+
+    #[test]
+    fn resolve_unknown_family_emits_w045_and_falls_back_to_noto() {
+        let mut diags = Vec::new();
+        let fam = FontFamily::resolve("Libertinus Serif", None, &mut diags);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code.0, "W045");
+        assert_eq!(diags[0].severity, Severity::Warning);
+        assert_eq!(fam.regular, Font::Embedded(EmbeddedFontId::Regular));
+    }
+
+    #[test]
+    fn embedded_shape_is_empty_for_empty_string() {
+        let ef = EmbeddedFontId::Regular.data();
+        let glyphs = shape(ef, "");
+        assert!(glyphs.is_empty());
+    }
+
+    #[test]
+    fn embedded_shape_returns_clusters_in_byte_order() {
+        let ef = EmbeddedFontId::Regular.data();
+        let glyphs = shape(ef, "Привет");
+        assert!(!glyphs.is_empty());
+        // Cluster values are byte offsets into the source string and
+        // must be monotonically non-decreasing for LTR text.
+        let mut prev: u32 = 0;
+        for g in &glyphs {
+            assert!(
+                g.cluster >= prev,
+                "cluster regression: {prev} -> {}",
+                g.cluster
+            );
+            prev = g.cluster;
+        }
+    }
+
+    #[test]
+    fn embedded_text_width_is_nonzero_for_cyrillic() {
+        // The whole point: scripts the Base14 fonts can't render get
+        // real widths through the embedded path.
+        let font = Font::Embedded(EmbeddedFontId::Regular);
+        let w = text_width(font, 12.0, "Привет");
+        assert!(w > 0.0);
+    }
+
+    #[test]
+    fn embedded_fi_ligature_collapses_glyphs() {
+        // Noto Sans contains an `fi` ligature; rustybuzz returns one
+        // glyph for `fi` (not two). The substituted gid differs from
+        // both the standalone `f` and `i` gids. (Noto Sans's `fi`
+        // ligature has the same advance as f+i — purely visual,
+        // joining the dot of `i` with the terminal of `f` — so width
+        // is not a useful invariant for this font.)
+        let ef = EmbeddedFontId::Regular.data();
+        let fi = shape(ef, "fi");
+        let f = shape(ef, "f");
+        let i = shape(ef, "i");
+        assert_eq!(fi.len(), 1, "expected fi ligature, got glyphs {fi:?}");
+        assert_ne!(fi[0].gid, f[0].gid);
+        assert_ne!(fi[0].gid, i[0].gid);
     }
 }

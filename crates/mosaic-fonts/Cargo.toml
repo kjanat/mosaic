@@ -7,12 +7,32 @@ description            = "Font discovery, shaping, and metrics for Mosaic (manif
 readme.workspace       = true
 homepage.workspace     = true
 repository.workspace   = true
-license.workspace      = true
+# Engine code is MIT (workspace default); the bundled Noto Sans data under
+# `data/` is OFL-1.1. The crate-level expression combines both per SPDX.
+license                = "MIT AND OFL-1.1"
 keywords.workspace     = true
 categories.workspace   = true
+# Cargo's default packaging excludes binary files; explicitly include
+# the bundled font TTFs, the OFL license, and the SOURCES manifest so
+# they ship in the crates.io tarball.
+include                = [
+  "Cargo.toml",
+  "data/LICENSE-Noto-Sans",
+  "data/NotoSans-Bold.ttf",
+  "data/NotoSans-BoldItalic.ttf",
+  "data/NotoSans-Italic.ttf",
+  "data/NotoSans-Regular.ttf",
+  "data/NotoSansMono-Regular.ttf",
+  "data/SOURCES.md",
+  "src/**/*.rs",
+]
 
 [dependencies]
+mosaic-core        = { workspace = true }
 pdf-base14-metrics = { workspace = true }
+rustybuzz          = "0.20"
+subsetter          = "0.2"
+ttf-parser         = "0.25"
 
 [lints]
 workspace = true

@@ -1,0 +1,1264 @@
+%PDF-1.7
+%€€€€
+
+1 0 obj
+<<
+  /Type /Catalog
+  /Pages 2 0 R
+>>
+endobj
+
+2 0 obj
+<<
+  /Type /Pages
+  /Kids [20 0 R]
+  /Count 1
+>>
+endobj
+
+20 0 obj
+<<
+  /Type /Page
+  /MediaBox [0 0 595.27563 841.8898]
+  /Parent 2 0 R
+  /Contents 21 0 R
+  /Resources <<
+    /Font <<
+      /F1 4 0 R
+      /F2 5 0 R
+      /F3 6 0 R
+      /F4 7 0 R
+      /F5 8 0 R
+      /F6 9 0 R
+      /F7 10 0 R
+      /F8 11 0 R
+      /F9 12 0 R
+      /F10 13 0 R
+      /F11 14 0 R
+      /F12 15 0 R
+      /F13 16 0 R
+      /F14 17 0 R
+    >>
+  >>
+>>
+endobj
+
+21 0 obj
+<<
+  /Length 15855
+>>
+stream
+BT
+/F2 20 Tf
+1 0 0 1 68.031494 759.4983 Tm
+(1.) Tj
+/F2 20 Tf
+1 0 0 1 90.27149 759.4983 Tm
+(Math) Tj
+/F2 20 Tf
+1 0 0 1 142.49149 759.4983 Tm
+(via) Tj
+/F2 20 Tf
+1 0 0 1 175.85149 759.4983 Tm
+(the) Tj
+/F2 20 Tf
+1 0 0 1 211.41148 759.4983 Tm
+(Base14) Tj
+/F2 20 Tf
+1 0 0 1 287.01147 759.4983 Tm
+(path) Tj
+/F4 11 Tf
+1 0 0 1 68.031494 722.4983 Tm
+(#set) Tj
+/F4 11 Tf
+1 0 0 1 101.031494 722.4983 Tm
+(text\(font:) Tj
+/F4 11 Tf
+1 0 0 1 173.6315 722.4983 Tm
+("Helvetica"\)) Tj
+/F1 11 Tf
+1 0 0 1 255.8895 722.4983 Tm
+(routes) Tj
+/F1 11 Tf
+1 0 0 1 289.5165 722.4983 Tm
+(through) Tj
+/F1 11 Tf
+1 0 0 1 329.87552 722.4983 Tm
+(Mosaic's) Tj
+/F1 11 Tf
+1 0 0 1 375.37152 722.4983 Tm
+(Base14) Tj
+/F1 11 Tf
+1 0 0 1 415.73053 722.4983 Tm
+(encoder,) Tj
+/F1 11 Tf
+1 0 0 1 461.58954 722.4983 Tm
+(which) Tj
+/F1 11 Tf
+1 0 0 1 492.76355 722.4983 Tm
+(layers) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 707.64825 Tm
+(a) Tj
+/F1 11 Tf
+1 0 0 1 77.20549 707.64825 Tm
+(per-document) Tj
+/F4 11 Tf
+1 0 0 1 151.66449 707.64825 Tm
+(/Differences) Tj
+/F1 11 Tf
+1 0 0 1 233.92249 707.64825 Tm
+(array) Tj
+/F1 11 Tf
+1 0 0 1 262.0385 707.64825 Tm
+(on) Tj
+/F1 11 Tf
+1 0 0 1 277.32852 707.64825 Tm
+(top) Tj
+/F1 11 Tf
+1 0 0 1 295.67654 707.64825 Tm
+(of) Tj
+/F4 11 Tf
+1 0 0 1 311.45056 707.64825 Tm
+(WinAnsiEncoding) Tj
+/F1 11 Tf
+1 0 0 1 413.50858 707.64825 Tm
+(to) Tj
+/F1 11 Tf
+1 0 0 1 425.7406 707.64825 Tm
+(reach) Tj
+/F1 11 Tf
+1 0 0 1 456.3096 707.64825 Tm
+(the) Tj
+/F1 11 Tf
+1 0 0 1 474.65762 707.64825 Tm
+(AFM) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 692.7983 Tm
+(glyphs) Tj
+/F1 11 Tf
+1 0 0 1 102.87949 692.7983 Tm
+(beyond) Tj
+/F1 11 Tf
+1 0 0 1 142.0175 692.7983 Tm
+(WinAnsi.) Tj
+/F1 11 Tf
+1 0 0 1 188.4705 692.7983 Tm
+(The) Tj
+/F1 11 Tf
+1 0 0 1 210.4815 692.7983 Tm
+(ten) Tj
+/F1 11 Tf
+1 0 0 1 228.8295 692.7983 Tm
+(math) Tj
+/F1 11 Tf
+1 0 0 1 256.3405 692.7983 Tm
+(symbols) Tj
+/F1 11 Tf
+1 0 0 1 299.73553 692.7983 Tm
+(Adobe) Tj
+/F1 11 Tf
+1 0 0 1 334.59454 692.7983 Tm
+(ships) Tj
+/F1 11 Tf
+1 0 0 1 363.32657 692.7983 Tm
+(in) Tj
+/F1 11 Tf
+1 0 0 1 374.9426 692.7983 Tm
+(every) Tj
+/F1 11 Tf
+1 0 0 1 404.8956 692.7983 Tm
+(Core) Tj
+/F1 11 Tf
+1 0 0 1 431.79062 692.7983 Tm
+(14) Tj
+/F1 11 Tf
+1 0 0 1 447.08063 692.7983 Tm
+(Latin) Tj
+/F1 11 Tf
+1 0 0 1 473.98663 692.7983 Tm
+(AFM) Tj
+/F1 11 Tf
+1 0 0 1 500.26566 692.7983 Tm
+(are) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 677.94824 Tm
+(available) Tj
+/F1 11 Tf
+1 0 0 1 114.49549 677.94824 Tm
+(without) Tj
+/F1 11 Tf
+1 0 0 1 152.40149 677.94824 Tm
+(embedding) Tj
+/F1 11 Tf
+1 0 0 1 209.87648 677.94824 Tm
+(any) Tj
+/F1 11 Tf
+1 0 0 1 230.66647 677.94824 Tm
+(font) Tj
+/F1 11 Tf
+1 0 0 1 252.07246 677.94824 Tm
+<97> Tj
+/F1 11 Tf
+1 0 0 1 266.13046 677.94824 Tm
+(the) Tj
+/F1 11 Tf
+1 0 0 1 284.4785 677.94824 Tm
+(outlines) Tj
+/F1 11 Tf
+1 0 0 1 325.4425 677.94824 Tm
+(come) Tj
+/F1 11 Tf
+1 0 0 1 355.3955 677.94824 Tm
+(from) Tj
+/F1 11 Tf
+1 0 0 1 380.45352 677.94824 Tm
+(the) Tj
+/F1 11 Tf
+1 0 0 1 398.80154 677.94824 Tm
+(reader's) Tj
+/F1 11 Tf
+1 0 0 1 441.25055 677.94824 Tm
+(built-in) Tj
+/F1 11 Tf
+1 0 0 1 476.70355 677.94824 Tm
+(Helvetica.) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 659.09827 Tm
+(Inequalities:) Tj
+/F1 11 Tf
+1 0 0 1 129.78549 659.09827 Tm
+(a) Tj
+/F1 11 Tf
+1 0 0 1 138.95949 659.09827 Tm
+<FE> Tj
+/F1 11 Tf
+1 0 0 1 148.05649 659.09827 Tm
+(b,) Tj
+/F1 11 Tf
+1 0 0 1 160.28848 659.09827 Tm
+(x) Tj
+/F1 11 Tf
+1 0 0 1 168.84648 659.09827 Tm
+<FD> Tj
+/F1 11 Tf
+1 0 0 1 177.94348 659.09827 Tm
+(y,) Tj
+/F1 11 Tf
+1 0 0 1 189.55948 659.09827 Tm
+(p) Tj
+/F1 11 Tf
+1 0 0 1 198.73347 659.09827 Tm
+<FF> Tj
+/F1 11 Tf
+1 0 0 1 207.83047 659.09827 Tm
+(q.) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 640.2482 Tm
+(Calculus:) Tj
+/F1 11 Tf
+1 0 0 1 116.32149 640.2482 Tm
+<81662F8178> Tj
+/F1 11 Tf
+1 0 0 1 141.46748 640.2482 Tm
+(=) Tj
+/F1 11 Tf
+1 0 0 1 150.94948 640.2482 Tm
+(0,) Tj
+/F1 11 Tf
+1 0 0 1 163.18147 640.2482 Tm
+<8F> Tj
+/F1 11 Tf
+1 0 0 1 172.83948 640.2482 Tm
+(a) Tj
+/F1 11 Tf
+1 0 0 1 182.01347 640.2482 Tm
+(=) Tj
+/F1 11 Tf
+1 0 0 1 191.49547 640.2482 Tm
+(1,) Tj
+/F1 11 Tf
+1 0 0 1 203.72746 640.2482 Tm
+<9D6E> Tj
+/F1 11 Tf
+1 0 0 1 217.88446 640.2482 Tm
+<FD> Tj
+/F1 11 Tf
+1 0 0 1 226.98146 640.2482 Tm
+(0.) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 621.39825 Tm
+(Geometry:) Tj
+/F1 11 Tf
+1 0 0 1 122.43749 621.39825 Tm
+<8D4142432C> Tj
+/F1 11 Tf
+1 0 0 1 157.90149 621.39825 Tm
+(optional) Tj
+/F1 11 Tf
+1 0 0 1 199.48149 621.39825 Tm
+(steps) Tj
+/F1 11 Tf
+1 0 0 1 228.82948 621.39825 Tm
+(marked) Tj
+/F1 11 Tf
+1 0 0 1 268.5615 621.39825 Tm
+<FC2E> Tj
+/F1 11 Tf
+1 0 0 1 68.031494 602.5482 Tm
+(The) Tj
+/F1 11 Tf
+1 0 0 1 90.042496 602.5482 Tm
+(minus) Tj
+/F1 11 Tf
+1 0 0 1 122.43749 602.5482 Tm
+(operator) Tj
+/F1 11 Tf
+1 0 0 1 166.45949 602.5482 Tm
+(\(a) Tj
+/F1 11 Tf
+1 0 0 1 179.2965 602.5482 Tm
+<90> Tj
+/F1 11 Tf
+1 0 0 1 188.77849 602.5482 Tm
+(b\)) Tj
+/F1 11 Tf
+1 0 0 1 201.6155 602.5482 Tm
+(uses) Tj
+/F1 11 Tf
+1 0 0 1 227.90549 602.5482 Tm
+(U+2212,) Tj
+/F1 11 Tf
+1 0 0 1 272.8515 602.5482 Tm
+(distinct) Tj
+/F1 11 Tf
+1 0 0 1 310.1415 602.5482 Tm
+(from) Tj
+/F1 11 Tf
+1 0 0 1 335.19952 602.5482 Tm
+(the) Tj
+/F1 11 Tf
+1 0 0 1 353.54755 602.5482 Tm
+(ASCII) Tj
+/F1 11 Tf
+1 0 0 1 385.33755 602.5482 Tm
+(hyphen-minus) Tj
+/F1 11 Tf
+1 0 0 1 457.47556 602.5482 Tm
+(\(a) Tj
+/F1 11 Tf
+1 0 0 1 470.31256 602.5482 Tm
+(-) Tj
+/F1 11 Tf
+1 0 0 1 477.03357 602.5482 Tm
+(b\).) Tj
+/F1 11 Tf
+1 0 0 1 492.9286 602.5482 Tm
+(The) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 587.69824 Tm
+(fraction) Tj
+/F1 11 Tf
+1 0 0 1 107.15849 587.69824 Tm
+(slash) Tj
+/F1 11 Tf
+1 0 0 1 135.89049 587.69824 Tm
+(\(1) Tj
+/F1 11 Tf
+1 0 0 1 148.7275 587.69824 Tm
+(\177) Tj
+/F1 11 Tf
+1 0 0 1 153.6225 587.69824 Tm
+(2\)) Tj
+/F1 11 Tf
+1 0 0 1 166.4595 587.69824 Tm
+(uses) Tj
+/F1 11 Tf
+1 0 0 1 192.7495 587.69824 Tm
+(U+2044.) Tj
+/F2 16 Tf
+1 0 0 1 68.031494 556.84827 Tm
+(1.1.) Tj
+/F2 16 Tf
+1 0 0 1 99.167496 556.84827 Tm
+(Coverage) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 527.2482 Tm
+(This) Tj
+/F1 11 Tf
+1 0 0 1 91.86849 527.2482 Tm
+(path) Tj
+/F1 11 Tf
+1 0 0 1 116.33249 527.2482 Tm
+(covers) Tj
+/F1 11 Tf
+1 0 0 1 151.78549 527.2482 Tm
+(exactly) Tj
+/F1 11 Tf
+1 0 0 1 189.07549 527.2482 Tm
+(ten) Tj
+/F1 11 Tf
+1 0 0 1 207.42348 527.2482 Tm
+(math) Tj
+/F1 11 Tf
+1 0 0 1 234.93448 527.2482 Tm
+(glyphs) Tj
+/F1 11 Tf
+1 0 0 1 269.7825 527.2482 Tm
+<97> Tj
+/F4 11 Tf
+1 0 0 1 287.3825 527.2482 Tm
+(lessequal) Tj
+/F1 11 Tf
+1 0 0 1 349.8405 527.2482 Tm
+(,) Tj
+/F4 11 Tf
+1 0 0 1 359.49854 527.2482 Tm
+(greaterequal) Tj
+/F1 11 Tf
+1 0 0 1 441.75656 527.2482 Tm
+(,) Tj
+/F4 11 Tf
+1 0 0 1 451.41458 527.2482 Tm
+(notequal) Tj
+/F1 11 Tf
+1 0 0 1 507.27258 527.2482 Tm
+(,) Tj
+/F4 11 Tf
+1 0 0 1 68.031494 512.3982 Tm
+(partialdiff) Tj
+/F1 11 Tf
+1 0 0 1 143.6895 512.3982 Tm
+(,) Tj
+/F4 11 Tf
+1 0 0 1 153.3475 512.3982 Tm
+(summation) Tj
+/F1 11 Tf
+1 0 0 1 215.8055 512.3982 Tm
+(,) Tj
+/F4 11 Tf
+1 0 0 1 225.4635 512.3982 Tm
+(radical) Tj
+/F1 11 Tf
+1 0 0 1 274.72153 512.3982 Tm
+(,) Tj
+/F4 11 Tf
+1 0 0 1 284.37955 512.3982 Tm
+(minus) Tj
+/F1 11 Tf
+1 0 0 1 320.43756 512.3982 Tm
+(,) Tj
+/F4 11 Tf
+1 0 0 1 330.09558 512.3982 Tm
+(Delta) Tj
+/F1 11 Tf
+1 0 0 1 366.1536 512.3982 Tm
+(,) Tj
+/F4 11 Tf
+1 0 0 1 375.8116 512.3982 Tm
+(lozenge) Tj
+/F1 11 Tf
+1 0 0 1 425.06964 512.3982 Tm
+(,) Tj
+/F4 11 Tf
+1 0 0 1 434.72766 512.3982 Tm
+(fraction) Tj
+/F1 11 Tf
+1 0 0 1 490.58566 512.3982 Tm
+<97> Tj
+/F1 11 Tf
+1 0 0 1 504.64368 512.3982 Tm
+(the) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 497.54822 Tm
+(AGL-) Tj
+/F1 11 Tf
+1 0 0 1 96.76349 497.54822 Tm
+(named) Tj
+/F1 11 Tf
+1 0 0 1 133.44849 497.54822 Tm
+(glyphs) Tj
+/F1 11 Tf
+1 0 0 1 168.2965 497.54822 Tm
+(every) Tj
+/F1 11 Tf
+1 0 0 1 198.2495 497.54822 Tm
+(Core) Tj
+/F1 11 Tf
+1 0 0 1 225.1445 497.54822 Tm
+(14) Tj
+/F1 11 Tf
+1 0 0 1 240.4345 497.54822 Tm
+(Latin) Tj
+/F1 11 Tf
+1 0 0 1 267.3405 497.54822 Tm
+(AFM) Tj
+/F1 11 Tf
+1 0 0 1 293.61954 497.54822 Tm
+(ships.) Tj
+/F1 11 Tf
+1 0 0 1 325.40955 497.54822 Tm
+(Symbols) Tj
+/F1 11 Tf
+1 0 0 1 370.64157 497.54822 Tm
+(outside) Tj
+/F1 11 Tf
+1 0 0 1 409.16357 497.54822 Tm
+(that) Tj
+/F1 11 Tf
+1 0 0 1 430.56958 497.54822 Tm
+(list) Tj
+/F1 11 Tf
+1 0 0 1 447.06958 497.54822 Tm
+(\(infinity,) Tj
+/F1 11 Tf
+1 0 0 1 488.02258 497.54822 Tm
+(forall,) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 482.6982 Tm
+(exists,) Tj
+/F1 11 Tf
+1 0 0 1 102.26349 482.6982 Tm
+(element-of,) Tj
+/F1 11 Tf
+1 0 0 1 160.34349 482.6982 Tm
+(nabla,) Tj
+/F1 11 Tf
+1 0 0 1 193.3655 482.6982 Tm
+(product,) Tj
+/F1 11 Tf
+1 0 0 1 236.16649 482.6982 Tm
+(oplus,) Tj
+/F1 11 Tf
+1 0 0 1 268.5725 482.6982 Tm
+(otimes,) Tj
+/F1 11 Tf
+1 0 0 1 307.08353 482.6982 Tm
+(sub/superscripts,) Tj
+/F1 11 Tf
+1 0 0 1 393.27954 482.6982 Tm
+(calligraphic) Tj
+/F1 11 Tf
+1 0 0 1 451.34854 482.6982 Tm
+(and) Tj
+/F1 11 Tf
+1 0 0 1 472.75455 482.6982 Tm
+(blackletter) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 467.8482 Tm
+(alphabets\)) Tj
+/F1 11 Tf
+1 0 0 1 122.448494 467.8482 Tm
+(require) Tj
+/F1 11 Tf
+1 0 0 1 159.7385 467.8482 Tm
+(font) Tj
+/F1 11 Tf
+1 0 0 1 181.14449 467.8482 Tm
+(embedding) Tj
+/F1 11 Tf
+1 0 0 1 238.61949 467.8482 Tm
+(and) Tj
+/F1 11 Tf
+1 0 0 1 260.0255 467.8482 Tm
+(are) Tj
+/F1 11 Tf
+1 0 0 1 278.97852 467.8482 Tm
+(unreachable) Tj
+/F1 11 Tf
+1 0 0 1 342.56952 467.8482 Tm
+(through) Tj
+/F1 11 Tf
+1 0 0 1 382.92853 467.8482 Tm
+(the) Tj
+/F4 11 Tf
+1 0 0 1 404.81854 467.8482 Tm
+(/Differences) Tj
+/F1 11 Tf
+1 0 0 1 487.07657 467.8482 Tm
+(path.) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 452.9982 Tm
+(The) Tj
+/F1 11 Tf
+1 0 0 1 90.042496 452.9982 Tm
+(eventual) Tj
+/F1 11 Tf
+1 0 0 1 134.6805 452.9982 Tm
+(fix) Tj
+/F1 11 Tf
+1 0 0 1 148.7385 452.9982 Tm
+(is) Tj
+/F1 11 Tf
+1 0 0 1 159.7385 452.9982 Tm
+(bundling) Tj
+/F1 11 Tf
+1 0 0 1 204.3765 452.9982 Tm
+(Noto) Tj
+/F1 11 Tf
+1 0 0 1 230.66649 452.9982 Tm
+(Sans) Tj
+/F1 11 Tf
+1 0 0 1 258.7935 452.9982 Tm
+(Math) Tj
+/F1 11 Tf
+1 0 0 1 286.3045 452.9982 Tm
+(with) Tj
+/F1 11 Tf
+1 0 0 1 308.92053 452.9982 Tm
+(per-glyph) Tj
+/F1 11 Tf
+1 0 0 1 357.82654 452.9982 Tm
+(font) Tj
+/F1 11 Tf
+1 0 0 1 379.23254 452.9982 Tm
+(fallback) Tj
+/F1 11 Tf
+1 0 0 1 419.58057 452.9982 Tm
+(so) Tj
+/F1 11 Tf
+1 0 0 1 434.25458 452.9982 Tm
+(math) Tj
+/F1 11 Tf
+1 0 0 1 461.7656 452.9982 Tm
+(codepoints) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 438.1482 Tm
+(route) Tj
+/F1 11 Tf
+1 0 0 1 96.15849 438.1482 Tm
+(through) Tj
+/F1 11 Tf
+1 0 0 1 136.51749 438.1482 Tm
+(it) Tj
+/F1 11 Tf
+1 0 0 1 145.07549 438.1482 Tm
+(while) Tj
+/F1 11 Tf
+1 0 0 1 173.19148 438.1482 Tm
+(body) Tj
+/F1 11 Tf
+1 0 0 1 200.09749 438.1482 Tm
+(text) Tj
+/F1 11 Tf
+1 0 0 1 220.88748 438.1482 Tm
+(stays) Tj
+/F1 11 Tf
+1 0 0 1 249.61948 438.1482 Tm
+(in) Tj
+/F1 11 Tf
+1 0 0 1 261.2355 438.1482 Tm
+(the) Tj
+/F1 11 Tf
+1 0 0 1 279.58353 438.1482 Tm
+(primary) Tj
+/F1 11 Tf
+1 0 0 1 319.30453 438.1482 Tm
+(family.) Tj
+/F2 16 Tf
+1 0 0 1 68.031494 407.2982 Tm
+(1.2.) Tj
+/F2 16 Tf
+1 0 0 1 99.167496 407.2982 Tm
+(Caveat) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 377.69818 Tm
+(Glyph) Tj
+/F1 11 Tf
+1 0 0 1 99.821495 377.69818 Tm
+(coverage) Tj
+/F1 11 Tf
+1 0 0 1 148.1225 377.69818 Tm
+(past) Tj
+/F1 11 Tf
+1 0 0 1 171.9705 377.69818 Tm
+(WinAnsi) Tj
+/F1 11 Tf
+1 0 0 1 215.36551 377.69818 Tm
+(depends) Tj
+/F1 11 Tf
+1 0 0 1 260.61954 377.69818 Tm
+(on) Tj
+/F1 11 Tf
+1 0 0 1 275.90955 377.69818 Tm
+(each) Tj
+/F1 11 Tf
+1 0 0 1 302.81555 377.69818 Tm
+(PDF) Tj
+/F1 11 Tf
+1 0 0 1 327.87357 377.69818 Tm
+(reader's) Tj
+/F1 11 Tf
+1 0 0 1 370.32257 377.69818 Tm
+(chosen) Tj
+/F1 11 Tf
+1 0 0 1 408.84457 377.69818 Tm
+(Helvetica) Tj
+/F1 11 Tf
+1 0 0 1 457.13458 377.69818 Tm
+(substitute,) Tj
+/F1 11 Tf
+1 0 0 1 510.3306 377.69818 Tm
+(not) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 362.84818 Tm
+(just) Tj
+/F1 11 Tf
+1 0 0 1 88.20549 362.84818 Tm
+(on) Tj
+/F1 11 Tf
+1 0 0 1 103.49549 362.84818 Tm
+(Mosaic) Tj
+/F1 11 Tf
+1 0 0 1 141.39049 362.84818 Tm
+(emitting) Tj
+/F1 11 Tf
+1 0 0 1 182.95949 362.84818 Tm
+(a) Tj
+/F1 11 Tf
+1 0 0 1 192.13348 362.84818 Tm
+(correct) Tj
+/F4 11 Tf
+1 0 0 1 232.34949 362.84818 Tm
+(/Differences) Tj
+/F1 11 Tf
+1 0 0 1 314.6075 362.84818 Tm
+(declaration.) Tj
+/F1 11 Tf
+1 0 0 1 374.52454 362.84818 Tm
+(Even) Tj
+/F1 11 Tf
+1 0 0 1 402.65155 362.84818 Tm
+(within) Tj
+/F1 11 Tf
+1 0 0 1 433.82556 362.84818 Tm
+(the) Tj
+/F1 11 Tf
+1 0 0 1 452.17358 362.84818 Tm
+(poppler) Tj
+/F1 11 Tf
+1 0 0 1 491.9166 362.84818 Tm
+(family,) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 347.99817 Tm
+(different) Tj
+/F1 11 Tf
+1 0 0 1 110.83249 347.99817 Tm
+(installs) Tj
+/F1 11 Tf
+1 0 0 1 147.50648 347.99817 Tm
+(\(GNOME) Tj
+/F1 11 Tf
+1 0 0 1 195.78548 347.99817 Tm
+(Papers) Tj
+/F1 11 Tf
+1 0 0 1 233.69148 347.99817 Tm
+(vs) Tj
+/F1 11 Tf
+1 0 0 1 247.74948 347.99817 Tm
+(Evince) Tj
+/F1 11 Tf
+1 0 0 1 283.8185 347.99817 Tm
+(vs) Tj
+/F1 11 Tf
+1 0 0 1 297.87653 347.99817 Tm
+(zathura\)) Tj
+/F1 11 Tf
+1 0 0 1 341.28253 347.99817 Tm
+(can) Tj
+/F1 11 Tf
+1 0 0 1 362.07254 347.99817 Tm
+(pick) Tj
+/F1 11 Tf
+1 0 0 1 384.68857 347.99817 Tm
+(different) Tj
+/F1 11 Tf
+1 0 0 1 427.4896 347.99817 Tm
+(substitute) Tj
+/F1 11 Tf
+1 0 0 1 477.6276 347.99817 Tm
+(fonts) Tj
+/F1 11 Tf
+1 0 0 1 504.5336 347.99817 Tm
+(via) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 333.14816 Tm
+(fontconfig) Tj
+/F1 11 Tf
+1 0 0 1 118.78549 333.14816 Tm
+(and) Tj
+/F1 11 Tf
+1 0 0 1 140.19148 333.14816 Tm
+(end) Tj
+/F1 11 Tf
+1 0 0 1 161.59749 333.14816 Tm
+(up) Tj
+/F1 11 Tf
+1 0 0 1 176.88748 333.14816 Tm
+(with) Tj
+/F1 11 Tf
+1 0 0 1 199.50348 333.14816 Tm
+(different) Tj
+/F1 11 Tf
+1 0 0 1 242.30447 333.14816 Tm
+(glyph) Tj
+/F1 11 Tf
+1 0 0 1 271.6525 333.14816 Tm
+(coverage) Tj
+/F1 11 Tf
+1 0 0 1 319.95352 333.14816 Tm
+<97> Tj
+/F4 11 Tf
+1 0 0 1 337.55353 333.14816 Tm
+(lozenge) Tj
+/F1 11 Tf
+1 0 0 1 386.81155 333.14816 Tm
+<28FC29> Tj
+/F1 11 Tf
+1 0 0 1 402.37656 333.14816 Tm
+(in) Tj
+/F1 11 Tf
+1 0 0 1 413.99258 333.14816 Tm
+(particular) Tj
+/F1 11 Tf
+1 0 0 1 462.2826 333.14816 Tm
+(is) Tj
+/F1 11 Tf
+1 0 0 1 473.2826 333.14816 Tm
+(prone) Tj
+/F1 11 Tf
+1 0 0 1 504.46762 333.14816 Tm
+(to) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 318.29816 Tm
+(being) Tj
+/F1 11 Tf
+1 0 0 1 97.99549 318.29816 Tm
+(absent.) Tj
+/F1 11 Tf
+1 0 0 1 137.1335 318.29816 Tm
+(Adobe) Tj
+/F1 11 Tf
+1 0 0 1 171.9925 318.29816 Tm
+(Reader) Tj
+/F1 11 Tf
+1 0 0 1 211.11949 318.29816 Tm
+(has) Tj
+/F1 11 Tf
+1 0 0 1 231.90948 318.29816 Tm
+(separately) Tj
+/F1 11 Tf
+1 0 0 1 285.7105 318.29816 Tm
+(been) Tj
+/F1 11 Tf
+1 0 0 1 313.2325 318.29816 Tm
+(observed) Tj
+/F1 11 Tf
+1 0 0 1 361.53354 318.29816 Tm
+(to) Tj
+/F1 11 Tf
+1 0 0 1 373.76556 318.29816 Tm
+(mis-render) Tj
+/F4 11 Tf
+1 0 0 1 432.92355 318.29816 Tm
+(/Differences) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 303.44818 Tm
+(-mapped) Tj
+/F1 11 Tf
+1 0 0 1 114.49549 303.44818 Tm
+(glyphs) Tj
+/F1 11 Tf
+1 0 0 1 149.34349 303.44818 Tm
+(by) Tj
+/F1 11 Tf
+1 0 0 1 164.01749 303.44818 Tm
+(splicing) Tj
+/F1 11 Tf
+1 0 0 1 203.74948 303.44818 Tm
+(in) Tj
+/F1 11 Tf
+1 0 0 1 215.36548 303.44818 Tm
+(spacing-substitution) Tj
+/F1 11 Tf
+1 0 0 1 315.6305 303.44818 Tm
+(composition) Tj
+/F1 11 Tf
+1 0 0 1 377.3735 303.44818 Tm
+(\(Romanian) Tj
+/F1 11 Tf
+1 0 0 1 434.22153 303.44818 Tm
+(comma-below) Tj
+/F1 11 Tf
+1 0 0 1 505.73254 303.44818 Tm
+(in) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 288.5982 Tm
+(particular\).) Tj
+/F1 11 Tf
+1 0 0 1 123.042496 288.5982 Tm
+(If) Tj
+/F1 11 Tf
+1 0 0 1 132.21649 288.5982 Tm
+(you) Tj
+/F1 11 Tf
+1 0 0 1 153.00648 288.5982 Tm
+(target) Tj
+/F1 11 Tf
+1 0 0 1 184.19148 288.5982 Tm
+(a) Tj
+/F1 11 Tf
+1 0 0 1 193.36548 288.5982 Tm
+(specific) Tj
+/F1 11 Tf
+1 0 0 1 233.09747 288.5982 Tm
+(reader) Tj
+/F1 11 Tf
+1 0 0 1 267.9455 288.5982 Tm
+(and) Tj
+/F1 11 Tf
+1 0 0 1 289.3515 288.5982 Tm
+(rely) Tj
+/F1 11 Tf
+1 0 0 1 310.13052 288.5982 Tm
+(on) Tj
+/F1 11 Tf
+1 0 0 1 325.42053 288.5982 Tm
+(any) Tj
+/F1 11 Tf
+1 0 0 1 346.21054 288.5982 Tm
+(specific) Tj
+/F1 11 Tf
+1 0 0 1 385.94257 288.5982 Tm
+(glyph) Tj
+/F1 11 Tf
+1 0 0 1 415.2906 288.5982 Tm
+(from) Tj
+/F1 11 Tf
+1 0 0 1 440.3486 288.5982 Tm
+(the) Tj
+/F1 11 Tf
+1 0 0 1 458.69662 288.5982 Tm
+(AGL) Tj
+/F1 11 Tf
+1 0 0 1 483.76562 288.5982 Tm
+(math) Tj
+/F1 11 Tf
+1 0 0 1 68.031494 273.74823 Tm
+(subset,) Tj
+/F1 11 Tf
+1 0 0 1 106.5535 273.74823 Tm
+(verify) Tj
+/F1 11 Tf
+1 0 0 1 135.89049 273.74823 Tm
+(the) Tj
+/F1 11 Tf
+1 0 0 1 154.23848 273.74823 Tm
+(rendering) Tj
+/F1 11 Tf
+1 0 0 1 203.76048 273.74823 Tm
+(on) Tj
+/F1 11 Tf
+1 0 0 1 219.05048 273.74823 Tm
+(that) Tj
+/F1 11 Tf
+1 0 0 1 240.45647 273.74823 Tm
+(reader) Tj
+/F1 11 Tf
+1 0 0 1 275.30447 273.74823 Tm
+(before) Tj
+/F1 11 Tf
+1 0 0 1 309.5475 273.74823 Tm
+(shipping.) Tj
+ET
+endstream
+endobj
+
+4 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Helvetica
+  /Encoding 18 0 R
+  /ToUnicode 19 0 R
+>>
+endobj
+
+5 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Helvetica-Bold
+  /Encoding /WinAnsiEncoding
+>>
+endobj
+
+6 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Helvetica-Oblique
+  /Encoding /WinAnsiEncoding
+>>
+endobj
+
+7 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Courier
+  /Encoding /WinAnsiEncoding
+>>
+endobj
+
+8 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Helvetica-BoldOblique
+  /Encoding /WinAnsiEncoding
+>>
+endobj
+
+9 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Times-Roman
+  /Encoding /WinAnsiEncoding
+>>
+endobj
+
+10 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Times-Bold
+  /Encoding /WinAnsiEncoding
+>>
+endobj
+
+11 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Times-Italic
+  /Encoding /WinAnsiEncoding
+>>
+endobj
+
+12 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Times-BoldItalic
+  /Encoding /WinAnsiEncoding
+>>
+endobj
+
+13 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Courier-Bold
+  /Encoding /WinAnsiEncoding
+>>
+endobj
+
+14 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Courier-Oblique
+  /Encoding /WinAnsiEncoding
+>>
+endobj
+
+15 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Courier-BoldOblique
+  /Encoding /WinAnsiEncoding
+>>
+endobj
+
+16 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Symbol
+>>
+endobj
+
+17 0 obj
+<<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /ZapfDingbats
+>>
+endobj
+
+18 0 obj
+<<
+  /Type /Encoding
+  /BaseEncoding /WinAnsiEncoding
+  /Differences [127 /fraction 129 /partialdiff 141 /Delta 143 /summation /minus 157 /radical 252 /lozenge /greaterequal /lessequal /notequal]
+>>
+endobj
+
+19 0 obj
+<<
+  /Length 1468
+  /Type /CMap
+  /CMapName /Adobe-Identity-UCS
+  /CIDSystemInfo <<
+    /Registry (Adobe)
+    /Ordering (UCS)
+    /Supplement 0
+  >>
+>>
+stream
+%!PS-Adobe-3.0 Resource-CMap
+%%DocumentNeededResources: procset CIDInit
+%%IncludeResource: procset CIDInit
+%%BeginResource: CMap Adobe-Identity-UCS
+%%Title: (Adobe-Identity-UCS Adobe UCS 0)
+%%Version: 1
+%%EndComments
+/CIDInit /ProcSet findresource begin
+12 dict begin
+begincmap
+/CIDSystemInfo 3 dict dup begin
+    /Registry (Adobe) def
+    /Ordering (UCS) def
+    /Supplement 0 def
+end def
+/CMapName /Adobe-Identity-UCS def
+/CMapVersion 1 def
+/CMapType 0 def
+/WMode 0 def
+1 begincodespacerange
+<00> <FF>
+endcodespacerange
+70 beginbfchar
+<27> <0027>
+<28> <0028>
+<29> <0029>
+<2B> <002B>
+<2C> <002C>
+<2D> <002D>
+<2E> <002E>
+<2F> <002F>
+<30> <0030>
+<31> <0031>
+<32> <0032>
+<34> <0034>
+<3A> <003A>
+<3D> <003D>
+<41> <0041>
+<42> <0042>
+<43> <0043>
+<44> <0044>
+<45> <0045>
+<46> <0046>
+<47> <0047>
+<48> <0048>
+<49> <0049>
+<4C> <004C>
+<4D> <004D>
+<4E> <004E>
+<4F> <004F>
+<50> <0050>
+<52> <0052>
+<53> <0053>
+<54> <0054>
+<55> <0055>
+<57> <0057>
+<61> <0061>
+<62> <0062>
+<63> <0063>
+<64> <0064>
+<65> <0065>
+<66> <0066>
+<67> <0067>
+<68> <0068>
+<69> <0069>
+<6A> <006A>
+<6B> <006B>
+<6C> <006C>
+<6D> <006D>
+<6E> <006E>
+<6F> <006F>
+<70> <0070>
+<71> <0071>
+<72> <0072>
+<73> <0073>
+<74> <0074>
+<75> <0075>
+<76> <0076>
+<77> <0077>
+<78> <0078>
+<79> <0079>
+<7A> <007A>
+<7F> <2044>
+<81> <2202>
+<8D> <2206>
+<8F> <2211>
+<90> <2212>
+<97> <2014>
+<9D> <221A>
+<FC> <25CA>
+<FD> <2265>
+<FE> <2264>
+<FF> <2260>
+endbfchar
+endcmap
+CMapName currentdict /CMap defineresource pop
+end
+end
+%%EndResource
+%%EOF
+endstream
+endobj
+
+3 0 obj
+<<
+  /Title (Math via Helvetica)
+  /Author (Mosaic contributors)
+>>
+endobj
+
+xref
+0 22
+0000000000 65535 f
+0000000016 00000 n
+0000000070 00000 n
+0000019804 00000 n
+0000016434 00000 n
+0000016550 00000 n
+0000016661 00000 n
+0000016775 00000 n
+0000016879 00000 n
+0000016997 00000 n
+0000017105 00000 n
+0000017213 00000 n
+0000017323 00000 n
+0000017437 00000 n
+0000017547 00000 n
+0000017660 00000 n
+0000017777 00000 n
+0000017852 00000 n
+0000017933 00000 n
+0000018149 00000 n
+0000000135 00000 n
+0000000522 00000 n
+trailer
+<<
+  /Size 22
+  /Root 1 0 R
+  /Info 3 0 R
+>>
+startxref
+19888
+%%EOF

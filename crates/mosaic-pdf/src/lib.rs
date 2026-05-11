@@ -17,17 +17,20 @@
 //! PDF, hyperlinks, bookmarks, and full font embedding (issue #9)
 //! are deferred.
 
+mod embedded;
 mod encoding;
 
 use std::collections::HashMap;
 use std::path::Path;
 
 use mosaic_core::{CoreError, Diagnostic, DiagnosticCode, Result, Severity};
+use mosaic_fonts::EmbeddedFontId;
 use mosaic_layout::{Base14Font, Font, PageGraph, TextRun};
 use pdf_writer::types::{SystemInfo, UnicodeCmap};
 use pdf_writer::writers::Encoding;
 use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 
+use crate::embedded::{EmbeddedFontPlan, EmbeddedRefs};
 use crate::encoding::{DocEncoding, EncodingPlanner};
 
 /// Document-level metadata that gets written to the PDF Info
@@ -54,7 +57,7 @@ pub struct PdfMetadata {
 /// Returns a wrapped [`Diagnostic`] if writing the file (or creating
 /// its parent directory) fails.
 pub fn emit(graph: &PageGraph, metadata: &PdfMetadata, out: &Path) -> Result<Vec<Diagnostic>> {
-    let (bytes, diagnostics) = build_pdf(graph, metadata);
+    let (bytes, diagnostics) = build_pdf(graph, metadata)?;
     if let Some(parent) = out.parent()
         && !parent.as_os_str().is_empty()
     {
@@ -84,10 +87,22 @@ fn io_diagnostic(message: String) -> CoreError {
 
 /// Build the PDF bytes from `graph`. Pulled out of [`emit`] so tests
 /// can round-trip without touching the filesystem. Returns the bytes
-/// plus any encoding diagnostics (currently only `W041`). Kept
-/// `pub(crate)` — the public surface is [`emit`].
-pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> (Vec<u8>, Vec<Diagnostic>) {
-    // Phase 1: scan every run and plan per-face encodings.
+/// plus any encoding diagnostics (currently `W041` for Base14
+/// `/Differences` overflow). Kept `pub(crate)` — the public surface
+/// is [`emit`].
+///
+/// # Errors
+///
+/// Returns an error if font subsetting fails for any embedded face
+/// (only with corrupted font data; the bundled cuts have been
+/// verified).
+pub(crate) fn build_pdf(
+    graph: &PageGraph,
+    metadata: &PdfMetadata,
+) -> Result<(Vec<u8>, Vec<Diagnostic>)> {
+    // Phase 1a: scan every run and plan per-face Base14 /Differences
+    // encodings (embedded-font runs are skipped — they take the Type 0
+    // CID path below).
     let mut planner = EncodingPlanner::new();
     for page in &graph.pages {
         planner.observe_runs(&page.runs);
@@ -95,8 +110,26 @@ pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> (Vec<u8>, 
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     let encodings = planner.finalize(&mut diagnostics);
 
+    // Phase 1b: subset every embedded face actually used. One plan
+    // per face referenced; absent if the face never appears in `runs`.
+    // Only embedded-font runs need cloning into the flat slice the
+    // planner consumes — Base14 runs would be filtered out by
+    // `plan_embedded` anyway, so cloning them up front is pure waste
+    // for documents where Base14 dominates.
+    let embedded_runs: Vec<TextRun> = graph
+        .pages
+        .iter()
+        .flat_map(|p| p.runs.iter())
+        .filter(|r| matches!(r.font, Font::Embedded(_)))
+        .cloned()
+        .collect();
+    let embedded_plans: Vec<EmbeddedFontPlan> = embedded::plan_embedded(&embedded_runs)?;
+    let embedded_by_id: HashMap<EmbeddedFontId, &EmbeddedFontPlan> =
+        embedded_plans.iter().map(|p| (p.id, p)).collect();
+
     // Phase 2: emit. Refs allocated up front so the page tree, font
-    // dicts, encoding dicts, and ToUnicode streams can cross-reference.
+    // dicts, encoding dicts, FontFile2 streams, and ToUnicode streams
+    // can cross-reference.
     let mut pdf = Pdf::new();
     let mut next_id: i32 = 1;
     let mut alloc = || {
@@ -109,21 +142,20 @@ pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> (Vec<u8>, 
     let page_tree_id = alloc();
     let info_id = alloc();
 
-    // One indirect ref per font face, in the order published by
-    // `Font::ALL`. We always emit all 14 entries so every page's
-    // resource dictionary is identical, simplifying the writer.
-    let font_refs: Vec<(Font, Ref)> = Font::ALL.iter().map(|f| (*f, alloc())).collect();
+    // One indirect ref per Base14 face, in the order published by
+    // `Font::ALL_BASE14`. Always all 14 entries so every page's
+    // resource dictionary is identical for Base14 — preserves byte
+    // stability for Base14-only documents.
+    let base14_refs: Vec<(Font, Ref)> = Font::ALL_BASE14.iter().map(|f| (*f, alloc())).collect();
 
     // For each Latin face that needs a `/Differences` map, pre-allocate
     // the indirect refs for the custom encoding dict and the
     // `/ToUnicode` CMap stream. Symbol/Dingbats and unused faces get
-    // no extra refs. Iterate `Font::ALL` (not `&encodings`) so the
+    // no extra refs. Iterate `Font::ALL_BASE14` (not `&encodings`) so the
     // `alloc()` order — and therefore the byte layout of the produced
-    // PDF — is deterministic across runs. `HashMap` iteration order is
-    // hasher-seed-dependent and would otherwise shuffle indirect IDs
-    // between builds.
+    // PDF — is deterministic across runs.
     let mut encoding_refs: HashMap<Font, (Ref, Ref)> = HashMap::new();
-    for font in Font::ALL {
+    for font in Font::ALL_BASE14 {
         if let Some(enc) = encodings.get(&font)
             && enc.has_differences()
         {
@@ -132,6 +164,23 @@ pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> (Vec<u8>, 
             encoding_refs.insert(font, (enc_ref, cmap_ref));
         }
     }
+
+    // One set of 5 refs per embedded face actually referenced.
+    let embedded_refs: HashMap<EmbeddedFontId, EmbeddedRefs> = embedded_plans
+        .iter()
+        .map(|plan| {
+            (
+                plan.id,
+                EmbeddedRefs {
+                    font: alloc(),
+                    cid_font: alloc(),
+                    descriptor: alloc(),
+                    font_file: alloc(),
+                    to_unicode: alloc(),
+                },
+            )
+        })
+        .collect();
 
     let page_refs: Vec<(Ref, Ref)> = graph.pages.iter().map(|_| (alloc(), alloc())).collect();
 
@@ -150,23 +199,37 @@ pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> (Vec<u8>, 
         {
             let mut resources = page_obj.resources();
             let mut fonts = resources.fonts();
-            for (face, font_id) in &font_refs {
+            for (face, font_id) in &base14_refs {
                 fonts.pair(Name(face.pdf_resource_name()), *font_id);
+            }
+            // Embedded faces actually referenced in this document.
+            // Each page's resource dict lists every embedded face used
+            // anywhere in the document, not just on this page, so
+            // resource dicts stay identical across pages. Iterate
+            // `EmbeddedFontId::ALL` for deterministic order.
+            for id in EmbeddedFontId::ALL {
+                if let Some(refs) = embedded_refs.get(&id) {
+                    fonts.pair(Name(id.pdf_resource_name()), refs.font);
+                }
             }
         }
         page_obj.finish();
 
-        let stream_bytes = build_content_stream(page.height_pt, &page.runs, &encodings);
+        let stream_bytes =
+            build_content_stream(page.height_pt, &page.runs, &encodings, &embedded_by_id);
         pdf.stream(*content_id, &stream_bytes);
     }
 
-    for (face, font_id) in &font_refs {
+    for (face, font_id) in &base14_refs {
+        let Some(base14) = face.base14() else {
+            continue;
+        };
         let mut font_dict = pdf.type1_font(*font_id);
         font_dict.base_font(Name(face.pdf_base_name().as_bytes()));
         // Symbol and ZapfDingbats use their own PostScript encodings;
         // overriding to WinAnsi would be a category error (Symbol's
         // `A` is Alpha). Skip /Encoding entirely for those.
-        if matches!(face.0, Base14Font::Symbol | Base14Font::ZapfDingbats) {
+        if matches!(base14, Base14Font::Symbol | Base14Font::ZapfDingbats) {
             continue;
         }
         match encoding_refs.get(face) {
@@ -189,10 +252,17 @@ pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> (Vec<u8>, 
         }
     }
 
+    // Emit each embedded face's 5-object cluster (Type 0 + CIDFont +
+    // descriptor + FontFile2 stream + ToUnicode CMap).
+    for plan in &embedded_plans {
+        let refs = embedded_refs[&plan.id];
+        embedded::emit_embedded(&mut pdf, plan, refs);
+    }
+
     // Emit the custom /Encoding dicts and /ToUnicode CMap streams.
-    // Same `Font::ALL` walk as the allocation pass above keeps emit
-    // order deterministic.
-    for font in Font::ALL {
+    // Same `Font::ALL_BASE14` walk as the allocation pass above keeps
+    // emit order deterministic.
+    for font in Font::ALL_BASE14 {
         let Some(enc) = encodings.get(&font) else {
             continue;
         };
@@ -214,7 +284,7 @@ pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> (Vec<u8>, 
         info.finish();
     }
 
-    (pdf.finish(), diagnostics)
+    Ok((pdf.finish(), diagnostics))
 }
 
 /// Emits one PDF indirect object: a custom `/Encoding` dict with
@@ -277,13 +347,17 @@ fn emit_to_unicode_cmap(pdf: &mut Pdf, id: Ref, enc: &DocEncoding) {
 
 /// Build the per-page content stream. The layout engine measures
 /// baselines from the **top** of the page; PDF's coordinate system is
-/// bottom-origin, so we flip once here. Each run gets encoded against
-/// the planner's per-face `DocEncoding`, so `WinAnsi` natives go out
-/// as their native byte and extended chars go out as remapped slots.
+/// bottom-origin, so we flip once here.
+///
+/// Base14 runs encode through the planner's per-face `DocEncoding`
+/// (`WinAnsi` byte + `/Differences` remap; characters outside both
+/// tiers silently render as `?`). Embedded-font runs encode the
+/// shaped glyph stream as big-endian `u16` CIDs.
 fn build_content_stream(
     page_height_pt: f32,
     runs: &[TextRun],
     encodings: &HashMap<Font, DocEncoding>,
+    embedded_by_id: &HashMap<EmbeddedFontId, &EmbeddedFontPlan>,
 ) -> Vec<u8> {
     let mut content = Content::new();
     if runs.is_empty() {
@@ -294,28 +368,44 @@ fn build_content_stream(
         content.set_font(Name(run.font.pdf_resource_name()), run.size_pt);
         let y_from_bottom = page_height_pt - run.baseline_from_top_pt;
         content.set_text_matrix([1.0, 0.0, 0.0, 1.0, run.x_pt, y_from_bottom]);
-        let bytes = encode_run(&run.text, run.font, encodings);
+        let bytes = match run.font {
+            Font::Base14(_) => encode_base14_run(&run.text, run.font, encodings),
+            Font::Embedded(id) => {
+                // `plan_embedded` walks every page's runs and yields a
+                // plan for every face referenced. Missing plan here =
+                // broken invariant (e.g. a run was added after the
+                // planning pass). Loud assertion + empty fallback so
+                // the planner stays the single source of truth and
+                // bugs surface immediately.
+                let plan_opt = embedded_by_id.get(&id);
+                assert!(
+                    plan_opt.is_some(),
+                    "no embedded plan for font {:?} (id {:?}); planner missed a run?",
+                    run.font,
+                    id,
+                );
+                plan_opt
+                    .map(|plan| embedded::encode_glyph_run(plan, &run.glyphs))
+                    .unwrap_or_default()
+            }
+        };
         content.show(Str(&bytes));
     }
     content.end_text();
     content.finish().to_vec()
 }
 
-/// Encode `text` against `font`'s `DocEncoding`. Every char is
-/// guaranteed mappable by `mosaic-layout::sanitize_text` upstream,
-/// which substitutes unmappable codepoints to `?`. The planner
-/// further guarantees `byte_for_char` covers every `WinAnsi` native
-/// and every extended char that fit into the 256-slot budget; any
-/// char missing from the map is overflow that we render as `?`
-/// (already reported via W041).
-fn encode_run(text: &str, font: Font, encodings: &HashMap<Font, DocEncoding>) -> Vec<u8> {
+/// Encode `text` against a Base14 face's `DocEncoding`. The planner
+/// guarantees `byte_for_char` covers every `WinAnsi` native and every
+/// extended Latin char that fit into the 256-slot budget; any char
+/// outside both — Cyrillic, CJK, emoji — renders as `?`. Documents
+/// that need real coverage should pick the bundled Noto Sans family
+/// (the default; users hit this Base14 path only by explicitly asking
+/// for `Helvetica`/`Times`/`Courier` via `#set text(font: ...)`).
+fn encode_base14_run(text: &str, font: Font, encodings: &HashMap<Font, DocEncoding>) -> Vec<u8> {
     let map = encodings.get(&font).map(|e| &e.byte_for_char);
     let mut out = Vec::with_capacity(text.len());
     for ch in text.chars() {
-        // Symbol/Dingbats don't go through the planner; fall back to
-        // a direct WinAnsi byte for any char that happens to round-trip
-        // (mostly ASCII), and to `?` otherwise. In practice the layout
-        // engine never routes text into those faces today.
         let byte = map
             .and_then(|m| m.get(&ch).copied())
             .or_else(|| mosaic_fonts::winansi_byte(ch))
@@ -368,15 +458,17 @@ mod tests {
                         x_pt: 68.0,
                         baseline_from_top_pt: 100.0,
                         size_pt: 20.0,
-                        font: Font(Base14Font::HelveticaBold),
+                        font: Font::Base14(Base14Font::HelveticaBold),
                         text: "Title".to_owned(),
+                        glyphs: Vec::new(),
                     },
                     TextRun {
                         x_pt: 68.0,
                         baseline_from_top_pt: 130.0,
                         size_pt: 11.0,
-                        font: Font(Base14Font::Helvetica),
+                        font: Font::Base14(Base14Font::Helvetica),
                         text: "Body".to_owned(),
+                        glyphs: Vec::new(),
                     },
                 ],
             }],
@@ -385,7 +477,7 @@ mod tests {
 
     #[test]
     fn build_pdf_starts_with_pdf_header_and_ends_with_eof() {
-        let (bytes, diags) = build_pdf(&sample_graph(), &PdfMetadata::default());
+        let (bytes, diags) = build_pdf(&sample_graph(), &PdfMetadata::default()).unwrap();
         assert!(bytes.starts_with(b"%PDF-"), "missing PDF header");
         assert!(
             bytes.windows(5).any(|w| w == b"%%EOF"),
@@ -396,7 +488,7 @@ mod tests {
 
     #[test]
     fn build_pdf_embeds_text_runs_as_visible_strings() {
-        let (bytes, _) = build_pdf(&sample_graph(), &PdfMetadata::default());
+        let (bytes, _) = build_pdf(&sample_graph(), &PdfMetadata::default()).unwrap();
         // The Str writer emits ASCII inside `(...)` so we can grep
         // the raw bytes for the visible payload.
         assert!(
@@ -411,7 +503,7 @@ mod tests {
 
     #[test]
     fn empty_graph_still_produces_valid_pdf() {
-        let (bytes, _) = build_pdf(&PageGraph::default(), &PdfMetadata::default());
+        let (bytes, _) = build_pdf(&PageGraph::default(), &PdfMetadata::default()).unwrap();
         assert!(bytes.starts_with(b"%PDF-"));
     }
 
@@ -422,7 +514,7 @@ mod tests {
             author: Some("A. Person".to_owned()),
             language: None,
         };
-        let (bytes, _) = build_pdf(&sample_graph(), &metadata);
+        let (bytes, _) = build_pdf(&sample_graph(), &metadata).unwrap();
         assert!(
             bytes.windows(b"(My Doc)".len()).any(|w| w == b"(My Doc)"),
             "title not found in PDF"
@@ -447,8 +539,9 @@ mod tests {
                     x_pt: 68.0,
                     baseline_from_top_pt: 100.0,
                     size_pt: 12.0,
-                    font: Font(Base14Font::Helvetica),
+                    font: Font::Base14(Base14Font::Helvetica),
                     text: "Łódź Příliš ě".to_owned(),
+                    glyphs: Vec::new(),
                 }],
             }],
         }
@@ -456,7 +549,7 @@ mod tests {
 
     #[test]
     fn extended_latin_emits_differences_and_to_unicode() {
-        let (bytes, diags) = build_pdf(&extended_latin_graph(), &PdfMetadata::default());
+        let (bytes, diags) = build_pdf(&extended_latin_graph(), &PdfMetadata::default()).unwrap();
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
         // The /Encoding dict carries /BaseEncoding /WinAnsiEncoding.
         assert!(
@@ -497,7 +590,7 @@ mod tests {
         // should be emitted, the predefined WinAnsi shortcut path is
         // exercised. This guards against accidental "always emit a
         // custom encoding" regressions that would balloon every PDF.
-        let (bytes, _) = build_pdf(&sample_graph(), &PdfMetadata::default());
+        let (bytes, _) = build_pdf(&sample_graph(), &PdfMetadata::default()).unwrap();
         assert!(
             bytes
                 .windows(b"/Encoding /WinAnsiEncoding".len())
@@ -527,7 +620,7 @@ mod tests {
         // CMap (`<7F> <0141>`) satisfy the `7F` needle even if the
         // content stream had silently substituted to `?`. Surgical
         // slicing keeps the smoke test honest.
-        let (bytes, _) = build_pdf(&extended_latin_graph(), &PdfMetadata::default());
+        let (bytes, _) = build_pdf(&extended_latin_graph(), &PdfMetadata::default()).unwrap();
         let content_stream = first_content_stream(&bytes).expect("content stream not found");
         let needle = b"7F";
         assert!(
@@ -547,8 +640,8 @@ mod tests {
         // shuffled indirect IDs between builds. Two `build_pdf` calls
         // on the same graph must produce identical bytes; otherwise
         // golden tests and reproducible CI artifacts break.
-        let (a, _) = build_pdf(&extended_latin_graph(), &PdfMetadata::default());
-        let (b, _) = build_pdf(&extended_latin_graph(), &PdfMetadata::default());
+        let (a, _) = build_pdf(&extended_latin_graph(), &PdfMetadata::default()).unwrap();
+        let (b, _) = build_pdf(&extended_latin_graph(), &PdfMetadata::default()).unwrap();
         assert_eq!(
             a,
             b,
