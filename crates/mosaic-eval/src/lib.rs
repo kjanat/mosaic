@@ -309,9 +309,10 @@ fn lower_figure_directive(
 ) {
     // Pluck the image-specifying args (`image:` path, optional
     // `width`/`height`/`alt`) into a synthetic SetArg list so the
-    // existing builder can reuse them. Positional args (a leading
-    // string) are not supported on `#figure` today — callers spell
-    // `#figure(image: "x.png", caption: "...")`.
+    // existing builder can reuse them. A leading positional string
+    // (the `SetArg::Positional` arm below) is also accepted as the
+    // image path — `#figure("x.png")` is the captionless short form,
+    // equivalent to `#figure(image: "x.png")`.
     let mut image_args: Vec<SetArg> = Vec::new();
     let mut caption: Option<(String, SourceSpan)> = None;
     let mut figure_label: Option<String> = None;
