@@ -19,7 +19,7 @@
 //! font file. `subsetter::GlyphRemapper` provides the original-GID →
 //! subset-GID mapping.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use mosaic_core::{CoreError, Diagnostic, DiagnosticCode, Result, Severity};
 use mosaic_fonts::{EmbeddedFontId, ShapedGlyph};
@@ -87,6 +87,11 @@ pub(crate) fn plan_embedded(runs: &[TextRun]) -> Result<Vec<EmbeddedFontPlan>> {
         let Some((gids, gid_to_text)) = per_face.remove(&id) else {
             continue;
         };
+        // Drop duplicates while preserving first-occurrence order:
+        // GlyphRemapper assigns subset GIDs by first sighting, so this
+        // dedup keeps the remapper assignment (and PDF bytes) stable.
+        let mut seen: HashSet<u16> = HashSet::with_capacity(gids.len());
+        let gids: Vec<u16> = gids.into_iter().filter(|g| seen.insert(*g)).collect();
         let font = id.data();
         let subset_bytes = mosaic_fonts::subset(font, &gids).map_err(|err| {
             CoreError::Diagnostic(Box::new(Diagnostic {

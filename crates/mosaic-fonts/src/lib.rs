@@ -821,7 +821,7 @@ fn embedded_upem(id: EmbeddedFontId) -> f32 {
 /// to PDF-emittable `hmtx` advances in `0..=65535`. Preserve sign here
 /// anyway so future positioned shaping cannot turn a negative adjustment
 /// into a huge positive width.
-fn advance_units_to_pt(advance_units: i32, size_pt: f32, upem: f32) -> f32 {
+pub fn advance_units_to_pt(advance_units: i32, size_pt: f32, upem: f32) -> f32 {
     let magnitude = u16::try_from(advance_units.unsigned_abs()).unwrap_or(u16::MAX);
     let advance = f32::from(magnitude);
     if advance_units.is_negative() {

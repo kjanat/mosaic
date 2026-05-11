@@ -1295,20 +1295,12 @@ fn glyphs_advance_pt(font: Font, size_pt: f32, glyphs: &[ShapedGlyph]) -> f32 {
         Font::Embedded(id) => f32::from(id.data().units_per_em),
         Font::Base14(_) => 1000.0,
     };
+    // Sign-preserving conversion lives in mosaic_fonts to keep the
+    // two crates from drifting on hmtx semantics.
     glyphs
         .iter()
-        .map(|g| signed_advance_to_pt(g.advance_units, size_pt, upem))
+        .map(|g| mosaic_fonts::advance_units_to_pt(g.advance_units, size_pt, upem))
         .sum()
-}
-
-fn signed_advance_to_pt(advance_units: i32, size_pt: f32, upem: f32) -> f32 {
-    let magnitude = u16::try_from(advance_units.unsigned_abs()).unwrap_or(u16::MAX);
-    let advance = f32::from(magnitude) * size_pt / upem;
-    if advance_units.is_negative() {
-        -advance
-    } else {
-        advance
-    }
 }
 
 fn blank_page(number: u32, style: PageStyle) -> Page {
