@@ -24,5 +24,7 @@ Română: Bună ziua! Mâine plec la mare cu fătul meu.
 
 Matematyka: 2 + 3 ≤ 6, √16 = 4, ∂f/∂x ≠ 0, ∑(1..n).
 
-Wszystkie te znaki używają tej samej, wbudowanej w czytnik
-PDF czcionki Helvetica — bez osadzania danych czcionki.
+Wszystkie te znaki przechodzą przez osadzony krój Noto Sans
+(podzbiór TrueType); operatory matematyczne (≤ √ ∂ ≠ ∑)
+trafiają tam przez automatyczny fallback per-glif do
+osadzonego kroju Noto Sans Math.
