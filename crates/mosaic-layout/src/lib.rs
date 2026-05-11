@@ -531,18 +531,44 @@ impl LayoutState {
         let size = self.text.size_pt;
         let leading = self.text.leading;
         let saved_left = self.current_left_pt;
-        let item_left = saved_left + LIST_MARKER_GUTTER_PT;
 
-        for (idx, item_id) in list_node.children.iter().enumerate() {
+        // Size the gutter against the widest marker this list will
+        // emit (e.g. `100.` for a 100-item ordered list). A fixed
+        // gutter would crash the long markers into the text column.
+        // `LIST_MARKER_GUTTER_PT` is the floor so small lists still
+        // get visual breathing room and stay aligned with neighbouring
+        // unordered lists at the same depth.
+        let item_count = list_node
+            .children
+            .iter()
+            .filter_map(|id| document.get(*id))
+            .filter(|n| n.kind == NodeKind::ListItem)
+            .count();
+        let widest_marker_text = if ordered {
+            format!("{item_count}.")
+        } else {
+            "\u{2022}".to_owned()
+        };
+        let widest_marker_pt = shape_text(regular, size, &widest_marker_text).advance_pt;
+        let marker_gap_pt = text_width(regular, size, " ");
+        let gutter = (widest_marker_pt + marker_gap_pt).max(LIST_MARKER_GUTTER_PT);
+        let item_left = saved_left + gutter;
+
+        // Track the rendered index separately from the source position
+        // so non-`ListItem` children (forward-compat: comments, future
+        // block kinds) don't create gaps in the numbering.
+        let mut item_idx = 0_usize;
+        for item_id in &list_node.children {
             let Some(item) = document.get(*item_id) else {
                 continue;
             };
             if item.kind != NodeKind::ListItem {
                 continue;
             }
+            item_idx += 1;
 
             let marker_text = if ordered {
-                format!("{}.", idx + 1)
+                format!("{item_idx}.")
             } else {
                 "\u{2022}".to_owned()
             };
@@ -554,19 +580,30 @@ impl LayoutState {
                 width_pt: shaped.advance_pt,
                 glyphs: shaped.glyphs,
             };
+            // Right-align the marker against the gutter, leaving
+            // `marker_gap_pt` of space between marker and text. This
+            // is the standard typographic convention for numbered
+            // lists (dots line up vertically across items of differing
+            // widths) and harmless for bullets (all share one advance).
+            let marker_x = item_left - marker_gap_pt - marker_word.width_pt;
 
             self.current_left_pt = item_left;
             self.pending_marker = Some(PendingMarker {
-                x_pt: saved_left,
+                x_pt: marker_x,
                 word: marker_word,
             });
 
             let words = self.collect_words(document, item, regular, size);
-            self.flow_words(&words, leading);
-            // Empty items have no words to trigger `flush_line`, so the
-            // marker would otherwise leak into the next item's first
-            // line. Drop it.
-            self.pending_marker = None;
+            // An item with no inline words — either truly empty (`- \n`)
+            // or one whose entire body is a nested list — would
+            // otherwise never reach `flush_line`, silently dropping
+            // its marker. Force a marker-only line so the marker still
+            // renders before any nested children.
+            if words.is_empty() {
+                self.flush_line(&[], leading);
+            } else {
+                self.flow_words(&words, leading);
+            }
 
             for child_id in &item.children {
                 let Some(child) = document.get(*child_id) else {
@@ -1617,13 +1654,21 @@ mod tests {
         let runs = &result.graph.pages[0].runs;
         let bullets: Vec<&TextRun> = runs.iter().filter(|r| r.text == "\u{2022}").collect();
         assert_eq!(bullets.len(), 2, "expected 2 bullets, got runs {runs:?}");
-        // Marker x sits at the page margin; item text hangs into the
-        // gutter.
+        // Markers sit inside the gutter: right-aligned against the
+        // text column, never overflowing into either the left margin
+        // or the text column itself.
         for bullet in &bullets {
+            let bullet_w = text_width(bullet.font, bullet.size_pt, &bullet.text);
             assert!(
-                (bullet.x_pt - MARGIN_PT).abs() < 0.5,
-                "bullet x = {}",
+                bullet.x_pt >= MARGIN_PT - 0.5,
+                "bullet x = {} should sit at or right of the page margin",
                 bullet.x_pt
+            );
+            assert!(
+                bullet.x_pt + bullet_w <= MARGIN_PT + LIST_MARKER_GUTTER_PT + 0.5,
+                "bullet right edge {} should sit within gutter ending at {}",
+                bullet.x_pt + bullet_w,
+                MARGIN_PT + LIST_MARKER_GUTTER_PT
             );
         }
         let alpha = runs.iter().find(|r| r.text == "alpha").expect("alpha run");
@@ -1688,14 +1733,19 @@ mod tests {
         let runs = &result.graph.pages[0].runs;
         let bullets: Vec<&TextRun> = runs.iter().filter(|r| r.text == "\u{2022}").collect();
         assert_eq!(bullets.len(), 2);
-        // Outer marker at the page margin; inner marker is one
-        // gutter-width deeper.
+        // Outer marker sits inside the outer gutter (page margin to
+        // one gutter-width inward); inner marker sits inside the
+        // inner gutter (one gutter inset from the outer text column).
         let (outer_b, inner_b) = (bullets[0], bullets[1]);
-        assert!((outer_b.x_pt - MARGIN_PT).abs() < 0.5);
+        let outer_w = text_width(outer_b.font, outer_b.size_pt, &outer_b.text);
+        assert!(outer_b.x_pt >= MARGIN_PT - 0.5);
+        assert!(outer_b.x_pt + outer_w <= MARGIN_PT + LIST_MARKER_GUTTER_PT + 0.5);
+        let inner_w = text_width(inner_b.font, inner_b.size_pt, &inner_b.text);
+        assert!(inner_b.x_pt >= MARGIN_PT + LIST_MARKER_GUTTER_PT - 0.5);
         assert!(
-            (inner_b.x_pt - (MARGIN_PT + LIST_MARKER_GUTTER_PT)).abs() < 0.5,
-            "inner marker x = {}",
-            inner_b.x_pt
+            inner_b.x_pt + inner_w <= MARGIN_PT + 2.0 * LIST_MARKER_GUTTER_PT + 0.5,
+            "inner marker right edge {} should sit within inner gutter",
+            inner_b.x_pt + inner_w
         );
         // Inner text is at MARGIN_PT + 2 * gutter.
         let inner = runs.iter().find(|r| r.text == "inner").unwrap();
@@ -1705,6 +1755,117 @@ mod tests {
             "inner text x = {}, expected {expected}",
             inner.x_pt
         );
+    }
+
+    #[test]
+    fn long_ordered_list_widens_gutter_so_markers_dont_overlap_text() {
+        // 100 items → widest marker is `100.` (~3 digits + dot), much
+        // wider than the 18pt fixed gutter at 11pt body. The list
+        // should widen its gutter so the marker right edge never
+        // crosses the text left edge for any item.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let root = doc.root;
+        let list = alloc_list(&mut doc, root, true);
+        for i in 0..100 {
+            alloc_list_item(&mut doc, list, &format!("item{i}"));
+        }
+        let result = LayoutEngine::new().layout(&doc);
+        let all_runs: Vec<&TextRun> = result
+            .graph
+            .pages
+            .iter()
+            .flat_map(|p| p.runs.iter())
+            .collect();
+        let marker_100 = all_runs
+            .iter()
+            .find(|r| r.text == "100.")
+            .expect("`100.` marker emitted");
+        let text_99 = all_runs
+            .iter()
+            .find(|r| r.text == "item99")
+            .expect("`item99` text emitted");
+        let marker_right =
+            marker_100.x_pt + text_width(marker_100.font, marker_100.size_pt, &marker_100.text);
+        assert!(
+            marker_right <= text_99.x_pt + 0.01,
+            "marker `100.` ends at {marker_right} but text starts at {} — they overlap",
+            text_99.x_pt
+        );
+    }
+
+    #[test]
+    fn marker_only_item_still_emits_marker() {
+        // An item with no inline children must still render its
+        // marker. Without the marker-only flush path the bullet would
+        // be silently dropped — a regression caught by CodeRabbit.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let root = doc.root;
+        let list = alloc_list(&mut doc, root, false);
+        // First item is empty (no inline children); second is normal.
+        doc.alloc_child(
+            list,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::ListItem,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
+        alloc_list_item(&mut doc, list, "second");
+        let result = LayoutEngine::new().layout(&doc);
+        let bullets: Vec<&TextRun> = result.graph.pages[0]
+            .runs
+            .iter()
+            .filter(|r| r.text == "\u{2022}")
+            .collect();
+        assert_eq!(bullets.len(), 2, "expected one bullet per item");
+        // Empty-item bullet sits above the second-item bullet.
+        assert!(bullets[0].baseline_from_top_pt < bullets[1].baseline_from_top_pt);
+    }
+
+    #[test]
+    fn item_with_only_nested_child_keeps_its_marker() {
+        // An outer item whose entire body is a nested list (no inline
+        // text of its own) must still render its own marker so the
+        // hierarchy is unambiguous in the output.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let root = doc.root;
+        let outer = alloc_list(&mut doc, root, false);
+        let outer_item = doc.alloc_child(
+            outer,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::ListItem,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
+        let inner = alloc_list(&mut doc, outer_item, false);
+        alloc_list_item(&mut doc, inner, "deep");
+        let result = LayoutEngine::new().layout(&doc);
+        let bullets: Vec<&TextRun> = result.graph.pages[0]
+            .runs
+            .iter()
+            .filter(|r| r.text == "\u{2022}")
+            .collect();
+        assert_eq!(
+            bullets.len(),
+            2,
+            "expected outer + inner bullets, got {bullets:?}"
+        );
+        // Inner bullet is deeper (further right) and lower (further down)
+        // than the outer bullet.
+        assert!(bullets[1].x_pt > bullets[0].x_pt);
+        assert!(bullets[1].baseline_from_top_pt > bullets[0].baseline_from_top_pt);
     }
 
     #[test]
