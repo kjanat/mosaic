@@ -12,73 +12,107 @@ and to get the workspace building.
 
 ## Status
 
-Pre-alpha (`0.0.0`). The 12-crate workspace skeleton is in place. MVP 0 from
-`manifest.md` §30 is in progress:
+Pre-alpha (`0.0.0`). The 14-crate workspace skeleton is in place. MVP 0 from
+`manifest.md` §30 is substantially landed:
 
 - [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline
-      `*emphasis*` / `**strong**` / `` `code` ``, and `#set name(...)` blocks;
-- [x] lowering to a typed semantic `Document` graph in `mosaic-core`
+      `*emphasis*` / `**strong**` / `` `code` ``, `-` / `N.` lists with
+      hanging indents, and `#set name(...)` blocks;
+- [x] lowering to a typed semantic `Document` graph in `mosaic-core`, with
+      `#image(...)` and `#figure(...)` directives evaluated in `mosaic-eval`
       (manifest §5, §6 stage 2);
 - [x] `mos check` end-to-end — parse → lower → render diagnostics with
       `file:line:col` and source carets;
-- [ ] basic page layout and the PDF backend (manifest §6 stages 5–9, §21.1).
+- [x] `mos build` end-to-end — layout + PDF emission for the Base-14 core
+      fonts and bundled Noto Sans, with PNG/JPEG raster images and figure
+      captions (manifest §6 stages 5–9, §21.1);
+- [ ] HTML and EPUB backends, incremental cache, LSP, bibliography — see
+      MVP 1–6 in `manifest.md`.
 
 ## Quick start
 
-Requires Rust 1.95+ (edition 2024, resolver 3).
+Toolchain pinned via `rust-toolchain.toml` (stable, edition 2024, resolver 3).
+Rust 1.95+.
 
 ```sh
 cargo build --workspace            # or: cargo bw
 cargo run -p mosaic-cli -- --help  # or: cargo mos --help
 ```
 
-The `mos` CLI exposes the manifest §15.1 subcommands. `mos check` is wired
-end-to-end; the rest still print a "not yet implemented" placeholder to stderr
-and exit non-zero (`ExitCode::FAILURE`) so scripts and CI surface the stub.
+The `mos` CLI exposes the manifest §15.1 subcommands. `check` and `build`
+are wired end-to-end; the rest (`init`, `watch`, `fmt`, `test`, `profile`,
+`clean`, `package`) print a "not yet implemented" placeholder to stderr and
+exit non-zero (`ExitCode::FAILURE`) so scripts and CI surface the stub.
 
 ```sh
 cargo mos check examples/hello/main.mos
-# ok: 10 node(s), 0 warning(s)
+# ok: 52 node(s), 0 warning(s)
 
 cargo mos build examples/hello/main.mos
-# mos build: parsed and lowered 10 node(s); layout + PDF emission not yet
-# implemented (manifest §30 MVP 0 stages 5–9)
+# wrote build/main.pdf in 583 ms
 ```
 
 A second binary, `mos-lsp`, is the language server entry point editors will
 spawn on stdio.
 
+## Examples
+
+Each directory under `examples/` is a self-contained Mosaic project
+(`main.mos` + `mosaic.toml`) and ships a committed `<name>.pdf` snapshot so
+GitHub previews render inline:
+
+| project           | exercises                                                       |
+| ----------------- | --------------------------------------------------------------- |
+| `examples/hello`  | bundled Noto Sans, multilingual coverage, real italic/bold cuts |
+| `examples/lists`  | bullet / numbered lists, hanging indent, adaptive gutter        |
+| `examples/math`   | Base-14 Helvetica via `/Differences`, math operators            |
+| `examples/polish` | Polish diacritics through Noto Sans                             |
+
+Regenerate every snapshot with `just examples` (rebuilds each project and
+copies `build/main.pdf` next to its `main.mos`).
+
 ## Cargo aliases
 
-Defined in `.cargo/config.toml`:
+Defined in [`.cargo/config.toml`](./.cargo/config.toml). Cargo's alias schema
+forbids redefining the single-letter built-ins (`b` / `c` / `d` / `t` / `r` /
+`rm`), so the workspace flavours get two-letter names instead:
 
-| alias                           | expansion                                                |
-| ------------------------------- | -------------------------------------------------------- |
-| `cargo bw` / `cw` / `tw` / `dw` | workspace flavours of `build` / `check` / `test` / `doc` |
-| `cargo br` / `rr`               | release `build` / `run`                                  |
-| `cargo lint`                    | `clippy --workspace --all-targets -- -D warnings`        |
-| `cargo mos …`                   | `run -q -p mosaic-cli -- …`                              |
+| alias        | expansion                                         | purpose                                             |
+| ------------ | ------------------------------------------------- | --------------------------------------------------- |
+| `cargo bw`   | `build --workspace`                               | build every crate                                   |
+| `cargo cw`   | `check --workspace --all-targets`                 | type-check including tests / examples / benches     |
+| `cargo tw`   | `test --workspace`                                | run every crate's test suite                        |
+| `cargo dw`   | `doc --workspace --no-deps`                       | rustdoc for our crates only                         |
+| `cargo br`   | `build --release`                                 | release build of the current package                |
+| `cargo rr`   | `run --release`                                   | release run of the current package                  |
+| `cargo lint` | `clippy --workspace --all-targets -- -D warnings` | strict clippy; warnings fail the run                |
+| `cargo mos`  | `run -q -p mosaic-cli --`                         | invoke the `mos` CLI without typing `-p mosaic-cli` |
+
+`cargo lint` is **not** aliased as `cargo clippy` because that name is already
+the clippy subcommand.
 
 ## Workspace layout
 
 ```text
 crates/
-  mosaic-core       document model, IDs, diagnostics      (manifest §5, §31)
-  mosaic-parse      parser for .mos                       (manifest §3, §6)
-  mosaic-eval       expression / template evaluator       (manifest §4, §25)
-  mosaic-layout     inline + block + page layout          (manifest §6, §22)
-  mosaic-pdf        PDF backend                           (manifest §21.1)
-  mosaic-html       semantic HTML backend                 (manifest §21.2)
-  mosaic-fonts      font discovery, shaping, metrics      (manifest §22.1)
-  mosaic-bib        bibliography / citation engine        (manifest §12)
-  mosaic-cache      incremental build cache               (manifest §7, §32)
-  mosaic-lsp        language server (lib + mos-lsp bin)   (manifest §17)
-  mosaic-packages   project / package manifest schema     (manifest §14)
-  mosaic-cli        `mos` command-line interface          (manifest §15.1)
-examples/hello/     placeholder source + project manifest
+  afm                 zero-dep AFM v4 parser (Adobe TN 5004)
+  pdf-base14-metrics  baked Core-14 PDF font metrics (built atop `afm`)
+  mosaic-core         document model, IDs, diagnostics      (manifest §5, §31)
+  mosaic-parse        parser for .mos                       (manifest §3, §6)
+  mosaic-eval         expression / template evaluator       (manifest §4, §25)
+  mosaic-layout       inline + block + page layout          (manifest §6, §22)
+  mosaic-pdf          PDF backend                           (manifest §21.1)
+  mosaic-html         semantic HTML backend                 (manifest §21.2)
+  mosaic-fonts        font discovery, shaping, metrics      (manifest §22.1)
+  mosaic-bib          bibliography / citation engine        (manifest §12)
+  mosaic-cache        incremental build cache               (manifest §7, §32)
+  mosaic-lsp          language server (lib + mos-lsp bin)   (manifest §17)
+  mosaic-packages     project / package manifest schema     (manifest §14)
+  mosaic-cli          `mos` command-line interface          (manifest §15.1)
+examples/             hello, lists, math, polish — each with a committed PDF
 ```
 
-`mosaic-core` is the leaf-most crate; nothing else depends on `mosaic-cli`.
+`afm` is the leaf-most crate (zero deps); nothing else depends on `mosaic-cli`.
 
 ## License
 
