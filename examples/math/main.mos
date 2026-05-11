@@ -1,0 +1,65 @@
+#set document(
+  title: "Math via Helvetica",
+  author: "Mosaic contributors",
+  language: "en",
+)
+
+#set page(
+  paper: "A4",
+  margin: 24mm,
+  numbering: "bottom-center",
+)
+
+#set text(
+  font: "Helvetica",
+  size: 11pt,
+  leading: 1.35,
+)
+
+= Math via the Base14 path
+
+`#set text(font: "Helvetica")` routes through Mosaic's Base14
+encoder, which layers a per-document `/Differences` array on top
+of `WinAnsiEncoding` to reach the AFM glyphs beyond WinAnsi. The
+ten math symbols Adobe ships in every Core 14 Latin AFM are
+available without embedding any font — the outlines come from
+the reader's built-in Helvetica.
+
+Inequalities: a ≤ b, x ≥ y, p ≠ q.
+
+Calculus: ∂f/∂x = 0, ∑ a = 1, √n ≥ 0.
+
+Geometry: ∆ABC, optional steps marked ◊.
+
+The minus operator (a − b) uses U+2212, distinct from the ASCII
+hyphen-minus (a - b). The fraction slash (1 ⁄ 2) uses U+2044.
+
+== Coverage
+
+This path covers exactly ten math glyphs — `lessequal`,
+`greaterequal`, `notequal`, `partialdiff`, `summation`,
+`radical`, `minus`, `Delta`, `lozenge`, `fraction` — the AGL-
+named glyphs every Core 14 Latin AFM ships. Symbols outside that
+list (infinity, forall, exists, element-of, nabla, product,
+oplus, otimes, sub/superscripts, calligraphic and blackletter
+alphabets) require font embedding and are unreachable through
+the `/Differences` path. The eventual fix is bundling Noto Sans
+Math with per-glyph font fallback so math codepoints route
+through it while body text stays in the primary family —
+tracked as a follow-up to issue #9.
+
+== Caveat
+
+Glyph coverage past WinAnsi depends on each PDF reader's chosen
+Helvetica substitute, not just on Mosaic emitting a correct
+`/Differences` declaration. Even within the poppler family,
+different installs (GNOME Papers vs Evince vs zathura) can pick
+different substitute fonts via fontconfig and end up with
+different glyph coverage — `lozenge` (◊) in particular is
+prone to being absent. Adobe Reader has separately been observed
+to mis-render `/Differences`-mapped glyphs by splicing in
+spacing-substitution composition (Romanian comma-below
+specifically; see the PR #16 review notes). If you target a
+specific reader and rely on any specific glyph from the AGL
+math subset, verify the rendering on that reader before
+shipping.
