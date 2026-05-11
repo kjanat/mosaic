@@ -39,6 +39,14 @@ toml       = "1.1"
 version  = "4.6"
 features = ["derive"]
 
+# `image` is the raster decoder used by `mosaic-eval` for `#image(...)`
+# directives. Default features are turned off so we ship only PNG + JPEG
+# support — TIFF/AVIF/WebP and SVG live behind separate later slices.
+[workspace.dependencies.image]
+version          = "0.25"
+default-features = false
+features         = ["jpeg", "png"]
+
 [workspace.dependencies.serde]
 version  = "1"
 features = ["derive"]

@@ -6,6 +6,7 @@
 //! runs the [`resolve`] pass to assign section numbers and rewrite
 //! `@label` cross-references (§6 stage 3, MVP 1).
 
+mod image;
 mod resolve;
 mod set_schema;
 
@@ -13,7 +14,7 @@ use std::collections::BTreeMap;
 
 use mosaic_core::{
     AttrMap, AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeId, NodeKind, Severity,
-    StyleId,
+    SourceSpan, StyleId,
 };
 use mosaic_parse::{Inline, InlineKind, Item, SetArg, SetValue, SyntaxTree};
 
@@ -117,59 +118,38 @@ impl Evaluator {
                     );
                     lower_inlines(&mut document, para, inlines);
                 }
-                Item::Set { name, args, span } => {
-                    let mut attributes: AttrMap = BTreeMap::new();
-                    attributes.insert("set".to_owned(), AttrValue::Str(name.clone()));
-                    let Some(target) = set_schema::lookup_target(name) else {
-                        diagnostics.push(
-                            Diagnostic::error(
-                                DiagnosticCode("E020"),
-                                format!(
-                                    "unknown `#set` target `{name}` (expected `page`, `text`, or `document`)"
-                                ),
-                            )
-                            .with_span(span.clone()),
-                        );
-                        // Still emit the Raw node so downstream stages
-                        // can see the directive existed (useful for
-                        // diagnostic spans pointing at it later).
-                        document.alloc_child(
+                Item::Set { name, args, span } => match name.as_str() {
+                    "image" => {
+                        lower_image_directive(
+                            &mut document,
                             root,
-                            Node {
-                                id: NodeId::default(),
-                                kind: NodeKind::Raw,
-                                span: span.clone(),
-                                content_hash: Default::default(),
-                                style_id: StyleId::default(),
-                                children: Vec::new(),
-                                attributes,
-                            },
-                        );
-                        continue;
-                    };
-                    for arg in args {
-                        lower_set_arg(
-                            target,
-                            arg,
-                            &mut attributes,
-                            &mut metadata,
-                            &mut current_text_size_pt,
+                            args,
+                            span,
+                            &tree.file,
                             &mut diagnostics,
                         );
                     }
-                    document.alloc_child(
+                    "figure" => {
+                        lower_figure_directive(
+                            &mut document,
+                            root,
+                            args,
+                            span,
+                            &tree.file,
+                            &mut diagnostics,
+                        );
+                    }
+                    _ => lower_set_directive(
+                        &mut document,
                         root,
-                        Node {
-                            id: NodeId::default(),
-                            kind: NodeKind::Raw,
-                            span: span.clone(),
-                            content_hash: Default::default(),
-                            style_id: StyleId::default(),
-                            children: Vec::new(),
-                            attributes,
-                        },
-                    );
-                }
+                        name,
+                        args,
+                        span,
+                        &mut metadata,
+                        &mut current_text_size_pt,
+                        &mut diagnostics,
+                    ),
+                },
             }
         }
 
@@ -179,6 +159,401 @@ impl Evaluator {
             metadata,
         }
     }
+}
+
+/// Lower a `#set name(...)` directive into a `Raw` node carrying the
+/// resolved attribute payload. The split exists so the dispatch in
+/// [`Evaluator::evaluate`] only has to thread state through three
+/// directive-shaped helpers instead of one large match arm.
+#[allow(clippy::too_many_arguments)]
+fn lower_set_directive(
+    document: &mut Document,
+    root: NodeId,
+    name: &str,
+    args: &[SetArg],
+    span: &SourceSpan,
+    metadata: &mut DocumentMetadata,
+    current_text_size_pt: &mut f64,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut attributes: AttrMap = BTreeMap::new();
+    attributes.insert("set".to_owned(), AttrValue::Str(name.to_owned()));
+    let Some(target) = set_schema::lookup_target(name) else {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode("E020"),
+                format!(
+                    "unknown `#set` target `{name}` (expected `page`, `text`, `document`, or `image`)"
+                ),
+            )
+            .with_span(span.clone()),
+        );
+        document.alloc_child(
+            root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Raw,
+                span: span.clone(),
+                content_hash: Default::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes,
+            },
+        );
+        return;
+    };
+    for arg in args {
+        if arg.key.is_empty() {
+            // The parser refuses positional args for `#set` already,
+            // so reaching this arm means a future caller forgot the
+            // `allow_positional=false` flag. Diagnose loudly.
+            diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E015"),
+                    format!("`#set {name}` does not accept positional arguments"),
+                )
+                .with_span(arg.value_span.clone()),
+            );
+            continue;
+        }
+        lower_set_arg(
+            target,
+            arg,
+            &mut attributes,
+            metadata,
+            current_text_size_pt,
+            diagnostics,
+        );
+    }
+    document.alloc_child(
+        root,
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Raw,
+            span: span.clone(),
+            content_hash: Default::default(),
+            style_id: StyleId::default(),
+            children: Vec::new(),
+            attributes,
+        },
+    );
+}
+
+/// Lower a top-level `#image(...)` directive into a single
+/// [`NodeKind::Image`] node hanging off the document root. The decoded
+/// pixel buffer and pixel dimensions are stashed in attributes so the
+/// layout engine and PDF backend don't have to re-open the source file.
+fn lower_image_directive(
+    document: &mut Document,
+    root: NodeId,
+    args: &[SetArg],
+    span: &SourceSpan,
+    source_file: &std::path::Path,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some((attributes, _label)) = build_image_attributes(args, span, source_file, diagnostics)
+    else {
+        return;
+    };
+    document.alloc_child(
+        root,
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Image,
+            span: span.clone(),
+            content_hash: Default::default(),
+            style_id: StyleId::default(),
+            children: Vec::new(),
+            attributes,
+        },
+    );
+}
+
+/// Lower a `#figure(image: ..., caption: ...)` directive into a
+/// [`NodeKind::Figure`] node with two children: an Image node (built
+/// the same way `#image(...)` would build it) and a caption paragraph.
+/// The caption is rendered beneath the image by the layout engine.
+fn lower_figure_directive(
+    document: &mut Document,
+    root: NodeId,
+    args: &[SetArg],
+    span: &SourceSpan,
+    source_file: &std::path::Path,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    // Pluck the image-specifying args (`image:` path, optional
+    // `width`/`height`/`alt`) into a synthetic SetArg list so the
+    // existing builder can reuse them. Positional args (a leading
+    // string) are not supported on `#figure` today — callers spell
+    // `#figure(image: "x.png", caption: "...")`.
+    let mut image_args: Vec<SetArg> = Vec::new();
+    let mut caption: Option<(String, SourceSpan)> = None;
+    let mut figure_label: Option<String> = None;
+    for arg in args {
+        match arg.key.as_str() {
+            "image" => {
+                // Rewrite the key to the synthetic positional slot
+                // [`build_image_attributes`] expects.
+                image_args.push(SetArg {
+                    key: String::new(),
+                    value: arg.value.clone(),
+                    key_span: arg.key_span.clone(),
+                    value_span: arg.value_span.clone(),
+                });
+            }
+            "width" | "height" | "alt" => {
+                image_args.push(arg.clone());
+            }
+            "caption" => match &arg.value {
+                SetValue::Str(s) => {
+                    caption = Some((s.clone(), arg.value_span.clone()));
+                }
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E022"),
+                        "`#figure(caption: ...)` expects a string",
+                    )
+                    .with_span(arg.value_span.clone()),
+                ),
+            },
+            "label" => match &arg.value {
+                SetValue::Str(s) => figure_label = Some(s.clone()),
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E022"),
+                        "`#figure(label: ...)` expects a string",
+                    )
+                    .with_span(arg.value_span.clone()),
+                ),
+            },
+            "" => diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E015"),
+                    "`#figure(...)` does not accept positional arguments; use `image: \"path\"`",
+                )
+                .with_span(arg.value_span.clone()),
+            ),
+            _ => diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E021"),
+                    format!(
+                        "unknown argument `{}` for `#figure` (valid: image, caption, alt, width, height, label)",
+                        arg.key
+                    ),
+                )
+                .with_span(arg.key_span.clone()),
+            ),
+        }
+    }
+
+    let mut figure_attrs: AttrMap = BTreeMap::new();
+    if let Some(label) = figure_label {
+        figure_attrs.insert("label".to_owned(), AttrValue::Str(label));
+    }
+    let figure_id = document.alloc_child(
+        root,
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Figure,
+            span: span.clone(),
+            content_hash: Default::default(),
+            style_id: StyleId::default(),
+            children: Vec::new(),
+            attributes: figure_attrs,
+        },
+    );
+
+    if let Some((attrs, _)) = build_image_attributes(&image_args, span, source_file, diagnostics) {
+        document.alloc_child(
+            figure_id,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Image,
+                span: span.clone(),
+                content_hash: Default::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        );
+    }
+    if let Some((text, caption_span)) = caption {
+        let caption_id = document.alloc_child(
+            figure_id,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Paragraph,
+                span: caption_span.clone(),
+                content_hash: Default::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: {
+                    let mut a = AttrMap::new();
+                    // Tag the caption so the layout engine can give it
+                    // distinct styling later. For now it renders as a
+                    // plain paragraph beneath the image.
+                    a.insert("role".to_owned(), AttrValue::Str("caption".to_owned()));
+                    a
+                },
+            },
+        );
+        let mut child_attrs = AttrMap::new();
+        child_attrs.insert("text".to_owned(), AttrValue::Str(text));
+        document.alloc_child(
+            caption_id,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Text,
+                span: caption_span,
+                content_hash: Default::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: child_attrs,
+            },
+        );
+    }
+}
+
+/// Walk a directive's argument list and produce the attribute map for
+/// an [`NodeKind::Image`] node, including the decoded pixel buffer.
+/// Returns `None` (and emits diagnostics) if the path argument is
+/// missing or the bytes can't be decoded — the caller drops the node
+/// in that case rather than emitting a half-built image.
+fn build_image_attributes(
+    args: &[SetArg],
+    span: &SourceSpan,
+    source_file: &std::path::Path,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<(AttrMap, Option<String>)> {
+    let mut src_path: Option<(String, SourceSpan)> = None;
+    let mut alt: Option<String> = None;
+    let mut declared_width: Option<f64> = None;
+    let mut declared_height: Option<f64> = None;
+    let mut label: Option<String> = None;
+    for arg in args {
+        match arg.key.as_str() {
+            // Positional first arg or explicit `src:` key.
+            "" | "src" | "path" => match &arg.value {
+                SetValue::Str(s) => src_path = Some((s.clone(), arg.value_span.clone())),
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E022"),
+                        "`#image(...)` expects a string path",
+                    )
+                    .with_span(arg.value_span.clone()),
+                ),
+            },
+            "alt" => match &arg.value {
+                SetValue::Str(s) => alt = Some(s.clone()),
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E022"),
+                        "`#image(alt: ...)` expects a string",
+                    )
+                    .with_span(arg.value_span.clone()),
+                ),
+            },
+            "width" => match &arg.value {
+                SetValue::Length(v, unit) => {
+                    declared_width = Some(length_to_pt(*v, *unit, 11.0));
+                }
+                SetValue::Float(v) => declared_width = Some(*v),
+                SetValue::Int(v) => declared_width = Some(int_to_f64(*v)),
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E022"),
+                        "`#image(width: ...)` expects a length",
+                    )
+                    .with_span(arg.value_span.clone()),
+                ),
+            },
+            "height" => match &arg.value {
+                SetValue::Length(v, unit) => {
+                    declared_height = Some(length_to_pt(*v, *unit, 11.0));
+                }
+                SetValue::Float(v) => declared_height = Some(*v),
+                SetValue::Int(v) => declared_height = Some(int_to_f64(*v)),
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E022"),
+                        "`#image(height: ...)` expects a length",
+                    )
+                    .with_span(arg.value_span.clone()),
+                ),
+            },
+            "label" => match &arg.value {
+                SetValue::Str(s) => label = Some(s.clone()),
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E022"),
+                        "`#image(label: ...)` expects a string",
+                    )
+                    .with_span(arg.value_span.clone()),
+                ),
+            },
+            _ => diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E021"),
+                    format!(
+                        "unknown argument `{}` for `#image` (valid: src, alt, width, height, label)",
+                        arg.key
+                    ),
+                )
+                .with_span(arg.key_span.clone()),
+            ),
+        }
+    }
+    let Some((path, _path_span)) = src_path else {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode("E050"),
+                "`#image(...)` requires a path (e.g. `#image(\"scan.png\")`)",
+            )
+            .with_span(span.clone()),
+        );
+        return None;
+    };
+    let (resolved, decoded) = match image::load(&path, source_file, span) {
+        Ok(v) => v,
+        Err(diag) => {
+            diagnostics.push(*diag);
+            return None;
+        }
+    };
+
+    let mut attrs: AttrMap = BTreeMap::new();
+    attrs.insert("src".to_owned(), AttrValue::Str(path));
+    attrs.insert(
+        "resolved_path".to_owned(),
+        AttrValue::Str(resolved.to_string_lossy().into_owned()),
+    );
+    if let Some(a) = alt {
+        attrs.insert("alt".to_owned(), AttrValue::Str(a));
+    }
+    if let Some(w) = declared_width {
+        attrs.insert("width".to_owned(), AttrValue::Length(w));
+    }
+    if let Some(h) = declared_height {
+        attrs.insert("height".to_owned(), AttrValue::Length(h));
+    }
+    if let Some(l) = &label {
+        attrs.insert("label".to_owned(), AttrValue::Str(l.clone()));
+    }
+    attrs.insert(
+        "pixel_width".to_owned(),
+        AttrValue::Int(i64::from(decoded.width)),
+    );
+    attrs.insert(
+        "pixel_height".to_owned(),
+        AttrValue::Int(i64::from(decoded.height)),
+    );
+    attrs.insert(
+        "color_space".to_owned(),
+        AttrValue::Str("DeviceRGB".to_owned()),
+    );
+    attrs.insert("bits_per_component".to_owned(), AttrValue::Int(8));
+    attrs.insert("pixels".to_owned(), AttrValue::Bytes(decoded.rgb8));
+    Some((attrs, label))
 }
 
 /// Convert one parser-level `SetArg` into an attribute on the Raw node
@@ -540,5 +915,187 @@ mod tests {
         let r = lower("= A\n\n= B\n\npara\n", &PathBuf::from("test.mos"));
         let root = r.document.get(r.document.root).unwrap();
         assert_eq!(root.children.len(), 3);
+    }
+
+    /// Hand-craft a tiny PNG in a temp dir so the eval tests don't
+    /// depend on `examples/` paths or the workspace layout.
+    /// `::image::` (rather than `image::`) routes through the extern
+    /// `image` crate; the bare `image` identifier inside the eval
+    /// crate resolves to the local `mod image` we declared up top.
+    fn write_tiny_png(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "mosaic-eval-image-{}-{}",
+            name,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        let mut buf = ::image::RgbaImage::new(3, 2);
+        for x in 0_u32..3 {
+            for y in 0_u32..2 {
+                let r = u8::try_from(x * 80).unwrap_or(0);
+                let g = u8::try_from(y * 120).unwrap_or(0);
+                buf.put_pixel(x, y, ::image::Rgba([r, g, 200, 255]));
+            }
+        }
+        buf.save(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn image_directive_attaches_decoded_pixels() {
+        let png_path = write_tiny_png("tiny.png");
+        let source = png_path.parent().unwrap().join("main.mos");
+        std::fs::write(&source, "#image(\"tiny.png\")\n").unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let image_node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Image)
+            .expect("Image node");
+        assert_eq!(
+            image_node.attributes.get("src"),
+            Some(&AttrValue::Str("tiny.png".to_owned()))
+        );
+        assert_eq!(
+            image_node.attributes.get("pixel_width"),
+            Some(&AttrValue::Int(3))
+        );
+        assert_eq!(
+            image_node.attributes.get("pixel_height"),
+            Some(&AttrValue::Int(2))
+        );
+        match image_node.attributes.get("pixels") {
+            Some(AttrValue::Bytes(b)) => assert_eq!(b.len(), 3 * 3 * 2),
+            other => panic!("expected pixel bytes, got {other:?}"),
+        }
+        std::fs::remove_dir_all(png_path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn image_directive_records_explicit_dimensions() {
+        let png_path = write_tiny_png("dims.png");
+        let source = png_path.parent().unwrap().join("main.mos");
+        std::fs::write(
+            &source,
+            "#image(\"dims.png\", width: 100pt, height: 60pt, alt: \"a tiny image\")\n",
+        )
+        .unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let image_node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Image)
+            .expect("Image node");
+        assert_eq!(
+            image_node.attributes.get("width"),
+            Some(&AttrValue::Length(100.0))
+        );
+        assert_eq!(
+            image_node.attributes.get("height"),
+            Some(&AttrValue::Length(60.0))
+        );
+        assert_eq!(
+            image_node.attributes.get("alt"),
+            Some(&AttrValue::Str("a tiny image".to_owned()))
+        );
+        std::fs::remove_dir_all(png_path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn missing_image_path_emits_e050() {
+        let r = lower("#image()\n", &PathBuf::from("/tmp/no-such.mos"));
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E050"),
+            "expected E050, got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unreadable_image_emits_e051() {
+        let r = lower(
+            "#image(\"does-not-exist.png\")\n",
+            &PathBuf::from("/tmp/no-such-dir/main.mos"),
+        );
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E051"),
+            "expected E051, got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn undecodable_image_emits_e052() {
+        let dir = std::env::temp_dir().join(format!(
+            "mosaic-eval-bad-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("bad.png");
+        std::fs::write(&png, b"not really a PNG").unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(&source, "#image(\"bad.png\")\n").unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E052"),
+            "expected E052, got {:?}",
+            r.diagnostics
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn figure_directive_creates_figure_with_image_and_caption() {
+        let png_path = write_tiny_png("fig.png");
+        let source = png_path.parent().unwrap().join("main.mos");
+        std::fs::write(
+            &source,
+            "#figure(image: \"fig.png\", caption: \"A tiny picture.\")\n",
+        )
+        .unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let figure = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Figure)
+            .expect("Figure node");
+        assert_eq!(figure.children.len(), 2);
+        let img = r.document.get(figure.children[0]).unwrap();
+        assert_eq!(img.kind, NodeKind::Image);
+        let caption = r.document.get(figure.children[1]).unwrap();
+        assert_eq!(caption.kind, NodeKind::Paragraph);
+        assert_eq!(
+            caption.attributes.get("role"),
+            Some(&AttrValue::Str("caption".to_owned()))
+        );
+        let caption_text = r.document.get(caption.children[0]).unwrap();
+        assert_eq!(
+            caption_text.attributes.get("text"),
+            Some(&AttrValue::Str("A tiny picture.".to_owned()))
+        );
+        std::fs::remove_dir_all(png_path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn set_image_width_is_accepted_without_error() {
+        // Schema acceptance — even though MVP 1.5 doesn't apply
+        // `#set image(width: ...)` to bare images yet, the directive
+        // should not emit E020 (unknown target) or E021 (unknown key).
+        let r = lower("#set image(width: 200pt)\n", &PathBuf::from("test.mos"));
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.code.0 == "E020" || d.code.0 == "E021"),
+            "unexpected diagnostics: {:?}",
+            r.diagnostics
+        );
     }
 }

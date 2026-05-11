@@ -42,3 +42,8 @@ Cyrillic and Greek emphasis. Documents that need the Adobe Core
 "Helvetica")`) — that path stays available for byte-stable
 golden PDFs and goes out through the existing WinAnsi +
 /Differences encoder.
+
+#figure(
+  image: "demo.png",
+  caption: "A tiny bundled PNG, decoded and emitted as a flate-compressed DeviceRGB image XObject.",
+)

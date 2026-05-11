@@ -16,6 +16,10 @@ mosaic-core   = { workspace = true }
 mosaic-fonts  = { workspace = true }
 mosaic-layout = { workspace = true }
 
+# FlateDecode compression for raster image XObject streams. Already in
+# the dependency graph via `image` → `png`; pulling it in directly
+# keeps the emit path's imports honest.
+flate2     = "1.1"
 pdf-writer = { workspace = true }
 # Used through `mosaic_fonts::subset` for the GlyphRemapper type only
 # (the actual subsetting happens inside mosaic-fonts). Direct dep so

@@ -48,7 +48,9 @@ fn render(face: Base14Font, text: &str) -> Result<Document, Box<dyn Error>> {
                 text: text.to_owned(),
                 glyphs: Vec::new(),
             }],
+            images: Vec::new(),
         }],
+        images: Vec::new(),
     };
     let tmp = std::env::temp_dir().join(format!(
         "mosaic-pdf-rt-{}.pdf",

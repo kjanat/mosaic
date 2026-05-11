@@ -10,6 +10,12 @@ pub(crate) enum Target {
     Page,
     Text,
     Document,
+    /// Default styling for `#image(...)` calls — currently just `width`
+    /// and `height` are recognised. The MVP 1.5 emit path doesn't yet
+    /// pick these defaults up on bare images (only explicit per-call
+    /// width/height apply), but accepting them in the schema keeps
+    /// `#set image(width: ...)` from emitting E020 today.
+    Image,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -79,11 +85,23 @@ const DOCUMENT_SLOTS: &[Slot] = &[
     },
 ];
 
+const IMAGE_SLOTS: &[Slot] = &[
+    Slot {
+        key: "width",
+        ty: SlotType::Length,
+    },
+    Slot {
+        key: "height",
+        ty: SlotType::Length,
+    },
+];
+
 pub(crate) fn lookup_target(name: &str) -> Option<Target> {
     match name {
         "page" => Some(Target::Page),
         "text" => Some(Target::Text),
         "document" => Some(Target::Document),
+        "image" => Some(Target::Image),
         _ => None,
     }
 }
@@ -94,6 +112,7 @@ impl Target {
             Self::Page => "page",
             Self::Text => "text",
             Self::Document => "document",
+            Self::Image => "image",
         }
     }
 
@@ -102,6 +121,7 @@ impl Target {
             Self::Page => PAGE_SLOTS,
             Self::Text => TEXT_SLOTS,
             Self::Document => DOCUMENT_SLOTS,
+            Self::Image => IMAGE_SLOTS,
         }
     }
 
