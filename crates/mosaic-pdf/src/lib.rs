@@ -1,9 +1,8 @@
 //! PDF backend for Mosaic (manifest §21.1).
 //!
-//! MVP 0 emits a fixed-A4 PDF using the four standard PDF base fonts
-//! (Helvetica family + Courier) so we don't need font subsetting or
-//! embedding. Tagged PDF, PDF/A, hyperlinks, bookmarks, and font
-//! embedding are deferred.
+//! MVP 0 emits a fixed-A4 PDF declaring all 14 standard PDF base fonts (Helvetica/Times/Courier
+//! families + Symbol + ZapfDingbats) so we don't need font subsetting or embedding.
+//! Tagged PDF, PDF/A, hyperlinks, bookmarks, and font embedding are deferred.
 
 use std::path::Path;
 
