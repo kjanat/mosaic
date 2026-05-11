@@ -11,27 +11,31 @@
 )
 
 #set text(
-  font: "Libertinus Serif",
+  font: "Noto Sans",
   size: 11pt,
   leading: 1.35,
 )
 
 = Hello, Mosaic
 
-This file is a placeholder so the project layout is exercisable
-once the parser lands in MVP 0. See `manifest.md` §2 for the syntax
-this is sketching toward.
+This document exercises the bundled Noto Sans family: every
+glyph outline ships in the PDF as a subset of a real TrueType
+font, addressed through a Type 0 CID-keyed font with a
+/ToUnicode CMap. Copy/paste round-trips back to the source
+UTF-8 across every script the font covers.
 
-The renderer now supports PDF WinAnsi text plus every
-Unicode-addressable glyph the Adobe Core 14 Latin fonts ship
-beyond WinAnsi, via per-document /Differences encodings: café
-culture, §1 legal citations, German Straße addresses, ¶ pilcrows,
-© copyright marks, curly "smart" quotes, Polish Łódź, Czech
-Příliš žluťoučký kůň, Hungarian árvíztűrő, Romanian mâine. Math
-operators (≤ ≥ ≠ √ ∂ ∑ −) and the fi/fl ligatures round out the
-set. 314 of the 315 glyphs each Latin AFM carries are reachable;
-the lone holdout is `commaaccent`, a spacing diacritic with no
-Unicode codepoint that exists only as a metric reference for
-the compound comma-below forms. Scripts without Core 14 glyphs
-(Cyrillic, CJK, Greek) still substitute with `?` and warn until
-full font embedding lands (issue #9).
+Latin coverage is wide: café culture, §1 legal citations, German
+Straße addresses, ¶ pilcrows, © copyright marks, curly "smart"
+quotes, Polish Łódź, Czech Příliš žluťoučký kůň, Hungarian
+árvíztűrő, Romanian mâine. Math operators (≤ ≥ ≠ √ ∂ ∑ −) and
+the fi/fl ligatures (real shaping, not a font hack) are there too.
+
+Past Latin, the bundled cuts cover Cyrillic — Привет, Мозаика;
+многоязычный набор — and Greek — Καλημέρα, κόσμε. *Italic
+emphasis* and **bold** route through the real Italic and Bold
+cuts of Noto Sans, not faux transforms; the same is true in
+Cyrillic and Greek emphasis. Documents that need the Adobe Core
+14 faces instead can pin them by name (`#set text(font:
+"Helvetica")`) — that path stays available for byte-stable
+golden PDFs and goes out through the existing WinAnsi +
+/Differences encoder.

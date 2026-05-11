@@ -330,8 +330,9 @@ pub const __WINANSI_CHAR_MAP: [Option<char>; 256] = winansi_char_map::WINANSI_CH
 ///    measure widths through [`Base14Font::winansi_width`].
 /// 2. **Unmappable codepoints** with no glyph in any Core 14 font
 ///    (Cyrillic, CJK, emoji, most non-European scripts). The PDF
-///    backend substitutes these to `?` upstream and emits a `W040`
-///    warning.
+///    backend silently substitutes these to `?` for Base14 runs;
+///    real coverage requires the bundled embedded family that
+///    `mosaic-fonts` provides.
 ///
 /// The name `extended_glyph_name` is deliberately chosen over the
 /// shorter `glyph_name` to avoid surprising readers who reach for

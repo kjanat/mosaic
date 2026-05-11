@@ -99,10 +99,16 @@ fn build_emits_pdf() {
     // PDF that lopdf can parse, with at least one page and the
     // heading text visible somewhere in the content streams.
     let dir = temp_dir("mos-build");
+    // Pin Helvetica so the content stream emits ASCII byte strings
+    // that the byte-grep assertions below can find. The default font
+    // family is Noto Sans (embedded TTF, hex CID encoding) — see
+    // `cyrillic_routes_through_embedded_font` below for the embedded
+    // path's smoke test.
     write_file(
         dir.path(),
         "main.mos",
-        "= Title\n\nbody paragraph with *italic* word\n",
+        "#set text(font: \"Helvetica\")\n\
+         = Title\n\nbody paragraph with *italic* word\n",
     );
     let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
     assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
@@ -145,7 +151,8 @@ fn build_renders_section_numbers_and_resolves_references() {
     write_file(
         dir.path(),
         "main.mos",
-        "= Introduction <intro>\n\n= Methods\n\nsee @intro for context\n",
+        "#set text(font: \"Helvetica\")\n\
+         = Introduction <intro>\n\n= Methods\n\nsee @intro for context\n",
     );
     let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
     assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
