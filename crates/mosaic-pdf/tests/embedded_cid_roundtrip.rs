@@ -17,11 +17,15 @@
 //! 5. The content stream uses hex-string CID pairs (`<HHHH ...>`), not
 //!    ASCII literal strings.
 
-use std::error::Error;
+use std::{error::Error, path::PathBuf};
 
 use lopdf::{Document, Object};
-use mosaic_fonts::{EmbeddedFontId, shape_with_fallback};
-use mosaic_layout::{EmbeddedFontId as LayoutEmbeddedFontId, Font, Page, PageGraph, TextRun};
+use mosaic_core::{AttrMap, AttrValue, ContentHash, Node, NodeId, NodeKind, SourceSpan, StyleId};
+use mosaic_fonts::EmbeddedFontId;
+use mosaic_layout::{
+    EmbeddedFontId as LayoutEmbeddedFontId, Font, FontFamily, LayoutEngine, Page, PageGraph,
+    TextRun,
+};
 use mosaic_pdf::PdfMetadata;
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -34,42 +38,49 @@ macro_rules! ensure {
     };
 }
 
-/// Build a `PageGraph` whose single page emits one `TextRun` per
-/// fallback sub-run, mimicking what `mosaic-layout::flush_line`
-/// does when shaping a fallback-aware word. The runs share a
-/// baseline; each `x_pt` advances by the previous sub-run's
-/// `advance_pt` so the runs render side-by-side, never overlapping.
+/// Build a `PageGraph` through the real layout path so fallback tests
+/// exercise `FontFamily::fallbacks`, word shaping, and `flush_line`.
 fn build_fallback_graph(
     primary: EmbeddedFontId,
     fallbacks: &[EmbeddedFontId],
     text: &str,
 ) -> (PageGraph, Vec<f32>) {
-    let size_pt = 12.0_f32;
-    let mut x_pt = 68.0_f32;
-    let mut xs = Vec::new();
-    let mut runs = Vec::new();
-    for sub in shape_with_fallback(Font::Embedded(primary), fallbacks, size_pt, text) {
-        xs.push(x_pt);
-        runs.push(TextRun {
-            x_pt,
-            baseline_from_top_pt: 100.0,
-            size_pt,
-            font: sub.font,
-            text: sub.text,
-            glyphs: sub.glyphs,
-        });
-        x_pt += sub.advance_pt;
-    }
-    let graph = PageGraph {
-        pages: vec![Page {
-            number: 1,
-            width_pt: 595.276_f32,
-            height_pt: 841.89_f32,
-            runs,
-            images: Vec::new(),
-        }],
-        images: Vec::new(),
-    };
+    let family = FontFamily::noto_sans();
+    assert_eq!(family.regular, Font::Embedded(primary));
+    assert_eq!(family.fallbacks, fallbacks);
+
+    let mut doc = mosaic_core::Document::new(PathBuf::from("fallback-test.mos"));
+    let paragraph = doc.alloc_child(
+        doc.root,
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Paragraph,
+            span: SourceSpan::placeholder(PathBuf::from("fallback-test.mos")),
+            content_hash: ContentHash::default(),
+            style_id: StyleId::default(),
+            children: Vec::new(),
+            attributes: AttrMap::new(),
+        },
+    );
+    let mut text_attrs = AttrMap::new();
+    text_attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
+    doc.alloc_child(
+        paragraph,
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Text,
+            span: SourceSpan::placeholder(PathBuf::from("fallback-test.mos")),
+            content_hash: ContentHash::default(),
+            style_id: StyleId::default(),
+            children: Vec::new(),
+            attributes: text_attrs,
+        },
+    );
+
+    let result = LayoutEngine::new().layout(&doc);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let graph = result.graph;
+    let xs = graph.pages[0].runs.iter().map(|run| run.x_pt).collect();
     (graph, xs)
 }
 

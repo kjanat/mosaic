@@ -611,7 +611,6 @@ pub fn shape_with_fallback(
             primary,
             text.to_owned(),
             primary_glyphs,
-            0,
             primary_ef.units_per_em,
             size_pt,
         )];
@@ -786,7 +785,6 @@ fn into_subrun(
     font: Font,
     text: String,
     glyphs: Vec<ShapedGlyph>,
-    _byte_offset: u32,
     upem: u16,
     size_pt: f32,
 ) -> WordSubRun {
