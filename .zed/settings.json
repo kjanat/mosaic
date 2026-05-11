@@ -1,0 +1,14 @@
+// Folder-specific settings
+//
+// For a full list of overridable settings, and general information on folder-specific settings,
+// see the documentation: https://zed.dev/docs/configuring-zed#settings-files
+{
+	"formatter": [{ "external": { "command": "dprint", "arguments": ["fmt", "--stdin", "{buffer_path}"] } }],
+	"prettier": { "allowed": false },
+	"wrap_guides": [120],
+	"languages": {
+		"Markdown": { "language_servers": ["rumdl", "!markdownlint"], "wrap_guides": [100] },
+		"TOML": { "wrap_guides": [140] },
+		"Rust": { "wrap_guides": [100] }
+	}
+}

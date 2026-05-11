@@ -2,9 +2,8 @@
 
 > Let’s design a new typesetting engine from scratch.
 >
-> Call it **Mosaic** for now, because apparently every serious system needs a
-> name that sounds like either a browser from 1993 or a startup that sells
-> calendars to developers.
+> Call it **Mosaic** for now, because apparently every serious system needs a name that sounds like
+> either a browser from 1993 or a startup that sells calendars to developers.
 
 ## Core idea
 
@@ -30,7 +29,8 @@ The key principle:
 
 > Documents are graphs, not token streams.
 
-LaTeX mostly behaves like a sequential program that emits boxes. Mosaic should behave like a compiler plus incremental layout solver.
+LaTeX mostly behaves like a sequential program that emits boxes. Mosaic should behave like a
+compiler plus incremental layout solver.
 
 ---
 
@@ -180,7 +180,8 @@ See @sec:methods.
 See @eq:bayes.
 ```
 
-The engine knows whether `@eq:bayes` is an equation, figure, section, theorem, table, or whatever else humans have decided needs numbering.
+The engine knows whether `@eq:bayes` is an equation, figure, section, theorem, table, or whatever
+else humans have decided needs numbering.
 
 ## 3.4 Math syntax
 
@@ -240,7 +241,8 @@ A package can define:
 ]
 ```
 
-But it cannot silently mutate global numbering, redefine paragraph parsing, or turn `\section` into a database client because some academic in 2004 had a vision.
+But it cannot silently mutate global numbering, redefine paragraph parsing, or turn `\section` into
+a database client because some academic in 2004 had a vision.
 
 Global style modifications must be explicit:
 
@@ -392,7 +394,8 @@ Load:
 
 All external data becomes tracked dependencies.
 
-If `references.bib` changes, the engine knows what depends on it. Revolutionary stuff, meaning normal software engineering.
+If `references.bib` changes, the engine knows what depends on it. Revolutionary stuff, meaning
+normal software engineering.
 
 ## Stage 5: Inline layout
 
@@ -421,7 +424,8 @@ struct InlineBox {
 }
 ```
 
-Use HarfBuzz or equivalent shaping. Do not invent font shaping unless the goal is lifelong suffering.
+Use HarfBuzz or equivalent shaping. Do not invent font shaping unless the goal is lifelong
+suffering.
 
 ## Stage 6: Block layout
 
@@ -501,7 +505,8 @@ SVG pages
 debug layout view
 ```
 
-PDF is the primary target. HTML should be semantic, not just a pile of absolutely positioned rectangles.
+PDF is the primary target. HTML should be semantic, not just a pile of absolutely positioned
+rectangles.
 
 ---
 
@@ -610,7 +615,8 @@ Updated 3 references
 Wrote paper.pdf in 220 ms
 ```
 
-That is the dream: the engine tells you what happened instead of burping “rerun to get cross-references right” like a haunted thermostat.
+That is the dream: the engine tells you what happened instead of burping “rerun to get
+cross-references right” like a haunted thermostat.
 
 ---
 
@@ -686,7 +692,8 @@ Suggestion:
 Reduce figure height, allow bottom placement, or increase max distance.
 ```
 
-That is vastly better than LaTeX’s classic “float too large” and then the figure teleports to the document’s afterlife.
+That is vastly better than LaTeX’s classic “float too large” and then the figure teleports to the
+document’s afterlife.
 
 ---
 
@@ -725,7 +732,8 @@ cost = distance_from_anchor
      + priority_violation_penalty
 ```
 
-This turns float placement into an explicit optimization problem instead of a cage fight with `[htbp!]`.
+This turns float placement into an explicit optimization problem instead of a cage fight with
+`[htbp!]`.
 
 ---
 
@@ -823,7 +831,8 @@ Citation node
     citation order
 ```
 
-For numeric styles, citation numbers depend on first appearance order. That means citation changes can affect later citations. Fine. Track it explicitly.
+For numeric styles, citation numbers depend on first appearance order. That means citation changes
+can affect later citations. Fine. Track it explicitly.
 
 ---
 
@@ -909,7 +918,8 @@ trusted package:
   explicit user consent
 ```
 
-Because if packages can run arbitrary code during document compilation, congratulations, you reinvented npm but with footnotes.
+Because if packages can run arbitrary code during document compilation, congratulations, you
+reinvented npm but with footnotes.
 
 ---
 
@@ -1047,7 +1057,8 @@ This table caused 71% of layout time.
 Consider fixed column widths or disabling optimal wrapping.
 ```
 
-This is the sort of thing that makes users feel like the program is helping instead of cackling in Knuthian.
+This is the sort of thing that makes users feel like the program is helping instead of cackling in
+Knuthian.
 
 ---
 
@@ -1186,7 +1197,8 @@ The PDF backend should handle:
 - image compression
 ```
 
-Use existing libraries where possible, but be prepared to write backend code. PDF is a cursed bureaucracy in file format form.
+Use existing libraries where possible, but be prepared to write backend code. PDF is a cursed
+bureaucracy in file format form.
 
 ## 21.2 HTML backend
 
@@ -1230,7 +1242,8 @@ Produces a visual layout report:
 - page break costs
 ```
 
-The debug backend will save your sanity. Or at least preserve enough of it to file issues coherently.
+The debug backend will save your sanity. Or at least preserve enough of it to file issues
+coherently.
 
 ---
 
@@ -1536,7 +1549,8 @@ language-version = "0.1"
 
 Breaking changes are gated by language version.
 
-No repeating LaTeX’s eternal curse where ancient documents must compile forever under every new engine while everyone pretends this is noble rather than a hostage situation.
+No repeating LaTeX’s eternal curse where ancient documents must compile forever under every new
+engine while everyone pretends this is noble rather than a hostage situation.
 
 ---
 
@@ -1600,7 +1614,8 @@ mos convert paper.tex --best-effort
 
 But the output should be Mosaic-native.
 
-Do not support arbitrary LaTeX packages. That path leads straight back into the swamp with better syntax highlighting.
+Do not support arbitrary LaTeX packages. That path leads straight back into the swamp with better
+syntax highlighting.
 
 ---
 
@@ -1701,7 +1716,8 @@ Add:
 - source/PDF sync
 ```
 
-This sequence matters. Do not start with package systems and plugins. That is how projects die in a beautiful architecture document and never render “hello world.”
+This sequence matters. Do not start with package systems and plugins. That is how projects die in a
+beautiful architecture document and never render “hello world.”
 
 ---
 
@@ -1764,7 +1780,8 @@ pub struct Diagnostic {
 }
 ```
 
-No panics for user errors. Ever. A typesetter should not crash because someone forgot a bracket. It should complain with dignity, which is apparently an advanced feature.
+No panics for user errors. Ever. A typesetter should not crash because someone forgot a bracket. It
+should complain with dignity, which is apparently an advanced feature.
 
 ---
 
@@ -1935,7 +1952,8 @@ In order:
 
 Notably, “extensibility” is not number one.
 
-That is deliberate. If extensibility comes before semantic clarity, you recreate TeX. Congratulations, you have built the Minotaur and the maze at the same time.
+That is deliberate. If extensibility comes before semantic clarity, you recreate TeX.
+Congratulations, you have built the Minotaur and the maze at the same time.
 
 ---
 
@@ -1962,10 +1980,14 @@ Not “we have prettier macros.” Nobody sane cares. Sadly, many people are not
 
 # 38. The one-sentence proposal
 
-**Mosaic is a Rust-based, semantic, incremental typesetting compiler that represents documents as dependency graphs, solves layout using explicit constraints and priorities, performs internal fixpoint stabilization, and emits reproducible PDF/HTML/EPUB outputs without external rebuild rituals.**
+**Mosaic is a Rust-based, semantic, incremental typesetting compiler that represents documents as
+dependency graphs, solves layout using explicit constraints and priorities, performs internal
+fixpoint stabilization, and emits reproducible PDF/HTML/EPUB outputs without external rebuild
+rituals.**
 
 That is the thing.
 
 The hard part is not inventing the idea.
 
-The hard part is refusing compatibility temptations long enough to avoid rebuilding LaTeX’s cursed little palace with better bricks.
+The hard part is refusing compatibility temptations long enough to avoid rebuilding LaTeX’s cursed
+little palace with better bricks.

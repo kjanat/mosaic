@@ -1,48 +1,41 @@
 # Mosaic
 
-A semantic, incremental, constraint-based typesetting compiler — written in
-Rust, targeting PDF/HTML/EPUB.\
-Mosaic compiles `.mos` source files into documents through a dependency graph
-rather than a linear stream of typesetting commands, so editing one sentence
-reflows only the affected pages.
+A semantic, incremental, constraint-based typesetting compiler — written in Rust, targeting
+PDF/HTML/EPUB.\
+Mosaic compiles `.mos` source files into documents through a dependency graph rather than a linear
+stream of typesetting commands, so editing one sentence reflows only the affected pages.
 
-The full design — language, layout algorithm, package model, MVP roadmap — lives
-in [`manifest.md`](./manifest.md). This README is just enough to orient you
-and to get the workspace building.
+The full design — language, layout algorithm, package model, MVP roadmap — lives in
+[`manifest.md`](./manifest.md). This README is just enough to orient you and to get the workspace
+building.
 
 ## Status
 
-Pre-alpha (`0.0.0`). The 14-crate workspace skeleton is in place. MVP 0 from
-`manifest.md` §30 is substantially landed:
+Pre-alpha (`0.0.0`). The 14-crate workspace skeleton is in place. MVP 0 from `manifest.md` §30 is
+substantially landed:
 
-- [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline
-      `*emphasis*` / `**strong**` / `` `code` ``, `-` / `N.` lists with
-      hanging indents, and `#set name(...)` blocks;
-- [x] lowering to a typed semantic `Document` graph in `mosaic-core`, with
-      `#image(...)` and `#figure(...)` directives evaluated in `mosaic-eval`
-      (manifest §5, §6 stage 2);
-- [x] `mos check` end-to-end — parse → lower → render diagnostics with
-      `file:line:col` and source carets;
-- [x] `mos build` end-to-end — layout + PDF emission for the Base-14 core
-      fonts and bundled Noto Sans, with PNG/JPEG raster images and figure
-      captions (manifest §6 stages 5–9, §21.1);
-- [ ] HTML and EPUB backends, incremental cache, LSP, bibliography — see
-      MVP 1–6 in `manifest.md`.
+- [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline `*emphasis*` / `**strong**` /
+      `` `code` ``, `-` / `N.` lists with hanging indents, and `#set name(...)` blocks;
+- [x] lowering to a typed semantic `Document` graph in `mosaic-core`, with `#image(...)` and
+      `#figure(...)` directives evaluated in `mosaic-eval` (manifest §5, §6 stage 2);
+- [x] `mos check` end-to-end — parse → lower → render diagnostics with `file:line:col` and source
+      carets;
+- [x] `mos build` end-to-end — layout + PDF emission for the Base-14 core fonts and bundled Noto
+      Sans, with PNG/JPEG raster images and figure captions (manifest §6 stages 5–9, §21.1);
+- [ ] HTML and EPUB backends, incremental cache, LSP, bibliography — see MVP 1–6 in `manifest.md`.
 
 ## Quick start
 
-Toolchain pinned via `rust-toolchain.toml` (stable, edition 2024, resolver 3).
-Rust 1.95+.
+Toolchain pinned via `rust-toolchain.toml` (stable, edition 2024, resolver 3). Rust 1.95+.
 
 ```sh
 cargo build --workspace            # or: cargo bw
 cargo run -p mosaic-cli -- --help  # or: cargo mos --help
 ```
 
-The `mos` CLI exposes the manifest §15.1 subcommands. `check` and `build`
-are wired end-to-end; the rest (`init`, `watch`, `fmt`, `test`, `profile`,
-`clean`, `package`) print a "not yet implemented" placeholder to stderr and
-exit non-zero (`ExitCode::FAILURE`) so scripts and CI surface the stub.
+The `mos` CLI exposes the manifest §15.1 subcommands. `check` and `build` are wired end-to-end; the
+rest (`init`, `watch`, `fmt`, `test`, `profile`, `clean`, `package`) print a "not yet implemented"
+placeholder to stderr and exit non-zero (`ExitCode::FAILURE`) so scripts and CI surface the stub.
 
 ```sh
 cargo mos check examples/hello/main.mos
@@ -52,14 +45,12 @@ cargo mos build examples/hello/main.mos
 # wrote build/main.pdf in 583 ms
 ```
 
-A second binary, `mos-lsp`, is the language server entry point editors will
-spawn on stdio.
+A second binary, `mos-lsp`, is the language server entry point editors will spawn on stdio.
 
 ## Examples
 
-Each directory under `examples/` is a self-contained Mosaic project
-(`main.mos` + `mosaic.toml`) and ships a committed `<name>.pdf` snapshot so
-GitHub previews render inline:
+Each directory under `examples/` is a self-contained Mosaic project (`main.mos` + `mosaic.toml`) and
+ships a committed `<name>.pdf` snapshot so GitHub previews render inline:
 
 | project           | exercises                                                       |
 | ----------------- | --------------------------------------------------------------- |
@@ -68,14 +59,14 @@ GitHub previews render inline:
 | `examples/math`   | Base-14 Helvetica via `/Differences`, math operators            |
 | `examples/polish` | Polish diacritics through Noto Sans                             |
 
-Regenerate every snapshot with `just examples` (rebuilds each project and
-copies `build/main.pdf` next to its `main.mos`).
+Regenerate every snapshot with `just examples` (rebuilds each project and copies `build/main.pdf`
+next to its `main.mos`).
 
 ## Cargo aliases
 
-Defined in [`.cargo/config.toml`](./.cargo/config.toml). Cargo's alias schema
-forbids redefining the single-letter built-ins (`b` / `c` / `d` / `t` / `r` /
-`rm`), so the workspace flavours get two-letter names instead:
+Defined in [`.cargo/config.toml`](./.cargo/config.toml). Cargo's alias schema forbids redefining the
+single-letter built-ins (`b` / `c` / `d` / `t` / `r` / `rm`), so the workspace flavours get
+two-letter names instead:
 
 | alias        | expansion                                         | purpose                                             |
 | ------------ | ------------------------------------------------- | --------------------------------------------------- |
@@ -88,8 +79,8 @@ forbids redefining the single-letter built-ins (`b` / `c` / `d` / `t` / `r` /
 | `cargo lint` | `clippy --workspace --all-targets -- -D warnings` | strict clippy; warnings fail the run                |
 | `cargo mos`  | `run -q -p mosaic-cli --`                         | invoke the `mos` CLI without typing `-p mosaic-cli` |
 
-`cargo lint` is **not** aliased as `cargo clippy` because that name is already
-the clippy subcommand.
+`cargo lint` is **not** aliased as `cargo clippy` because that name is already the clippy
+subcommand.
 
 ## Workspace layout
 
