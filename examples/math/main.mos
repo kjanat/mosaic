@@ -45,8 +45,7 @@ oplus, otimes, sub/superscripts, calligraphic and blackletter
 alphabets) require font embedding and are unreachable through
 the `/Differences` path. The eventual fix is bundling Noto Sans
 Math with per-glyph font fallback so math codepoints route
-through it while body text stays in the primary family —
-tracked as a follow-up to issue #9.
+through it while body text stays in the primary family.
 
 == Caveat
 
