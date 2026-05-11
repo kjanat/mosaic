@@ -66,8 +66,10 @@ pub struct EmbeddedFont {
     /// `OS/2.sxHeight` if present, else `ascender * 1 / 2` as a
     /// fallback.
     pub x_height: i16,
-    /// `post.italicAngle` in degrees, negated to match PDF convention
-    /// (PDF expects negative for italic slanted right).
+    /// `post.italicAngle` in degrees. OpenType and PDF `/ItalicAngle`
+    /// share the same convention (counter-clockwise from vertical,
+    /// negative for italic slanted right per PDF 1.7 §9.8.2), so the
+    /// value passes through unchanged.
     pub italic_angle: f32,
     /// `head` font bounding box (xMin, yMin, xMax, yMax). Becomes
     /// `FontDescriptor` `/FontBBox`.
@@ -126,7 +128,7 @@ impl EmbeddedFont {
                   tests/parse_bundled.rs; propagating Option would force every \
                   downstream caller fallible for an unreachable path"
     )]
-    pub fn from_static(
+    pub(crate) fn from_static(
         bytes: &'static [u8],
         postscript_name: &'static str,
         is_bold: bool,
@@ -141,7 +143,7 @@ impl EmbeddedFont {
         let descender = ttf.descender();
         let cap_height = ttf.capital_height().map_or(ascender * 7 / 10, i16::from);
         let x_height = ttf.x_height().map_or(ascender / 2, i16::from);
-        let italic_angle = -ttf.italic_angle();
+        let italic_angle = ttf.italic_angle();
         let global_bbox = ttf.global_bounding_box();
         let bbox = (
             global_bbox.x_min,
@@ -259,9 +261,12 @@ pub fn subset(font: &EmbeddedFont, gids: &[u16]) -> Result<Vec<u8>, SubsetError>
 }
 
 /// Wraps [`subsetter::Error`] without exposing the dependency in the
-/// public API. The PDF emit path bails on this error with a `Diagnostic`.
+/// public API. The PDF emit path bails on this error with a
+/// `Diagnostic`. The inner variant is private — callers debug via
+/// the `Display`/`Debug` impls, not pattern matching on
+/// `subsetter::Error` directly.
 #[derive(Debug)]
-pub struct SubsetError(pub subsetter::Error);
+pub struct SubsetError(subsetter::Error);
 
 impl std::fmt::Display for SubsetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -29,16 +29,21 @@ fn every_bundled_cut_parses_and_has_glyph_coverage() {
 }
 
 #[test]
-fn cyrillic_and_greek_covered_by_regular_cut() {
-    // The bundled Latin/Greek/Cyrillic package promises these scripts.
+fn cyrillic_and_greek_covered_by_every_cut() {
+    // The bundled Latin/Greek/Cyrillic package promises these scripts
+    // for every style slot — a user writing `**Привет**` or `*Καλημέρα*`
+    // routes through Bold or Italic, so coverage gaps there would
+    // silently render as `.notdef` boxes inside emphasis runs.
     // Catching coverage loss here is cheaper than parsing a rendered
     // PDF for `.notdef` glyphs in the round-trip test.
-    let font = EmbeddedFontId::Regular.data();
-    for ch in ['П', 'р', 'и', 'в', 'е', 'т', 'Κ', 'α', 'λ'] {
-        assert!(
-            font.glyph_index(ch).is_some(),
-            "Noto Sans Regular missing glyph for U+{:04X} ({ch:?})",
-            u32::from(ch),
-        );
+    for id in EmbeddedFontId::ALL {
+        let font = id.data();
+        for ch in ['П', 'р', 'и', 'в', 'е', 'т', 'Κ', 'α', 'λ'] {
+            assert!(
+                font.glyph_index(ch).is_some(),
+                "{id:?} missing glyph for U+{:04X} ({ch:?})",
+                u32::from(ch),
+            );
+        }
     }
 }

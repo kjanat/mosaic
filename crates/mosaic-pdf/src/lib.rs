@@ -112,16 +112,18 @@ pub(crate) fn build_pdf(
 
     // Phase 1b: subset every embedded face actually used. One plan
     // per face referenced; absent if the face never appears in `runs`.
-    let mut all_runs: Vec<&TextRun> = Vec::new();
-    for page in &graph.pages {
-        all_runs.extend(page.runs.iter());
-    }
-    let embedded_plans: Vec<EmbeddedFontPlan> = {
-        // `plan_embedded` wants a flat slice. Collapsing into a
-        // single Vec avoids a second nested loop downstream.
-        let flat: Vec<TextRun> = all_runs.iter().map(|r| (*r).clone()).collect();
-        embedded::plan_embedded(&flat)?
-    };
+    // Only embedded-font runs need cloning into the flat slice the
+    // planner consumes — Base14 runs would be filtered out by
+    // `plan_embedded` anyway, so cloning them up front is pure waste
+    // for documents where Base14 dominates.
+    let embedded_runs: Vec<TextRun> = graph
+        .pages
+        .iter()
+        .flat_map(|p| p.runs.iter())
+        .filter(|r| matches!(r.font, Font::Embedded(_)))
+        .cloned()
+        .collect();
+    let embedded_plans: Vec<EmbeddedFontPlan> = embedded::plan_embedded(&embedded_runs)?;
     let embedded_by_id: HashMap<EmbeddedFontId, &EmbeddedFontPlan> =
         embedded_plans.iter().map(|p| (p.id, p)).collect();
 
@@ -368,10 +370,24 @@ fn build_content_stream(
         content.set_text_matrix([1.0, 0.0, 0.0, 1.0, run.x_pt, y_from_bottom]);
         let bytes = match run.font {
             Font::Base14(_) => encode_base14_run(&run.text, run.font, encodings),
-            Font::Embedded(id) => embedded_by_id
-                .get(&id)
-                .map(|plan| embedded::encode_glyph_run(plan, &run.glyphs))
-                .unwrap_or_default(),
+            Font::Embedded(id) => {
+                // `plan_embedded` walks every page's runs and yields a
+                // plan for every face referenced. Missing plan here =
+                // broken invariant (e.g. a run was added after the
+                // planning pass). Loud assertion + empty fallback so
+                // the planner stays the single source of truth and
+                // bugs surface immediately.
+                let plan_opt = embedded_by_id.get(&id);
+                assert!(
+                    plan_opt.is_some(),
+                    "no embedded plan for font {:?} (id {:?}); planner missed a run?",
+                    run.font,
+                    id,
+                );
+                plan_opt
+                    .map(|plan| embedded::encode_glyph_run(plan, &run.glyphs))
+                    .unwrap_or_default()
+            }
         };
         content.show(Str(&bytes));
     }
