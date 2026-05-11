@@ -247,24 +247,35 @@ fn plan_face(
 
 /// Preferred slot-allocation order: the six `WinAnsi` gap bytes
 /// first (predictable golden output for ≤ 6 extended glyphs), then
-/// `0xFF..=0x20` descending. We deliberately skip `0x00..=0x1F` —
-/// PDF readers tolerate control bytes in `/Differences`, but content
-/// streams that need an `Str(...)` literal can run afoul of
-/// `\0`/`\r`/`\n` escaping, and using high-byte slots first keeps
-/// short paragraphs from perturbing low-byte slots.
+/// `0xFF..=0x20` descending **excluding** those same six bytes. We
+/// deliberately skip `0x00..=0x1F` — PDF readers tolerate control
+/// bytes in `/Differences`, but content streams that need an
+/// `Str(...)` literal can run afoul of `\0`/`\r`/`\n` escaping, and
+/// using high-byte slots first keeps short paragraphs from
+/// perturbing low-byte slots.
+///
+/// The gap-exclusion in the descending tail is load-bearing: without
+/// it the gap bytes would appear twice in the iterator (once at the
+/// front, once again at their natural position 0x7F/0x81/…/0x9D), and
+/// the planner — which doesn't re-check `claimed[slot]` after pop —
+/// would allocate the same byte to two different extended chars once
+/// `extended.len()` grew past ~104. Today the AGL subset has only
+/// ~99 entries so this latent bug couldn't fire, but it's wrong on
+/// principle. See `differences_have_unique_slots` for the regression
+/// guard.
 fn allocation_order() -> impl Iterator<Item = u8> {
     const GAPS: [u8; 6] = [0x7F, 0x81, 0x8D, 0x8F, 0x90, 0x9D];
-    GAPS.into_iter().chain((0x20_u8..=0xFF_u8).rev())
+    GAPS.into_iter()
+        .chain((0x20_u8..=0xFF_u8).rev().filter(|b| !GAPS.contains(b)))
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
-    )]
+    // No `#![allow]` here — every test uses `assert!`/`assert_eq!`
+    // for failure reporting; nothing reaches for `unwrap`/`expect`/
+    // `panic!`. Setup helpers stay infallible by routing missing-key
+    // lookups through `unwrap_or_default` (an Option combinator, not
+    // a panic).
     use super::*;
 
     fn plan(face: Base14Font, text: &str) -> (DocEncoding, Vec<Diagnostic>) {
@@ -404,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn allocation_order_starts_with_gaps_then_descends() {
+    fn allocation_order_starts_with_gaps_then_descends_without_dups() {
         let mut order = allocation_order();
         assert_eq!(order.next(), Some(0x7F));
         assert_eq!(order.next(), Some(0x81));
@@ -414,9 +425,70 @@ mod tests {
         assert_eq!(order.next(), Some(0x9D));
         assert_eq!(order.next(), Some(0xFF));
         assert_eq!(order.next(), Some(0xFE));
-        let total: usize = allocation_order().count();
-        // 6 gaps + (0xFF - 0x20 + 1 = 224) = 230 slots available.
-        assert_eq!(total, 6 + 224);
+        // 6 gaps + (0xFF - 0x20 + 1 - 6 gaps in that range = 218) = 224.
+        let all: Vec<u8> = allocation_order().collect();
+        assert_eq!(all.len(), 6 + 218);
+        // Every slot appears at most once.
+        let unique: BTreeSet<u8> = all.iter().copied().collect();
+        assert_eq!(
+            unique.len(),
+            all.len(),
+            "allocation_order yields duplicate slots"
+        );
+        // The descending tail should never re-emit a gap byte.
+        for &b in &all[6..] {
+            assert!(
+                !matches!(b, 0x7F | 0x81 | 0x8D | 0x8F | 0x90 | 0x9D),
+                "gap byte 0x{b:02X} re-appears in descending tail"
+            );
+        }
+    }
+
+    #[test]
+    fn differences_have_unique_slots() {
+        // Regression guard for the latent slot-dup bug: even when the
+        // planner has to dip into the descending range past the 0x9D
+        // gap, every entry in `differences` must address a distinct
+        // byte. We feed the full AGL_SUBSET worth of extended chars
+        // through a face that has every glyph (Helvetica), claim every
+        // ASCII printable byte too so the descending pool is exercised,
+        // then assert uniqueness.
+        let mut all_chars: BTreeSet<char> = BTreeSet::new();
+        for b in 0x20_u8..=0x7E_u8 {
+            all_chars.insert(char::from(b));
+        }
+        for c in [
+            '\u{0100}', '\u{0101}', '\u{0102}', '\u{0103}', '\u{0104}', '\u{0105}', '\u{0106}',
+            '\u{0107}', '\u{010C}', '\u{010D}', '\u{010E}', '\u{010F}', '\u{0110}', '\u{0111}',
+            '\u{0112}', '\u{0113}', '\u{0116}', '\u{0117}', '\u{0118}', '\u{0119}', '\u{011A}',
+            '\u{011B}', '\u{011E}', '\u{011F}', '\u{0122}', '\u{0123}', '\u{012A}', '\u{012B}',
+            '\u{012E}', '\u{012F}', '\u{0130}', '\u{0131}', '\u{0136}', '\u{0137}', '\u{0139}',
+            '\u{013A}', '\u{013B}', '\u{013C}', '\u{013D}', '\u{013E}', '\u{0141}', '\u{0142}',
+            '\u{0143}', '\u{0144}', '\u{0145}', '\u{0146}', '\u{0147}', '\u{0148}', '\u{014C}',
+            '\u{014D}', '\u{0150}', '\u{0151}', '\u{0154}', '\u{0155}', '\u{0156}', '\u{0157}',
+            '\u{0158}', '\u{0159}', '\u{015A}', '\u{015B}', '\u{015E}', '\u{015F}', '\u{0162}',
+            '\u{0163}', '\u{0164}', '\u{0165}', '\u{016A}', '\u{016B}', '\u{016E}', '\u{016F}',
+            '\u{0170}', '\u{0171}', '\u{0172}', '\u{0173}', '\u{0179}', '\u{017A}', '\u{017B}',
+            '\u{017C}',
+        ] {
+            all_chars.insert(c);
+        }
+        let mut diags = Vec::new();
+        let enc = plan_face(Base14Font::Helvetica, &all_chars, &mut diags);
+        let slots: BTreeSet<u8> = enc.differences.iter().map(|&(b, _)| b).collect();
+        assert_eq!(
+            slots.len(),
+            enc.differences.len(),
+            "duplicate slot in /Differences: {:?}",
+            enc.differences
+        );
+        // Same uniqueness invariant for the byte → char map.
+        let bytes: BTreeSet<u8> = enc.byte_for_char.values().copied().collect();
+        assert_eq!(
+            bytes.len(),
+            enc.byte_for_char.len(),
+            "byte_for_char maps two chars to the same byte"
+        );
     }
 
     #[test]
