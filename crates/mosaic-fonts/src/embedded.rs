@@ -109,15 +109,22 @@ impl EmbeddedFont {
     ///
     /// # Panics
     ///
-    /// Panics if the bytes don't parse as a TrueType font, which only
-    /// happens if the bundled data is corrupted at build time —
-    /// the four shipped cuts have been verified.
+    /// Panics if the bytes don't parse as a `TrueType` font. The four
+    /// bundled cuts have been parse-verified at vendor time and are
+    /// re-verified by `tests/parse_bundled.rs` on every CI run, so
+    /// reaching this panic requires post-build corruption (e.g. a
+    /// failed LFS pull or a truncated binary). Threading
+    /// `Result`/`Option` through the dozens of downstream call sites
+    /// to handle a case the compile-time `include_bytes!` already
+    /// rules out would make the code materially worse — the lint
+    /// suppression is the explicit CLAUDE.md exception, paired with
+    /// the CI test that catches the only realistic failure mode.
     #[must_use]
     #[allow(
         clippy::expect_used,
-        reason = "bundled bytes have been parse-verified at vendor time; \
-                  any failure indicates repo corruption, where a loud \
-                  panic is the right response"
+        reason = "bundled bytes are include_bytes!-baked and CI-verified by \
+                  tests/parse_bundled.rs; propagating Option would force every \
+                  downstream caller fallible for an unreachable path"
     )]
     pub fn from_static(
         bytes: &'static [u8],
