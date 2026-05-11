@@ -158,6 +158,42 @@ fn emit_font(
             }
         }
         writeln!(buf, "];\n")?;
+
+        // Sorted `(glyph_name, width)` index for O(log n) by-name
+        // lookup. The AFM `CharacterMetric` slice above is in file
+        // order (= the AFM `C ...` line order, not sorted), so a
+        // binary search would be unsound against it. Pull the name +
+        // width into a parallel sorted slice — small (~315 entries
+        // × 16 bytes ≈ 5 KB per face), and `glyph_width_by_name` is
+        // on the encoder hot path (called once per non-WinAnsi char
+        // in a document during PDF emit).
+        let mut pairs: Vec<(&str, f32)> = m
+            .character_metrics
+            .iter()
+            .map(|c| (c.name.as_ref(), c.width_x))
+            .collect();
+        pairs.sort_by(|a, b| a.0.cmp(b.0));
+        // Defensive: AFM should never define the same glyph twice,
+        // but a duplicate would silently shadow during binary search.
+        // We dedup on name and treat any collision as a build-time
+        // error so we never paper over it.
+        for w in pairs.windows(2) {
+            if w[0].0 == w[1].0 {
+                return Err(format!("duplicate glyph name {:?} in {ident} AFM", w[0].0).into());
+            }
+        }
+        // Const items already imply `'static` for inner references, so we
+        // omit the explicit lifetime to keep generated code clippy-clean
+        // under `clippy::redundant_static_lifetimes`.
+        writeln!(buf, "const {ident}_NAME_WIDTHS: &[(&str, f32)] = &[")?;
+        for (name, w) in &pairs {
+            write!(buf, "    (")?;
+            emit_str_literal(buf, name)?;
+            write!(buf, ", ")?;
+            emit_f32(buf, *w)?;
+            writeln!(buf, "),")?;
+        }
+        writeln!(buf, "];\n")?;
     }
 
     // The main static. Field order matches `afm::FontMetrics`'s

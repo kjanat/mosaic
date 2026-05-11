@@ -1,0 +1,10 @@
+[project]
+name    = "polish"
+version = "0.1.0"
+entry   = "main.mos"
+
+[document]
+language = "pl"
+output   = ["pdf"]
+
+[dependencies]

@@ -197,14 +197,27 @@ fn run_build(entry: &Path) -> ExitCode {
         author: result.metadata.author.clone(),
         language: result.metadata.language,
     };
-    if let Err(err) = mosaic_pdf::emit(&layout.graph, &metadata, &out) {
-        match err {
-            mosaic_core::CoreError::Diagnostic(d) => render_diagnostic(&d, &src),
-            mosaic_core::CoreError::Unimplemented(msg) => {
-                eprintln!("mos build: {msg}");
+    match mosaic_pdf::emit(&layout.graph, &metadata, &out) {
+        Ok(pdf_diagnostics) => {
+            for diag in &pdf_diagnostics {
+                render_diagnostic(diag, &src);
+            }
+            if pdf_diagnostics
+                .iter()
+                .any(|d| d.severity == Severity::Error)
+            {
+                return ExitCode::FAILURE;
             }
         }
-        return ExitCode::FAILURE;
+        Err(err) => {
+            match err {
+                mosaic_core::CoreError::Diagnostic(d) => render_diagnostic(&d, &src),
+                mosaic_core::CoreError::Unimplemented(msg) => {
+                    eprintln!("mos build: {msg}");
+                }
+            }
+            return ExitCode::FAILURE;
+        }
     }
 
     println!(
