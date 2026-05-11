@@ -458,14 +458,17 @@ pub struct ShapedRun {
 
 /// Convert a font-unit advance to PDF user-space points at `size_pt`,
 /// given the face's units-per-em. `rustybuzz` types advances as `i32`
-/// but the underlying OpenType `hmtx` table stores them as 16-bit;
-/// saturating to `i16` here lets us cross to `f32` losslessly through
-/// `f32::From<i16>`. The saturation clamps the (practically
-/// unreachable) `i32::MAX` case to a finite advance instead of a
-/// loose precision-lossy cast.
+/// but OpenType's `hmtx` table stores `advanceWidth` as `UFWord`
+/// (unsigned 16-bit), so the underlying value is always in `0..=65535`.
+/// Saturating through `u16` here lets us cross to `f32` losslessly
+/// through `f32::From<u16>` and preserves the full `hmtx` range —
+/// the prior `i16` saturation truncated wide glyphs in the
+/// `32768..=65535` band to `i16::MAX`. The saturation clamps the
+/// (practically unreachable) out-of-`u16` case to a finite advance
+/// instead of a loose precision-lossy `i32 as f32` cast.
 fn advance_units_to_pt(advance_units: i32, size_pt: f32, upem: f32) -> f32 {
-    let advance_i16 = i16::try_from(advance_units).unwrap_or(i16::MAX);
-    f32::from(advance_i16) * size_pt / upem
+    let advance_u16 = u16::try_from(advance_units).unwrap_or(u16::MAX);
+    f32::from(advance_u16) * size_pt / upem
 }
 
 /// Width of a single glyph in `font` at `size` points. For Base14
@@ -642,6 +645,19 @@ mod tests {
         let _ = FontFamily::resolve("Courier", None, &mut diags);
         let _ = FontFamily::resolve("Noto Sans", None, &mut diags);
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+        // Mixed case and leading/trailing whitespace must resolve the
+        // same way the canonical spelling does — `resolve` normalises
+        // through `.trim().to_ascii_lowercase()` before matching.
+        let padded = FontFamily::resolve("  heLVETICA  ", None, &mut diags);
+        assert!(
+            diags.is_empty(),
+            "padded mixed-case Helvetica diagnosed: {diags:?}"
+        );
+        assert_eq!(padded.regular, Font::Base14(Base14Font::Helvetica));
+        let spaced = FontFamily::resolve("\tNoto Sans\n", None, &mut diags);
+        assert!(diags.is_empty(), "padded Noto Sans diagnosed: {diags:?}");
+        assert_eq!(spaced.regular, Font::Embedded(EmbeddedFontId::Regular));
     }
 
     #[test]

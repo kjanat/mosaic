@@ -58,8 +58,7 @@ different substitute fonts via fontconfig and end up with
 different glyph coverage — `lozenge` (◊) in particular is
 prone to being absent. Adobe Reader has separately been observed
 to mis-render `/Differences`-mapped glyphs by splicing in
-spacing-substitution composition (Romanian comma-below
-specifically; see the PR #16 review notes). If you target a
-specific reader and rely on any specific glyph from the AGL
-math subset, verify the rendering on that reader before
-shipping.
+spacing-substitution composition (Romanian comma-below in
+particular). If you target a specific reader and rely on any
+specific glyph from the AGL math subset, verify the rendering on
+that reader before shipping.
