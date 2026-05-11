@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use mosaic_core::{CoreError, Diagnostic, DiagnosticCode, Result, Severity};
-use mosaic_layout::{ALL_FONTS, Font, PageGraph, TextRun};
+use mosaic_layout::{Font, PageGraph, TextRun};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 
 /// Document-level metadata that gets written to the PDF Info
@@ -79,9 +79,9 @@ pub(crate) fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> Vec<u8> {
     let info_id = alloc();
 
     // One indirect ref per font face, in the order published by
-    // `ALL_FONTS`. We always emit all four entries so every page's
+    // `Font::ALL`. We always emit all four entries so every page's
     // resource dictionary is identical, simplifying the writer.
-    let font_refs: Vec<(Font, Ref)> = ALL_FONTS.iter().map(|f| (*f, alloc())).collect();
+    let font_refs: Vec<(Font, Ref)> = Font::ALL.iter().map(|f| (*f, alloc())).collect();
 
     // Per-page (page object, content stream) refs.
     let page_refs: Vec<(Ref, Ref)> = graph.pages.iter().map(|_| (alloc(), alloc())).collect();
@@ -161,7 +161,7 @@ mod tests {
         clippy::panic,
         reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
     )]
-    use mosaic_layout::{Font, Page, PageGraph, TextRun};
+    use mosaic_layout::{Base14Font, Font, Page, PageGraph, TextRun};
 
     use super::*;
 
@@ -176,14 +176,14 @@ mod tests {
                         x_pt: 68.0,
                         baseline_from_top_pt: 100.0,
                         size_pt: 20.0,
-                        font: Font::HelveticaBold,
+                        font: Font(Base14Font::HelveticaBold),
                         text: "Title".to_owned(),
                     },
                     TextRun {
                         x_pt: 68.0,
                         baseline_from_top_pt: 130.0,
                         size_pt: 11.0,
-                        font: Font::Helvetica,
+                        font: Font(Base14Font::Helvetica),
                         text: "Body".to_owned(),
                     },
                 ],
