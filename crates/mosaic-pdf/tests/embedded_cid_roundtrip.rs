@@ -387,9 +387,10 @@ fn shown_cids_for_font(content: &[u8], resource_name: &[u8]) -> Result<Vec<u16>,
     for operation in decoded.operations {
         match operation.operator.as_str() {
             "Tf" => {
-                if let Some(Object::Name(name)) = operation.operands.first() {
-                    current_font = Some(name.clone());
-                }
+                let Some(Object::Name(name)) = operation.operands.first() else {
+                    return Err("Tf operator missing font-name operand".into());
+                };
+                current_font = Some(name.clone());
             }
             "Tj" if current_font.as_deref() == Some(resource_name) => {
                 let Some(Object::String(bytes, _)) = operation.operands.first() else {
@@ -481,8 +482,7 @@ fn embedded_descendant<'d>(
 
 fn object_number_as_f32(obj: &Object) -> Result<f32, Box<dyn Error>> {
     match obj {
-        Object::Integer(n) => Ok(n.to_string().parse::<f32>()?),
-        Object::Real(n) => Ok(*n),
+        Object::Integer(_) | Object::Real(_) => Ok(obj.as_float()?),
         other => Err(format!("expected numeric width, got {other:?}").into()),
     }
 }
