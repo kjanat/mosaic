@@ -109,7 +109,7 @@ impl EmbeddedFontId {
         }
     }
 
-    /// PDF resource-name index `n` for `Fn`. F0..F14 are reserved for
+    /// PDF resource-name index `n` for `Fn`. F1..F14 are reserved for
     /// the 14 Base14 fonts (see `mosaic-pdf`'s Base14 resource layout);
     /// embedded cuts use F15..=F255. The number is **stable per
     /// variant forever** — never re-number for byte-stability.
@@ -326,13 +326,15 @@ pub struct FontFamily {
     /// concept is upright/styled-Latin; raw is its own typeface choice
     /// that the layout engine pins independently of the family.
     pub monospace: Font,
-    /// Per-glyph fallback chain. When shaping against any of the
-    /// style-slot faces above yields `.notdef` for some cluster,
-    /// [`shape_with_fallback`] retries that cluster against each embedded
-    /// face in this slice in order. The first face to cover the cluster
-    /// wins the whole cluster (cluster-granular replacement). Empty
-    /// chain = primary-only shaping (Base14 families don't have an
-    /// embedded fallback target).
+    /// Per-glyph fallback chain shared by every style slot in this
+    /// family. When shaping against any of the style-slot faces above
+    /// yields `.notdef` for some cluster, [`shape_with_fallback`] retries
+    /// that cluster against each embedded face in this slice in order.
+    /// The first face to cover the cluster wins the whole cluster
+    /// (cluster-granular replacement). Math fallback is therefore
+    /// upright even inside bold or italic text until style-aware fallback
+    /// chains exist. Empty chain = primary-only shaping (Base14 families
+    /// don't have an embedded fallback target).
     pub fallbacks: &'static [EmbeddedFontId],
 }
 
@@ -714,10 +716,11 @@ struct ClusterResolution {
     glyphs: Vec<ShapedGlyph>,
 }
 
-/// Walk a `rustybuzz`-ordered glyph stream and group consecutive
-/// glyphs sharing the same `cluster` value. Each group's byte range
-/// is `[c..c_next)` where `c_next` is the next cluster's start (or
-/// `text_len` for the last cluster).
+/// Walk a `rustybuzz`-ordered LTR glyph stream and group consecutive
+/// glyphs sharing the same `cluster` value. Each group's byte range is
+/// `[c..c_next)` where `c_next` is the next cluster's start (or
+/// `text_len` for the last cluster). The shaper currently forces LTR;
+/// RTL support must revisit this monotonic-cluster assumption.
 fn group_clusters(glyphs: &[ShapedGlyph], text_len: usize) -> Vec<ClusterGroup> {
     let mut groups: Vec<ClusterGroup> = Vec::new();
     let mut i = 0;
@@ -732,6 +735,7 @@ fn group_clusters(glyphs: &[ShapedGlyph], text_len: usize) -> Vec<ClusterGroup> 
         } else {
             text_len
         };
+        debug_assert!(end_byte >= cluster as usize);
         groups.push(ClusterGroup {
             byte_range: (cluster as usize)..end_byte,
             glyphs: glyphs[i..j].to_vec(),
@@ -765,11 +769,16 @@ fn finalize_subrun(
             ..g
         })
         .collect();
-    let upem = embedded_upem(font);
-    let advance_pt: f32 = rebased
-        .iter()
-        .map(|g| advance_units_to_pt(g.advance_units, size_pt, upem))
-        .sum();
+    let advance_pt: f32 = match font {
+        Font::Embedded(id) => {
+            let upem = embedded_upem(id);
+            rebased
+                .iter()
+                .map(|g| advance_units_to_pt(g.advance_units, size_pt, upem))
+                .sum()
+        }
+        Font::Base14(_) => text_width(font, size_pt, &local_text),
+    };
     WordSubRun {
         font,
         text: local_text,
@@ -801,16 +810,9 @@ fn into_subrun(
     }
 }
 
-/// `units_per_em` for any `Font`. Returns the embedded face's actual
-/// upem (read from the `head` table); for `Font::Base14`, returns
-/// `1000.0` — the AFM unit scale — as a defensive default since callers
-/// in this module are expected to dispatch on the variant before
-/// reaching here. Internal helper.
-fn embedded_upem(font: Font) -> f32 {
-    match font {
-        Font::Embedded(id) => f32::from(id.data().units_per_em),
-        Font::Base14(_) => 1000.0,
-    }
+/// `units_per_em` for an embedded face.
+fn embedded_upem(id: EmbeddedFontId) -> f32 {
+    f32::from(id.data().units_per_em)
 }
 
 /// Convert a font-unit advance to PDF user-space points at `size_pt`,

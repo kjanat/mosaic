@@ -58,6 +58,8 @@ pub(crate) struct EmbeddedFontPlan {
     /// single-char string. For one-codepoint-many-glyphs
     /// decompositions (rare), the first glyph carries the codepoint
     /// and later glyphs in the same cluster carry empty strings.
+    /// Co-populated with `used_gids` by `accumulate_glyphs`; keep those
+    /// sources of truth in sync.
     pub gid_to_text: BTreeMap<u16, String>,
 }
 

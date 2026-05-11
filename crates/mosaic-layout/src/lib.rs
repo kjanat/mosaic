@@ -1081,10 +1081,13 @@ impl LayoutState {
             .pending_marker
             .as_ref()
             .map_or(0.0_f32, |m| m.word.size_pt);
-        let marker_ascent = self
-            .pending_marker
-            .as_ref()
-            .map_or(0.0_f32, |m| ascent(m.word.font, m.word.size_pt));
+        let marker_ascent = self.pending_marker.as_ref().map_or(0.0_f32, |m| {
+            m.word
+                .subruns
+                .iter()
+                .map(|sub| ascent(sub.font, m.word.size_pt))
+                .fold(0.0_f32, f32::max)
+        });
         let max_size = line.iter().map(|w| w.size_pt).fold(marker_size, f32::max);
         let max_ascent = line
             .iter()
@@ -1148,52 +1151,52 @@ impl LayoutState {
     }
 
     /// Emit a word that's wider than the column by chopping it on
-    /// character boundaries. Each chunk is reshaped from scratch so
-    /// embedded faces get correct per-cluster ligature breaking and
-    /// Base14 faces stay on the AFM path.
+    /// already-shaped cluster boundaries. The word was shaped when it
+    /// was collected, so this avoids re-running rustybuzz for every
+    /// growing prefix of a degenerate long word.
     fn flush_oversize_word(&mut self, word: &Word, leading: f32) {
         let line_width = self.column_width_pt();
-        let fallbacks = self.text.family.fallbacks;
-        let mut buf = String::new();
-        for ch in word.text.chars() {
-            let mut candidate = buf.clone();
-            candidate.push(ch);
-            let candidate_subruns =
-                shape_with_fallback(word.font, fallbacks, word.size_pt, &candidate);
-            let candidate_width: f32 = candidate_subruns.iter().map(|s| s.advance_pt).sum();
-            if candidate_width > line_width && !buf.is_empty() {
-                let chunk = std::mem::take(&mut buf);
-                let subruns = shape_with_fallback(word.font, fallbacks, word.size_pt, &chunk);
-                let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
-                self.flush_line(
-                    &[Word {
-                        text: chunk,
-                        font: word.font,
-                        size_pt: word.size_pt,
-                        width_pt,
-                        subruns,
-                    }],
+        let mut chunk_text = String::with_capacity(word.text.len());
+        let mut chunk_width = 0.0_f32;
+        let mut chunk_subruns = Vec::new();
+        for cluster in word_clusters(word) {
+            if chunk_width + cluster.advance_pt > line_width && !chunk_subruns.is_empty() {
+                self.flush_oversize_chunk(
+                    std::mem::take(&mut chunk_text),
+                    chunk_width,
+                    std::mem::take(&mut chunk_subruns),
+                    word,
                     leading,
                 );
-                buf.push(ch);
-            } else {
-                buf = candidate;
+                chunk_width = 0.0;
             }
+            chunk_text.push_str(&cluster.text);
+            chunk_width += cluster.advance_pt;
+            chunk_subruns.push(cluster);
         }
-        if !buf.is_empty() {
-            let subruns = shape_with_fallback(word.font, fallbacks, word.size_pt, &buf);
-            let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
-            self.flush_line(
-                &[Word {
-                    text: buf,
-                    font: word.font,
-                    size_pt: word.size_pt,
-                    width_pt,
-                    subruns,
-                }],
-                leading,
-            );
+        if !chunk_subruns.is_empty() {
+            self.flush_oversize_chunk(chunk_text, chunk_width, chunk_subruns, word, leading);
         }
+    }
+
+    fn flush_oversize_chunk(
+        &mut self,
+        text: String,
+        width_pt: f32,
+        subruns: Vec<WordSubRun>,
+        source: &Word,
+        leading: f32,
+    ) {
+        self.flush_line(
+            &[Word {
+                text,
+                font: source.font,
+                size_pt: source.size_pt,
+                width_pt,
+                subruns,
+            }],
+            leading,
+        );
     }
 
     fn start_new_page(&mut self) {
@@ -1230,6 +1233,82 @@ struct Word {
     /// (no fallback target — Base14 emit path uses `WinAnsi`-byte
     /// strings instead).
     subruns: Vec<WordSubRun>,
+}
+
+fn word_clusters(word: &Word) -> Vec<WordSubRun> {
+    let mut clusters = Vec::new();
+    for sub in &word.subruns {
+        if sub.glyphs.is_empty() {
+            for ch in sub.text.chars() {
+                let mut text = String::new();
+                text.push(ch);
+                clusters.push(WordSubRun {
+                    font: sub.font,
+                    advance_pt: text_width(sub.font, word.size_pt, &text),
+                    text,
+                    glyphs: Vec::new(),
+                });
+            }
+            continue;
+        }
+
+        let mut i = 0;
+        while i < sub.glyphs.len() {
+            let cluster = sub.glyphs[i].cluster;
+            let mut j = i + 1;
+            while j < sub.glyphs.len() && sub.glyphs[j].cluster == cluster {
+                j += 1;
+            }
+            let start = usize::try_from(cluster).unwrap_or(usize::MAX);
+            let end = if j < sub.glyphs.len() {
+                usize::try_from(sub.glyphs[j].cluster).unwrap_or(usize::MAX)
+            } else {
+                sub.text.len()
+            };
+            debug_assert!(start <= end && end <= sub.text.len());
+            let Some(text) = sub.text.get(start..end) else {
+                i = j;
+                continue;
+            };
+            let shift = u32::try_from(start).unwrap_or(u32::MAX);
+            let glyphs: Vec<_> = sub.glyphs[i..j]
+                .iter()
+                .map(|g| ShapedGlyph {
+                    cluster: g.cluster.saturating_sub(shift),
+                    ..*g
+                })
+                .collect();
+            clusters.push(WordSubRun {
+                font: sub.font,
+                text: text.to_owned(),
+                advance_pt: glyphs_advance_pt(sub.font, word.size_pt, &glyphs),
+                glyphs,
+            });
+            i = j;
+        }
+    }
+    clusters
+}
+
+fn glyphs_advance_pt(font: Font, size_pt: f32, glyphs: &[ShapedGlyph]) -> f32 {
+    let upem = match font {
+        Font::Embedded(id) => f32::from(id.data().units_per_em),
+        Font::Base14(_) => 1000.0,
+    };
+    glyphs
+        .iter()
+        .map(|g| signed_advance_to_pt(g.advance_units, size_pt, upem))
+        .sum()
+}
+
+fn signed_advance_to_pt(advance_units: i32, size_pt: f32, upem: f32) -> f32 {
+    let magnitude = u16::try_from(advance_units.unsigned_abs()).unwrap_or(u16::MAX);
+    let advance = f32::from(magnitude) * size_pt / upem;
+    if advance_units.is_negative() {
+        -advance
+    } else {
+        advance
+    }
 }
 
 fn blank_page(number: u32, style: PageStyle) -> Page {
