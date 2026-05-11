@@ -199,10 +199,14 @@ fn run_build(entry: &Path) -> ExitCode {
     };
     match mosaic_pdf::emit(&layout.graph, &metadata, &out) {
         Ok(pdf_diagnostics) => {
-            // PDF emit currently surfaces only `W041` (extended glyph
-            // budget exhausted); render alongside layout diagnostics.
             for diag in &pdf_diagnostics {
                 render_diagnostic(diag, &src);
+            }
+            if pdf_diagnostics
+                .iter()
+                .any(|d| d.severity == Severity::Error)
+            {
+                return ExitCode::FAILURE;
             }
         }
         Err(err) => {
