@@ -44,6 +44,13 @@ pub enum NodeKind {
     Footnote,
     Bibliography,
     Raw,
+    /// A bullet or numbered list. The `ordered` attribute distinguishes
+    /// the two kinds and child nodes are [`NodeKind::ListItem`]s.
+    List,
+    /// One entry inside a [`NodeKind::List`]. Inline children carry the
+    /// item's text; nested [`NodeKind::List`] children describe deeper
+    /// levels.
+    ListItem,
 }
 
 /// A semantic document node (manifest §5.1).
