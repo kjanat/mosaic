@@ -761,7 +761,7 @@ fn finalize_subrun(
     let rebased: Vec<_> = glyphs
         .into_iter()
         .map(|g| ShapedGlyph {
-            cluster: g.cluster - shift,
+            cluster: g.cluster.saturating_sub(shift),
             ..g
         })
         .collect();
