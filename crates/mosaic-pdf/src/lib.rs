@@ -306,15 +306,35 @@ fn encode_run(text: &str, font: Font, encodings: &HashMap<Font, DocEncoding>) ->
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
-    )]
+    // No `#![allow]` here. The two filesystem-touching tests
+    // (`emit_writes_file`, `emit_fails_with_e090_when_target_is_a_directory`)
+    // return `TestResult` and surface failures via `?` / `ensure!`
+    // instead of `unwrap`/`expect`/`panic!`. The rest return `()`
+    // and use plain `assert!`, which is not covered by
+    // `clippy::panic`.
+    use std::error::Error;
+
     use mosaic_layout::{Base14Font, Font, Page, PageGraph, TextRun};
 
     use super::*;
+
+    // Explicit `std::result::Result` because the parent module
+    // imports `mosaic_core::Result` which only takes one type
+    // parameter.
+    type TestResult = std::result::Result<(), Box<dyn Error>>;
+
+    /// `assert!`-shaped helper that returns `Err` instead of
+    /// panicking, so `-> TestResult` bodies stay clippy-clean under
+    /// `clippy::panic_in_result_fn`. Mirrors the precedent in
+    /// `pdf-base14-metrics/tests/winansi_vendor.rs` and the
+    /// integration test at `tests/extended_latin_roundtrip.rs`.
+    macro_rules! ensure {
+        ($cond:expr, $($arg:tt)*) => {
+            if !$cond {
+                return Err(format!($($arg)*).into());
+            }
+        };
+    }
 
     fn sample_graph() -> PageGraph {
         PageGraph {
@@ -510,36 +530,41 @@ mod tests {
     }
 
     #[test]
-    fn emit_writes_file() {
+    fn emit_writes_file() -> TestResult {
         let dir = unique_temp_path("write");
         let out = dir.join("out.pdf");
-        let diags = emit(&sample_graph(), &PdfMetadata::default(), &out).expect("emit");
-        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
-        let bytes = std::fs::read(&out).expect("read pdf");
-        assert!(bytes.starts_with(b"%PDF-"));
+        let diags = emit(&sample_graph(), &PdfMetadata::default(), &out)
+            .map_err(|e| format!("emit: {e:?}"))?;
+        ensure!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let bytes = std::fs::read(&out)?;
+        ensure!(bytes.starts_with(b"%PDF-"), "missing PDF header");
         std::fs::remove_dir_all(&dir).ok();
+        Ok(())
     }
 
     #[test]
-    fn emit_fails_with_e090_when_target_is_a_directory() {
+    fn emit_fails_with_e090_when_target_is_a_directory() -> TestResult {
         // Writing a file whose path collides with an existing
         // directory must surface as an `E090` diagnostic, not a
         // panic or an `Unimplemented` error.
         let dir = unique_temp_path("conflict");
-        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::create_dir_all(&dir)?;
         // `dir` itself is the bogus output target; `fs::write` will
         // refuse to overwrite a directory.
         let result = emit(&sample_graph(), &PdfMetadata::default(), &dir);
         std::fs::remove_dir_all(&dir).ok();
-        let err = result.expect_err("expected emit to fail");
-        let CoreError::Diagnostic(d) = err else {
-            panic!("expected Diagnostic, got Unimplemented");
+        let Err(err) = result else {
+            return Err("expected emit to fail when target is a directory".into());
         };
-        assert_eq!(d.code.0, "E090");
-        assert!(
+        let CoreError::Diagnostic(d) = err else {
+            return Err("expected Diagnostic, got Unimplemented".into());
+        };
+        ensure!(d.code.0 == "E090", "wrong code: {:?}", d.code.0);
+        ensure!(
             d.message.contains("could not write PDF"),
             "message={:?}",
             d.message
         );
+        Ok(())
     }
 }
