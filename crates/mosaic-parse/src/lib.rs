@@ -62,6 +62,27 @@ pub enum Item {
         args: Vec<SetArg>,
         span: SourceSpan,
     },
+    /// A bullet (`- `) or numbered (`\d+\. `) list. Sibling items at
+    /// the same indent are grouped under one list; deeper indents
+    /// become nested lists hanging off the most recent item. Numbered
+    /// lists always renumber from 1 in MVP — explicit `start: N` is
+    /// deferred.
+    List {
+        ordered: bool,
+        items: Vec<ListItem>,
+        span: SourceSpan,
+    },
+}
+
+/// One entry inside an [`Item::List`]. `inlines` is the item's own
+/// text (markers stripped, parsed with the same inline tokenizer as
+/// paragraphs); `children` carries nested blocks, currently restricted
+/// to further [`Item::List`]s per the MVP scope.
+#[derive(Debug, Clone)]
+pub struct ListItem {
+    pub inlines: Vec<Inline>,
+    pub children: Vec<Item>,
+    pub span: SourceSpan,
 }
 
 /// Tag for the three directive shapes [`Item::Set`] can represent —
@@ -242,14 +263,30 @@ impl Item {
         }
     }
 
+    /// Borrow the list payload if `self` is [`Item::List`]. The
+    /// returned tuple is `(ordered, items, span)`.
+    #[must_use]
+    pub fn as_list(&self) -> Option<(bool, &[ListItem], &SourceSpan)> {
+        if let Self::List {
+            ordered,
+            items,
+            span,
+        } = self
+        {
+            Some((*ordered, items.as_slice(), span))
+        } else {
+            None
+        }
+    }
+
     /// Borrow the explicit `<label>` attached to this block, if any.
-    /// Returns `None` for [`Item::Set`] (label syntax is not allowed
-    /// on `#set` blocks).
+    /// Returns `None` for [`Item::Set`] and [`Item::List`] (label
+    /// syntax is not yet defined on those blocks).
     #[must_use]
     pub fn label(&self) -> Option<&str> {
         match self {
             Self::Heading { label, .. } | Self::Paragraph { label, .. } => label.as_deref(),
-            Self::Set { .. } => None,
+            Self::Set { .. } | Self::List { .. } => None,
         }
     }
 }
@@ -308,6 +345,8 @@ impl<'a> Parser<'a> {
                 self.parse_directive_block(kw);
             } else if self.starts_with("=") {
                 self.parse_heading();
+            } else if self.at_list_marker() {
+                self.parse_list();
             } else {
                 self.parse_paragraph();
             }
@@ -319,6 +358,10 @@ impl<'a> Parser<'a> {
             },
             diagnostics: self.diagnostics,
         }
+    }
+
+    fn at_list_marker(&self) -> bool {
+        list_marker_at(self.src.as_bytes(), self.pos).is_some()
     }
 
     fn span(&self, start: usize, end: usize) -> SourceSpan {
@@ -976,12 +1019,16 @@ impl<'a> Parser<'a> {
             if self.at_blank_line() {
                 break;
             }
-            // A heading or directive always begins a fresh block, so
-            // they terminate any in-progress paragraph too.
+            // A heading, directive, or list marker always begins a
+            // fresh block, so they terminate any in-progress paragraph
+            // too.
             if self.starts_with("=") && self.heading_level_of_current_line().is_some() {
                 break;
             }
             if self.at_directive_keyword().is_some() {
+                break;
+            }
+            if self.at_list_marker() {
                 break;
             }
             let (line_start, content_end, line_end) = self.current_line_bounds();
@@ -1019,6 +1066,104 @@ impl<'a> Parser<'a> {
                 span,
             });
         }
+    }
+
+    /// Consume a contiguous run of list-marker lines starting at the
+    /// current position and push one or more [`Item::List`] entries
+    /// onto `self.items`. Sibling lines at the same indent and same
+    /// marker kind share a list; a switch from ordered to unordered
+    /// (or vice versa) at the same indent splits into two adjacent
+    /// lists. Deeper-indented marker lines become nested lists on the
+    /// most recent item.
+    fn parse_list(&mut self) {
+        let raw = self.collect_list_lines();
+        if raw.is_empty() {
+            return;
+        }
+        let mut i = 0;
+        while i < raw.len() {
+            let (item, new_i) = self.build_list_at(&raw, i);
+            self.items.push(item);
+            i = new_i;
+        }
+    }
+
+    fn collect_list_lines(&mut self) -> Vec<RawListLine> {
+        let bytes = self.src.as_bytes();
+        let mut out: Vec<RawListLine> = Vec::new();
+        while self.pos < bytes.len() {
+            if self.at_blank_line() {
+                break;
+            }
+            let Some((indent, ordered, content_start)) = list_marker_at(bytes, self.pos) else {
+                break;
+            };
+            let (line_start, content_end, line_end) = self.current_line_bounds();
+            out.push(RawListLine {
+                indent,
+                ordered,
+                content_start,
+                content_end,
+                line_start,
+            });
+            self.pos = line_end;
+        }
+        out
+    }
+
+    /// Build one list from the run starting at `raw[start]`. Returns
+    /// the assembled [`Item::List`] together with the index in `raw`
+    /// where the caller should resume — either the first sibling at a
+    /// smaller indent or a same-indent run of the opposite marker
+    /// kind.
+    fn build_list_at(&mut self, raw: &[RawListLine], start: usize) -> (Item, usize) {
+        let base_indent = raw[start].indent;
+        let base_ordered = raw[start].ordered;
+        let mut items: Vec<ListItem> = Vec::new();
+        let mut last_end = raw[start].content_end;
+        let mut i = start;
+        while i < raw.len() {
+            let cur = &raw[i];
+            // A shallower indent belongs to an outer scope; a deeper
+            // indent here means we entered a nested block that the
+            // previous iteration's recursion should have already
+            // swallowed — guard anyway so a malformed input can't
+            // wedge the loop.
+            if cur.indent != base_indent {
+                break;
+            }
+            if cur.ordered != base_ordered {
+                break;
+            }
+            let slice = &self.src[cur.content_start..cur.content_end];
+            let inlines = self.parse_inlines(slice, cur.content_start);
+            let item_span = self.span(cur.line_start, cur.content_end);
+            let mut item = ListItem {
+                inlines,
+                children: Vec::new(),
+                span: item_span,
+            };
+            last_end = last_end.max(cur.content_end);
+            i += 1;
+            while i < raw.len() && raw[i].indent > base_indent {
+                let (nested, new_i) = self.build_list_at(raw, i);
+                if let Item::List { span, .. } = &nested {
+                    last_end = last_end.max(span.end);
+                }
+                item.children.push(nested);
+                i = new_i;
+            }
+            items.push(item);
+        }
+        let span = self.span(raw[start].line_start, last_end);
+        (
+            Item::List {
+                ordered: base_ordered,
+                items,
+                span,
+            },
+            i,
+        )
     }
 
     /// Returns `Some(level)` if the current line is a well-formed
@@ -1164,6 +1309,80 @@ impl<'a> Parser<'a> {
             suggestions: Vec::new(),
         }
     }
+}
+
+/// One marker line captured during list collection. Not user-facing —
+/// the public AST uses [`ListItem`] after nesting is resolved.
+#[derive(Debug, Clone, Copy)]
+struct RawListLine {
+    /// Byte count of ASCII spaces before the marker.
+    indent: usize,
+    /// `true` for `\d+\. `, `false` for `- `.
+    ordered: bool,
+    /// Byte offset (into `Parser::src`) of the first content byte
+    /// after the marker and its trailing whitespace.
+    content_start: usize,
+    /// Byte offset of the line's content end (excluding any `\r\n` or
+    /// `\n` terminator).
+    content_end: usize,
+    /// Byte offset of the start of the line (the first leading-space
+    /// byte). Used for the item's `SourceSpan`.
+    line_start: usize,
+}
+
+/// If the line that starts at `pos` opens with a list marker, return
+/// `Some((indent, ordered, content_start))`. `indent` counts the
+/// leading ASCII spaces before the marker; `ordered` is `true` for
+/// `\d+\. ` and `false` for `- `; `content_start` is the byte offset
+/// of the first byte after the marker plus its trailing whitespace
+/// run. Tabs are not recognised as either indent or post-marker
+/// whitespace in MVP 0.
+fn list_marker_at(bytes: &[u8], pos: usize) -> Option<(usize, bool, usize)> {
+    let mut i = pos;
+    let mut indent = 0_usize;
+    while i < bytes.len() && bytes[i] == b' ' {
+        indent += 1;
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] == b'\n' || bytes[i] == b'\r' {
+        return None;
+    }
+    if bytes[i] == b'-' {
+        let after = i + 1;
+        if after >= bytes.len() {
+            return None;
+        }
+        if bytes[after] != b' ' && bytes[after] != b'\t' {
+            return None;
+        }
+        let mut j = after;
+        while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+            j += 1;
+        }
+        return Some((indent, false, j));
+    }
+    if bytes[i].is_ascii_digit() {
+        let mut j = i;
+        while j < bytes.len() && bytes[j].is_ascii_digit() {
+            j += 1;
+        }
+        if j >= bytes.len() || bytes[j] != b'.' {
+            return None;
+        }
+        let after = j + 1;
+        if after >= bytes.len() {
+            return None;
+        }
+        if bytes[after] != b' ' && bytes[after] != b'\t' {
+            return None;
+        }
+        let mut k = after;
+        while k < bytes.len() && (bytes[k] == b' ' || bytes[k] == b'\t') {
+            k += 1;
+        }
+        return Some((indent, true, k));
+    }
+    None
 }
 
 /// Skip ASCII whitespace (space, tab, CR, LF) inside a `#set` body.
@@ -1812,5 +2031,169 @@ mod tests {
         let (kind, _, _) = r.tree.items[1].as_set().unwrap();
         assert_eq!(kind, "image");
         assert!(r.tree.items[2].as_paragraph().is_some());
+    }
+
+    #[test]
+    fn unordered_list_simple() {
+        let r = parse_str("- a\n- b\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 1);
+        let (ordered, items, _) = r.tree.items[0].as_list().unwrap();
+        assert!(!ordered);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].inlines[0].text, "a");
+        assert_eq!(items[1].inlines[0].text, "b");
+        assert!(items[0].children.is_empty());
+        assert!(items[1].children.is_empty());
+    }
+
+    #[test]
+    fn ordered_list_simple() {
+        let r = parse_str("1. first\n2. second\n3. third\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 1);
+        let (ordered, items, _) = r.tree.items[0].as_list().unwrap();
+        assert!(ordered);
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].inlines[0].text, "first");
+        assert_eq!(items[1].inlines[0].text, "second");
+        assert_eq!(items[2].inlines[0].text, "third");
+    }
+
+    #[test]
+    fn list_items_carry_inline_emphasis() {
+        let r = parse_str("- plain\n- *italic* text\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        let kinds: Vec<InlineKind> = items[1].inlines.iter().map(|i| i.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![InlineKind::Emphasis, InlineKind::Text],
+            "got {:?}",
+            items[1].inlines
+        );
+    }
+
+    #[test]
+    fn nested_list_two_deep() {
+        let src = "- outer 1\n  - inner a\n  - inner b\n- outer 2\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 1);
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].inlines[0].text, "outer 1");
+        assert_eq!(items[1].inlines[0].text, "outer 2");
+        assert_eq!(items[0].children.len(), 1);
+        assert!(items[1].children.is_empty());
+        let (nested_ordered, nested_items, _) = items[0].children[0].as_list().unwrap();
+        assert!(!nested_ordered);
+        assert_eq!(nested_items.len(), 2);
+        assert_eq!(nested_items[0].inlines[0].text, "inner a");
+        assert_eq!(nested_items[1].inlines[0].text, "inner b");
+    }
+
+    #[test]
+    fn mixed_prose_and_list() {
+        let src = "Intro paragraph.\n\n- one\n- two\n\nClosing paragraph.\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 3);
+        assert!(r.tree.items[0].as_paragraph().is_some());
+        let (_, list_items, _) = r.tree.items[1].as_list().unwrap();
+        assert_eq!(list_items.len(), 2);
+        assert!(r.tree.items[2].as_paragraph().is_some());
+    }
+
+    #[test]
+    fn list_marker_breaks_running_paragraph() {
+        // No blank line between paragraph and list — the marker still
+        // opens a fresh block.
+        let r = parse_str("paragraph line\n- item\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 2);
+        assert!(r.tree.items[0].as_paragraph().is_some());
+        let (_, items, _) = r.tree.items[1].as_list().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].inlines[0].text, "item");
+    }
+
+    #[test]
+    fn ordered_renumbers_from_one_regardless_of_source_digits() {
+        // The parser preserves the literal digits the user typed in
+        // each item's text, but ordered_renumbering is the lowerer's /
+        // layout's job. At parse time, the only thing we report is
+        // that the items are ordered; the numbering source is the
+        // item index, not the literal `5.` typed in source.
+        let r = parse_str("5. five\n7. seven\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (ordered, items, _) = r.tree.items[0].as_list().unwrap();
+        assert!(ordered);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].inlines[0].text, "five");
+        assert_eq!(items[1].inlines[0].text, "seven");
+    }
+
+    #[test]
+    fn ordered_to_unordered_at_same_indent_splits_lists() {
+        let r = parse_str("1. one\n2. two\n- three\n- four\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 2);
+        let (a_ordered, a_items, _) = r.tree.items[0].as_list().unwrap();
+        assert!(a_ordered);
+        assert_eq!(a_items.len(), 2);
+        let (b_ordered, b_items, _) = r.tree.items[1].as_list().unwrap();
+        assert!(!b_ordered);
+        assert_eq!(b_items.len(), 2);
+    }
+
+    #[test]
+    fn dash_without_space_is_paragraph() {
+        // A bare `-foo` line is a paragraph, not a list — the marker
+        // requires trailing whitespace.
+        let r = parse_str("-foo\n");
+        assert!(!r.has_errors());
+        assert!(r.tree.items[0].as_paragraph().is_some());
+    }
+
+    #[test]
+    fn number_dot_without_space_is_paragraph() {
+        // `1.foo` without trailing whitespace is not an ordered list
+        // marker. (Even `1.` alone with no content is not — keeps the
+        // parser conservative around inline numerals like `1.5`.)
+        let r = parse_str("1.foo\n");
+        assert!(!r.has_errors());
+        assert!(r.tree.items[0].as_paragraph().is_some());
+    }
+
+    #[test]
+    fn list_terminated_by_blank_line() {
+        let src = "- a\n- b\n\n- c\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        // Two separate lists, split by the blank line.
+        assert_eq!(r.tree.items.len(), 2);
+        let (_, a, _) = r.tree.items[0].as_list().unwrap();
+        let (_, c, _) = r.tree.items[1].as_list().unwrap();
+        assert_eq!(a.len(), 2);
+        assert_eq!(c.len(), 1);
+    }
+
+    #[test]
+    fn list_item_span_covers_its_line() {
+        let src = "- hello\n";
+        let r = parse_str(src);
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        let span = &items[0].span;
+        assert_eq!(&src[span.start..span.end], "- hello");
+    }
+
+    #[test]
+    fn nested_list_span_includes_children() {
+        let src = "- a\n  - b\n";
+        let r = parse_str(src);
+        let (_, _, span) = r.tree.items[0].as_list().unwrap();
+        // Outer list's span should reach to the end of the nested item.
+        assert!(span.end > src.find('b').unwrap());
     }
 }

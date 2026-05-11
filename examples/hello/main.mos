@@ -43,6 +43,20 @@ Cyrillic and Greek emphasis. Documents that need the Adobe Core
 golden PDFs and goes out through the existing WinAnsi +
 /Differences encoder.
 
+Lists work in two flavours. Unordered:
+
+- bullets render as a hanging marker in the left gutter,
+- *italic* and **bold** flow through unchanged inside an item,
+- nested lists shift one indent step further right:
+  - inner items still keep the hanging-indent contract,
+  - mix and match emphasis here too if you like.
+
+Ordered lists renumber from 1, regardless of the digits typed in source:
+
+5. first step,
+9. second step,
+27. and a long third step that runs well past the right margin so the line breaker has to wrap it back onto a second line at the same indent as the first — proving the hanging indent survives across wraps.
+
 #figure(
   image: "demo.png",
   caption: "A tiny bundled PNG, decoded and emitted as a flate-compressed DeviceRGB image XObject.",
