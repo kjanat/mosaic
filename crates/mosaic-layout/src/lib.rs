@@ -106,15 +106,12 @@ pub struct ImageHandle {
     /// Decoded pixel height.
     pub pixel_height: u32,
     /// Flat RGB8 pixel buffer (`3 * pixel_width * pixel_height` bytes).
-    /// `Arc<Vec<u8>>` rather than `Arc<[u8]>` because the buffer travels
-    /// across crate boundaries through `AttrValue::Bytes(Vec<u8>)` and
-    /// the eval crate already owns a `Vec`; rewrapping into a boxed
-    /// slice would force an allocation+copy per image.
-    #[allow(
-        clippy::rc_buffer,
-        reason = "shared from a Vec<u8> by-value handoff; avoids extra alloc"
-    )]
-    pub rgb8: Arc<Vec<u8>>,
+    /// Shared via `Arc<[u8]>` so cloning a handle (e.g. when the same
+    /// image is referenced from multiple `#image`/`#figure` directives,
+    /// or when a future caching layer hands the document back) is cheap.
+    /// The eval crate hands ownership over as an `Arc<[u8]>` already
+    /// (see `AttrValue::Bytes`), so the slice never gets copied here.
+    pub rgb8: Arc<[u8]>,
 }
 
 /// One image placement on a page. The PDF backend emits this as a
@@ -578,15 +575,11 @@ impl LayoutState {
             });
             return;
         };
-        // Reserve vertical space; page-break if the image wouldn't fit
-        // in the remaining gap. Images that exceed the full vertical
-        // gap render on their own page (clipped at the bottom margin
-        // is acceptable for MVP; smarter scaling lands with §10 floats).
-        let available_y = self.page.height_pt - self.page.margin_pt;
-        if self.cursor_y + height_pt > available_y && self.page_has_content {
-            self.start_new_page();
-        }
-        // Centre horizontally within the column.
+        // Clamp width to column first so the page-break check below
+        // tests the *rendered* height, not the intrinsic one. Otherwise
+        // a 1000×1000 pixel image (1000pt natural at 72 DPI) would
+        // trigger a page break thinking it needs 1000pt, even though
+        // it ultimately renders at ~459pt × ~459pt after clamping.
         let column_w = self.column_width_pt();
         let render_w = width_pt.min(column_w);
         let aspect = if width_pt > 0.0 {
@@ -599,6 +592,15 @@ impl LayoutState {
         } else {
             height_pt
         };
+        // Reserve vertical space; page-break if the image wouldn't fit
+        // in the remaining gap. Images that exceed the full vertical
+        // gap render on their own page (clipped at the bottom margin
+        // is acceptable for MVP; smarter scaling lands with §10 floats).
+        let available_y = self.page.height_pt - self.page.margin_pt;
+        if self.cursor_y + render_h > available_y && self.page_has_content {
+            self.start_new_page();
+        }
+        // Centre horizontally within the column.
         let x = self.page.margin_pt + (column_w - render_w) * 0.5;
         self.current_page.images.push(ImagePlacement {
             handle,
@@ -677,8 +679,10 @@ impl LayoutState {
         }
         let pw = read_int_attr(image, "pixel_width")?;
         let ph = read_int_attr(image, "pixel_height")?;
-        let pixels = match image.attributes.get("pixels") {
-            Some(AttrValue::Bytes(b)) => b.clone(),
+        let pixels: Arc<[u8]> = match image.attributes.get("pixels") {
+            // `Arc<[u8]>::clone()` only bumps a refcount; the slice
+            // itself stays shared with the source node.
+            Some(AttrValue::Bytes(b)) => Arc::clone(b),
             _ => return None,
         };
         let id = u32::try_from(self.image_handles.len()).unwrap_or(u32::MAX);
@@ -687,7 +691,7 @@ impl LayoutState {
             resolved_path,
             pixel_width: u32::try_from(pw).ok()?,
             pixel_height: u32::try_from(ph).ok()?,
-            rgb8: Arc::new(pixels),
+            rgb8: pixels,
         };
         self.image_handles.push(handle.clone());
         Some(handle)
@@ -1669,7 +1673,7 @@ mod tests {
         declared_width_pt: Option<f64>,
         declared_height_pt: Option<f64>,
     ) -> NodeId {
-        let pixels: Vec<u8> = vec![0; (pixel_w * pixel_h * 3) as usize];
+        let pixels: Arc<[u8]> = Arc::from(vec![0; (pixel_w * pixel_h * 3) as usize]);
         let mut attrs = AttrMap::new();
         attrs.insert("src".to_owned(), AttrValue::Str(path.to_owned()));
         attrs.insert(
@@ -1744,6 +1748,29 @@ mod tests {
     }
 
     #[test]
+    fn oversized_image_after_paragraph_does_not_force_extra_page() {
+        // Regression guard: the page-break check used to fire on the
+        // unclamped intrinsic height. A 1000×1000-pixel image
+        // (1000pt natural at 72 DPI, well over A4's ~706pt vertical
+        // gap) would spuriously land on its own page even though the
+        // column-width clamp scales it down to ~459pt — which fits
+        // alongside a short preceding paragraph. Now the check tests
+        // the *rendered* height, so both blocks share page 1.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_paragraph(&mut doc, "lead paragraph");
+        make_image(&mut doc, "big.png", 1000, 1000, None, None);
+        let result = LayoutEngine::new().layout(&doc);
+        assert_eq!(
+            result.graph.pages.len(),
+            1,
+            "expected a single page, got {}",
+            result.graph.pages.len()
+        );
+        assert_eq!(result.graph.pages[0].images.len(), 1);
+        assert!(!result.graph.pages[0].runs.is_empty());
+    }
+
+    #[test]
     fn image_dedup_emits_one_handle_per_resolved_path() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         make_image(&mut doc, "same.png", 50, 50, None, None);
@@ -1790,7 +1817,10 @@ mod tests {
         );
         img_attrs.insert("pixel_width".to_owned(), AttrValue::Int(80));
         img_attrs.insert("pixel_height".to_owned(), AttrValue::Int(50));
-        img_attrs.insert("pixels".to_owned(), AttrValue::Bytes(vec![0; 80 * 50 * 3]));
+        img_attrs.insert(
+            "pixels".to_owned(),
+            AttrValue::Bytes(Arc::from(vec![0_u8; 80 * 50 * 3])),
+        );
         doc.alloc_child(
             fig,
             Node {

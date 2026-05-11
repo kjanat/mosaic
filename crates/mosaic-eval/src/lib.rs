@@ -11,6 +11,7 @@ mod resolve;
 mod set_schema;
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use mosaic_core::{
     AttrMap, AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeId, NodeKind, Severity,
@@ -552,7 +553,10 @@ fn build_image_attributes(
         AttrValue::Str("DeviceRGB".to_owned()),
     );
     attrs.insert("bits_per_component".to_owned(), AttrValue::Int(8));
-    attrs.insert("pixels".to_owned(), AttrValue::Bytes(decoded.rgb8));
+    attrs.insert(
+        "pixels".to_owned(),
+        AttrValue::Bytes(Arc::from(decoded.rgb8)),
+    );
     Some((attrs, label))
 }
 

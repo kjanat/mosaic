@@ -1638,6 +1638,21 @@ mod tests {
     }
 
     #[test]
+    fn figure_directive_positional_path() {
+        // Pins the `#figure("…")` spelling the directive grammar
+        // advertises — the eval layer treats the first positional arg
+        // the same way `#image(...)` does, so the parser-level shape
+        // must match `#image`'s.
+        let r = parse_str("#figure(\"scan.png\")\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(name, "figure");
+        assert_eq!(args.len(), 1);
+        assert!(args[0].key.is_empty());
+        assert_eq!(args[0].value, SetValue::Str("scan.png".to_owned()));
+    }
+
+    #[test]
     fn directive_prefix_without_token_boundary_stays_paragraph() {
         // `#imagery` and `#figures` are not directive keywords. They
         // must not be routed to the directive path.

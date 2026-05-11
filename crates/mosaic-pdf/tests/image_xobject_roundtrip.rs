@@ -36,7 +36,7 @@ fn graph_with_image(width: u32, height: u32) -> PageGraph {
         resolved_path: "/tmp/probe.png".to_owned(),
         pixel_width: width,
         pixel_height: height,
-        rgb8: Arc::new(rgb8),
+        rgb8: Arc::from(rgb8),
     };
     PageGraph {
         pages: vec![Page {

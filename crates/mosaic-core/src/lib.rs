@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Stable identifier for a document node.
 ///
@@ -85,7 +86,14 @@ pub enum AttrValue {
     /// image pixels (RGB8) onto an [`NodeKind::Image`] node so the PDF
     /// backend can emit them as an Image `XObject` without re-reading the
     /// source file.
-    Bytes(Vec<u8>),
+    ///
+    /// Stored as `Arc<[u8]>` so a node carrying decoded pixels is cheap
+    /// to clone (e.g. across cache boundaries or when the same image
+    /// would otherwise be duplicated through the document graph). The
+    /// layout engine still dedups by resolved path, so most documents
+    /// hold one buffer per image regardless; the `Arc` is insurance
+    /// against accidental copies on the eval → layout boundary.
+    Bytes(Arc<[u8]>),
 }
 
 /// A byte-range location in a source file (manifest §6 stage 1).

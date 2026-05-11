@@ -760,7 +760,7 @@ mod tests {
             resolved_path: "/tmp/checker.png".to_owned(),
             pixel_width: 4,
             pixel_height: 2,
-            rgb8: Arc::new(rgb8),
+            rgb8: Arc::from(rgb8),
         };
         PageGraph {
             pages: vec![Page {
@@ -830,7 +830,7 @@ mod tests {
             resolved_path: "/tmp/shared.png".to_owned(),
             pixel_width: 1,
             pixel_height: 1,
-            rgb8: Arc::new(vec![10, 20, 30]),
+            rgb8: Arc::from(vec![10_u8, 20, 30]),
         };
         let graph = PageGraph {
             pages: vec![Page {

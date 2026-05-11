@@ -41,17 +41,22 @@ pub(crate) fn resource_name(handle: &ImageHandle) -> String {
 /// preserved because `flate2`'s default settings are deterministic.
 pub(crate) fn flate_compress(bytes: &[u8]) -> Vec<u8> {
     let mut encoder = ZlibEncoder::new(Vec::with_capacity(bytes.len() / 2), Compression::default());
-    // `write_all` on a `Vec<u8>` sink can only fail under OOM, which
-    // panics by convention; surface the error instead of `.unwrap()`
-    // to keep the function panic-free for clippy::unwrap_used.
+    // `write_all` and `finish` on a `Vec<u8>` sink cannot fail except
+    // under OOM (which aborts the process anyway). Both branches below
+    // are unreachable in practice; the `debug_assert!`s fire in tests
+    // if that invariant is ever violated. Returning uncompressed bytes
+    // is *not* a correctness path — `emit_image_xobject` unconditionally
+    // sets `/Filter /FlateDecode`, so an uncompressed fallback would
+    // produce a PDF the reader chokes on. It exists purely as a
+    // last-resort escape from a release-mode panic.
     if let Err(err) = encoder.write_all(bytes) {
-        // The Vec sink does not fail under normal circumstances —
-        // if it ever does, fall back to uncompressed bytes so we
-        // still produce a valid PDF rather than panicking.
         debug_assert!(false, "flate sink failed: {err}");
         return bytes.to_vec();
     }
-    encoder.finish().unwrap_or_else(|_| bytes.to_vec())
+    encoder.finish().unwrap_or_else(|err| {
+        debug_assert!(false, "flate finish failed: {err}");
+        bytes.to_vec()
+    })
 }
 
 /// Emit one Image `XObject` (`/Subtype /Image`) for `handle` at `id`.
@@ -108,7 +113,7 @@ mod tests {
             resolved_path: "/x.png".to_owned(),
             pixel_width: 1,
             pixel_height: 1,
-            rgb8: std::sync::Arc::new(vec![0; 3]),
+            rgb8: std::sync::Arc::from(vec![0_u8; 3]),
         };
         assert_eq!(resource_name(&h), "Im7");
     }
