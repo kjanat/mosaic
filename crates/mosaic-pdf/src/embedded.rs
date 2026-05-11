@@ -19,7 +19,7 @@
 //! font file. `subsetter::GlyphRemapper` provides the original-GID →
 //! subset-GID mapping.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use mosaic_core::{CoreError, Diagnostic, DiagnosticCode, Result, Severity};
 use mosaic_fonts::{EmbeddedFontId, ShapedGlyph};
@@ -47,12 +47,19 @@ pub(crate) struct EmbeddedFontPlan {
     pub id: EmbeddedFontId,
     pub subset_bytes: Vec<u8>,
     pub remapper: GlyphRemapper,
+    /// Original GIDs used in content streams, including GID 0
+    /// (`.notdef`) when unsupported codepoints were shaped. This is
+    /// wider than `gid_to_text`: `.notdef` needs a PDF width but no
+    /// `/ToUnicode` mapping.
+    pub used_gids: Vec<u16>,
     /// Original GID → source text for that glyph's cluster. For
     /// ligatures (1 glyph, N codepoints) the value is the multi-char
     /// cluster string. For 1:1 mappings (typical LTR) it's a
     /// single-char string. For one-codepoint-many-glyphs
     /// decompositions (rare), the first glyph carries the codepoint
     /// and later glyphs in the same cluster carry empty strings.
+    /// Co-populated with `used_gids` by `accumulate_glyphs`; keep those
+    /// sources of truth in sync.
     pub gid_to_text: BTreeMap<u16, String>,
 }
 
@@ -80,6 +87,11 @@ pub(crate) fn plan_embedded(runs: &[TextRun]) -> Result<Vec<EmbeddedFontPlan>> {
         let Some((gids, gid_to_text)) = per_face.remove(&id) else {
             continue;
         };
+        // Drop duplicates while preserving first-occurrence order:
+        // GlyphRemapper assigns subset GIDs by first sighting, so this
+        // dedup keeps the remapper assignment (and PDF bytes) stable.
+        let mut seen: HashSet<u16> = HashSet::with_capacity(gids.len());
+        let gids: Vec<u16> = gids.into_iter().filter(|g| seen.insert(*g)).collect();
         let font = id.data();
         let subset_bytes = mosaic_fonts::subset(font, &gids).map_err(|err| {
             CoreError::Diagnostic(Box::new(Diagnostic {
@@ -99,6 +111,7 @@ pub(crate) fn plan_embedded(runs: &[TextRun]) -> Result<Vec<EmbeddedFontPlan>> {
             id,
             subset_bytes,
             remapper,
+            used_gids: gids,
             gid_to_text,
         });
     }
@@ -190,8 +203,8 @@ pub(crate) fn emit_embedded(pdf: &mut Pdf, plan: &EmbeddedFontPlan, refs: Embedd
         // subset GIDs.
         let upem = f32::from(font.units_per_em);
         let mut entries: Vec<(u16, f32)> = plan
-            .gid_to_text
-            .keys()
+            .used_gids
+            .iter()
             .filter_map(|&orig_gid| {
                 let subset_gid = plan.remapper.get(orig_gid)?;
                 let advance_units = font.advance_units(orig_gid);
@@ -200,6 +213,7 @@ pub(crate) fn emit_embedded(pdf: &mut Pdf, plan: &EmbeddedFontPlan, refs: Embedd
             })
             .collect();
         entries.sort_by_key(|e| e.0);
+        entries.dedup_by_key(|e| e.0);
         let mut i = 0;
         while i < entries.len() {
             let start = entries[i].0;

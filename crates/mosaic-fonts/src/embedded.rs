@@ -3,29 +3,50 @@
 //! [`EmbeddedFont`] holds a bundled TTF's bytes plus a pre-parsed
 //! `rustybuzz::Face` and the FontDescriptor-relevant metrics the PDF
 //! emit path needs. [`shape`] runs `rustybuzz` over a UTF-8 string and
-//! returns a [`ShapedGlyph`] stream. [`subset`] reduces a face to just
-//! the glyph IDs used in one document and returns the trimmed bytes
-//! suitable for a `/FontFile2` stream.
+//! returns a [`ShapedGlyph`] stream — but with GPOS advances/offsets
+//! truncated to match the PDF backend's simple CID-string emission;
+//! see [`ShapedGlyph`] and issue #20 for the consequences (combining
+//! marks, kerning pairs). [`subset`] reduces a face to just the glyph
+//! IDs used in one document and returns the trimmed bytes suitable for
+//! a `/FontFile2` stream.
 
 use rustybuzz::{Face, UnicodeBuffer};
 
 /// One glyph in a shaped run. Cluster values are byte offsets into the
-/// source UTF-8 string. Offsets are in font units (1/`units_per_em` of
-/// the em square) and are zero for non-positioning shaping (most LTR
-/// Latin) but non-zero for marks (Cyrillic accent stacks, Vietnamese
-/// tone marks).
+/// source UTF-8 string.
+///
+/// # The type name is currently a half-lie — see issue #20.
+///
+/// `shape()` runs `rustybuzz` for glyph *selection* (ligatures,
+/// substitutions, script-specific shaping) but throws away GPOS
+/// *positioning*: `advance_units` is reset to the `hmtx` nominal
+/// advance (no kerning) and `x_offset_units` / `y_offset_units` are
+/// forced to zero. The PDF backend emits simple CID strings with no
+/// per-glyph positioning, so layout has to use the same impoverished
+/// view of a glyph or it would measure widths the renderer can't honor.
+///
+/// Consequence: combining marks (Vietnamese tone stacks, Hebrew nikud,
+/// Arabic marks, IPA diacritics, NFD-decomposed Romanian `S\u{0326}`)
+/// render at the base glyph's origin instead of their correct offset
+/// position. Issue #19 (NFC normalization) hides the NFD case for
+/// scripts that have precomposed forms; issue #20 is the real fix
+/// (positioned `TJ` output + `Tm`/`Td` per glyph) and is the gate that
+/// lets this struct carry GPOS data again.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ShapedGlyph {
     /// Glyph ID into the source font. Becomes the CID in the emitted
     /// PDF (we use `/CIDToGIDMap /Identity`).
     pub gid: u16,
-    /// Horizontal advance, in font units.
+    /// Horizontal advance, in font units. **Currently `hmtx`-nominal,
+    /// not GPOS-kerned.** See issue #20.
     pub advance_units: i32,
     /// Horizontal offset to apply before drawing this glyph, in font
-    /// units. Does not affect the line advance. Non-zero for marks.
+    /// units. **Currently always zero.** GPOS x-offset is dropped at
+    /// shape time; see issue #20.
     pub x_offset_units: i32,
     /// Vertical offset to apply before drawing this glyph, in font
-    /// units. Does not affect the line advance.
+    /// units. **Currently always zero.** GPOS y-offset is dropped at
+    /// shape time; see issue #20.
     pub y_offset_units: i32,
     /// Byte offset of this glyph's grapheme cluster in the source
     /// string. Monotonically non-decreasing across a LTR run.
@@ -203,8 +224,12 @@ impl EmbeddedFont {
 }
 
 /// Shape `text` against `font` using `rustybuzz`. Returns the glyph
-/// stream in visual order (LTR for this slice). An empty `text`
-/// returns an empty `Vec` without invoking the shaper.
+/// stream in visual order (LTR for this slice). Glyph IDs come from
+/// `rustybuzz` so substitutions (for example ligatures) still apply, but
+/// advances come from the font's `hmtx` table and offsets are zeroed so
+/// layout stays consistent with the PDF backend's simple CID-string
+/// emission. An empty `text` returns an empty `Vec` without invoking the
+/// shaper.
 #[must_use]
 pub fn shape(font: &EmbeddedFont, text: &str) -> Vec<ShapedGlyph> {
     if text.is_empty() {
@@ -223,9 +248,35 @@ pub fn shape(font: &EmbeddedFont, text: &str) -> Vec<ShapedGlyph> {
     buffer.set_direction(rustybuzz::Direction::LeftToRight);
     let glyph_buffer = rustybuzz::shape(&font.face, &[], buffer);
     let infos = glyph_buffer.glyph_infos();
-    let positions = glyph_buffer.glyph_positions();
+    // FIXME(#20): GPOS truncation.
+    //
+    // We deliberately drop `glyph_buffer.glyph_positions()` and
+    // overwrite `advance_units` with the `hmtx` nominal advance.
+    // Reason: `mosaic-pdf::encode_glyph_run` emits a single `Tj`
+    // hex-CID string with no per-glyph displacement, so the PDF
+    // reader paints each glyph at its `hmtx` advance regardless of
+    // what we measured. If layout used GPOS advances/offsets, the
+    // measured line width would diverge from the rendered line
+    // width — `56ae236` chose alignment over GPOS fidelity.
+    //
+    // This is a *consistent lie*: layout and renderer now agree
+    // they're both wrong for combining marks and kerning pairs.
+    // Issue #19 (NFC normalization) hides the NFD-decomposed case
+    // for scripts with precomposed forms (Polish, Romanian, …).
+    // Issue #20 is the real fix: switch encode_glyph_run to `TJ`
+    // arrays with displacement values + `Tm`/`Td` between groups
+    // with non-zero `x_offset`/`y_offset`. When #20 lands, this
+    // function should:
+    //
+    //   1. Restore `advance_units: pos.x_advance`,
+    //      `x_offset_units: pos.x_offset`,
+    //      `y_offset_units: pos.y_offset`.
+    //   2. Remove the "currently zero / hmtx-nominal" caveats from
+    //      `ShapedGlyph`'s field docs.
+    //   3. Add (or unskip) a Vietnamese-tone-stack test asserting
+    //      non-zero offsets survive shape -> emit -> read-back.
     let mut out = Vec::with_capacity(infos.len());
-    for (info, pos) in infos.iter().zip(positions.iter()) {
+    for info in infos {
         // rustybuzz documents `glyph_id` as `<= u16::MAX`; the cast is
         // truncation-safe per that contract. Guard with a `try_from`
         // anyway so a future rustybuzz drift surfaces as gid 0
@@ -233,9 +284,9 @@ pub fn shape(font: &EmbeddedFont, text: &str) -> Vec<ShapedGlyph> {
         let gid = u16::try_from(info.glyph_id).unwrap_or(0);
         out.push(ShapedGlyph {
             gid,
-            advance_units: pos.x_advance,
-            x_offset_units: pos.x_offset,
-            y_offset_units: pos.y_offset,
+            advance_units: i32::from(font.advance_units(gid)),
+            x_offset_units: 0,
+            y_offset_units: 0,
             cluster: info.cluster,
         });
     }

@@ -8,6 +8,12 @@
 
 use mosaic_fonts::EmbeddedFontId;
 
+/// The fallback glyphs promised by the `hello` example.
+const EXAMPLE_GLYPHS: &[char] = &['≤', '≥', '≠', '√', '∂', '∑', '−'];
+
+/// Extra math glyphs the bundled fallback should keep covering.
+const ADDITIONAL_MATH_GLYPHS: &[char] = &['Δ', '∆', '◊', '⁄'];
+
 #[test]
 fn every_bundled_cut_parses_and_has_glyph_coverage() {
     for id in EmbeddedFontId::ALL {
@@ -46,4 +52,47 @@ fn cyrillic_and_greek_covered_by_every_cut() {
             );
         }
     }
+}
+
+#[test]
+fn math_cut_covers_documented_operators() {
+    // The Math cut is wired as Noto Sans's lone fallback face. Every
+    // glyph the workaround example used to pin Helvetica for must
+    // resolve here, otherwise the fallback chain returns `.notdef` and
+    // the user sees boxes instead of operators.
+    let math = EmbeddedFontId::Math.data();
+    for &ch in EXAMPLE_GLYPHS {
+        assert!(
+            math.glyph_index(ch).is_some(),
+            "Math cut missing U+{:04X} ({ch:?}) — promised by the hello example",
+            u32::from(ch),
+        );
+    }
+    for &ch in ADDITIONAL_MATH_GLYPHS {
+        assert!(
+            math.glyph_index(ch).is_some(),
+            "Math cut missing U+{:04X} ({ch:?}) — expected fallback coverage",
+            u32::from(ch),
+        );
+    }
+}
+
+#[test]
+fn primary_noto_sans_lacks_additional_math_operators() {
+    // If a future re-vendor adds math operators directly to Noto Sans
+    // Regular, the per-glyph fallback machinery becomes dead code for
+    // these characters — shape_with_fallback would never see `.notdef`
+    // clusters to retry. That's a footgun (CJK + emoji land in the
+    // same code path), so we pin the contract: at least one broader
+    // math operator must be absent from the primary face.
+    let regular = EmbeddedFontId::Regular.data();
+    let any_missing = ADDITIONAL_MATH_GLYPHS
+        .iter()
+        .any(|&ch| regular.glyph_index(ch).is_none());
+    assert!(
+        any_missing,
+        "Noto Sans Regular now covers every additional math glyph — \
+         the fallback path is no longer exercised by this pin; \
+         pick a new pinning glyph or remove this assertion.",
+    );
 }

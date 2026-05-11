@@ -16,48 +16,77 @@
   leading: 1.35,
 )
 
-= Hello, Mosaic
+= Dear LaTeX,
 
-This document exercises the bundled Noto Sans family: every
-glyph outline ships in the PDF as a subset of a real TrueType
-font, addressed through a Type 0 CID-keyed font with a
-/ToUnicode CMap. Copy/paste round-trips back to the source
-UTF-8 across every script the font covers.
+It has been **eleven years**. Eleven years of `\begin{document}`,
+of mysterious vertical-mode errors, of citations rendered as
+`[?]` because BibTeX had Opinions about the .bib file I had not
+yet finished saving. Eleven years of you greeting every PDF I
+make with the same Computer Modern serif that everyone,
+everywhere, immediately recognises as *a sad student wrote
+this*.
 
-Latin coverage is wide: café culture, §1 legal citations, German
-Straße addresses, ¶ pilcrows, © copyright marks, curly "smart"
-quotes, Polish Łódź, Czech Příliš žluťoučký kůň, Hungarian
-árvíztűrő, Romanian mâine. The fi/fl ligatures (real shaping,
-not a font hack) come through too. Math operators are not in
-Noto Sans Regular's coverage; pin Helvetica via the Base14
-`/Differences` path for those — see `examples/math` for the
-worked example.
+I have moved on. The new arrangement embeds **real** TrueType
+outlines — Noto Sans, in this case — through a Type 0 CID font
+with a /ToUnicode CMap, which is a sentence I should not have to
+know, but here we are. Copy-paste round-trips. Search works. The
+Polish co-author gets **Łódź** instead of *L*, a space, and an
+apostrophe. The Czech reviewer gets **Příliš žluťoučký kůň**
+without three preamble lines of `\usepackage{}` ritual. The
+Russian correspondents get **Привет, Мозаика**. The Greek
+desk gets **Καλημέρα, κόσμε**. None of them get an email from
+me asking which encoding their text editor was using when they
+sent the draft.
 
-Past Latin, the bundled cuts cover Cyrillic — Привет, Мозаика;
-многоязычный набор — and Greek — Καλημέρα, κόσμε. *Italic
-emphasis* and **bold** route through the real Italic and Bold
-cuts of Noto Sans, not faux transforms; the same is true in
-Cyrillic and Greek emphasis. Documents that need the Adobe Core
-14 faces instead can pin them by name (`#set text(font:
-"Helvetica")`) — that path stays available for byte-stable
-golden PDFs and goes out through the existing WinAnsi +
-/Differences encoder.
+The math, fine, you were good at math. I will give you that. But
+I am also done feeling like a fraud for pasting a single ≤ into
+a paragraph and being forced to load amsmath, amssymb, and a
+third package whose name I have forgotten because the universe
+took it from me. Mosaic shapes math operators (≤ ≥ ≠ √ ∂ ∑)
+through automatic per-glyph fallback to the bundled Noto Sans
+Math cut — mid-word, mid-sentence, no `#set text(font: ...)`,
+no `\usepackage{}`, no `$ … $`. The body face does not contain
+them; the fallback face does; the layout engine notices on its
+own and routes the cluster. The result reads like prose because
+it *is* prose: ∂f/∂x ≠ 0 sits in this line the same way "the"
+does.
 
-Lists work in two flavours. Unordered:
+My grievances, in no particular order except the one I wrote
+them in:
 
-- bullets render as a hanging marker in the left gutter,
-- *italic* and **bold** flow through unchanged inside an item,
-- nested lists shift one indent step further right:
-  - inner items still keep the hanging-indent contract,
-  - mix and match emphasis here too if you like.
+5. The error messages. **Especially** the one about `\par`.
+9. The figure handling. One `#figure(image: "...", caption: "...")` block here, and forty minutes of `\begin{figure}[!htbp]` float-placement bargaining there. I have aged out of caring which letters do which.
+27. The fi/fl ligatures, which you handled but never let me actually *see* without diagnostic incantations. Mine ship as one glyph in the PDF the way the typographer intended — copy "figment" or "flicker" out of this document and paste it somewhere; the ligature collapses back into the source codepoints on the way out. It is shaping, not a font hack.
 
-Ordered lists renumber from 1, regardless of the digits typed in source:
+Sub-grievances, indented because that is also a thing now:
 
-5. first step,
-9. second step,
-27. and a long third step that runs well past the right margin so the line breaker has to wrap it back onto a second line at the same indent as the first — proving the hanging indent survives across wraps.
+- The way you treated quotation marks. We have em dashes — like
+  that — without three hyphens, and no, I will not be installing
+  a package for it.
+- The way `verbatim` and `code` could never quite agree about
+  whitespace.
+  - Yes, I know it was the package's fault.
+  - I do not care whose fault it was.
+- The bibliography. I am still angry about the bibliography.
+
+*Italic* still means italic. **Bold** still means bold. They
+route through the real designed cuts of Noto Sans, not a faux-
+slant transformation, and the same is true in Cyrillic
+(*курсив*, **жирный**) and Greek (*πλάγια*, **έντονα**). If
+anyone needs the Adobe Core 14 fonts (you, mostly, when you are
+nostalgic), `#set text(font: "Helvetica")` is still there. It
+will look exactly like the 1985 you remember.
+
+I am attaching a screenshot of what the README promised, so we
+can compare it later with what shipped. You will notice it does
+not say `\documentclass{article}` anywhere.
 
 #figure(
   image: "demo.png",
-  caption: "A tiny bundled PNG, decoded and emitted as a flate-compressed DeviceRGB image XObject.",
+  caption: "Exhibit A. A PNG, appearing here, below the sentence that references it, as God intended and LaTeX refused.",
 )
+
+Yours, with twenty-three open browser tabs of Stack Exchange
+threads from 2007,
+
+Mosaic
