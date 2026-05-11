@@ -16,48 +16,81 @@
   leading: 1.35,
 )
 
-= Math via the Base14 path
+= You probably want the other example
 
-`#set text(font: "Helvetica")` routes through Mosaic's Base14
-encoder, which layers a per-document `/Differences` array on top
-of `WinAnsiEncoding` to reach the AFM glyphs beyond WinAnsi. The
-ten math symbols Adobe ships in every Core 14 Latin AFM are
-available without embedding any font — the outlines come from
-the reader's built-in Helvetica.
+If you have arrived here looking for math support, please read
+the `hello` example first. The bundled Noto Sans family now
+resolves math operators (≤ ≥ ≠ √ ∂ ∑ −) automatically through
+per-glyph fallback to the embedded Noto Sans Math cut, mid-line,
+without `#set text(font: ...)` ceremony. That is the path you
+want for almost every document.
 
-Inequalities: a ≤ b, x ≥ y, p ≠ q.
+This example exists for the *other* case: when you, for some
+defensible reason, want to **avoid** embedding font data and let
+the reader's built-in Helvetica supply the outlines.
 
-Calculus: ∂f/∂x = 0, ∑ a = 1, √n ≥ 0.
+`#set text(font: "Helvetica")` selects that path. The PDF ships
+without `/FontFile2` streams, file size drops by roughly 340 KB,
+and the reader is asked nicely to render ten specific math
+glyphs from its own AGL-named Core 14 metrics.
 
-Geometry: ∆ABC, optional steps marked ◊.
+**Asked nicely** is doing a lot of work in that sentence.
 
-The minus operator (a − b) uses U+2212, distinct from the ASCII
-hyphen-minus (a - b). The fraction slash (1 ⁄ 2) uses U+2044.
+== What you get if you stay on this path
 
-== Coverage
+The Adobe Core 14 AFMs name ten math glyphs, accessible through
+a per-document `/Differences` array layered on top of
+`WinAnsiEncoding`:
 
-This path covers exactly ten math glyphs — `lessequal`,
-`greaterequal`, `notequal`, `partialdiff`, `summation`,
-`radical`, `minus`, `Delta`, `lozenge`, `fraction` — the AGL-
-named glyphs every Core 14 Latin AFM ships. Symbols outside that
-list (infinity, forall, exists, element-of, nabla, product,
-oplus, otimes, sub/superscripts, calligraphic and blackletter
-alphabets) require font embedding and are unreachable through
-the `/Differences` path. The eventual fix is bundling Noto Sans
-Math with per-glyph font fallback so math codepoints route
-through it while body text stays in the primary family.
+1. `lessequal` (≤),
+2. `greaterequal` (≥),
+3. `notequal` (≠),
+4. `partialdiff` (∂),
+5. `summation` (∑),
+6. `radical` (√),
+7. `minus` (− — the real one, U+2212, *not* the ASCII hyphen-minus on your keyboard),
+8. `Delta` (∆ — the math increment, U+2206; the Greek capital letter delta at U+0394 is a different codepoint and is *not* reachable on this path),
+9. `lozenge` (◊),
+10. `fraction` (⁄ — U+2044, *not* the ASCII slash).
 
-== Caveat
+A worked sample, for the snapshot:
 
-Glyph coverage past WinAnsi depends on each PDF reader's chosen
-Helvetica substitute, not just on Mosaic emitting a correct
-`/Differences` declaration. Even within the poppler family,
-different installs (GNOME Papers vs Evince vs zathura) can pick
-different substitute fonts via fontconfig and end up with
-different glyph coverage — `lozenge` (◊) in particular is
-prone to being absent. Adobe Reader has separately been observed
-to mis-render `/Differences`-mapped glyphs by splicing in
-spacing-substitution composition (Romanian comma-below in
-particular). If you target a specific reader and rely on any
-specific glyph from the AGL math subset, verify the rendering on
-that reader before shipping.
+Inequalities: a ≤ b, x ≥ y, p ≠ q. Calculus: ∂f/∂x = 0, ∑a = 1,
+√n ≥ 0. Geometry: ∆ABC, optional steps marked ◊. The minus
+operator (a − b) is U+2212, distinct from the hyphen (a - b);
+the fraction slash (1 ⁄ 2) is U+2044, distinct from `/`.
+
+== What you do not get
+
+Everything else. Off the top, and in no particular order: the
+infinity symbol, the universal and existential quantifiers, the
+element-of relation, nabla, the product operator, the circled
+operators (oplus, otimes, and their siblings), sub- and
+superscripts, the calligraphic and blackletter alphabets every
+paper on algebra leans on, and most Greek letters used as math
+variables.
+
+We have deliberately not pasted those codepoints into this
+paragraph, because the Base14 path substitutes `?` for anything
+outside `WinAnsiEncoding` and the AGL math subset, and a wall
+of `?` is not the demo we are going for here. If you would like
+to see the substitution live, type one in: ∞ becomes ?, ∀
+becomes ?, the Greek letter you wanted becomes ?. There is no
+`/Differences` trick that conjures glyphs out of a font that
+does not contain them. For any math beyond the ten glyphs
+above, switch back to the embedded fallback path.
+
+== The substitution problem
+
+Even within the ten supported glyphs, what the reader actually
+paints depends on which font fontconfig hands the reader as its
+"Helvetica." Different installs of the same reader can end up
+with different substitutes:
+
+- `lozenge` (◊) is the most fragile — many free Helvetica substitutes simply do not contain it, and you get an empty box.
+- Adobe Reader has been observed splicing in spacing-substitution composition for `/Differences`-mapped glyphs, most visibly for the Romanian comma-below characters ț and ș.
+- Within the same Poppler-based reader family (GNOME Papers, Evince, zathura), different installs can pick different substitutes via fontconfig and end up with different glyph coverage.
+
+If you target a specific reader and rely on any of these glyphs,
+render on that reader before you ship. We will not do this for
+you. We barely do it for ourselves.

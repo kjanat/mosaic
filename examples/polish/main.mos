@@ -1,7 +1,7 @@
 #set document(
-  title: "Łódź — extended Latin smoke test",
+  title: "From the desk of Localization",
   author: "Mosaic contributors",
-  language: "pl",
+  language: "en",
 )
 
 #set page(
@@ -9,22 +9,56 @@
   margin: 24mm,
 )
 
-= Łódź — Příliš žluťoučký kůň
+= From the desk of Localization
 
-Polski: Zażółć gęślą jaźń. Łódź leży nad Wisłą, a Kraków
-nie. Pchnąć w tę łódź jeża lub ośm skrzyń fig.
+The QA team asked for a one-page smoke test that proves each of
+our supported locales survives the typesetting pipeline with
+diacritics intact. We declined to write the poetry ourselves.
+The national pangrams already do it better, and they are, for
+tax-residency reasons, the property of no one.
 
-Čeština: Příliš žluťoučký kůň úpěl ďábelské ódy. Vrh syn
-trh.
+**Polski.** *Zażółć gęślą jaźń.* Łódź leży nad Wisłą, a Kraków
+nie. Pchnąć w tę łódź jeża lub ośm skrzyń fig. The second
+sentence is, we are reliably informed, a tongue-twister. We
+have not verified it ourselves and we are not going to.
 
-Magyar: Árvíztűrő tükörfúrógép. Egy hűtlen vejét fülöncsípő,
-dühös mexikói úr.
+**Čeština.** *Příliš žluťoučký kůň úpěl ďábelské ódy.* Vrh
+syn trh. The horse, we gather, was too yellow. The reviewer
+who suggested this pangram did not elaborate.
 
-Română: Bună ziua! Mâine plec la mare cu fătul meu.
+**Magyar.** *Árvíztűrő tükörfúrógép.* Egy hűtlen vejét
+fülöncsípő, dühös mexikói úr. The first phrase translates,
+literally, to "flood-resistant mirror-drilling machine." We
+have decided not to ask. The second phrase introduces an
+angry Mexican gentleman pinching his unfaithful son-in-law's
+ear, which seems, all things considered, like a reasonable
+response.
 
-Matematyka: 2 + 3 ≤ 6, √16 = 4, ∂f/∂x ≠ 0, ∑(1..n).
+**Română.** *Bună ziua! Mâine plec la mare cu fătul meu.* QA
+flagged this one specifically. Romanian's comma-below
+diacritics (ț, ș) have historically rendered as Turkish-style
+cedillas (ţ, ş) when the reader's font substitutes Helvetica
+and ships only the cedilla form. The embedded Noto Sans path
+sidesteps that entirely: the comma-below glyphs come from the
+font we bundled, not from whatever Helvetica clone the reader
+fell back to.
 
-Wszystkie te znaki przechodzą przez osadzony krój Noto Sans
-(podzbiór TrueType); operatory matematyczne (≤ √ ∂ ≠ ∑)
-trafiają tam przez automatyczny fallback per-glif do
-osadzonego kroju Noto Sans Math.
+**Matematyka.** 2 + 3 ≤ 6, √16 = 4, ∂f/∂x ≠ 0, ∑(1..n). The
+math operators are not part of the Noto Sans Regular cut. They
+are not part of the **Italic** or **Bold** cuts either. They
+route — automatically, mid-line, with no `#set text(font:
+...)` ceremony — through the bundled Noto Sans Math cut, which
+the layout engine selects per-cluster whenever the primary
+face returns `.notdef`. Latin → Math → Latin happens inside a
+single visual word without you having to think about it.
+
+If any line above looks wrong to you, copy it out of the PDF
+and paste it into a text editor. The /ToUnicode CMap is wired
+through every embedded face, so you will get back exactly the
+codepoints that went in — diacritics, comma-below, math
+operators, all of it. If your text editor cannot display them
+afterwards, that is a conversation between you and your text
+editor. We are not part of it.
+
+Signed, the Localization Team. Please do not call us. We are
+in a meeting until further notice.
