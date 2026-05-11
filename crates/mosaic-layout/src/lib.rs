@@ -436,7 +436,8 @@ impl LayoutState {
         if self.page_has_content {
             self.cursor_y += space_before;
         }
-        let mut words = self.collect_words(document, section, Font(Base14Font::HelveticaBold), size);
+        let mut words =
+            self.collect_words(document, section, Font(Base14Font::HelveticaBold), size);
         // Resolver-assigned section number is rendered as a leading
         // word so it gets the same font/size as the title and flows
         // through the existing line-break path. The trailing `.` is
