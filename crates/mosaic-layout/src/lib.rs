@@ -9,8 +9,8 @@
 //! (§22.3, §33) is also out of scope here.
 
 pub use mosaic_fonts::{
-    Base14Font, EmbeddedFontId, Font, FontFamily, ShapedGlyph, ascent, descent, glyph_width,
-    shape_text, text_width,
+    Base14Font, EmbeddedFontId, Font, FontFamily, ShapedGlyph, WordSubRun, ascent, descent,
+    glyph_width, shape_with_fallback, text_width,
 };
 
 use std::sync::Arc;
@@ -559,15 +559,16 @@ impl LayoutState {
         // (manifest §4) overrides it once `#set` is interpreted.
         if let Some(number) = read_str_attr(section, "number") {
             let prefix = format!("{number}.");
-            let shaped = shape_text(bold, size, &prefix);
+            let subruns = shape_with_fallback(bold, self.text.family.fallbacks, size, &prefix);
+            let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
             words.insert(
                 0,
                 Word {
                     text: prefix,
                     font: bold,
                     size_pt: size,
-                    width_pt: shaped.advance_pt,
-                    glyphs: shaped.glyphs,
+                    width_pt,
+                    subruns,
                 },
             );
         }
@@ -877,10 +878,23 @@ impl LayoutState {
                 .filter_map(|id| document.get(*id))
                 .filter(|n| n.kind == NodeKind::ListItem)
                 .enumerate()
-                .map(|(idx, _)| shape_text(regular, size, &format!("{}.", idx + 1)).advance_pt)
+                .map(|(idx, _)| {
+                    shape_with_fallback(
+                        regular,
+                        self.text.family.fallbacks,
+                        size,
+                        &format!("{}.", idx + 1),
+                    )
+                    .iter()
+                    .map(|s| s.advance_pt)
+                    .sum()
+                })
                 .fold(0.0_f32, f32::max)
         } else {
-            shape_text(regular, size, "\u{2022}").advance_pt
+            shape_with_fallback(regular, self.text.family.fallbacks, size, "\u{2022}")
+                .iter()
+                .map(|s| s.advance_pt)
+                .sum()
         };
         let marker_gap_pt = text_width(regular, size, " ");
         let gutter = (widest_marker_pt + marker_gap_pt).max(LIST_MARKER_GUTTER_PT);
@@ -904,13 +918,15 @@ impl LayoutState {
             } else {
                 "\u{2022}".to_owned()
             };
-            let shaped = shape_text(regular, size, &marker_text);
+            let subruns =
+                shape_with_fallback(regular, self.text.family.fallbacks, size, &marker_text);
+            let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
             let marker_word = Word {
                 text: marker_text,
                 font: regular,
                 size_pt: size,
-                width_pt: shaped.advance_pt,
-                glyphs: shaped.glyphs,
+                width_pt,
+                subruns,
             };
             // Right-align the marker against the gutter, leaving
             // `marker_gap_pt` of space between marker and text. This
@@ -993,13 +1009,14 @@ impl LayoutState {
                 if piece.is_empty() {
                     continue;
                 }
-                let shaped = shape_text(font, size, piece);
+                let subruns = shape_with_fallback(font, self.text.family.fallbacks, size, piece);
+                let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
                 out.push(Word {
                     text: piece.to_owned(),
                     font,
                     size_pt: size,
-                    width_pt: shaped.advance_pt,
-                    glyphs: shaped.glyphs,
+                    width_pt,
+                    subruns,
                 });
             }
         }
@@ -1091,14 +1108,18 @@ impl LayoutState {
         // emit so subsequent wrapped lines of the same item don't
         // restamp the marker.
         if let Some(marker) = self.pending_marker.take() {
-            self.current_page.runs.push(TextRun {
-                x_pt: marker.x_pt,
-                baseline_from_top_pt: self.cursor_y,
-                size_pt: marker.word.size_pt,
-                font: marker.word.font,
-                text: marker.word.text,
-                glyphs: marker.word.glyphs,
-            });
+            let mut marker_x = marker.x_pt;
+            for sub in marker.word.subruns {
+                self.current_page.runs.push(TextRun {
+                    x_pt: marker_x,
+                    baseline_from_top_pt: self.cursor_y,
+                    size_pt: marker.word.size_pt,
+                    font: sub.font,
+                    text: sub.text,
+                    glyphs: sub.glyphs,
+                });
+                marker_x += sub.advance_pt;
+            }
         }
 
         let mut x = self.current_left_pt;
@@ -1106,15 +1127,21 @@ impl LayoutState {
             if i > 0 {
                 x += text_width(word.font, word.size_pt, " ");
             }
-            self.current_page.runs.push(TextRun {
-                x_pt: x,
-                baseline_from_top_pt: self.cursor_y,
-                size_pt: word.size_pt,
-                font: word.font,
-                text: word.text.clone(),
-                glyphs: word.glyphs.clone(),
-            });
-            x += word.width_pt;
+            // One TextRun per sub-run — same baseline, x advances by
+            // each sub-run's `advance_pt`. PDF emit's per-run `Tf`
+            // switch fires naturally at the font boundary between
+            // sub-runs (Latin → Math → Latin in `a≤b`-style runs).
+            for sub in &word.subruns {
+                self.current_page.runs.push(TextRun {
+                    x_pt: x,
+                    baseline_from_top_pt: self.cursor_y,
+                    size_pt: word.size_pt,
+                    font: sub.font,
+                    text: sub.text.clone(),
+                    glyphs: sub.glyphs.clone(),
+                });
+                x += sub.advance_pt;
+            }
         }
         self.page_has_content = true;
         self.cursor_y += max_size * leading;
@@ -1126,20 +1153,22 @@ impl LayoutState {
     /// Base14 faces stay on the AFM path.
     fn flush_oversize_word(&mut self, word: &Word, leading: f32) {
         let line_width = self.column_width_pt();
+        let fallbacks = self.text.family.fallbacks;
         let mut buf = String::new();
         let mut buf_width = 0.0_f32;
         for ch in word.text.chars() {
             let w = glyph_width(word.font, word.size_pt, ch);
             if buf_width + w > line_width && !buf.is_empty() {
                 let chunk = std::mem::take(&mut buf);
-                let shaped = shape_text(word.font, word.size_pt, &chunk);
+                let subruns = shape_with_fallback(word.font, fallbacks, word.size_pt, &chunk);
+                let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
                 self.flush_line(
                     &[Word {
                         text: chunk,
                         font: word.font,
                         size_pt: word.size_pt,
-                        width_pt: shaped.advance_pt,
-                        glyphs: shaped.glyphs,
+                        width_pt,
+                        subruns,
                     }],
                     leading,
                 );
@@ -1149,14 +1178,15 @@ impl LayoutState {
             buf_width += w;
         }
         if !buf.is_empty() {
-            let shaped = shape_text(word.font, word.size_pt, &buf);
+            let subruns = shape_with_fallback(word.font, fallbacks, word.size_pt, &buf);
+            let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
             self.flush_line(
                 &[Word {
                     text: buf,
                     font: word.font,
                     size_pt: word.size_pt,
-                    width_pt: shaped.advance_pt,
-                    glyphs: shaped.glyphs,
+                    width_pt,
+                    subruns,
                 }],
                 leading,
             );
@@ -1176,16 +1206,27 @@ impl LayoutState {
 #[derive(Clone, Debug)]
 struct Word {
     text: String,
+    /// Primary face — the style-resolved choice from the active
+    /// `FontFamily` (regular/bold/italic/monospace). Used for line
+    /// metrics (ascent/descent), inter-word spacing, and
+    /// character-wise hyphenation width estimates. Per-glyph fallback
+    /// faces (e.g. Noto Sans Math for `≤`) live inside [`Word::subruns`].
     font: Font,
     size_pt: f32,
     /// Pre-computed advance width — populated when the word is
-    /// constructed in `collect_words` so the line-breaker doesn't
-    /// re-measure on every comparison.
+    /// constructed in `collect_words` (sum of `subruns[i].advance_pt`)
+    /// so the line-breaker doesn't re-measure on every comparison.
     width_pt: f32,
-    /// Shaped glyph stream for embedded-font words. Empty for Base14
-    /// words. Flows through unchanged into [`TextRun`] so the PDF
-    /// backend never re-shapes.
-    glyphs: Vec<ShapedGlyph>,
+    /// Per-glyph-fallback sub-runs produced by `shape_with_fallback`.
+    /// One sub-run per contiguous source span that shares a face;
+    /// each carries its own font + text slice + glyph stream with
+    /// cluster offsets rebased to its local text. `flush_line` emits
+    /// one [`TextRun`] per sub-run, advancing the x cursor by
+    /// `subrun.advance_pt` between them. For Base14 primary faces
+    /// the result is always a single sub-run with empty `glyphs`
+    /// (no fallback target — Base14 emit path uses `WinAnsi`-byte
+    /// strings instead).
+    subruns: Vec<WordSubRun>,
 }
 
 fn blank_page(number: u32, style: PageStyle) -> Page {

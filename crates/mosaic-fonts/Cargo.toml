@@ -17,11 +17,13 @@ categories.workspace   = true
 # they ship in the crates.io tarball.
 include                = [
   "Cargo.toml",
+  "build.rs",
   "data/LICENSE-Noto-Sans",
   "data/NotoSans-Bold.ttf",
   "data/NotoSans-BoldItalic.ttf",
   "data/NotoSans-Italic.ttf",
   "data/NotoSans-Regular.ttf",
+  "data/NotoSansMath-Regular.ttf",
   "data/NotoSansMono-Regular.ttf",
   "data/SOURCES.md",
   "src/**/*.rs",

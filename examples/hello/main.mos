@@ -27,11 +27,11 @@ UTF-8 across every script the font covers.
 Latin coverage is wide: café culture, §1 legal citations, German
 Straße addresses, ¶ pilcrows, © copyright marks, curly "smart"
 quotes, Polish Łódź, Czech Příliš žluťoučký kůň, Hungarian
-árvíztűrő, Romanian mâine. The fi/fl ligatures (real shaping,
-not a font hack) come through too. Math operators are not in
-Noto Sans Regular's coverage; pin Helvetica via the Base14
-`/Differences` path for those — see `examples/math` for the
-worked example.
+árvíztűrő, Romanian mâine. Math operators (≤ ≥ ≠ √ ∂ ∑ −) and
+the fi/fl ligatures (real shaping, not a font hack) come through
+too. The math glyphs aren't in Noto Sans Regular itself — they
+resolve through automatic per-glyph fallback to the bundled Noto
+Sans Math cut, mid-word, with no `#set text(font: ...)` ceremony.
 
 Past Latin, the bundled cuts cover Cyrillic — Привет, Мозаика;
 многоязычный набор — and Greek — Καλημέρα, κόσμε. *Italic

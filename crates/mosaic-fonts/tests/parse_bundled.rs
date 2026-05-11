@@ -8,6 +8,12 @@
 
 use mosaic_fonts::EmbeddedFontId;
 
+/// The AGL math glyphs we promise to render through the Noto Sans Math
+/// fallback. The `hello` example documents this set; this test pins
+/// coverage so a future Noto re-vendor that loses a glyph trips CI
+/// instead of silently rendering `.notdef` boxes.
+const MATH_GLYPHS: &[char] = &['≤', '≥', '≠', '√', '∂', '∑', 'Δ', '◊', '−', '⁄'];
+
 #[test]
 fn every_bundled_cut_parses_and_has_glyph_coverage() {
     for id in EmbeddedFontId::ALL {
@@ -46,4 +52,40 @@ fn cyrillic_and_greek_covered_by_every_cut() {
             );
         }
     }
+}
+
+#[test]
+fn math_cut_covers_documented_operators() {
+    // The Math cut is wired as Noto Sans's lone fallback face. Every
+    // glyph the workaround example used to pin Helvetica for must
+    // resolve here, otherwise the fallback chain returns `.notdef` and
+    // the user sees boxes instead of operators.
+    let math = EmbeddedFontId::Math.data();
+    for &ch in MATH_GLYPHS {
+        assert!(
+            math.glyph_index(ch).is_some(),
+            "Math cut missing U+{:04X} ({ch:?}) — promised by the hello example",
+            u32::from(ch),
+        );
+    }
+}
+
+#[test]
+fn primary_noto_sans_lacks_documented_math_operators() {
+    // If a future re-vendor adds math operators directly to Noto Sans
+    // Regular, the per-glyph fallback machinery becomes dead code for
+    // these characters — shape_with_fallback would never see `.notdef`
+    // clusters to retry. That's a footgun (CJK + emoji land in the
+    // same code path), so we pin the contract: at least one of the
+    // documented operators must be absent from the primary face.
+    let regular = EmbeddedFontId::Regular.data();
+    let any_missing = MATH_GLYPHS
+        .iter()
+        .any(|&ch| regular.glyph_index(ch).is_none());
+    assert!(
+        any_missing,
+        "Noto Sans Regular now covers every documented math glyph — \
+         the fallback path is no longer exercised by the example; \
+         pick a new pinning glyph or remove this assertion.",
+    );
 }
