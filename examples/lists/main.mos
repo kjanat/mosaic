@@ -21,7 +21,7 @@ with the first line's left edge:
 - A long item authored as a single source line — the greedy line breaker wraps it onto a second visual line where the wrapped text hangs flush with the first line's left edge, never sliding back under the marker.
 - *Italic*, **bold**, and `inline code` flow through unchanged inside an item.
 
-Source-line continuation (a second `.mos` line that's *not* a fresh marker line) is out of scope in this slice: such a line opens a new paragraph block at the page margin rather than continuing the current item. Author long items on a single source line and let the layout engine break them.
+Source-line continuation (a second `.mos` line that's *not* a fresh marker line) is out of scope in this slice. Such a line opens a new paragraph block at the page margin rather than continuing the current item. Author long items on a single source line and let the layout engine break them.
 
 == Nesting
 
