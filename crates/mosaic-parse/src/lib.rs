@@ -99,8 +99,10 @@ pub enum SetArg {
         key_span: SourceSpan,
         value_span: SourceSpan,
     },
-    /// A leading positional value (currently only string literals
-    /// are accepted — see [`Parser::parse_set_body`]).
+    /// A leading positional value. The parser currently only accepts
+    /// string literals here (used for `#image("path.png")`); other
+    /// literal kinds in a positional slot would surface as a parse
+    /// error rather than land in this variant.
     Positional {
         value: SetValue,
         value_span: SourceSpan,
