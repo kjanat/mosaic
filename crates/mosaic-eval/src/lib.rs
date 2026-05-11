@@ -217,16 +217,16 @@ fn lower_set_directive(
         return;
     };
     for arg in args {
-        if arg.key.is_empty() {
-            // The parser refuses positional args for `#set` already,
-            // so reaching this arm means a future caller forgot the
-            // `allow_positional=false` flag. Diagnose loudly.
+        // The parser refuses positional args for `#set` already, so
+        // reaching the Positional arm here would mean a future caller
+        // forgot the `allow_positional=false` flag. Diagnose loudly.
+        if matches!(arg, SetArg::Positional { .. }) {
             diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode("E015"),
                     format!("`#set {name}` does not accept positional arguments"),
                 )
-                .with_span(arg.value_span.clone()),
+                .with_span(arg.value_span().clone()),
             );
             continue;
         }
@@ -307,60 +307,61 @@ fn lower_figure_directive(
     let mut caption: Option<(String, SourceSpan)> = None;
     let mut figure_label: Option<String> = None;
     for arg in args {
-        match arg.key.as_str() {
-            "image" => {
-                // Rewrite the key to the synthetic positional slot
-                // [`build_image_attributes`] expects.
-                image_args.push(SetArg {
-                    key: String::new(),
-                    value: arg.value.clone(),
-                    key_span: arg.key_span.clone(),
-                    value_span: arg.value_span.clone(),
-                });
-            }
-            "width" | "height" | "alt" => {
-                image_args.push(arg.clone());
-            }
-            "caption" => match &arg.value {
-                SetValue::Str(s) => {
-                    caption = Some((s.clone(), arg.value_span.clone()));
-                }
-                _ => diagnostics.push(
-                    Diagnostic::error(
-                        DiagnosticCode("E022"),
-                        "`#figure(caption: ...)` expects a string",
-                    )
-                    .with_span(arg.value_span.clone()),
-                ),
-            },
-            "label" => match &arg.value {
-                SetValue::Str(s) => figure_label = Some(s.clone()),
-                _ => diagnostics.push(
-                    Diagnostic::error(
-                        DiagnosticCode("E022"),
-                        "`#figure(label: ...)` expects a string",
-                    )
-                    .with_span(arg.value_span.clone()),
-                ),
-            },
+        match arg {
             // A leading positional string is the same shorthand
             // `#image(...)` accepts — `#figure("scan.png")` is the
             // captioned-image short form, equivalent to
-            // `#figure(image: "scan.png")`. The parser already
-            // recognises this spelling, so the lowerer must too;
-            // otherwise the advertised public syntax dies at lower
-            // time (CodeRabbit caught this regression).
-            "" => image_args.push(arg.clone()),
-            _ => diagnostics.push(
-                Diagnostic::error(
-                    DiagnosticCode("E021"),
-                    format!(
-                        "unknown argument `{}` for `#figure` (valid: image, caption, alt, width, height, label)",
-                        arg.key
+            // `#figure(image: "scan.png")`.
+            SetArg::Positional { .. } => image_args.push(arg.clone()),
+            SetArg::Named {
+                key,
+                value,
+                key_span,
+                value_span,
+            } => match key.as_str() {
+                "image" => {
+                    // Rewrite the named `image:` arg as the positional
+                    // slot `build_image_attributes` expects.
+                    image_args.push(SetArg::Positional {
+                        value: value.clone(),
+                        value_span: value_span.clone(),
+                    });
+                }
+                "width" | "height" | "alt" => {
+                    image_args.push(arg.clone());
+                }
+                "caption" => match value {
+                    SetValue::Str(s) => {
+                        caption = Some((s.clone(), value_span.clone()));
+                    }
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#figure(caption: ...)` expects a string",
+                        )
+                        .with_span(value_span.clone()),
                     ),
-                )
-                .with_span(arg.key_span.clone()),
-            ),
+                },
+                "label" => match value {
+                    SetValue::Str(s) => figure_label = Some(s.clone()),
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#figure(label: ...)` expects a string",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E021"),
+                        format!(
+                            "unknown argument `{key}` for `#figure` (valid: image, caption, alt, width, height, label)"
+                        ),
+                    )
+                    .with_span(key_span.clone()),
+                ),
+            },
         }
     }
 
@@ -461,76 +462,92 @@ fn build_image_attributes(
     let mut declared_height: Option<f64> = None;
     let mut label: Option<String> = None;
     for arg in args {
-        match arg.key.as_str() {
-            // Positional first arg or explicit `src:` key.
-            "" | "src" | "path" => match &arg.value {
-                SetValue::Str(s) => src_path = Some((s.clone(), arg.value_span.clone())),
+        match arg {
+            // Positional first arg — the path literal.
+            SetArg::Positional { value, value_span } => match value {
+                SetValue::Str(s) => src_path = Some((s.clone(), value_span.clone())),
                 _ => diagnostics.push(
                     Diagnostic::error(
                         DiagnosticCode("E022"),
                         "`#image(...)` expects a string path",
                     )
-                    .with_span(arg.value_span.clone()),
+                    .with_span(value_span.clone()),
                 ),
             },
-            "alt" => match &arg.value {
-                SetValue::Str(s) => alt = Some(s.clone()),
-                _ => diagnostics.push(
-                    Diagnostic::error(
-                        DiagnosticCode("E022"),
-                        "`#image(alt: ...)` expects a string",
-                    )
-                    .with_span(arg.value_span.clone()),
-                ),
-            },
-            "width" => match &arg.value {
-                SetValue::Length(v, unit) => {
-                    declared_width = Some(length_to_pt(*v, *unit, em_pt));
-                }
-                SetValue::Float(v) => declared_width = Some(*v),
-                SetValue::Int(v) => declared_width = Some(int_to_f64(*v)),
-                _ => diagnostics.push(
-                    Diagnostic::error(
-                        DiagnosticCode("E022"),
-                        "`#image(width: ...)` expects a length",
-                    )
-                    .with_span(arg.value_span.clone()),
-                ),
-            },
-            "height" => match &arg.value {
-                SetValue::Length(v, unit) => {
-                    declared_height = Some(length_to_pt(*v, *unit, em_pt));
-                }
-                SetValue::Float(v) => declared_height = Some(*v),
-                SetValue::Int(v) => declared_height = Some(int_to_f64(*v)),
-                _ => diagnostics.push(
-                    Diagnostic::error(
-                        DiagnosticCode("E022"),
-                        "`#image(height: ...)` expects a length",
-                    )
-                    .with_span(arg.value_span.clone()),
-                ),
-            },
-            "label" => match &arg.value {
-                SetValue::Str(s) => label = Some(s.clone()),
-                _ => diagnostics.push(
-                    Diagnostic::error(
-                        DiagnosticCode("E022"),
-                        "`#image(label: ...)` expects a string",
-                    )
-                    .with_span(arg.value_span.clone()),
-                ),
-            },
-            _ => diagnostics.push(
-                Diagnostic::error(
-                    DiagnosticCode("E021"),
-                    format!(
-                        "unknown argument `{}` for `#image` (valid: src, alt, width, height, label)",
-                        arg.key
+            SetArg::Named {
+                key,
+                value,
+                key_span,
+                value_span,
+            } => match key.as_str() {
+                "src" | "path" => match value {
+                    SetValue::Str(s) => src_path = Some((s.clone(), value_span.clone())),
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#image(...)` expects a string path",
+                        )
+                        .with_span(value_span.clone()),
                     ),
-                )
-                .with_span(arg.key_span.clone()),
-            ),
+                },
+                "alt" => match value {
+                    SetValue::Str(s) => alt = Some(s.clone()),
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#image(alt: ...)` expects a string",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
+                "width" => match value {
+                    SetValue::Length(v, unit) => {
+                        declared_width = Some(length_to_pt(*v, *unit, em_pt));
+                    }
+                    SetValue::Float(v) => declared_width = Some(*v),
+                    SetValue::Int(v) => declared_width = Some(int_to_f64(*v)),
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#image(width: ...)` expects a length",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
+                "height" => match value {
+                    SetValue::Length(v, unit) => {
+                        declared_height = Some(length_to_pt(*v, *unit, em_pt));
+                    }
+                    SetValue::Float(v) => declared_height = Some(*v),
+                    SetValue::Int(v) => declared_height = Some(int_to_f64(*v)),
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#image(height: ...)` expects a length",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
+                "label" => match value {
+                    SetValue::Str(s) => label = Some(s.clone()),
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode("E022"),
+                            "`#image(label: ...)` expects a string",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
+                _ => diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E021"),
+                        format!(
+                            "unknown argument `{key}` for `#image` (valid: src, alt, width, height, label)"
+                        ),
+                    )
+                    .with_span(key_span.clone()),
+                ),
+            },
         }
     }
     let Some((path, _path_span)) = src_path else {
@@ -601,43 +618,56 @@ fn lower_set_arg(
     current_text_size_pt: &mut f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let Some(slot) = target.slot(&arg.key) else {
+    // `#set` only carries `key: value` args — the caller already
+    // filters positionals via the `matches!(arg, SetArg::Positional)`
+    // gate in `lower_set_directive`. Destructuring here makes the
+    // assumption explicit; a debug-assert flags any future caller
+    // that misses the filter.
+    let SetArg::Named {
+        key,
+        value: raw_value,
+        key_span,
+        value_span,
+    } = arg
+    else {
+        debug_assert!(false, "lower_set_arg received Positional arg");
+        return;
+    };
+    let Some(slot) = target.slot(key) else {
         diagnostics.push(
             Diagnostic::error(
                 DiagnosticCode("E021"),
                 format!(
-                    "unknown argument `{}` for `#set {}` (valid: {})",
-                    arg.key,
+                    "unknown argument `{key}` for `#set {}` (valid: {})",
                     target.name(),
                     target.keys().join(", ")
                 ),
             )
-            .with_span(arg.key_span.clone()),
+            .with_span(key_span.clone()),
         );
         return;
     };
-    let Some(value) = coerce_value(slot, &arg.value, *current_text_size_pt) else {
+    let Some(value) = coerce_value(slot, raw_value, *current_text_size_pt) else {
         diagnostics.push(
             Diagnostic::error(
                 DiagnosticCode("E022"),
                 format!(
-                    "`#set {} ({}: …)` expects {}, got {}",
+                    "`#set {} ({key}: …)` expects {}, got {}",
                     target.name(),
-                    arg.key,
                     slot.expected(),
-                    describe_value(&arg.value),
+                    describe_value(raw_value),
                 ),
             )
-            .with_span(arg.value_span.clone()),
+            .with_span(value_span.clone()),
         );
         return;
     };
-    if let Some(msg) = sanity_floor_warning(target, &arg.key, &value) {
+    if let Some(msg) = sanity_floor_warning(target, key, &value) {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             code: DiagnosticCode("W024"),
             message: msg,
-            span: Some(arg.value_span.clone()),
+            span: Some(value_span.clone()),
             notes: Vec::new(),
             suggestions: Vec::new(),
         });
@@ -645,7 +675,7 @@ fn lower_set_arg(
     // Side effects: track text.size for em resolution; capture
     // document metadata.
     if matches!(target, set_schema::Target::Text)
-        && arg.key == "size"
+        && key == "size"
         && let AttrValue::Length(pt) = &value
     {
         *current_text_size_pt = *pt;
@@ -653,14 +683,14 @@ fn lower_set_arg(
     if matches!(target, set_schema::Target::Document)
         && let AttrValue::Str(s) = &value
     {
-        match arg.key.as_str() {
+        match key.as_str() {
             "title" => metadata.title = Some(s.clone()),
             "author" => metadata.author = Some(s.clone()),
             "language" => metadata.language = Some(s.clone()),
             _ => {}
         }
     }
-    attributes.insert(format!("set.arg.{}", arg.key), value);
+    attributes.insert(format!("set.arg.{key}"), value);
 }
 
 /// Coerce a parser literal to the type required by the target slot.

@@ -79,13 +79,70 @@ pub enum DirectiveKind {
     Figure,
 }
 
-/// One named argument inside a `#set name(key: value, ...)` block.
+/// One argument inside a directive body — either a `key: value`
+/// pair (the only form `#set` accepts) or a positional value (a
+/// leading string literal allowed on `#image(...)` / `#figure(...)`).
+///
+/// This used to be a struct with an empty-string `key` standing in
+/// for "positional," but that sentinel was a brittle public contract:
+/// any consumer that forgot the special-case would silently treat a
+/// positional path as a named arg called `""`. The enum form makes
+/// the two shapes explicit so the compiler can enforce exhaustive
+/// matches.
 #[derive(Debug, Clone)]
-pub struct SetArg {
-    pub key: String,
-    pub value: SetValue,
-    pub key_span: SourceSpan,
-    pub value_span: SourceSpan,
+pub enum SetArg {
+    /// A `key: value` argument. `key_span` covers the identifier
+    /// before the colon; `value_span` covers the literal.
+    Named {
+        key: String,
+        value: SetValue,
+        key_span: SourceSpan,
+        value_span: SourceSpan,
+    },
+    /// A leading positional value (currently only string literals
+    /// are accepted — see [`Parser::parse_set_body`]).
+    Positional {
+        value: SetValue,
+        value_span: SourceSpan,
+    },
+}
+
+impl SetArg {
+    /// Borrow the value carried by this argument, regardless of shape.
+    #[must_use]
+    pub fn value(&self) -> &SetValue {
+        match self {
+            Self::Named { value, .. } | Self::Positional { value, .. } => value,
+        }
+    }
+
+    /// The span covering the argument's value literal.
+    #[must_use]
+    pub fn value_span(&self) -> &SourceSpan {
+        match self {
+            Self::Named { value_span, .. } | Self::Positional { value_span, .. } => value_span,
+        }
+    }
+
+    /// The key identifier for [`Self::Named`]; `None` for
+    /// [`Self::Positional`].
+    #[must_use]
+    pub fn key(&self) -> Option<&str> {
+        match self {
+            Self::Named { key, .. } => Some(key.as_str()),
+            Self::Positional { .. } => None,
+        }
+    }
+
+    /// The span covering the key identifier, for [`Self::Named`].
+    /// `None` for [`Self::Positional`].
+    #[must_use]
+    pub fn key_span(&self) -> Option<&SourceSpan> {
+        match self {
+            Self::Named { key_span, .. } => Some(key_span),
+            Self::Positional { .. } => None,
+        }
+    }
 }
 
 /// Literal values recognised inside a `#set` body. Full expression
@@ -607,12 +664,7 @@ impl<'a> Parser<'a> {
                 let parsed = self.parse_set_value(&mut i, end);
                 let value_span = self.span(value_start, i);
                 if let Some(value) = parsed {
-                    args.push(SetArg {
-                        key: String::new(),
-                        value,
-                        key_span: self.span(value_start, value_start),
-                        value_span,
-                    });
+                    args.push(SetArg::Positional { value, value_span });
                 }
                 first = false;
                 i = skip_set_ws(bytes, i, end);
@@ -680,7 +732,7 @@ impl<'a> Parser<'a> {
             let parsed = self.parse_set_value(&mut i, end);
             let value_span = self.span(value_start, i);
             if let Some(value) = parsed {
-                args.push(SetArg {
+                args.push(SetArg::Named {
                     key,
                     value,
                     key_span,
@@ -1358,8 +1410,8 @@ mod tests {
         let (name, args, _) = r.tree.items[0].as_set().unwrap();
         assert_eq!(name, "page");
         assert_eq!(args.len(), 1);
-        assert_eq!(args[0].key, "paper");
-        assert_eq!(args[0].value, SetValue::Str("A4".to_owned()));
+        assert_eq!(args[0].key(), Some("paper"));
+        assert_eq!(args[0].value(), &SetValue::Str("A4".to_owned()));
     }
 
     #[test]
@@ -1371,10 +1423,10 @@ mod tests {
         let (name, args, _) = r.tree.items[0].as_set().unwrap();
         assert_eq!(name, "document");
         assert_eq!(args.len(), 2);
-        assert_eq!(args[0].key, "title");
-        assert_eq!(args[0].value, SetValue::Str("x".to_owned()));
-        assert_eq!(args[1].key, "author");
-        assert_eq!(args[1].value, SetValue::Str("y".to_owned()));
+        assert_eq!(args[0].key(), Some("title"));
+        assert_eq!(args[0].value(), &SetValue::Str("x".to_owned()));
+        assert_eq!(args[1].key(), Some("author"));
+        assert_eq!(args[1].value(), &SetValue::Str("y".to_owned()));
         assert_eq!(r.tree.items[1].as_heading().unwrap().0, 1);
     }
 
@@ -1384,11 +1436,17 @@ mod tests {
         let r = parse_str(src);
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         let (_, page_args, _) = r.tree.items[0].as_set().unwrap();
-        assert_eq!(page_args[0].value, SetValue::Length(24.0, LengthUnit::Mm));
+        assert_eq!(
+            page_args[0].value(),
+            &SetValue::Length(24.0, LengthUnit::Mm)
+        );
         let (_, text_args, _) = r.tree.items[1].as_set().unwrap();
-        assert_eq!(text_args[0].value, SetValue::Length(11.0, LengthUnit::Pt));
-        assert_eq!(text_args[1].value, SetValue::Float(1.35));
-        assert_eq!(text_args[2].value, SetValue::Length(2.0, LengthUnit::Em));
+        assert_eq!(
+            text_args[0].value(),
+            &SetValue::Length(11.0, LengthUnit::Pt)
+        );
+        assert_eq!(text_args[1].value(), &SetValue::Float(1.35));
+        assert_eq!(text_args[2].value(), &SetValue::Length(2.0, LengthUnit::Em));
     }
 
     #[test]
@@ -1396,8 +1454,11 @@ mod tests {
         let r = parse_str("#set foo(count: 42, alignment: bottom-center)\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         let (_, args, _) = r.tree.items[0].as_set().unwrap();
-        assert_eq!(args[0].value, SetValue::Int(42));
-        assert_eq!(args[1].value, SetValue::Ident("bottom-center".to_owned()));
+        assert_eq!(args[0].value(), &SetValue::Int(42));
+        assert_eq!(
+            args[1].value(),
+            &SetValue::Ident("bottom-center".to_owned())
+        );
     }
 
     #[test]
@@ -1413,7 +1474,7 @@ mod tests {
         let r = parse_str("#set foo(s: \"a\\\"b\\nc\\\\d\")\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         let (_, args, _) = r.tree.items[0].as_set().unwrap();
-        assert_eq!(args[0].value, SetValue::Str("a\"b\nc\\d".to_owned()));
+        assert_eq!(args[0].value(), &SetValue::Str("a\"b\nc\\d".to_owned()));
     }
 
     #[test]
@@ -1666,8 +1727,13 @@ mod tests {
         let (name, args, _) = r.tree.items[0].as_set().unwrap();
         assert_eq!(name, "image");
         assert_eq!(args.len(), 1);
-        assert!(args[0].key.is_empty());
-        assert_eq!(args[0].value, SetValue::Str("scan.png".to_owned()));
+        // Positional arg: `.key()` returns `None`, and the variant
+        // pattern-matches as `SetArg::Positional`. Both forms are
+        // exercised so test sites that prefer pattern-matching and
+        // sites that prefer accessor methods both see the contract.
+        assert!(matches!(args[0], SetArg::Positional { .. }));
+        assert_eq!(args[0].key(), None);
+        assert_eq!(args[0].value(), &SetValue::Str("scan.png".to_owned()));
     }
 
     #[test]
@@ -1677,10 +1743,10 @@ mod tests {
         let (name, args, _) = r.tree.items[0].as_set().unwrap();
         assert_eq!(name, "image");
         assert_eq!(args.len(), 3);
-        assert!(args[0].key.is_empty());
-        assert_eq!(args[1].key, "alt");
-        assert_eq!(args[2].key, "width");
-        assert_eq!(args[2].value, SetValue::Length(200.0, LengthUnit::Pt));
+        assert_eq!(args[0].key(), None);
+        assert_eq!(args[1].key(), Some("alt"));
+        assert_eq!(args[2].key(), Some("width"));
+        assert_eq!(args[2].value(), &SetValue::Length(200.0, LengthUnit::Pt));
     }
 
     #[test]
@@ -1690,9 +1756,9 @@ mod tests {
         let (name, args, _) = r.tree.items[0].as_set().unwrap();
         assert_eq!(name, "figure");
         assert_eq!(args.len(), 2);
-        assert_eq!(args[0].key, "image");
-        assert_eq!(args[0].value, SetValue::Str("scan.png".to_owned()));
-        assert_eq!(args[1].key, "caption");
+        assert_eq!(args[0].key(), Some("image"));
+        assert_eq!(args[0].value(), &SetValue::Str("scan.png".to_owned()));
+        assert_eq!(args[1].key(), Some("caption"));
     }
 
     #[test]
@@ -1706,8 +1772,8 @@ mod tests {
         let (name, args, _) = r.tree.items[0].as_set().unwrap();
         assert_eq!(name, "figure");
         assert_eq!(args.len(), 1);
-        assert!(args[0].key.is_empty());
-        assert_eq!(args[0].value, SetValue::Str("scan.png".to_owned()));
+        assert!(matches!(args[0], SetArg::Positional { .. }));
+        assert_eq!(args[0].value(), &SetValue::Str("scan.png".to_owned()));
     }
 
     #[test]

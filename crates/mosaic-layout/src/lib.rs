@@ -757,14 +757,19 @@ impl LayoutState {
         let declared_w = read_length_attr(image, "width");
         let declared_h = read_length_attr(image, "height");
         let aspect = natural_h / natural_w;
-        // When the author specifies *both* dimensions, render to the
-        // exact box even if that distorts the image. This matches
-        // LaTeX `\includegraphics[width=W, height=H]` and Typst's
-        // `image(width: W, height: H)` — users explicitly opt out of
-        // aspect-preservation by supplying both. The single-dimension
-        // arms below preserve aspect ratio from the supplied side.
+        // When both dimensions are declared, fit the image inside the
+        // requested box without distorting — scale uniformly by the
+        // tighter of the two ratios. This is the `object-fit: contain`
+        // convention rather than LaTeX's "stretch to exact box."
+        // Users that want non-uniform scaling can pre-process the
+        // bitmap; preserving aspect at the typesetter is the more
+        // forgiving default when a quick `width: 200pt, height:
+        // 200pt` would otherwise silently squash a 2:1 figure.
         let (w, h) = match (declared_w, declared_h) {
-            (Some(w), Some(h)) => (w, h),
+            (Some(w), Some(h)) => {
+                let scale = (w / natural_w).min(h / natural_h);
+                (natural_w * scale, natural_h * scale)
+            }
             (Some(w), None) => (w, w * aspect),
             (None, Some(h)) => (h / aspect, h),
             (None, None) => (natural_w, natural_h),
@@ -1841,6 +1846,34 @@ mod tests {
         // 200:100 = 2:1, so width 80pt → height 40pt.
         assert!((img.width_pt - 80.0).abs() < 0.5);
         assert!((img.height_pt - 40.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn image_block_both_dims_fits_inside_box_preserving_aspect() {
+        // 2:1 source with `width: 80pt, height: 80pt`: the result must
+        // be 80×40 (fit inside the box, scale by the tighter ratio),
+        // *not* 80×80 (which would squash the bitmap). Guards the
+        // CodeRabbit fix that switched to `object-fit: contain`
+        // semantics for both-dims-declared.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_image(&mut doc, "x.png", 200, 100, Some(80.0), Some(80.0));
+        let result = LayoutEngine::new().layout(&doc);
+        let img = &result.graph.pages[0].images[0];
+        assert!((img.width_pt - 80.0).abs() < 0.5, "w = {}", img.width_pt);
+        assert!((img.height_pt - 40.0).abs() < 0.5, "h = {}", img.height_pt);
+    }
+
+    #[test]
+    fn image_block_both_dims_taller_box_fits_by_width() {
+        // Symmetric case: 2:1 source with `width: 40pt, height: 80pt`.
+        // The width is the tighter constraint (ratio 40/200 = 0.2 vs
+        // 80/100 = 0.8), so the scale picks 0.2 → 40×20.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_image(&mut doc, "x.png", 200, 100, Some(40.0), Some(80.0));
+        let result = LayoutEngine::new().layout(&doc);
+        let img = &result.graph.pages[0].images[0];
+        assert!((img.width_pt - 40.0).abs() < 0.5, "w = {}", img.width_pt);
+        assert!((img.height_pt - 20.0).abs() < 0.5, "h = {}", img.height_pt);
     }
 
     #[test]
