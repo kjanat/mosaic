@@ -22,6 +22,7 @@ include                = [
   "data/NotoSans-BoldItalic.ttf",
   "data/NotoSans-Italic.ttf",
   "data/NotoSans-Regular.ttf",
+  "data/NotoSansMono-Regular.ttf",
   "data/SOURCES.md",
   "src/**/*.rs",
 ]

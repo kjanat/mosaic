@@ -20,10 +20,12 @@
 //!   Unicode-aware document: copy/paste round-trips through Cyrillic,
 //!   Greek, accented Latin, and anything else Noto Sans covers.
 //!
-//! Four cuts ship in this crate's `data/` directory (Regular, Bold,
-//! Italic, `BoldItalic` — see `SOURCES.md` under the crate root).
-//! Style selection happens through [`FontFamily`], which the layout
-//! engine receives from the eval lowerer.
+//! Five cuts ship in this crate's `data/` directory: four Noto Sans
+//! style cuts (Regular, Bold, Italic, `BoldItalic`) for proportional
+//! body text plus one Noto Sans Mono Regular cut for `` `raw` `` runs
+//! (see `SOURCES.md` under the crate root). Style selection happens
+//! through [`FontFamily`], which the layout engine receives from the
+//! eval lowerer.
 
 #![deny(missing_docs)]
 
@@ -53,10 +55,13 @@ pub enum Font {
 /// payload of [`Font::Embedded`] so [`Font`] stays `Copy`/`Hash`/`Eq`
 /// without resorting to pointer identity.
 ///
-/// The crate currently ships exactly one family (Noto Sans), so each
-/// variant names a cut (`Regular`/`Bold`/`Italic`/`BoldItalic`); when a
-/// second bundled family lands the right move is restructuring to
-/// `{ family, cut }` rather than expanding this enum variant-by-variant.
+/// The crate ships two bundled families today: Noto Sans (four style
+/// cuts — `Regular`/`Bold`/`Italic`/`BoldItalic`) for proportional
+/// body text, and Noto Sans Mono (one cut — `Mono`) for `` `raw` ``
+/// runs. The flat-enum shape is deliberate at this scale — when a
+/// third family lands, or Mono grows additional cuts, the right move
+/// is restructuring to `{ family, cut }` rather than expanding this
+/// enum variant-by-variant further.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, Ord, PartialOrd)]
 pub enum EmbeddedFontId {
     /// Noto Sans Regular.
@@ -67,12 +72,20 @@ pub enum EmbeddedFontId {
     Italic,
     /// Noto Sans Bold Italic.
     BoldItalic,
+    /// Noto Sans Mono Regular. The crate's monospace face for raw runs.
+    Mono,
 }
 
 impl EmbeddedFontId {
     /// All bundled embedded cuts in a stable order. Used by the PDF
     /// backend to enumerate `/Font` resource entries deterministically.
-    pub const ALL: [Self; 4] = [Self::Regular, Self::Bold, Self::Italic, Self::BoldItalic];
+    pub const ALL: [Self; 5] = [
+        Self::Regular,
+        Self::Bold,
+        Self::Italic,
+        Self::BoldItalic,
+        Self::Mono,
+    ];
 
     /// Resolve to the bundled [`EmbeddedFont`] data. Initialised on
     /// first use; subsequent calls return the same `&'static` reference.
@@ -83,10 +96,11 @@ impl EmbeddedFontId {
             Self::Bold => &NOTO_SANS_BOLD,
             Self::Italic => &NOTO_SANS_ITALIC,
             Self::BoldItalic => &NOTO_SANS_BOLD_ITALIC,
+            Self::Mono => &NOTO_SANS_MONO,
         }
     }
 
-    /// PDF resource name: `F15`..`F18` (Base14 keeps `F1`..`F14`).
+    /// PDF resource name: `F15`..`F19` (Base14 keeps `F1`..`F14`).
     /// The mapping is fixed per variant so byte-stable golden tests
     /// stay byte-stable.
     #[must_use]
@@ -96,6 +110,7 @@ impl EmbeddedFontId {
             Self::Bold => b"F16",
             Self::Italic => b"F17",
             Self::BoldItalic => b"F18",
+            Self::Mono => b"F19",
         }
     }
 }
@@ -133,6 +148,15 @@ static NOTO_SANS_BOLD_ITALIC: LazyLock<EmbeddedFont> = LazyLock::new(|| {
         "NotoSans-BoldItalic",
         true,
         true,
+    )
+});
+
+static NOTO_SANS_MONO: LazyLock<EmbeddedFont> = LazyLock::new(|| {
+    EmbeddedFont::from_static(
+        include_bytes!("../data/NotoSansMono-Regular.ttf"),
+        "NotoSansMono",
+        false,
+        false,
     )
 });
 
@@ -193,7 +217,7 @@ impl Font {
         }
     }
 
-    /// Stable per-resource name (`F1`..`F14` for Base14, `F15`..`F18`
+    /// Stable per-resource name (`F1`..`F14` for Base14, `F15`..`F19`
     /// for embedded). Page font dictionaries map these to indirect
     /// font refs.
     #[must_use]
@@ -270,8 +294,10 @@ pub struct FontFamily {
 impl FontFamily {
     /// The bundled Noto Sans family — embedded TTFs, real designed
     /// cuts for every style slot (no faux-bold or faux-italic). Raw
-    /// runs fall through to Courier; Mosaic doesn't ship a monospace
-    /// embedded face yet.
+    /// runs route through the bundled Noto Sans Mono Regular cut so
+    /// `` `Привет` `` and other non-WinAnsi raw content shape through
+    /// the same `rustybuzz` + `/ToUnicode` pipeline as body text
+    /// instead of dropping to the Base14 `?` substitution.
     #[must_use]
     pub const fn noto_sans() -> Self {
         Self {
@@ -279,7 +305,7 @@ impl FontFamily {
             bold: Font::Embedded(EmbeddedFontId::Bold),
             italic: Font::Embedded(EmbeddedFontId::Italic),
             bold_italic: Font::Embedded(EmbeddedFontId::BoldItalic),
-            monospace: Font::Base14(Base14Font::Courier),
+            monospace: Font::Embedded(EmbeddedFontId::Mono),
         }
     }
 
@@ -583,7 +609,7 @@ mod tests {
     }
 
     #[test]
-    fn pdf_resource_name_is_f1_through_f18() {
+    fn pdf_resource_name_is_f1_through_f19() {
         for (i, font) in Font::ALL_BASE14.iter().enumerate() {
             let expected = format!("F{}", i + 1);
             assert_eq!(font.pdf_resource_name(), expected.as_bytes());
