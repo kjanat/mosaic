@@ -509,34 +509,20 @@ fn build_image_attributes(
                         .with_span(value_span.clone()),
                     ),
                 },
-                "width" => match value {
-                    SetValue::Length(v, unit) => {
-                        declared_width = Some(length_to_pt(*v, *unit, em_pt));
+                "width" => {
+                    if let Some(v) =
+                        coerce_positive_length(value, em_pt, "width", value_span, diagnostics)
+                    {
+                        declared_width = Some(v);
                     }
-                    SetValue::Float(v) => declared_width = Some(*v),
-                    SetValue::Int(v) => declared_width = Some(int_to_f64(*v)),
-                    _ => diagnostics.push(
-                        Diagnostic::error(
-                            DiagnosticCode("E022"),
-                            "`#image(width: ...)` expects a length",
-                        )
-                        .with_span(value_span.clone()),
-                    ),
-                },
-                "height" => match value {
-                    SetValue::Length(v, unit) => {
-                        declared_height = Some(length_to_pt(*v, *unit, em_pt));
+                }
+                "height" => {
+                    if let Some(v) =
+                        coerce_positive_length(value, em_pt, "height", value_span, diagnostics)
+                    {
+                        declared_height = Some(v);
                     }
-                    SetValue::Float(v) => declared_height = Some(*v),
-                    SetValue::Int(v) => declared_height = Some(int_to_f64(*v)),
-                    _ => diagnostics.push(
-                        Diagnostic::error(
-                            DiagnosticCode("E022"),
-                            "`#image(height: ...)` expects a length",
-                        )
-                        .with_span(value_span.clone()),
-                    ),
-                },
+                }
                 "label" => match value {
                     SetValue::Str(s) => label = Some(s.clone()),
                     _ => diagnostics.push(
@@ -569,6 +555,21 @@ fn build_image_attributes(
         );
         return None;
     };
+    // A bare empty / whitespace-only path string is the same user
+    // mistake as omitting the path entirely — they wrote `#image("")`
+    // and meant to fill in a filename. Surface it as E050 so the
+    // diagnostic points at the missing path, not at an `E051` ("cannot
+    // read empty path") from the I/O layer.
+    if path.trim().is_empty() {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode("E050"),
+                "`#image(...)` requires a non-empty path (e.g. `#image(\"scan.png\")`)",
+            )
+            .with_span(span.clone()),
+        );
+        return None;
+    }
     let (resolved, decoded) = match image::load(&path, source_file, span) {
         Ok(v) => v,
         Err(diag) => {
@@ -743,6 +744,46 @@ fn length_to_pt(value: f64, unit: mosaic_parse::LengthUnit, em_pt: f64) -> f64 {
         mosaic_parse::LengthUnit::Mm => value * 72.0 / 25.4,
         mosaic_parse::LengthUnit::Em => value * em_pt,
     }
+}
+
+/// Coerce a `#image(width|height: ...)` argument to a strictly positive
+/// length in points. Bare numerics resolve as pt for ergonomics
+/// (mirrors `coerce_value`). Non-numeric values, zero, and negative
+/// values all produce `E022` so layout never sees a zero/negative
+/// image box.
+fn coerce_positive_length(
+    value: &SetValue,
+    em_pt: f64,
+    key: &str,
+    value_span: &SourceSpan,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<f64> {
+    let pt = match value {
+        SetValue::Length(v, unit) => length_to_pt(*v, *unit, em_pt),
+        SetValue::Float(v) => *v,
+        SetValue::Int(v) => int_to_f64(*v),
+        _ => {
+            diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E022"),
+                    format!("`#image({key}: ...)` expects a length"),
+                )
+                .with_span(value_span.clone()),
+            );
+            return None;
+        }
+    };
+    if pt <= 0.0 {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode("E022"),
+                format!("`#image({key}: ...)` expects a positive length"),
+            )
+            .with_span(value_span.clone()),
+        );
+        return None;
+    }
+    Some(pt)
 }
 
 fn describe_value(v: &SetValue) -> &'static str {
@@ -1186,6 +1227,63 @@ mod tests {
             "expected E051, got {:?}",
             r.diagnostics
         );
+    }
+
+    #[test]
+    fn empty_image_path_emits_e050_not_io_error() {
+        // `#image("")` is a missing-path mistake, not an I/O failure.
+        // The diagnostic surface treats it the same as omitting the
+        // path entirely so the user sees a clear "needs a path"
+        // message instead of `E051`/`E052` noise.
+        let r = lower("#image(\"\")\n", &PathBuf::from("/tmp/whatever/main.mos"));
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "E050"),
+            "expected E050, got {:?}",
+            r.diagnostics
+        );
+        // No E051/E052 should leak through.
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| matches!(d.code.0, "E051" | "E052")),
+            "unexpected I/O diagnostic: {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn non_positive_image_width_emits_e022() {
+        // `width: 0pt` and `width: -10pt` would otherwise produce a
+        // zero/negative image box that sails into layout and PDF
+        // emit. Reject at lower time with E022.
+        for src in [
+            "#image(\"x.png\", width: 0pt)\n",
+            "#image(\"x.png\", width: -10pt)\n",
+            "#image(\"x.png\", width: 0)\n",
+            "#image(\"x.png\", width: -1)\n",
+        ] {
+            let r = lower(src, &PathBuf::from("/tmp/whatever/main.mos"));
+            assert!(
+                r.diagnostics.iter().any(|d| d.code.0 == "E022"),
+                "expected E022 for `{src}`, got {:?}",
+                r.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn non_positive_image_height_emits_e022() {
+        for src in [
+            "#image(\"x.png\", height: 0pt)\n",
+            "#image(\"x.png\", height: -1mm)\n",
+        ] {
+            let r = lower(src, &PathBuf::from("/tmp/whatever/main.mos"));
+            assert!(
+                r.diagnostics.iter().any(|d| d.code.0 == "E022"),
+                "expected E022 for `{src}`, got {:?}",
+                r.diagnostics
+            );
+        }
     }
 
     #[test]
