@@ -36,10 +36,10 @@ pub struct ShapedGlyph {
 /// parsed `rustybuzz::Face` needed to shape text and emit a PDF
 /// `FontDescriptor`.
 ///
-/// Created via [`Self::from_static`] from a `&'static [u8]` (the
-/// bundled `include_bytes!`-loaded TTF). The crate's user-facing
-/// surface is the [`crate::EmbeddedFontId`] enum; this struct is the
-/// per-cut data block those ids resolve through.
+/// Constructed internally from a `&'static [u8]` (the bundled
+/// `include_bytes!`-loaded TTF). The crate's user-facing surface is
+/// the [`crate::EmbeddedFontId`] enum; this struct is the per-cut
+/// data block those ids resolve through.
 pub struct EmbeddedFont {
     /// Raw TTF bytes. Held statically so the parsed `Face<'static>`
     /// can borrow them.
