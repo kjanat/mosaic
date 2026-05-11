@@ -90,7 +90,7 @@ fn font_dict<'d>(
 
 #[test]
 fn cyrillic_emits_type0_cid_font_chain() -> TestResult {
-    let (doc, _) = render(EmbeddedFontId::NotoSansRegular, "Привет, Мозаика")?;
+    let (doc, _) = render(EmbeddedFontId::Regular, "Привет, Мозаика")?;
     // Resource F15 is Noto Sans Regular's slot.
     let type0 = font_dict(&doc, b"F15")?;
     ensure!(
@@ -147,7 +147,7 @@ fn cyrillic_emits_type0_cid_font_chain() -> TestResult {
 
 #[test]
 fn font_file2_is_subset_not_full_ttf() -> TestResult {
-    let (doc, _) = render(EmbeddedFontId::NotoSansRegular, "Привет")?;
+    let (doc, _) = render(EmbeddedFontId::Regular, "Привет")?;
     let type0 = font_dict(&doc, b"F15")?;
     let descendants = type0.get(b"DescendantFonts")?.as_array()?;
     let Object::Reference(cid_id) = descendants[0] else {
@@ -165,7 +165,7 @@ fn font_file2_is_subset_not_full_ttf() -> TestResult {
         return Err("FontFile2 is not a stream".into());
     };
 
-    let full_ttf_len = EmbeddedFontId::NotoSansRegular.data().bytes.len();
+    let full_ttf_len = EmbeddedFontId::Regular.data().bytes.len();
     let subset_len = ff_stream.content.len();
     ensure!(
         subset_len < full_ttf_len / 4,
@@ -191,7 +191,7 @@ fn greek_routes_through_same_embedded_face() -> TestResult {
     // Greek and Cyrillic both live in Noto Sans Regular's coverage,
     // so a single document mixing both should produce one F15 font
     // dict (not two competing embedded faces).
-    let (doc, _) = render(EmbeddedFontId::NotoSansRegular, "Καλημέρα κόσμε")?;
+    let (doc, _) = render(EmbeddedFontId::Regular, "Καλημέρα κόσμε")?;
     let type0 = font_dict(&doc, b"F15")?;
     ensure!(
         type0.get(b"Subtype")? == &Object::Name(b"Type0".to_vec()),
@@ -202,7 +202,7 @@ fn greek_routes_through_same_embedded_face() -> TestResult {
 
 #[test]
 fn content_stream_uses_hex_cid_pairs_not_ascii_literals() -> TestResult {
-    let (doc, bytes) = render(EmbeddedFontId::NotoSansRegular, "Hello")?;
+    let (doc, bytes) = render(EmbeddedFontId::Regular, "Hello")?;
     // The content stream for embedded runs is `<HHHH HHHH ...>`, not
     // `(Hello)`. Search the content stream slice; pre-loaded `doc` is
     // only there to ensure the bytes parse cleanly.
@@ -236,8 +236,5 @@ fn content_stream_uses_hex_cid_pairs_not_ascii_literals() -> TestResult {
 fn re_exported_layout_id_matches_fonts_id() {
     // The layout crate re-exports EmbeddedFontId; both paths must
     // resolve to the same enum.
-    assert_eq!(
-        LayoutEmbeddedFontId::NotoSansRegular,
-        EmbeddedFontId::NotoSansRegular,
-    );
+    assert_eq!(LayoutEmbeddedFontId::Regular, EmbeddedFontId::Regular,);
 }

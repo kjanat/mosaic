@@ -51,45 +51,38 @@ pub enum Font {
 
 /// Stable identifier for each bundled embedded cut. Used as the enum
 /// payload of [`Font::Embedded`] so [`Font`] stays `Copy`/`Hash`/`Eq`
-/// without resorting to pointer identity. Adding more cuts later
-/// (different families) keeps the shared `NotoSans` prefix — the
-/// `enum_variant_names` lint catches that pattern but the prefix is
-/// the right grouping here, not a naming mistake.
+/// without resorting to pointer identity.
+///
+/// The crate currently ships exactly one family (Noto Sans), so each
+/// variant names a cut (`Regular`/`Bold`/`Italic`/`BoldItalic`); when a
+/// second bundled family lands the right move is restructuring to
+/// `{ family, cut }` rather than expanding this enum variant-by-variant.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, Ord, PartialOrd)]
-#[allow(
-    clippy::enum_variant_names,
-    reason = "shared `NotoSans` prefix groups the four cuts of one bundled family"
-)]
 pub enum EmbeddedFontId {
     /// Noto Sans Regular.
-    NotoSansRegular,
+    Regular,
     /// Noto Sans Bold.
-    NotoSansBold,
+    Bold,
     /// Noto Sans Italic.
-    NotoSansItalic,
+    Italic,
     /// Noto Sans Bold Italic.
-    NotoSansBoldItalic,
+    BoldItalic,
 }
 
 impl EmbeddedFontId {
     /// All bundled embedded cuts in a stable order. Used by the PDF
     /// backend to enumerate `/Font` resource entries deterministically.
-    pub const ALL: [Self; 4] = [
-        Self::NotoSansRegular,
-        Self::NotoSansBold,
-        Self::NotoSansItalic,
-        Self::NotoSansBoldItalic,
-    ];
+    pub const ALL: [Self; 4] = [Self::Regular, Self::Bold, Self::Italic, Self::BoldItalic];
 
     /// Resolve to the bundled [`EmbeddedFont`] data. Initialised on
     /// first use; subsequent calls return the same `&'static` reference.
     #[must_use]
     pub fn data(self) -> &'static EmbeddedFont {
         match self {
-            Self::NotoSansRegular => &NOTO_SANS_REGULAR,
-            Self::NotoSansBold => &NOTO_SANS_BOLD,
-            Self::NotoSansItalic => &NOTO_SANS_ITALIC,
-            Self::NotoSansBoldItalic => &NOTO_SANS_BOLD_ITALIC,
+            Self::Regular => &NOTO_SANS_REGULAR,
+            Self::Bold => &NOTO_SANS_BOLD,
+            Self::Italic => &NOTO_SANS_ITALIC,
+            Self::BoldItalic => &NOTO_SANS_BOLD_ITALIC,
         }
     }
 
@@ -99,10 +92,10 @@ impl EmbeddedFontId {
     #[must_use]
     pub fn pdf_resource_name(self) -> &'static [u8] {
         match self {
-            Self::NotoSansRegular => b"F15",
-            Self::NotoSansBold => b"F16",
-            Self::NotoSansItalic => b"F17",
-            Self::NotoSansBoldItalic => b"F18",
+            Self::Regular => b"F15",
+            Self::Bold => b"F16",
+            Self::Italic => b"F17",
+            Self::BoldItalic => b"F18",
         }
     }
 }
@@ -282,10 +275,10 @@ impl FontFamily {
     #[must_use]
     pub const fn noto_sans() -> Self {
         Self {
-            regular: Font::Embedded(EmbeddedFontId::NotoSansRegular),
-            bold: Font::Embedded(EmbeddedFontId::NotoSansBold),
-            italic: Font::Embedded(EmbeddedFontId::NotoSansItalic),
-            bold_italic: Font::Embedded(EmbeddedFontId::NotoSansBoldItalic),
+            regular: Font::Embedded(EmbeddedFontId::Regular),
+            bold: Font::Embedded(EmbeddedFontId::Bold),
+            italic: Font::Embedded(EmbeddedFontId::Italic),
+            bold_italic: Font::Embedded(EmbeddedFontId::BoldItalic),
             monospace: Font::Base14(Base14Font::Courier),
         }
     }
@@ -438,16 +431,15 @@ pub struct ShapedRun {
 }
 
 /// Convert a font-unit advance to PDF user-space points at `size_pt`,
-/// given the face's units-per-em. Glyph advances from `rustybuzz` are
-/// `i32` but in practice always fit a `u15` (no font has 32k+ units of
-/// advance on a single glyph); the precision loss is sub-pt at any
-/// realistic size.
-#[allow(
-    clippy::cast_precision_loss,
-    reason = "advance_units is always well under f32's 23-bit mantissa in practice"
-)]
+/// given the face's units-per-em. `rustybuzz` types advances as `i32`
+/// but the underlying OpenType `hmtx` table stores them as 16-bit;
+/// saturating to `i16` here lets us cross to `f32` losslessly through
+/// `f32::From<i16>`. The saturation clamps the (practically
+/// unreachable) `i32::MAX` case to a finite advance instead of a
+/// loose precision-lossy cast.
 fn advance_units_to_pt(advance_units: i32, size_pt: f32, upem: f32) -> f32 {
-    advance_units as f32 * size_pt / upem
+    let advance_i16 = i16::try_from(advance_units).unwrap_or(i16::MAX);
+    f32::from(advance_i16) * size_pt / upem
 }
 
 /// Width of a single glyph in `font` at `size` points. For Base14
@@ -633,19 +625,19 @@ mod tests {
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code.0, "W045");
         assert_eq!(diags[0].severity, Severity::Warning);
-        assert_eq!(fam.regular, Font::Embedded(EmbeddedFontId::NotoSansRegular));
+        assert_eq!(fam.regular, Font::Embedded(EmbeddedFontId::Regular));
     }
 
     #[test]
     fn embedded_shape_is_empty_for_empty_string() {
-        let ef = EmbeddedFontId::NotoSansRegular.data();
+        let ef = EmbeddedFontId::Regular.data();
         let glyphs = shape(ef, "");
         assert!(glyphs.is_empty());
     }
 
     #[test]
     fn embedded_shape_returns_clusters_in_byte_order() {
-        let ef = EmbeddedFontId::NotoSansRegular.data();
+        let ef = EmbeddedFontId::Regular.data();
         let glyphs = shape(ef, "Привет");
         assert!(!glyphs.is_empty());
         // Cluster values are byte offsets into the source string and
@@ -665,7 +657,7 @@ mod tests {
     fn embedded_text_width_is_nonzero_for_cyrillic() {
         // The whole point: scripts the Base14 fonts can't render get
         // real widths through the embedded path.
-        let font = Font::Embedded(EmbeddedFontId::NotoSansRegular);
+        let font = Font::Embedded(EmbeddedFontId::Regular);
         let w = text_width(font, 12.0, "Привет");
         assert!(w > 0.0);
     }
@@ -678,7 +670,7 @@ mod tests {
         // ligature has the same advance as f+i — purely visual,
         // joining the dot of `i` with the terminal of `f` — so width
         // is not a useful invariant for this font.)
-        let ef = EmbeddedFontId::NotoSansRegular.data();
+        let ef = EmbeddedFontId::Regular.data();
         let fi = shape(ef, "fi");
         let f = shape(ef, "f");
         let i = shape(ef, "i");
