@@ -60,3 +60,44 @@ Use \# for a literal hash.
       (text)
       (escaped_char)
       (text))))
+
+==================
+inline: escaped backslash
+==================
+Use \\ for a literal backslash.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (escaped_char)
+      (text))))
+
+==================
+inline: escaped emphasis delimiter
+==================
+Use \* for a literal asterisk.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (escaped_char)
+      (text))))
+
+==================
+inline: escaped brackets
+==================
+Use \[ and \] for literal brackets.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (escaped_char)
+      (text)
+      (escaped_char)
+      (text))))

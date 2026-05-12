@@ -34,3 +34,25 @@ pre: with escaped closing bracket
   (pre_block
     body: (raw_body
       (raw_body_content))))
+
+==================
+pre: escaped backslash
+==================
+#pre[path\\here]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+pre: escaped backslash before closing bracket
+==================
+#pre[path\\]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))))

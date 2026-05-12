@@ -51,3 +51,15 @@ heading: with inline emphasis
       (emphasis
         (emph_text))
       (text))))
+
+==================
+heading: max level (6)
+==================
+====== Deep section
+---
+
+(source_file
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text))))
