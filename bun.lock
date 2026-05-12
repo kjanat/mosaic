@@ -3,7 +3,11 @@
   "configVersion": 1,
   "workspaces": {
     "": {
+      "name": "mosaic",
+    },
+    "crates/tree-sitter-mosaic": {
       "name": "tree-sitter-mosaic",
+      "version": "0.0.0",
       "devDependencies": {
         "@types/node": "^25.7.0",
         "node-gyp-build": "^4.8.4",
@@ -23,6 +27,8 @@
     "tree-sitter": ["tree-sitter@0.25.0", "", { "dependencies": { "node-addon-api": "^8.3.0", "node-gyp-build": "^4.8.4" } }, "sha512-PGZZzFW63eElZJDe/b/R/LbsjDDYJa5UEjLZJB59RQsMX+fo0j54fqBPn1MGKav/QNa0JR0zBiVaikYDWCj5KQ=="],
 
     "tree-sitter-cli": ["tree-sitter-cli@0.26.8", "", { "bin": { "tree-sitter": "cli.js" } }, "sha512-teQFMF5V/g8aIdakZ0M/eZoedCM3MuBt1JuDOICLloA2hy7QfeOInb99U6wiML4qXcBHWREwf0U1TWzw7p67YA=="],
+
+    "tree-sitter-mosaic": ["tree-sitter-mosaic@workspace:crates/tree-sitter-mosaic"],
 
     "typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 

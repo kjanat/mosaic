@@ -1,0 +1,7 @@
+{
+	"name": "mosaic",
+	"private": true,
+	"workspaces": [
+		"crates/tree-sitter-mosaic"
+	]
+}
