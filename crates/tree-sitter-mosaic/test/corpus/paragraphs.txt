@@ -59,6 +59,25 @@ The closing sentence. <outro>
           name: (label_name))))))
 
 ==================
+paragraph: both leading and trailing label
+==================
+<intro> The middle. <outro>
+---
+
+(source_file
+  (paragraph
+    leading_label: (leading_label
+      (block_label
+        (label
+          name: (label_name))))
+    (paragraph_segment
+      (text))
+    trailing_label: (trailing_label
+      (block_label
+        (label
+          name: (label_name))))))
+
+==================
 paragraph: two paragraphs separated by blank line
 ==================
 First.

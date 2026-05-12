@@ -56,3 +56,13 @@ pre: escaped backslash before closing bracket
   (pre_block
     body: (raw_body
       (raw_body_content))))
+
+==================
+pre: empty body
+==================
+#pre[]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body)))

@@ -101,3 +101,36 @@ Use \[ and \] for literal brackets.
       (text)
       (escaped_char)
       (text))))
+
+==================
+inline: emphasis nested inside strong
+==================
+A **strong with *nested emphasis* inside** text.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (strong
+        (emph_text)
+        (emphasis
+          (emph_text))
+        (emph_text))
+      (text))))
+
+==================
+inline: hash call without args mid-paragraph
+==================
+Some #emoji prefix.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (inline_call
+        (hash_call
+          function: (qualified_name
+            (identifier))))
+      (text))))

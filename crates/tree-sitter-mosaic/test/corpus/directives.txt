@@ -77,3 +77,54 @@ include: path with escaped backslash
 (source_file
   (include_directive
     path: (string)))
+
+==================
+set: nested call as attribute value
+==================
+#set page(size: a4(landscape: true))
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (call_expr
+          function: (qualified_name
+            (identifier))
+          arguments: (argument_list
+            (attribute
+              key: (identifier)
+              value: (boolean))))))))
+
+==================
+import: single-quoted path
+==================
+#import 'lib.mos'
+---
+
+(source_file
+  (import_directive
+    path: (string)))
+
+==================
+two adjacent directives without blank line
+==================
+#set a(x: 1)
+#set b(y: 2)
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (number))))
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (number)))))

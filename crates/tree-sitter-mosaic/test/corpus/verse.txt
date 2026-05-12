@@ -12,3 +12,13 @@ Second *line*]
       (verse_text)
       (emphasis
         (emph_text)))))
+
+==================
+verse: empty body
+==================
+#verse[]
+---
+
+(source_file
+  (verse_block
+    body: (verse_body)))

@@ -63,3 +63,25 @@ heading: max level (6)
     marker: (heading_marker)
     content: (inline_sequence
       (text))))
+
+==================
+heading: bare `=` without hspace is not a heading
+==================
+=
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))))
+
+==================
+heading: over-deep marker (7+) falls through to paragraph
+==================
+======= Too deep
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))))

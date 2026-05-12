@@ -63,3 +63,39 @@ call: content body
         (paragraph
           (paragraph_segment
             (text)))))))
+
+==================
+call: arguments and content body together
+==================
+#figure(caption: "Demo")[A figure body.]
+---
+
+(source_file
+  (block_call
+    (hash_call
+      function: (qualified_name
+        (identifier))
+      arguments: (argument_list
+        (attribute
+          key: (identifier)
+          value: (string)))
+      body: (content_body
+        (paragraph
+          (paragraph_segment
+            (text)))))))
+
+==================
+call: three-segment qualified name
+==================
+#std.text.bold("hi")
+---
+
+(source_file
+  (block_call
+    (hash_call
+      function: (qualified_name
+        (identifier)
+        (identifier)
+        (identifier))
+      arguments: (argument_list
+        (string)))))
