@@ -30,3 +30,6 @@ tree-sitter = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }
+
+[lints]
+workspace = true

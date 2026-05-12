@@ -19,11 +19,26 @@
 
 use tree_sitter_language::LanguageFn;
 
+// SAFETY: `tree_sitter_mosaic` is the C entry point emitted by
+// `tree-sitter generate` into `src/parser.c` and linked by `build.rs`.
+// Its signature matches what `tree-sitter` expects from a grammar.
+#[allow(
+    unsafe_code,
+    reason = "FFI declaration of the generated C parser entry point"
+)]
 unsafe extern "C" {
     fn tree_sitter_mosaic() -> *const ();
 }
 
 /// The tree-sitter [`LanguageFn`] for this grammar.
+#[allow(
+    unsafe_code,
+    reason = "Wrap C parser entry point in tree_sitter_language::LanguageFn"
+)]
+// SAFETY: `tree_sitter_mosaic` returns a pointer to a `TSLanguage` whose
+// shape matches the ABI declared by the linked `tree_sitter_language`
+// crate; wrapping it in `LanguageFn::from_raw` is the documented way to
+// expose a generated grammar to consumers.
 pub const LANGUAGE: LanguageFn = unsafe { LanguageFn::from_raw(tree_sitter_mosaic) };
 
 /// The content of the [`node-types.json`] file for this grammar.
