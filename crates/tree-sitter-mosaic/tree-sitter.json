@@ -1,0 +1,38 @@
+{
+	"$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+	"grammars": [{
+		"name": "mosaic",
+		"camelcase": "Mosaic",
+		"title": "Mosaic",
+		"scope": "source.mosaic",
+		"path": ".",
+		"file-types": ["mos"],
+		"injection-regex": "^(mosaic|mos)$",
+		"highlights": ["queries/highlights.scm"],
+		"locals": ["queries/locals.scm"],
+		"injections": ["queries/injections.scm"],
+		"tags": ["queries/tags.scm"]
+	}],
+	"metadata": {
+		"version": "0.0.0",
+		"license": "MIT",
+		"description": "Mosaic grammar for tree-sitter",
+		"authors": [{
+			"name": "Kaj Kowalski",
+			"email": "info@kajkowalski.nl"
+		}],
+		"links": {
+			"repository": "https://github.com/kjanat/mosaic"
+		}
+	},
+	"bindings": {
+		"c": true,
+		"node": true,
+		"rust": true,
+		"python": false,
+		"go": false,
+		"swift": false,
+		"java": false,
+		"zig": false
+	}
+}

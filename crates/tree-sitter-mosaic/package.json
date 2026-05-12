@@ -1,0 +1,25 @@
+{
+	"name": "tree-sitter-mosaic",
+	"version": "0.0.0",
+	"description": "Mosaic grammar for tree-sitter",
+	"type": "module",
+	"main": "bindings/node",
+	"types": "bindings/node",
+	"files": [
+		"grammar.js",
+		"tree-sitter.json",
+		"binding.gyp",
+		"bindings/node/*",
+		"queries/*",
+		"src/**"
+	],
+	"scripts": {
+		"generate": "tree-sitter generate",
+		"test": "tree-sitter test",
+		"parse": "tree-sitter parse",
+		"playground": "tree-sitter playground"
+	},
+	"devDependencies": {
+		"tree-sitter-cli": "^0.26.0"
+	}
+}

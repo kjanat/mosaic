@@ -1,0 +1,32 @@
+[package]
+name                   = "tree-sitter-mosaic"
+version                = "0.0.0"
+edition.workspace      = true
+rust-version.workspace = true
+description            = "Mosaic grammar for tree-sitter"
+readme.workspace       = true
+repository.workspace   = true
+license.workspace      = true
+keywords               = ["incremental", "mosaic", "parsing", "tree-sitter"]
+categories             = ["parser-implementations", "parsing", "text-editors"]
+build                  = "bindings/rust/build.rs"
+include                = [
+  "LICENSE",
+  "bindings/rust/*",
+  "grammar.js",
+  "queries/*",
+  "src/*",
+  "tree-sitter.json",
+]
+
+[lib]
+path = "bindings/rust/lib.rs"
+
+[dependencies]
+tree-sitter-language = { workspace = true }
+
+[dev-dependencies]
+tree-sitter = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
