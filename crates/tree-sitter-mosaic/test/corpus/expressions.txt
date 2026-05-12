@@ -1,0 +1,63 @@
+==================
+expressions: array and object
+==================
+#set layout(allowed: [top, bottom], opts: {widows: true})
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (array
+          (qualified_name
+            (identifier))
+          (qualified_name
+            (identifier))))
+      (attribute
+        key: (identifier)
+        value: (object
+          (attribute
+            key: (identifier)
+            value: (boolean)))))))
+
+==================
+expressions: dimension, number, null
+==================
+#set page(margin: 24mm, columns: 2, header: null)
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (dimension))
+      (attribute
+        key: (identifier)
+        value: (number))
+      (attribute
+        key: (identifier)
+        value: (null)))))
+
+==================
+expressions: trailing comma
+==================
+#set page(
+  margin: 24mm,
+  columns: 2,
+)
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (dimension))
+      (attribute
+        key: (identifier)
+        value: (number)))))

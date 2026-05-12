@@ -26,6 +26,11 @@
 "#import" @keyword.import
 "#include" @keyword.import
 
+"#verse" @keyword
+"#pre" @keyword
+"#code" @keyword
+"#linebreak" @keyword
+
 (set_directive
   target: (identifier) @type)
 
@@ -46,27 +51,36 @@
 (strong) @markup.strong
 (strong_emphasis) @markup.strong
 
-; --- Code & math ------------------------------------------------------------
+; --- Code, math, raw blocks -------------------------------------------------
 
 (code_span) @markup.raw
 (inline_math) @markup.math
-(display_math) @markup.math
+(verse_block) @markup.quote
+(pre_block) @markup.raw.block
+(code_block) @markup.raw.block
+(raw_body_content) @markup.raw
 
 ; --- Labels & references ----------------------------------------------------
 
 (label) @label
+(block_label) @label
 (reference) @markup.link.reference
 (label_name) @markup.link.label
 
 ; --- Escapes ----------------------------------------------------------------
 
-(escape) @string.escape
+(escaped_char) @string.escape
 (linebreak_escape) @string.escape
 
 ; --- Calls (override @variable on the function identifier) ------------------
 
-(call
-  function: (identifier) @function)
+(hash_call
+  function: (qualified_name) @function)
+
+(call_expr
+  function: (qualified_name) @function)
+
+(linebreak_call) @function.builtin
 
 (attribute
   key: (identifier) @variable.parameter)
@@ -76,7 +90,6 @@
 "#" @punctuation.special
 "@" @punctuation.special
 "$" @punctuation.special
-"$$" @punctuation.special
 
 [
   "*"
@@ -101,4 +114,5 @@
 [
   ","
   ":"
+  "."
 ] @punctuation.delimiter

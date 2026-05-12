@@ -1,0 +1,69 @@
+==================
+set: text font/size
+==================
+#set text(font: "Noto Sans", size: 11pt)
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (string))
+      (attribute
+        key: (identifier)
+        value: (dimension)))))
+
+==================
+set: multi-line
+==================
+#set page(
+  paper: "A4",
+  margin: 24mm,
+)
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (string))
+      (attribute
+        key: (identifier)
+        value: (dimension)))))
+
+==================
+import: with items
+==================
+#import "@mosaic/templates/article": article, theme
+---
+
+(source_file
+  (import_directive
+    path: (string)
+    items: (import_items
+      (identifier)
+      (identifier))))
+
+==================
+import: bare
+==================
+#import "lib.mos"
+---
+
+(source_file
+  (import_directive
+    path: (string)))
+
+==================
+include
+==================
+#include "sections/intro.mos"
+---
+
+(source_file
+  (include_directive
+    path: (string)))

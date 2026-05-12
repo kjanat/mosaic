@@ -1,0 +1,14 @@
+==================
+verse: two lines, inline emphasis
+==================
+#verse[First line
+Second *line*]
+---
+
+(source_file
+  (verse_block
+    body: (verse_body
+      (verse_text)
+      (verse_text)
+      (emphasis
+        (emph_text)))))

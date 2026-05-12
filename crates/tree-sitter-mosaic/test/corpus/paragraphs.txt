@@ -1,0 +1,61 @@
+==================
+paragraph: soft break
+==================
+Line one
+line two
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))
+    (soft_break)
+    (paragraph_segment
+      (text))))
+
+==================
+paragraph: linebreak escape
+==================
+Line one \
+Line two
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))
+    (linebreak_escape)
+    (paragraph_segment
+      (text))))
+
+==================
+paragraph: leading label
+==================
+<intro> The opening sentence.
+---
+
+(source_file
+  (paragraph
+    leading_label: (leading_label
+      (block_label
+        (label
+          name: (label_name))))
+    (paragraph_segment
+      (text))))
+
+==================
+paragraph: two paragraphs separated by blank line
+==================
+First.
+
+Second.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (blank_line)
+  (paragraph
+    (paragraph_segment
+      (text))))
