@@ -3,5 +3,8 @@
 	"private": true,
 	"workspaces": [
 		"crates/tree-sitter-mosaic"
-	]
+	],
+	"patchedDependencies": {
+		"tree-sitter@0.25.0": "patches/tree-sitter@0.25.0.patch"
+	}
 }

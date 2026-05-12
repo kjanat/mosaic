@@ -368,9 +368,9 @@ export default grammar({
 		escaped_char: _ => token(prec(1, seq('\\', /[^\r\n]/))),
 
 		// Tree-sitter pragmatic deviation from EBNF `text_char`: also exclude
-		// `[` and `]` so bracket-delimited structures (`content_body`,
-		// `array`) parse without ambiguity. Literal brackets in prose can be
-		// written via `\[` / `\]`.
+		// `[` and `]` so bracket-delimited structures (`content_body`,`array`)
+		// parse without ambiguity. Literal brackets in prose can be written via `\[` / `\]`.
+		// oxlint-disable-next-line no-useless-escape
 		text: _ => token(prec(-2, /[^\n\r#$*`@<\\\[\]]+/)),
 
 		// -------------------------------------------------------------------
