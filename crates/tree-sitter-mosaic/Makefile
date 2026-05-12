@@ -102,6 +102,8 @@ uninstall:
 		'$(DESTDIR)$(LIBDIR)'/lib$(LANGUAGE_NAME).$(SOEXTVER) \
 		'$(DESTDIR)$(LIBDIR)'/lib$(LANGUAGE_NAME).$(SOEXTVER_MAJOR) \
 		'$(DESTDIR)$(LIBDIR)'/lib$(LANGUAGE_NAME).$(SOEXT) \
+		'$(DESTDIR)$(BINDIR)'/lib$(LANGUAGE_NAME).dll \
+		'$(DESTDIR)$(LIBDIR)'/lib$(LANGUAGE_NAME).dll.a \
 		'$(DESTDIR)$(INCLUDEDIR)'/tree_sitter/$(LANGUAGE_NAME).h \
 		'$(DESTDIR)$(PCLIBDIR)'/$(LANGUAGE_NAME).pc
 	$(RM) -r '$(DESTDIR)$(DATADIR)'/tree-sitter/queries/mosaic
