@@ -23,8 +23,10 @@
 		"playground": "tree-sitter playground --quiet"
 	},
 	"devDependencies": {
+		"@types/node": "^25.7.0",
 		"node-gyp-build": "^4.8.4",
 		"tree-sitter": "^0.25.0",
-		"tree-sitter-cli": "^0.26.0"
+		"tree-sitter-cli": "^0.26.0",
+		"typescript": "^6.0.3"
 	}
 }

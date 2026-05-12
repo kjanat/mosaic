@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 
 /** @typedef {import('tree-sitter').BaseNode} BaseNode */
 /** @typedef {import('tree-sitter').ChildNode} ChildNode */
-
 /**
  * One entry in `node-types.json`. Either a polymorphic node with `subtypes`,
  * or a structural node with `fields` and a single `children` descriptor.
@@ -15,14 +14,14 @@ import { fileURLToPath } from 'node:url';
  *
  * @see {@link https://tree-sitter.github.io/tree-sitter/using-parsers/6-static-node-types Static Node Types}
  *
- * @typedef {(BaseNode & { subtypes: BaseNode[] })
- *   | (BaseNode & { fields: Record<string, ChildNode>, children: ChildNode })} NodeInfo
+ * @typedef {import('tree-sitter').NodeInfo} NodeInfo
  */
 
 /** @typedef {'HIGHLIGHTS_QUERY' | 'INJECTIONS_QUERY' | 'LOCALS_QUERY' | 'TAGS_QUERY'} QueryKey */
 
 /**
- * The tree-sitter language binding for this grammar.
+ * The tree-sitter language binding for this grammar. Extends `Parser.Language`
+ * with the lazy-loaded query strings.
  *
  * @see {@link https://tree-sitter.github.io/node-tree-sitter/interfaces/Parser.Language.html Parser.Language}
  *
@@ -33,13 +32,12 @@ import { fileURLToPath } from 'node:url';
  * const parser = new Parser();
  * parser.setLanguage(Mosaic);
  *
- * @typedef {Object} Binding
- * @property {unknown} language - The inner language object.
- * @property {NodeInfo[]} [nodeTypeInfo] - The content of `node-types.json` for this grammar, if bundled.
- * @property {string} [HIGHLIGHTS_QUERY] - The syntax highlighting query for this grammar.
- * @property {string} [INJECTIONS_QUERY] - The language injection query for this grammar.
- * @property {string} [LOCALS_QUERY] - The local variable query for this grammar.
- * @property {string} [TAGS_QUERY] - The symbol tagging query for this grammar.
+ * @typedef {import('tree-sitter').Language & {
+ *   HIGHLIGHTS_QUERY?: string;
+ *   INJECTIONS_QUERY?: string;
+ *   LOCALS_QUERY?: string;
+ *   TAGS_QUERY?: string;
+ * }} Binding
  */
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
