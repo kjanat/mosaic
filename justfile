@@ -36,3 +36,14 @@ fmt:
 sync-zed-queries:
     cp crates/tree-sitter-mosaic/queries/highlights.scm crates/zed-mosaic/languages/mosaic/highlights.scm
     cp crates/tree-sitter-mosaic/queries/injections.scm crates/zed-mosaic/languages/mosaic/injections.scm
+
+# Refresh the `tree-sitter-mosaic-root` branch. Zed's extension loader
+# clones `[grammars.mosaic].repository` and expects `grammar.js` at the
+# repo root, but the grammar lives in `crates/tree-sitter-mosaic/`. We
+# `subtree split` that subdirectory into its own branch whose root IS the
+# grammar, and Zed fetches from that branch. Run this after any change
+# inside `crates/tree-sitter-mosaic/`.
+refresh-zed-grammar:
+    git subtree split --prefix=crates/tree-sitter-mosaic --rejoin -b tree-sitter-mosaic-root
+    @echo "tree-sitter-mosaic-root updated. Push with:"
+    @echo "    git push origin tree-sitter-mosaic-root"

@@ -3,8 +3,8 @@
 Zed editor extension for the [Mosaic](https://github.com/kjanat/mosaic) typesetting language
 (`.mos`).
 
-Status: **pre-alpha dev-install only.** Grammar URL in `extension.toml` is a local `file://`
-placeholder — see "Grammar URL caveat" below.
+Status: **pre-alpha dev-install only.** Grammar is fetched from a `git subtree split` branch
+(`tree-sitter-mosaic-root`) via a `file://` URL — see "Grammar URL" below.
 
 ## What it provides
 
@@ -24,31 +24,32 @@ server.
 3. Select this directory (`crates/zed-mosaic/`).
 4. Open any `examples/*/main.mos` to confirm highlighting and the language picker shows "Mosaic".
 
-## Grammar URL caveat
+## Grammar URL
 
 Zed's `[grammars.<name>]` block clones the configured `repository` and expects `grammar.js` /
-`src/parser.c` at the repo root. The Mosaic grammar currently lives in a subdirectory of the
-monorepo (`crates/tree-sitter-mosaic`), so the default `file://` URL in `extension.toml` won't fetch
-successfully on machines other than the author's.
+`src/parser.c` at the repo root. The grammar lives in `crates/tree-sitter-mosaic/` — a subdirectory.
+To bridge this without a separate published repo, we maintain a `tree-sitter-mosaic-root` branch
+produced by `git subtree split`: its root tree IS the contents of `crates/tree-sitter-mosaic/`, so
+Zed sees `grammar.js` where it expects it.
 
-To make this extension functional locally before `tree-sitter-mosaic` is split into a standalone
-repo:
+`extension.toml` currently points at a local `file://` clone of the monorepo. To set it up on a
+fresh machine:
 
-1. Clone or copy `crates/tree-sitter-mosaic/` to a standalone directory:
+1. Clone the monorepo somewhere stable (e.g. `~/projects/mosaic`).
+2. From inside that clone, create the split branch:
 
    ```bash
-   git clone https://github.com/kjanat/mosaic /tmp/mosaic-clone
-   cp -r /tmp/mosaic-clone/crates/tree-sitter-mosaic ~/src/tree-sitter-mosaic
-   (cd ~/src/tree-sitter-mosaic && git init && git add -A && git commit -m "import")
+   just refresh-zed-grammar
    ```
 
-2. Update `[grammars.mosaic].repository` in `extension.toml` to the standalone path, and `rev` to
-   the current `HEAD` SHA.
+3. Edit `extension.toml`'s `[grammars.mosaic].repository` to point at your local clone path.
+4. Install the dev extension (see above).
 
-3. Reinstall the dev extension.
+When grammar code changes, re-run `just refresh-zed-grammar` and reinstall the extension (or run
+`zed: rebuild grammar` from the palette).
 
-The clean fix is to publish `tree-sitter-mosaic` as `github.com/kjanat/tree-sitter-mosaic` and
-reference that URL — tracked as a follow-up.
+The long-term fix is to publish `tree-sitter-mosaic` as `github.com/kjanat/tree-sitter-mosaic` and
+switch `repository` to that `https://…` URL. Tracked as a follow-up.
 
 ## Query files
 
