@@ -6,13 +6,7 @@ authors        = ["Kaj Kowalski <info@kajkowalski.nl>"]
 description    = "Mosaic (.mos) typesetting language support."
 repository     = "https://github.com/kjanat/mosaic"
 
-# Zed clones `repository` and expects `grammar.js` / `src/parser.c` at the
-# repo root. The grammar lives in `crates/tree-sitter-mosaic/` inside the
-# Mosaic monorepo, so we point at a `git subtree split` branch whose root
-# IS that subdirectory — `tree-sitter-mosaic-root`. Refresh it with
-# `just refresh-zed-grammar` after grammar changes. The `file://` URL is
-# fine for the author's machine; replace with the eventual standalone
-# `https://github.com/kjanat/tree-sitter-mosaic` once published.
 [grammars.mosaic]
 repository = "file:///home/kjanat/projects/mosaic"
-rev        = "tree-sitter-mosaic-root"
+rev        = "zed-mosaic"
+path       = "crates/tree-sitter-mosaic"
