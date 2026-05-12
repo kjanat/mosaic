@@ -1,12 +1,15 @@
+// @ts-check
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
-const binding = typeof process.versions.bun === 'string'
+const bindingModule = typeof process.versions.bun === 'string'
 	// Support `bun build --compile` by being statically analyzable enough to find the .node file at build-time
 	? await import(`${root}/prebuilds/${process.platform}-${process.arch}/tree-sitter-mosaic.node`)
 	: (await import('node-gyp-build')).default(root);
+
+const binding = bindingModule?.default ?? bindingModule;
 
 try {
 	const nodeTypes = await import(`${root}/src/node-types.json`, { with: { type: 'json' } });
