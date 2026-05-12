@@ -4,7 +4,6 @@
 	"description": "Mosaic grammar for tree-sitter",
 	"type": "module",
 	"main": "bindings/node",
-	"types": "bindings/node",
 	"files": [
 		"grammar.js",
 		"tree-sitter.json",
@@ -14,10 +13,7 @@
 		"src/**"
 	],
 	"exports": {
-		".": {
-			"types": "./bindings/node/index.d.ts",
-			"default": "./bindings/node/index.js"
-		},
+		".": "./bindings/node/index.js",
 		"./package.json": "./package.json"
 	},
 	"scripts": {
