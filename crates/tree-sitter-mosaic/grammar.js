@@ -61,8 +61,7 @@ export default grammar({
 		// Document
 		// -------------------------------------------------------------------
 
-		source_file: $ =>
-			repeat(choice($.blank_line, $._block, $._line_end)),
+		source_file: $ => repeat(choice($.blank_line, $._block, $._line_end)),
 
 		_block: $ =>
 			choice(
@@ -115,8 +114,7 @@ export default grammar({
 				optional($._line_end),
 			)),
 
-		import_items: $ =>
-			seq($.identifier, repeat(seq(',', $.identifier))),
+		import_items: $ => seq($.identifier, repeat(seq(',', $.identifier))),
 
 		include_directive: $ =>
 			prec.right(seq(
@@ -273,25 +271,34 @@ export default grammar({
 		inline_call: $ => $.hash_call,
 
 		emphasis: $ =>
-			prec.dynamic(PREC.emphasis, seq(
-				'*',
-				repeat1($._emphasis_unit),
-				'*',
-			)),
+			prec.dynamic(
+				PREC.emphasis,
+				seq(
+					'*',
+					repeat1($._emphasis_unit),
+					'*',
+				),
+			),
 
 		strong: $ =>
-			prec.dynamic(PREC.strong, seq(
-				'**',
-				repeat1($._strong_unit),
-				'**',
-			)),
+			prec.dynamic(
+				PREC.strong,
+				seq(
+					'**',
+					repeat1($._strong_unit),
+					'**',
+				),
+			),
 
 		strong_emphasis: $ =>
-			prec.dynamic(PREC.strong_emphasis, seq(
-				'***',
-				repeat1($._strong_emphasis_unit),
-				'***',
-			)),
+			prec.dynamic(
+				PREC.strong_emphasis,
+				seq(
+					'***',
+					repeat1($._strong_emphasis_unit),
+					'***',
+				),
+			),
 
 		_emphasis_unit: $ =>
 			choice(
@@ -371,25 +378,34 @@ export default grammar({
 		// -------------------------------------------------------------------
 
 		hash_call: $ =>
-			prec.right(PREC.hash_call, seq(
-				'#',
-				field('function', $.qualified_name),
-				optional(field('arguments', $.argument_list)),
-				optional(field('body', $.content_body)),
-			)),
+			prec.right(
+				PREC.hash_call,
+				seq(
+					'#',
+					field('function', $.qualified_name),
+					optional(field('arguments', $.argument_list)),
+					optional(field('body', $.content_body)),
+				),
+			),
 
 		linebreak_call: $ =>
-			prec.right(PREC.linebreak_call, seq(
-				'#linebreak',
-				optional(field('arguments', $.argument_list)),
-			)),
+			prec.right(
+				PREC.linebreak_call,
+				seq(
+					'#linebreak',
+					optional(field('arguments', $.argument_list)),
+				),
+			),
 
 		block_call: $ =>
-			prec.dynamic(1, prec.right(seq(
-				$.hash_call,
-				optional(field('label', $.block_label)),
-				optional($._line_end),
-			))),
+			prec.dynamic(
+				1,
+				prec.right(seq(
+					$.hash_call,
+					optional(field('label', $.block_label)),
+					optional($._line_end),
+				)),
+			),
 
 		content_body: $ =>
 			seq(
@@ -442,12 +458,15 @@ export default grammar({
 		_argument: $ => choice($.attribute, $._expression),
 
 		attribute: $ =>
-			prec(PREC.attribute, seq(
-				field('key', $.identifier),
-				':',
-				optional($._nl),
-				field('value', $._expression),
-			)),
+			prec(
+				PREC.attribute,
+				seq(
+					field('key', $.identifier),
+					':',
+					optional($._nl),
+					field('value', $._expression),
+				),
+			),
 
 		array: $ =>
 			seq(
@@ -485,8 +504,7 @@ export default grammar({
 				'}',
 			),
 
-		qualified_name: $ =>
-			prec.right(seq($.identifier, repeat(seq('.', $.identifier)))),
+		qualified_name: $ => prec.right(seq($.identifier, repeat(seq('.', $.identifier)))),
 
 		// -------------------------------------------------------------------
 		// Literals
