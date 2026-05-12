@@ -85,3 +85,13 @@ heading: over-deep marker (7+) falls through to paragraph
   (paragraph
     (paragraph_segment
       (text))))
+
+==================
+heading: marker with no content is ERROR (inline_sequence is repeat1)
+==================
+=	
+---
+
+(source_file
+  (ERROR
+    (heading_marker)))
