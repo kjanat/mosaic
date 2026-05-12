@@ -44,6 +44,21 @@ paragraph: leading label
       (text))))
 
 ==================
+paragraph: trailing label
+==================
+The closing sentence. <outro>
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))
+    trailing_label: (trailing_label
+      (block_label
+        (label
+          name: (label_name))))))
+
+==================
 paragraph: two paragraphs separated by blank line
 ==================
 First.
