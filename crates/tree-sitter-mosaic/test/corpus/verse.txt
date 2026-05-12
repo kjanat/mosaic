@@ -44,3 +44,78 @@ in a far land]
             (identifier))
           body: (content_body)))
       (verse_text))))
+
+==================
+verse: two emphasis spans on one line
+==================
+#verse[First *one* and *two* line]
+---
+
+(source_file
+  (verse_block
+    body: (verse_body
+      (verse_text)
+      (emphasis
+        (emph_text))
+      (verse_text)
+      (emphasis
+        (emph_text))
+      (verse_text))))
+
+==================
+verse: strong inside verse body
+==================
+#verse[Some **bold** stuff]
+---
+
+(source_file
+  (verse_block
+    body: (verse_body
+      (verse_text)
+      (strong
+        (emph_text))
+      (verse_text))))
+
+==================
+verse: escaped closing bracket inside verse body
+==================
+#verse[Use \] for bracket]
+---
+
+(source_file
+  (verse_block
+    body: (verse_body
+      (verse_text)
+      (escaped_char)
+      (verse_text))))
+
+==================
+verse: reference inside verse body
+==================
+#verse[See @sec:intro here]
+---
+
+(source_file
+  (verse_block
+    body: (verse_body
+      (verse_text)
+      (reference
+        target: (label_name))
+      (verse_text))))
+
+==================
+verse: nested emphasis inside strong inside verse body
+==================
+#verse[A **strong with *nested* inside** line]
+---
+
+(source_file
+  (verse_block
+    body: (verse_body
+      (verse_text)
+      (strong
+        (emph_text)
+        (emphasis
+          (emph_text))
+        (emph_text))
+      (verse_text))))
