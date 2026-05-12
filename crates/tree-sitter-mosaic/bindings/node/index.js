@@ -3,22 +3,15 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-/**
- * @typedef {Object} BaseNode
- * @property {string} type
- * @property {boolean} named
- */
-
-/**
- * @typedef {Object} ChildNode
- * @property {boolean} multiple
- * @property {boolean} required
- * @property {BaseNode[]} types
- */
+/** @typedef {import('tree-sitter').BaseNode} BaseNode */
+/** @typedef {import('tree-sitter').ChildNode} ChildNode */
 
 /**
  * One entry in `node-types.json`. Either a polymorphic node with `subtypes`,
  * or a structural node with `fields` and a single `children` descriptor.
+ *
+ * Note: this overrides `tree-sitter`'s own `NodeInfo`, which types `children`
+ * as `ChildNode[]`. The on-disk schema emits a single `ChildNode` object.
  *
  * @see {@link https://tree-sitter.github.io/tree-sitter/using-parsers/6-static-node-types Static Node Types}
  *
