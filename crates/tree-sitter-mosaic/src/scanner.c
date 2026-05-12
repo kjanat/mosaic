@@ -34,12 +34,12 @@ enum TokenType {
     ERROR_SENTINEL,
 };
 
-static inline bool is_hspace(int32_t c) {
-    return c == ' ' || c == '\t';
+static inline bool is_hspace(int32_t code) {
+    return code == ' ' || code == '\t';
 }
 
-static inline bool is_line_end(int32_t c) {
-    return c == '\n' || c == '\r';
+static inline bool is_line_end(int32_t code) {
+    return code == '\n' || code == '\r';
 }
 
 static void advance(TSLexer *lexer) {
