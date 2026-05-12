@@ -128,3 +128,58 @@ two adjacent directives without blank line
       (attribute
         key: (identifier)
         value: (number)))))
+
+==================
+set: missing closing paren inserts MISSING ")"
+==================
+#set text(font: "Noto Sans"
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (string))
+      (MISSING ")"))))
+
+==================
+import: bare keyword without path is ERROR
+==================
+#import
+---
+
+(source_file
+  (ERROR))
+
+==================
+set: attribute with empty value
+==================
+#set text(font:)
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (qualified_name
+        (identifier))
+      (ERROR))))
+
+==================
+include: unterminated string literal recovers at next directive
+==================
+#include "unterminated
+#set a(b: 1)
+---
+
+(source_file
+  (ERROR
+    (UNEXPECTED '\n'))
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (number)))))
