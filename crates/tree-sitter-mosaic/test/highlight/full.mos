@@ -1,0 +1,40 @@
+// File-level config
+// <- comment
+
+#set page(paper: "A4", margin: 24mm)
+// <- keyword
+//    ^ type
+//         ^ variable.parameter
+//                ^ string
+//                       ^ variable.parameter
+//                               ^ number
+
+#import "lib.mos": util
+// <- keyword.import
+//       ^ string.special.path
+//                   ^ variable
+
+= Introduction <intro>
+// <- markup.heading.marker
+//  ^ markup.heading
+//               ^ markup.link.label
+
+This paper covers *parsing* and **lowering** here.
+//                  ^ markup.italic
+//                                 ^ markup.strong
+
+See @intro section. Math is $x = 1$ here.
+//   ^ markup.link.label
+//                            ^ markup.math
+
+== Background
+
+Use `mos check` to run.
+//    ^ markup.raw
+
+Escape \[ works fine.
+//     ^ string.escape
+
+#pre[raw text body]
+// <- keyword
+//    ^ markup.raw

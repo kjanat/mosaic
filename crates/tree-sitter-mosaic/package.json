@@ -13,11 +13,12 @@
 		"queries/*",
 		"src/**"
 	],
+	"exports": { "./package.json": "./package.json" },
 	"scripts": {
 		"generate": "tree-sitter generate",
 		"test": "tree-sitter test",
 		"parse": "tree-sitter parse",
-		"playground": "tree-sitter playground"
+		"playground": "tree-sitter playground --quiet"
 	},
 	"devDependencies": {
 		"tree-sitter-cli": "^0.26.0"

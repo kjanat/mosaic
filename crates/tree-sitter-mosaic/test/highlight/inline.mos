@@ -1,0 +1,22 @@
+A *italic* word.
+// ^ markup.italic
+
+Some **strong** phrase.
+//     ^ markup.strong
+
+Use `code` inline.
+//    ^ markup.raw
+
+Math $x = 1$ goes here.
+//   ^ punctuation.special
+//    ^ markup.math
+
+See @intro for context.
+//  ^ punctuation.special
+//   ^ markup.link.label
+
+Refer to <anchor> label.
+//        ^ markup.link.label
+
+Escaped \* asterisk.
+//      ^ string.escape
