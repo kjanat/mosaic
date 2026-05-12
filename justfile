@@ -29,3 +29,10 @@ examples:
 
 fmt:
     dprint fmt
+
+# Sync the Zed extension's query files from the canonical
+# `tree-sitter-mosaic/queries/` sources. Zed loads highlights + injections;
+# `locals.scm` and `tags.scm` are tree-sitter-only and not copied.
+sync-zed-queries:
+    cp crates/tree-sitter-mosaic/queries/highlights.scm crates/zed-mosaic/languages/mosaic/highlights.scm
+    cp crates/tree-sitter-mosaic/queries/injections.scm crates/zed-mosaic/languages/mosaic/injections.scm
