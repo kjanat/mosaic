@@ -2,7 +2,16 @@
 	"name": "tree-sitter-mosaic",
 	"version": "0.0.0",
 	"description": "Mosaic grammar for tree-sitter",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/kjanat/mosaic.git",
+		"directory": "crates/tree-sitter-mosaic"
+	},
 	"type": "module",
+	"exports": {
+		".": "./bindings/node/index.js",
+		"./package.json": "./package.json"
+	},
 	"main": "bindings/node",
 	"files": [
 		"grammar.js",
@@ -10,17 +19,15 @@
 		"binding.gyp",
 		"bindings/node/*",
 		"queries/*",
+		"scripts/*",
 		"src/**"
 	],
-	"exports": {
-		".": "./bindings/node/index.js",
-		"./package.json": "./package.json"
-	},
 	"scripts": {
 		"generate": "tree-sitter generate",
-		"test": "tree-sitter test",
+		"postinstall": "node scripts/ensure-native.mjs",
 		"parse": "tree-sitter parse",
-		"playground": "tree-sitter playground --quiet"
+		"playground": "tree-sitter playground --quiet",
+		"test": "tree-sitter test"
 	},
 	"devDependencies": {
 		"@types/node": "^25.7.0",

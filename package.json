@@ -1,6 +1,7 @@
 {
 	"name": "mosaic",
 	"private": true,
+	"repository": "kjanat/mosaic",
 	"workspaces": [
 		"crates/tree-sitter-mosaic"
 	],
