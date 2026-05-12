@@ -13,7 +13,13 @@
 		"queries/*",
 		"src/**"
 	],
-	"exports": { "./package.json": "./package.json" },
+	"exports": {
+		".": {
+			"types": "./bindings/node/index.d.ts",
+			"default": "./bindings/node/index.js"
+		},
+		"./package.json": "./package.json"
+	},
 	"scripts": {
 		"generate": "tree-sitter generate",
 		"test": "tree-sitter test",
@@ -21,6 +27,8 @@
 		"playground": "tree-sitter playground --quiet"
 	},
 	"devDependencies": {
+		"node-gyp-build": "^4.8.4",
+		"tree-sitter": "^0.25.0",
 		"tree-sitter-cli": "^0.26.0"
 	}
 }

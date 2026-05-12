@@ -13,11 +13,11 @@
 ; `#import "lib.mos": foo, bar` — each trailing identifier is a binding.
 (import_directive
   items: (import_items
-    (identifier) @local.definition.import))
+    (identifier) @local.definition))
 
 ; `<intro:setup>` — label introduction.
 (label
-  name: (label_name) @local.definition.label)
+  name: (label_name) @local.definition)
 
 ; --- References -------------------------------------------------------------
 
