@@ -1,0 +1,4 @@
+#set page(
+  paper: "A4",
+  margin: 24mm,
+)
