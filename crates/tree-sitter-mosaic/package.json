@@ -29,10 +29,12 @@
 		"playground": "tree-sitter playground --quiet",
 		"test": "tree-sitter test"
 	},
+	"dependencies": {
+		"node-addon-api": "^8.7.0",
+		"node-gyp-build": "^4.8.4"
+	},
 	"devDependencies": {
 		"@types/node": "^25.7.0",
-		"node-addon-api": "^8.7.0",
-		"node-gyp-build": "^4.8.4",
 		"tree-sitter": "^0.25.0",
 		"tree-sitter-cli": "^0.26.0",
 		"typescript": "^6.0.3"

@@ -19,8 +19,13 @@ if (existsSync('node_modules/tree-sitter')) {
 	const require = createRequire(import.meta.url);
 	try {
 		require('tree-sitter');
-	} catch {
-		console.log('tree-sitter native missing — rebuilding...');
+	} catch (err) {
+		console.warn(
+			`tree-sitter native binding unavailable (${err?.message ?? err}); rebuilding...`,
+		);
 		execSync('npm rebuild tree-sitter', { stdio: 'inherit' });
+		// Re-verify: if the rebuild didn't fix it, surface the failure
+		// instead of letting downstream `import 'tree-sitter'` crash.
+		require('tree-sitter');
 	}
 }
