@@ -22,3 +22,25 @@ verse: empty body
 (source_file
   (verse_block
     body: (verse_body)))
+
+==================
+verse: three lines with mixed inline (emphasis, hash_call, plain text)
+==================
+#verse[Once upon a time
+*there* lived a #hero[]
+in a far land]
+---
+
+(source_file
+  (verse_block
+    body: (verse_body
+      (verse_text)
+      (emphasis
+        (emph_text))
+      (verse_text)
+      (inline_call
+        (hash_call
+          function: (qualified_name
+            (identifier))
+          body: (content_body)))
+      (verse_text))))

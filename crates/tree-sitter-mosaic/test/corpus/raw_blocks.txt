@@ -66,3 +66,14 @@ pre: empty body
 (source_file
   (pre_block
     body: (raw_body)))
+
+==================
+pre: combined escaped backslash and bracket in one body
+==================
+#pre[path\\to\]file]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))))

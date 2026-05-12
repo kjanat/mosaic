@@ -93,3 +93,22 @@ Second.
   (paragraph
     (paragraph_segment
       (text))))
+
+==================
+paragraph: multiple blank lines collapse into one blank_line token
+==================
+First.
+
+
+
+Second.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (blank_line)
+  (paragraph
+    (paragraph_segment
+      (text))))
