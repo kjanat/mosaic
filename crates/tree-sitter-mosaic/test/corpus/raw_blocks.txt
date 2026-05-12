@@ -1,0 +1,36 @@
+==================
+pre: exact spacing
+==================
+#pre[  exact spacing]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+code: with language arg
+==================
+#code(lang: "rust")[fn main() {}]
+---
+
+(source_file
+  (code_block
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (string)))
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+pre: with escaped closing bracket
+==================
+#pre[contains \] bracket]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))))

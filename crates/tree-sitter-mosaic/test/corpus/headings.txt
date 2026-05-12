@@ -1,0 +1,53 @@
+==================
+heading: level 1
+==================
+= Hello
+---
+
+(source_file
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text))))
+
+==================
+heading: level 3
+==================
+=== Subsection title
+---
+
+(source_file
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text))))
+
+==================
+heading: trailing label
+==================
+= Intro <sec:intro>
+---
+
+(source_file
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text))
+    label: (block_label
+      (label
+        name: (label_name)))))
+
+==================
+heading: with inline emphasis
+==================
+== The *quick* brown
+---
+
+(source_file
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text)
+      (emphasis
+        (emph_text))
+      (text))))

@@ -1,0 +1,26 @@
+==================
+comment: line comment is trivia
+==================
+// a comment
+= Hello
+---
+
+(source_file
+  (comment)
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text))))
+
+==================
+comment: block comment is trivia
+==================
+/* block */ = Hi
+---
+
+(source_file
+  (comment)
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text))))

@@ -16,9 +16,13 @@
 
 ; --- References -------------------------------------------------------------
 
-; `#name(...)` — template/function invocation.
-(call
-  function: (identifier) @name) @reference.call
+; `#name(...)` — template/function invocation in block or inline position.
+(hash_call
+  function: (qualified_name) @name) @reference.call
+
+; `name(...)` — expression-position call.
+(call_expr
+  function: (qualified_name) @name) @reference.call
 
 ; `@intro:setup` — label use.
 (reference
