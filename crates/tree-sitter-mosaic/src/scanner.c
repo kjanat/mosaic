@@ -1,6 +1,6 @@
 // External scanner for tree-sitter-mosaic.
 //
-// Emits three tokens that pure regex tokenisation cannot express cleanly:
+// Emits four tokens that pure regex tokenisation cannot express cleanly:
 //
 //   BLANK_LINE        : two or more line terminators (optionally separated by
 //                       horizontal whitespace). A single line_end is left to
@@ -15,9 +15,12 @@
 //                       handles every other `\X` form.
 //
 //   RAW_BODY_CONTENT  : one chunk of `#pre[...]` / `#code[...]` body text.
-//                       Honours `\\` and `\]` as `raw_escape`. Stops before
-//                       the closing `]` so the grammar matches it as a
-//                       literal.
+//                       Stops before raw escapes and the closing `]` so the
+//                       grammar can expose both separately.
+//
+//   RAW_BODY_ESCAPE   : `\\` or `\]` inside a raw body. `\]` means "literal
+//                       `]`, not the raw-body delimiter"; the Rust parser
+//                       decodes it before lowering.
 //
 // No persistent state; serialize length is 0.
 
@@ -31,6 +34,7 @@ enum TokenType {
     BLANK_LINE,
     LINEBREAK_ESCAPE,
     RAW_BODY_CONTENT,
+    RAW_BODY_ESCAPE,
     ERROR_SENTINEL,
 };
 
@@ -169,12 +173,32 @@ static bool scan_linebreak_escape(TSLexer *lexer) {
 }
 
 /**
- * Scan a single raw-body content chunk inside `#pre[...]` or `#code[...]`, consuming input until the next unescaped `]`.
- *
- * The scanner consumes characters and raw escape sequences (`\\` and `\]`) as part of the content and stops before the closing `]` (which is left for the grammar). On success it sets `lexer->result_symbol` to `RAW_BODY_CONTENT` and marks the token end.
+ * Scan a raw-body escape inside `#pre[...]` or `#code[...]`.
  *
  * @param lexer The Tree-sitter lexer to read from and advance.
- * @returns `true` if at least one character (or escape sequence) was consumed and a `RAW_BODY_CONTENT` token was produced, `false` otherwise.
+ * @returns `true` if a raw-body escape was consumed and emitted.
+ */
+static bool scan_raw_body_escape(TSLexer *lexer) {
+    if (lexer->lookahead != '\\') {
+        return false;
+    }
+    advance(lexer);
+    if (lexer->lookahead != ']' && lexer->lookahead != '\\') {
+        return false;
+    }
+    advance(lexer);
+    lexer->mark_end(lexer);
+    lexer->result_symbol = RAW_BODY_ESCAPE;
+    return true;
+}
+
+/**
+ * Scan a single raw-body content chunk inside `#pre[...]` or `#code[...]`, consuming input until the next raw escape or unescaped `]`.
+ *
+ * The scanner consumes characters as content and stops before raw escape sequences (`\\` and `\]`) or the closing `]` (which is left for the grammar). Plain `\X` for other `X` remains content. On success it sets `lexer->result_symbol` to `RAW_BODY_CONTENT` and marks the token end.
+ *
+ * @param lexer The Tree-sitter lexer to read from and advance.
+ * @returns `true` if at least one character was consumed and a `RAW_BODY_CONTENT` token was produced, `false` otherwise.
  */
 static bool scan_raw_body_content(TSLexer *lexer) {
     bool consumed = false;
@@ -184,23 +208,23 @@ static bool scan_raw_body_content(TSLexer *lexer) {
             break;
         }
         if (lexer->lookahead == '\\') {
-            // Look at the char after the backslash without committing.
             advance(lexer);
             if (lexer->lookahead == ']' || lexer->lookahead == '\\') {
-                advance(lexer);
+                break;
             }
             // Plain `\X` for any other X is also fine inside a raw body;
             // the backslash is already consumed.
             consumed = true;
+            lexer->mark_end(lexer);
             continue;
         }
         advance(lexer);
         consumed = true;
+        lexer->mark_end(lexer);
     }
     if (!consumed) {
         return false;
     }
-    lexer->mark_end(lexer);
     lexer->result_symbol = RAW_BODY_CONTENT;
     return true;
 }
@@ -210,7 +234,8 @@ static bool scan_raw_body_content(TSLexer *lexer) {
  *
  * When Tree-sitter requests an external token, this function selects which
  * scanner to invoke according to `valid_symbols` and a fixed priority:
- * `RAW_BODY_CONTENT` first, then `LINEBREAK_ESCAPE`, then `BLANK_LINE`.
+ * `RAW_BODY_ESCAPE` first, then `RAW_BODY_CONTENT`, then `LINEBREAK_ESCAPE`,
+ * then `BLANK_LINE`.
  * If `valid_symbols[ERROR_SENTINEL]` is set (error-recovery mode), the
  * function returns immediately without consuming input.
  *
@@ -231,8 +256,15 @@ bool tree_sitter_mosaic_external_scanner_scan(
         return false;
     }
 
-    // Raw body has top priority: when the parser asks for raw content, we
-    // must produce exactly one chunk and not interpret anything else.
+    if (valid_symbols[RAW_BODY_ESCAPE]) {
+        if (scan_raw_body_escape(lexer)) {
+            return true;
+        }
+    }
+
+    // Raw body has priority over paragraph-level escapes: when the parser asks
+    // for raw content, we must produce exactly one chunk and not interpret
+    // anything else.
     if (valid_symbols[RAW_BODY_CONTENT]) {
         if (scan_raw_body_content(lexer)) {
             return true;

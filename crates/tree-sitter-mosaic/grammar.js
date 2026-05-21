@@ -5,9 +5,9 @@
  * Tree-sitter grammar for the Mosaic `.mos` document language.
  *
  * Mirrors `mosaic.ebnf` (also rendered in `EBNF.md`) 1:1 in structure. The
- * three tokens that regex-only lexing cannot express cleanly (`blank_line`,
- * `linebreak_escape`, raw `#pre`/`#code` body content) are emitted by the
- * external scanner in `src/scanner.c`.
+ * four tokens that regex-only lexing cannot express cleanly (`blank_line`,
+ * `linebreak_escape`, raw `#pre`/`#code` body content, raw body escapes) are
+ * emitted by the external scanner in `src/scanner.c`.
  *
  * @file Mosaic grammar for Tree-sitter
  * @author Kaj Kowalski <info@kajkowalski.nl>
@@ -35,6 +35,7 @@ export default grammar({
 		$.blank_line,
 		$.linebreak_escape,
 		$.raw_body_content,
+		$.raw_body_escape,
 		$._error_sentinel,
 	],
 
@@ -170,7 +171,7 @@ export default grammar({
 				optional($._line_end),
 			)),
 
-		raw_body: $ => seq('[', repeat($.raw_body_content), ']'),
+		raw_body: $ => seq('[', repeat(choice($.raw_body_content, $.raw_body_escape)), ']'),
 
 		verse_body: $ =>
 			seq(

@@ -68,6 +68,7 @@
 (inline_math) @text.literal
 (verse_block) @text.literal
 (raw_body_content) @text.literal
+(raw_body_escape) @text.literal @string.escape
 
 ; --- Labels & references ----------------------------------------------------
 

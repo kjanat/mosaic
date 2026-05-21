@@ -565,8 +565,17 @@
         {
           "type": "REPEAT",
           "content": {
-            "type": "SYMBOL",
-            "name": "raw_body_content"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "raw_body_content"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "raw_body_escape"
+              }
+            ]
           }
         },
         {
@@ -2164,6 +2173,10 @@
     {
       "type": "SYMBOL",
       "name": "raw_body_content"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "raw_body_escape"
     },
     {
       "type": "SYMBOL",

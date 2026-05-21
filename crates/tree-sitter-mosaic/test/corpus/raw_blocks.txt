@@ -33,6 +33,8 @@ pre: with escaped closing bracket
 (source_file
   (pre_block
     body: (raw_body
+      (raw_body_content)
+      (raw_body_escape)
       (raw_body_content))))
 
 ==================
@@ -44,6 +46,8 @@ pre: escaped backslash
 (source_file
   (pre_block
     body: (raw_body
+      (raw_body_content)
+      (raw_body_escape)
       (raw_body_content))))
 
 ==================
@@ -55,7 +59,8 @@ pre: escaped backslash before closing bracket
 (source_file
   (pre_block
     body: (raw_body
-      (raw_body_content))))
+      (raw_body_content)
+      (raw_body_escape))))
 
 ==================
 pre: empty body
@@ -76,6 +81,10 @@ pre: combined escaped backslash and bracket in one body
 (source_file
   (pre_block
     body: (raw_body
+      (raw_body_content)
+      (raw_body_escape)
+      (raw_body_content)
+      (raw_body_escape)
       (raw_body_content))))
 
 ==================
