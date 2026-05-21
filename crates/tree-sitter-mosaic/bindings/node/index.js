@@ -42,7 +42,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
-const bindingModule = typeof process.versions.bun === 'string'
+const bindingModule = process.versions.bun
 	// Support `bun build --compile` by being statically analyzable enough to find the .node file at build-time
 	? await import(`${root}/prebuilds/${process.platform}-${process.arch}/tree-sitter-mosaic.node`)
 	: (await import('node-gyp-build')).default(root);
