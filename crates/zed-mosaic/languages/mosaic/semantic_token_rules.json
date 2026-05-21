@@ -1,0 +1,86 @@
+[
+	{
+		"token_type": "mosaicDirective",
+		"style": ["keyword"]
+	},
+	{
+		"token_type": "mosaicDirectiveTarget",
+		"style": ["type"]
+	},
+	{
+		"token_type": "mosaicAttribute",
+		"style": ["variable.parameter"]
+	},
+	{
+		"token_type": "mosaicHeading",
+		"style": ["title"]
+	},
+	{
+		"token_type": "mosaicHeadingMarker",
+		"style": ["punctuation.special"]
+	},
+	{
+		"token_type": "mosaicEmphasis",
+		"style": ["emphasis"],
+		"font_style": "italic"
+	},
+	{
+		"token_type": "mosaicStrong",
+		"style": ["emphasis.strong"],
+		"font_weight": "bold"
+	},
+	{
+		"token_type": "mosaicStrongEmphasis",
+		"style": ["emphasis.strong", "emphasis"],
+		"font_style": "italic",
+		"font_weight": "bold"
+	},
+	{
+		"token_type": "mosaicInlineCode",
+		"style": ["text.literal"]
+	},
+	{
+		"token_type": "mosaicCodeBlock",
+		"style": ["text.literal"]
+	},
+	{
+		"token_type": "mosaicRawBlock",
+		"style": ["text.literal"]
+	},
+	{
+		"token_type": "mosaicMath",
+		"style": ["text.literal"]
+	},
+	{
+		"token_type": "mosaicLabel",
+		"style": ["label"]
+	},
+	{
+		"token_type": "mosaicReference",
+		"style": ["link_uri"]
+	},
+	{
+		"token_type": "mosaicReferenceText",
+		"style": ["link_text"]
+	},
+	{
+		"token_type": "mosaicEscape",
+		"style": ["string.escape"]
+	},
+	{
+		"token_type": "mosaicDelimiter",
+		"style": ["punctuation.delimiter"]
+	},
+	{
+		"token_type": "mosaicBracket",
+		"style": ["punctuation.bracket"]
+	},
+	{
+		"token_type": "mosaicSpecialPunctuation",
+		"style": ["punctuation.special"]
+	},
+	{
+		"token_type": "mosaicListMarker",
+		"style": ["punctuation.list_marker"]
+	}
+]
