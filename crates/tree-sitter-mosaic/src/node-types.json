@@ -311,6 +311,10 @@
           "named": true
         },
         {
+          "type": "soft_break",
+          "named": true
+        },
+        {
           "type": "strong",
           "named": true
         },
@@ -866,6 +870,10 @@
           "named": true
         },
         {
+          "type": "soft_break",
+          "named": true
+        },
+        {
           "type": "strong_emphasis",
           "named": true
         }
@@ -910,6 +918,10 @@
         },
         {
           "type": "reference",
+          "named": true
+        },
+        {
+          "type": "soft_break",
           "named": true
         },
         {

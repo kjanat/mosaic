@@ -47,18 +47,18 @@
 
 ; --- Inline emphasis --------------------------------------------------------
 
-(emphasis) @markup.italic
-(strong) @markup.strong
-(strong_emphasis) @markup.strong
+(emphasis) @emphasis
+(strong) @emphasis.strong
+(strong_emphasis) @emphasis.strong
 
 ; --- Code, math, raw blocks -------------------------------------------------
 
-(code_span) @markup.raw
+(code_span) @text.literal
 (inline_math) @markup.math
 (verse_block) @markup.quote
 (pre_block) @markup.raw.block
 (code_block) @markup.raw.block
-(raw_body_content) @markup.raw
+(raw_body_content) @text.literal
 
 ; --- Labels & references ----------------------------------------------------
 

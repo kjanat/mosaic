@@ -10,4 +10,4 @@
 === With *italic* word
 // <- markup.heading.marker
 //    ^ markup.heading
-//        ^ markup.italic
+//        ^ emphasis

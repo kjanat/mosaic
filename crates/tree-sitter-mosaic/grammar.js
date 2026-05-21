@@ -310,6 +310,7 @@ export default grammar({
 				$.linebreak_call,
 				$.inline_call,
 				$.escaped_char,
+				$.soft_break,
 				$.emph_text,
 			),
 
@@ -323,6 +324,7 @@ export default grammar({
 				$.linebreak_call,
 				$.inline_call,
 				$.escaped_char,
+				$.soft_break,
 				$.emph_text,
 			),
 
@@ -336,6 +338,7 @@ export default grammar({
 				$.linebreak_call,
 				$.inline_call,
 				$.escaped_char,
+				$.soft_break,
 				$.emph_text,
 			),
 

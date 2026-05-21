@@ -1,11 +1,11 @@
 A *italic* word.
-// ^ markup.italic
+// ^ emphasis
 
 Some **strong** phrase.
-//     ^ markup.strong
+//     ^ emphasis.strong
 
 Use `code` inline.
-//    ^ markup.raw
+//    ^ text.literal
 
 Math $x = 1$ goes here.
 //   ^ punctuation.special

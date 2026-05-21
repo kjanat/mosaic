@@ -20,8 +20,8 @@
 //               ^ markup.link.label
 
 This paper covers *parsing* and **lowering** here.
-//                  ^ markup.italic
-//                                 ^ markup.strong
+//                  ^ emphasis
+//                                 ^ emphasis.strong
 
 See @intro section. Math is $x = 1$ here.
 //   ^ markup.link.label
@@ -30,11 +30,11 @@ See @intro section. Math is $x = 1$ here.
 == Background
 
 Use `mos check` to run.
-//    ^ markup.raw
+//    ^ text.literal
 
 Escape \[ works fine.
 //     ^ string.escape
 
 #pre[raw text body]
 // <- keyword
-//    ^ markup.raw
+//    ^ text.literal

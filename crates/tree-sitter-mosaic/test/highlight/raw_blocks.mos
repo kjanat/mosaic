@@ -3,8 +3,8 @@
 //     ^ markup.quote
 
 #verse[*italic* line]
-//      ^ markup.italic
+//      ^ emphasis
 
 #pre[raw text here]
 // <- keyword
-//   ^ markup.raw
+//   ^ text.literal

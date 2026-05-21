@@ -120,6 +120,29 @@ A **strong with *nested emphasis* inside** text.
       (text))))
 
 ==================
+inline: emphasis and strong span soft breaks
+==================
+This is *italic
+across lines* and **strong
+across lines**.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (emphasis
+        (emph_text)
+        (soft_break)
+        (emph_text))
+      (text)
+      (strong
+        (emph_text)
+        (soft_break)
+        (emph_text))
+      (text))))
+
+==================
 inline: hash call without args mid-paragraph
 ==================
 Some #emoji prefix.
