@@ -49,7 +49,8 @@ Code blocks are raw bracket bodies. If the body needs a literal closing
 bracket, escape it so the block scanner does not treat it as the end of
 the block.
 
-#code[let brackets = "open [ and escaped close \]";
+#code[let brackets = "open [ and escaped close \]"
+...or unescaped non-close \\\];
 println!(brackets);]
 
 == Choosing a form
