@@ -25,7 +25,8 @@ mosaic-packages = { workspace = true }
 mosaic-parse    = { workspace = true }
 mosaic-pdf      = { workspace = true }
 
-clap = { workspace = true }
+clap   = { workspace = true }
+opener = { workspace = true }
 
 [dev-dependencies]
 lopdf = { workspace = true }
