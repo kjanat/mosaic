@@ -11,6 +11,7 @@ Zed editor extension for the [Mosaic] typesetting language (`.mos`).
   blocks.
 - Outline entries for headings and label targets.
 - Bracket matching, indentation, and Vim textobjects from Tree-sitter queries.
+- Runnables and default tasks for building the current document PDF and opening it.
 - Default semantic token rules for the future Mosaic language server.
 
 Not yet wired (follow-up): language server.
@@ -36,7 +37,19 @@ just sync-zed-queries
 
 Zed's extension query loader does not consume Tree-sitter `locals.scm` or `tags.scm` under those
 filenames. Navigation and editing features use Zed query files such as [`outline.scm`],
-[`brackets.scm`], [`indents.scm`], and [`textobjects.scm`].
+[`brackets.scm`], [`indents.scm`], [`textobjects.scm`], and [`runnables.scm`].
+
+## Tasks
+
+[`languages/mosaic/tasks.json`] provides document-level runnables for:
+
+- `Mosaic: Build PDF`
+- `Mosaic: Build and Open PDF`
+
+The default build task expects `mos` on `PATH` and runs from the current file's directory so
+`build/<entry-stem>.pdf` lands next to the document source. Build-and-open uses `mos build --open`,
+which selects the platform opener by default. Users can override these tasks in project or global
+Zed `tasks.json` files by binding their own task to the same runnable tags.
 
 ## Semantic tokens
 
@@ -57,5 +70,7 @@ registers `mosaic-lsp` and Zed has semantic tokens enabled (`combined` or `full`
 [`indents.scm`]: languages/mosaic/indents.scm
 [`languages/mosaic/`]: languages/mosaic/
 [`languages/mosaic/semantic_token_rules.json`]: languages/mosaic/semantic_token_rules.json
+[`languages/mosaic/tasks.json`]: languages/mosaic/tasks.json
 [`outline.scm`]: languages/mosaic/outline.scm
+[`runnables.scm`]: languages/mosaic/runnables.scm
 [`textobjects.scm`]: languages/mosaic/textobjects.scm
