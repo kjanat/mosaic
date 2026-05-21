@@ -2023,18 +2023,31 @@ mod tests {
         // A paragraph in progress must stop at the next directive so
         // the directive parses cleanly instead of being slurped into
         // the paragraph body.
-        for (src, expected) in [
-            ("body line\n#set document(title: \"x\")\nmore\n", "document"),
-            ("body line\n#image(\"x.png\")\nmore\n", "image"),
-            ("body line\n#figure(\"x.png\")\nmore\n", "figure"),
+        for (src, expected_kind, expected_name) in [
+            (
+                "body line\n#set document(title: \"x\")\nmore\n",
+                DirectiveKind::Set,
+                "document",
+            ),
+            (
+                "body line\n#image(\"x.png\")\nmore\n",
+                DirectiveKind::Image,
+                "image",
+            ),
+            (
+                "body line\n#figure(\"x.png\")\nmore\n",
+                DirectiveKind::Figure,
+                "figure",
+            ),
         ] {
             let r = parse_str(src);
             assert!(!r.has_errors(), "{:?}", r.diagnostics);
             // Expect: paragraph, directive, paragraph.
             assert_eq!(r.tree.items.len(), 3);
             assert!(r.tree.items[0].as_paragraph().is_some());
-            let (kind, _, _) = r.tree.items[1].as_set().unwrap();
-            assert_eq!(kind, expected);
+            assert_eq!(r.tree.items[1].directive_kind(), Some(expected_kind));
+            let (name, _, _) = r.tree.items[1].as_set().unwrap();
+            assert_eq!(name, expected_name);
             assert!(r.tree.items[2].as_paragraph().is_some());
         }
     }
