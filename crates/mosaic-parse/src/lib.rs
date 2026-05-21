@@ -597,7 +597,7 @@ impl<'a> Parser<'a> {
         if let Some(end) = self.scan_raw_brackets(i) {
             let inner_start = i + 1;
             let inner_end = end - 1;
-            let text = self.src[inner_start..inner_end].to_owned();
+            let text = unescape_raw_text(&self.src[inner_start..inner_end]);
             let (_, content_end, _) = self.line_bounds_from(end);
             let (after_label, label) = strip_leading_label(self.src, end, content_end);
             let kind = if kw == "code" {
@@ -1616,6 +1616,20 @@ fn scan_label_chars(bytes: &[u8], from: usize) -> usize {
     i
 }
 
+fn unescape_raw_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' && chars.peek() == Some(&']') {
+            chars.next();
+            out.push(']');
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 /// If the substring `src[start..end]` begins with optional ASCII
 /// whitespace followed by `<label>`, return `(label_body_start, Some(id))`
 /// where `label_body_start` is the offset just past the closing `>`
@@ -2190,7 +2204,7 @@ mod tests {
             assert_eq!(raw.kind, RawBlockKind::Pre);
             assert!(raw.args.is_empty());
             assert_eq!(raw.label, None);
-            assert_eq!(raw.text, "open \\] close");
+            assert_eq!(raw.text, "open ] close");
         }
     }
 

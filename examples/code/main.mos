@@ -50,7 +50,7 @@ bracket, escape it so the block scanner does not treat it as the end of
 the block.
 
 #code[let brackets = "open [ and escaped close \]";
-println(brackets);]
+println!(brackets);]
 
 == Choosing a form
 

@@ -404,44 +404,66 @@ fn build_content_stream(
         return content.finish().to_vec();
     }
     content.begin_text();
-    for run in &page.runs {
-        content.set_font(Name(run.font.pdf_resource_name()), run.size_pt);
-        let y_from_bottom = page_height_pt - run.baseline_from_top_pt;
-        content.set_text_matrix([1.0, 0.0, 0.0, 1.0, run.x_pt, y_from_bottom]);
-        let bytes = match run.font {
-            Font::Base14(_) => encode_base14_run(&run.text, run.font, encodings),
-            Font::Embedded(id) => {
-                // `plan_embedded` walks every page's runs and yields a
-                // plan for every face referenced. Missing plan here =
-                // broken invariant (e.g. a run was added after the
-                // planning pass). Loud assertion + empty fallback so
-                // the planner stays the single source of truth and
-                // bugs surface immediately.
-                let plan_opt = embedded_by_id.get(&id);
-                assert!(
-                    plan_opt.is_some(),
-                    "no embedded plan for font {:?} (id {:?}); planner missed a run?",
-                    run.font,
-                    id,
-                );
-                plan_opt
-                    .map(|plan| embedded::encode_glyph_run(plan, &run.glyphs))
-                    .unwrap_or_default()
-            }
-        };
+    let mut i = 0;
+    while i < page.runs.len() {
+        let run = &page.runs[i];
         if let Some(actual_text) = run.actual_text.as_deref() {
             {
                 let mut marked = content.begin_marked_content_with_properties(Name(b"Span"));
                 marked.properties().actual_text(TextStr(actual_text));
             }
-            content.show(Str(&bytes));
+            while i < page.runs.len() && page.runs[i].actual_text.as_deref() == Some(actual_text) {
+                emit_text_run(
+                    &mut content,
+                    page_height_pt,
+                    &page.runs[i],
+                    encodings,
+                    embedded_by_id,
+                );
+                i += 1;
+            }
             content.end_marked_content();
         } else {
-            content.show(Str(&bytes));
+            emit_text_run(&mut content, page_height_pt, run, encodings, embedded_by_id);
+            i += 1;
         }
     }
     content.end_text();
     content.finish().to_vec()
+}
+
+fn emit_text_run(
+    content: &mut Content,
+    page_height_pt: f32,
+    run: &TextRun,
+    encodings: &HashMap<Font, DocEncoding>,
+    embedded_by_id: &HashMap<EmbeddedFontId, &EmbeddedFontPlan>,
+) {
+    content.set_font(Name(run.font.pdf_resource_name()), run.size_pt);
+    let y_from_bottom = page_height_pt - run.baseline_from_top_pt;
+    content.set_text_matrix([1.0, 0.0, 0.0, 1.0, run.x_pt, y_from_bottom]);
+    let bytes = match run.font {
+        Font::Base14(_) => encode_base14_run(&run.text, run.font, encodings),
+        Font::Embedded(id) => {
+            // `plan_embedded` walks every page's runs and yields a
+            // plan for every face referenced. Missing plan here =
+            // broken invariant (e.g. a run was added after the
+            // planning pass). Loud assertion + empty fallback so
+            // the planner stays the single source of truth and
+            // bugs surface immediately.
+            let plan_opt = embedded_by_id.get(&id);
+            assert!(
+                plan_opt.is_some(),
+                "no embedded plan for font {:?} (id {:?}); planner missed a run?",
+                run.font,
+                id,
+            );
+            plan_opt
+                .map(|plan| embedded::encode_glyph_run(plan, &run.glyphs))
+                .unwrap_or_default()
+        }
+    };
+    content.show(Str(&bytes));
 }
 
 /// Encode `text` against a Base14 face's `DocEncoding`. The planner
@@ -494,6 +516,13 @@ mod tests {
                 return Err(format!($($arg)*).into());
             }
         };
+    }
+
+    fn count_bytes(haystack: &[u8], needle: &[u8]) -> usize {
+        haystack
+            .windows(needle.len())
+            .filter(|w| *w == needle)
+            .count()
     }
 
     fn sample_graph() -> PageGraph {
@@ -614,6 +643,45 @@ mod tests {
             bytes.windows(b"println".len()).any(|w| w == b"println"),
             "actual text payload missing"
         );
+    }
+
+    #[test]
+    fn actual_text_wraps_adjacent_fragments_once() {
+        let graph = PageGraph {
+            pages: vec![Page {
+                number: 1,
+                width_pt: 595.276_f32,
+                height_pt: 841.89_f32,
+                runs: vec![
+                    TextRun {
+                        x_pt: 68.0,
+                        baseline_from_top_pt: 100.0,
+                        size_pt: 12.0,
+                        font: Font::Base14(Base14Font::Courier),
+                        text: "    ".to_owned(),
+                        actual_text: Some("\tprintln".to_owned()),
+                        glyphs: Vec::new(),
+                    },
+                    TextRun {
+                        x_pt: 92.0,
+                        baseline_from_top_pt: 100.0,
+                        size_pt: 12.0,
+                        font: Font::Base14(Base14Font::CourierBold),
+                        text: "println".to_owned(),
+                        actual_text: Some("\tprintln".to_owned()),
+                        glyphs: Vec::new(),
+                    },
+                ],
+                images: Vec::new(),
+            }],
+            images: Vec::new(),
+        };
+
+        let (bytes, diags) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
+
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        assert_eq!(count_bytes(&bytes, b"/ActualText"), 1);
+        assert_eq!(count_bytes(&bytes, b"println"), 1);
     }
 
     /// A graph containing Polish + Czech text — exercises the
