@@ -42,7 +42,7 @@ Use `#code[...]` for code examples. Mosaic preserves the raw block text
 and renders it with the monospace face.
 
 #code[fn main() {
-	println("hello, mosaic");
+	println!("hello, mosaic");
 }]
 
 Code blocks are raw bracket bodies. If the body needs a literal closing

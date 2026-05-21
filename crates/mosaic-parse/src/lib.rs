@@ -68,7 +68,9 @@ pub enum Item {
     /// language-aware code rendering.
     RawBlock {
         kind: RawBlockKind,
+        args: Vec<SetArg>,
         text: String,
+        label: Option<String>,
         span: SourceSpan,
     },
     /// A bullet (`- `) or numbered (`\d+\. `) list. Sibling items at
@@ -113,6 +115,16 @@ pub enum DirectiveKind {
 pub enum RawBlockKind {
     Pre,
     Code,
+}
+
+/// Borrowed view of an [`Item::RawBlock`] payload.
+#[derive(Debug, Clone, Copy)]
+pub struct RawBlockView<'a> {
+    pub kind: RawBlockKind,
+    pub args: &'a [SetArg],
+    pub text: &'a str,
+    pub label: Option<&'a str>,
+    pub span: &'a SourceSpan,
 }
 
 /// One argument inside a directive body — either a `key: value`
@@ -270,9 +282,22 @@ impl Item {
 
     /// Borrow the raw block payload if `self` is [`Item::RawBlock`].
     #[must_use]
-    pub fn as_raw_block(&self) -> Option<(RawBlockKind, &str, &SourceSpan)> {
-        if let Self::RawBlock { kind, text, span } = self {
-            Some((*kind, text.as_str(), span))
+    pub fn as_raw_block(&self) -> Option<RawBlockView<'_>> {
+        if let Self::RawBlock {
+            kind,
+            args,
+            text,
+            label,
+            span,
+        } = self
+        {
+            Some(RawBlockView {
+                kind: *kind,
+                args: args.as_slice(),
+                text: text.as_str(),
+                label: label.as_deref(),
+                span,
+            })
         } else {
             None
         }
@@ -305,13 +330,15 @@ impl Item {
     }
 
     /// Borrow the explicit `<label>` attached to this block, if any.
-    /// Returns `None` for [`Item::Set`], [`Item::RawBlock`], and [`Item::List`] (label
+    /// Returns `None` for [`Item::Set`] and [`Item::List`] (label
     /// syntax is not yet defined on those blocks).
     #[must_use]
     pub fn label(&self) -> Option<&str> {
         match self {
-            Self::Heading { label, .. } | Self::Paragraph { label, .. } => label.as_deref(),
-            Self::Set { .. } | Self::RawBlock { .. } | Self::List { .. } => None,
+            Self::Heading { label, .. }
+            | Self::Paragraph { label, .. }
+            | Self::RawBlock { label, .. } => label.as_deref(),
+            Self::Set { .. } | Self::List { .. } => None,
         }
     }
 }
@@ -457,8 +484,11 @@ impl<'a> Parser<'a> {
     /// of the current line. `content_end` excludes any trailing `\r\n`
     /// or `\n`; `line_end` is the offset *after* the terminator.
     fn current_line_bounds(&self) -> (usize, usize, usize) {
+        self.line_bounds_from(self.pos)
+    }
+
+    fn line_bounds_from(&self, start: usize) -> (usize, usize, usize) {
         let bytes = self.src.as_bytes();
-        let start = self.pos;
         let mut end = start;
         while end < bytes.len() && bytes[end] != b'\n' {
             end += 1;
@@ -534,6 +564,25 @@ impl<'a> Parser<'a> {
         while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
             i += 1;
         }
+        let mut args = Vec::new();
+        if i < bytes.len() && bytes[i] == b'(' {
+            let Some(args_end) = self.scan_balanced_parens(i) else {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E012"),
+                        format!("unterminated `#{kw}(...)` block"),
+                    )
+                    .with_span(self.span(line_start, bytes.len())),
+                );
+                self.pos = bytes.len();
+                return;
+            };
+            args = self.parse_set_body(i + 1, args_end - 1, true);
+            i = args_end;
+            while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+                i += 1;
+            }
+        }
         if i >= bytes.len() || bytes[i] != b'[' {
             self.diagnostics.push(
                 Diagnostic::error(
@@ -549,6 +598,8 @@ impl<'a> Parser<'a> {
             let inner_start = i + 1;
             let inner_end = end - 1;
             let text = self.src[inner_start..inner_end].to_owned();
+            let (_, content_end, _) = self.line_bounds_from(end);
+            let (after_label, label) = strip_leading_label(self.src, end, content_end);
             let kind = if kw == "code" {
                 RawBlockKind::Code
             } else {
@@ -556,10 +607,12 @@ impl<'a> Parser<'a> {
             };
             self.items.push(Item::RawBlock {
                 kind,
+                args,
                 text,
-                span: self.span(line_start, end),
+                label,
+                span: self.span(line_start, after_label),
             });
-            self.pos = end;
+            self.pos = after_label;
             while self.pos < bytes.len() && (bytes[self.pos] == b' ' || bytes[self.pos] == b'\t') {
                 self.pos += 1;
             }
@@ -570,7 +623,6 @@ impl<'a> Parser<'a> {
             } else if bytes[self.pos] == b'\r' && bytes.get(self.pos + 1) == Some(&b'\n') {
                 self.pos += 2;
             } else {
-                let (_, content_end, _) = self.current_line_bounds();
                 self.diagnostics.push(
                     Diagnostic::error(
                         DiagnosticCode("E013"),
@@ -2116,9 +2168,11 @@ mod tests {
             "expected raw block, got {:?}",
             r.tree.items[0]
         );
-        if let Some((kind, text, _)) = raw {
-            assert_eq!(kind, RawBlockKind::Code);
-            assert_eq!(text, "fn main() {\n    println(\"hi\");\n}");
+        if let Some(raw) = raw {
+            assert_eq!(raw.kind, RawBlockKind::Code);
+            assert!(raw.args.is_empty());
+            assert_eq!(raw.label, None);
+            assert_eq!(raw.text, "fn main() {\n    println(\"hi\");\n}");
         }
     }
 
@@ -2132,10 +2186,35 @@ mod tests {
             "expected raw block, got {:?}",
             r.tree.items[0]
         );
-        if let Some((kind, text, _)) = raw {
-            assert_eq!(kind, RawBlockKind::Pre);
-            assert_eq!(text, "open \\] close");
+        if let Some(raw) = raw {
+            assert_eq!(raw.kind, RawBlockKind::Pre);
+            assert!(raw.args.is_empty());
+            assert_eq!(raw.label, None);
+            assert_eq!(raw.text, "open \\] close");
         }
+    }
+
+    #[test]
+    fn raw_blocks_preserve_arguments_and_label() {
+        let r = parse_str("#code(lang: \"rust\")[fn main() {}] <ex:code>\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 1);
+
+        let raw = r.tree.items[0].as_raw_block();
+        assert!(
+            raw.is_some(),
+            "expected raw block, got {:?}",
+            r.tree.items[0]
+        );
+        if let Some(raw) = raw {
+            assert_eq!(raw.kind, RawBlockKind::Code);
+            assert_eq!(raw.args.len(), 1);
+            assert_eq!(raw.args[0].key(), Some("lang"));
+            assert_eq!(raw.args[0].value(), &SetValue::Str("rust".to_owned()));
+            assert_eq!(raw.text, "fn main() {}");
+            assert_eq!(raw.label, Some("ex:code"));
+        }
+        assert_eq!(r.tree.items[0].label(), Some("ex:code"));
     }
 
     #[test]

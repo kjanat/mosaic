@@ -608,6 +608,7 @@ impl LayoutState {
             if line.is_empty() {
                 if !self.page_has_content {
                     self.cursor_y = self.page.margin_pt + ascent(font, size);
+                    self.page_has_content = true;
                 }
                 self.cursor_y += size * leading;
                 continue;
@@ -1747,6 +1748,27 @@ mod tests {
                 .iter()
                 .any(|run| run.actual_text.as_deref() == Some("\tprintln(\"hello\");")),
             "raw block tabs should retain their original text for extraction"
+        );
+    }
+
+    #[test]
+    fn raw_block_leading_blank_line_preserves_spacing() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_raw_block(&mut doc, "\ncode");
+
+        let result = LayoutEngine::new().layout(&doc);
+
+        let first_run = result.graph.pages[0]
+            .runs
+            .first()
+            .expect("raw block should emit text after the leading blank");
+        let expected_baseline = MARGIN_PT
+            + ascent(FontFamily::noto_sans().monospace, BODY_SIZE_PT)
+            + BODY_SIZE_PT * BODY_LEADING;
+        assert!(
+            (first_run.baseline_from_top_pt - expected_baseline).abs() < 0.01,
+            "baseline {}, expected {expected_baseline}",
+            first_run.baseline_from_top_pt
         );
     }
 

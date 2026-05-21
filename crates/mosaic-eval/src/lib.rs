@@ -128,8 +128,14 @@ impl Evaluator {
                 } => {
                     lower_list(&mut document, root, *ordered, items, span);
                 }
-                Item::RawBlock { kind, text, span } => {
-                    lower_raw_block(&mut document, root, *kind, text, span);
+                Item::RawBlock {
+                    kind,
+                    text,
+                    label,
+                    span,
+                    ..
+                } => {
+                    lower_raw_block(&mut document, root, *kind, text, label.as_deref(), span);
                 }
                 Item::Set {
                     kind,
@@ -192,10 +198,14 @@ fn lower_raw_block(
     root: NodeId,
     kind: RawBlockKind,
     text: &str,
+    label: Option<&str>,
     span: &SourceSpan,
 ) {
     let mut attributes: AttrMap = BTreeMap::new();
     attributes.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
+    if let Some(id) = label {
+        attributes.insert("label".to_owned(), AttrValue::Str(id.to_owned()));
+    }
     attributes.insert(
         "raw.kind".to_owned(),
         AttrValue::Str(
