@@ -7,10 +7,10 @@
 //                                  ^ number
 
 #import "@mosaic/templates/article": article, theme
-// <- keyword.import
-//       ^ string.special.path
+// <- keyword
+//       ^ string.special
 //                                     ^ variable
 
 #include "sections/intro.mos"
-// <- keyword.import
-//        ^ string.special.path
+// <- keyword
+//        ^ string.special

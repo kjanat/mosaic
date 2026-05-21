@@ -1,6 +1,6 @@
 #verse[Line one]
 // <- keyword
-//     ^ markup.quote
+//     ^ text.literal
 
 #verse[*italic* line]
 //      ^ emphasis
