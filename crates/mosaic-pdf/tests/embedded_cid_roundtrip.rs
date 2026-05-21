@@ -123,6 +123,7 @@ fn render(face: EmbeddedFontId, text: &str) -> Result<(Document, Vec<u8>), Box<d
                 size_pt: 12.0,
                 font: Font::Embedded(face),
                 text: text.to_owned(),
+                actual_text: None,
                 glyphs: mosaic_fonts::shape(face.data(), text),
             }],
             images: Vec::new(),

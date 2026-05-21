@@ -429,7 +429,16 @@ fn build_content_stream(
                     .unwrap_or_default()
             }
         };
-        content.show(Str(&bytes));
+        if let Some(actual_text) = run.actual_text.as_deref() {
+            {
+                let mut marked = content.begin_marked_content_with_properties(Name(b"Span"));
+                marked.properties().actual_text(TextStr(actual_text));
+            }
+            content.show(Str(&bytes));
+            content.end_marked_content();
+        } else {
+            content.show(Str(&bytes));
+        }
     }
     content.end_text();
     content.finish().to_vec()
@@ -500,6 +509,7 @@ mod tests {
                         size_pt: 20.0,
                         font: Font::Base14(Base14Font::HelveticaBold),
                         text: "Title".to_owned(),
+                        actual_text: None,
                         glyphs: Vec::new(),
                     },
                     TextRun {
@@ -508,6 +518,7 @@ mod tests {
                         size_pt: 11.0,
                         font: Font::Base14(Base14Font::Helvetica),
                         text: "Body".to_owned(),
+                        actual_text: None,
                         glyphs: Vec::new(),
                     },
                 ],
@@ -569,6 +580,42 @@ mod tests {
         );
     }
 
+    #[test]
+    fn actual_text_is_emitted_for_replacement_runs() {
+        let graph = PageGraph {
+            pages: vec![Page {
+                number: 1,
+                width_pt: 595.276_f32,
+                height_pt: 841.89_f32,
+                runs: vec![TextRun {
+                    x_pt: 68.0,
+                    baseline_from_top_pt: 100.0,
+                    size_pt: 12.0,
+                    font: Font::Base14(Base14Font::Courier),
+                    text: "    println".to_owned(),
+                    actual_text: Some("\tprintln".to_owned()),
+                    glyphs: Vec::new(),
+                }],
+                images: Vec::new(),
+            }],
+            images: Vec::new(),
+        };
+
+        let (bytes, diags) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
+
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        assert!(
+            bytes
+                .windows(b"/ActualText".len())
+                .any(|w| w == b"/ActualText"),
+            "missing /ActualText"
+        );
+        assert!(
+            bytes.windows(b"println".len()).any(|w| w == b"println"),
+            "actual text payload missing"
+        );
+    }
+
     /// A graph containing Polish + Czech text — exercises the
     /// `/Differences` and `/ToUnicode` emit paths end to end.
     fn extended_latin_graph() -> PageGraph {
@@ -583,6 +630,7 @@ mod tests {
                     size_pt: 12.0,
                     font: Font::Base14(Base14Font::Helvetica),
                     text: "Łódź Příliš ě".to_owned(),
+                    actual_text: None,
                     glyphs: Vec::new(),
                 }],
                 images: Vec::new(),

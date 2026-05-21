@@ -3,12 +3,18 @@
 
 id             = "mosaic"
 name           = "Mosaic"
-version        = "0.0.1"
+# Keep in sync with (workspace) Cargo.toml
+version        = "0.0.0"
 schema_version = 1
 authors        = ["Kaj Kowalski <info@kajkowalski.nl>"]
 description    = "Mosaic (.mos) typesetting language support."
 repository     = "https://github.com/kjanat/mosaic"
 languages      = ["Mosaic"]
+
+# [grammars.mosaic] # TODO: pre-merge, set non-local shizz.
+# repository = "https://github.com/kjanat/mosaic"
+# rev        = "285515987cac25b313a9fa5206d5b8a14787a4f1"
+# path       = "crates/tree-sitter-mosaic"
 
 [grammars.mosaic]
 repository = "file:///home/kjanat/projects/mosaic"

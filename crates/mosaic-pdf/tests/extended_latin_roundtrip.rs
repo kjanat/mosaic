@@ -46,6 +46,7 @@ fn render(face: Base14Font, text: &str) -> Result<Document, Box<dyn Error>> {
                 size_pt: 12.0,
                 font: Font::Base14(face),
                 text: text.to_owned(),
+                actual_text: None,
                 glyphs: Vec::new(),
             }],
             images: Vec::new(),
