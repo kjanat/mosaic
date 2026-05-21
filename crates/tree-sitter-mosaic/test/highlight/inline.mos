@@ -4,6 +4,11 @@ A *italic* word.
 Some **strong** phrase.
 //     ^ emphasis.strong
 
+Across *two
+//      ^ emphasis
+lines* now.
+// <- emphasis
+
 Use `code` inline.
 //    ^ text.literal
 

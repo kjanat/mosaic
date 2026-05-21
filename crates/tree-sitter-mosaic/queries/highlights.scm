@@ -47,9 +47,14 @@
 
 ; --- Inline emphasis --------------------------------------------------------
 
-(emphasis) @emphasis
-(strong) @emphasis.strong
-(strong_emphasis) @emphasis.strong
+(emphasis
+  (emph_text) @emphasis)
+
+(strong
+  (emph_text) @emphasis.strong)
+
+(strong_emphasis
+  (emph_text) @emphasis.strong)
 
 ; --- Code, math, raw blocks -------------------------------------------------
 
