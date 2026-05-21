@@ -24,7 +24,7 @@ mod images;
 use std::collections::HashMap;
 use std::path::Path;
 
-use mosaic_core::{CoreError, Diagnostic, DiagnosticCode, Result, Severity};
+use mosaic_core::{CoreError, Diagnostic, DiagnosticCode, DiagnosticNote, Result, Severity};
 use mosaic_fonts::EmbeddedFontId;
 use mosaic_layout::{Base14Font, Font, PageGraph, TextRun};
 use pdf_writer::types::{SystemInfo, UnicodeCmap};
@@ -235,7 +235,7 @@ pub(crate) fn build_pdf(
         }
         page_obj.finish();
 
-        let stream_bytes = build_content_stream(page.height_pt, page, &encodings, &embedded_by_id);
+        let stream_bytes = build_content_stream(page.height_pt, page, &encodings, &embedded_by_id)?;
         pdf.stream(*content_id, &stream_bytes);
     }
 
@@ -395,13 +395,13 @@ fn build_content_stream(
     page: &mosaic_layout::Page,
     encodings: &HashMap<Font, DocEncoding>,
     embedded_by_id: &HashMap<EmbeddedFontId, &EmbeddedFontPlan>,
-) -> Vec<u8> {
+) -> Result<Vec<u8>> {
     let mut content = Content::new();
     for placement in &page.images {
         images::emit_placement(&mut content, page_height_pt, placement);
     }
     if page.runs.is_empty() {
-        return content.finish().to_vec();
+        return Ok(content.finish().to_vec());
     }
     content.begin_text();
     let mut i = 0;
@@ -419,17 +419,17 @@ fn build_content_stream(
                     &page.runs[i],
                     encodings,
                     embedded_by_id,
-                );
+                )?;
                 i += 1;
             }
             content.end_marked_content();
         } else {
-            emit_text_run(&mut content, page_height_pt, run, encodings, embedded_by_id);
+            emit_text_run(&mut content, page_height_pt, run, encodings, embedded_by_id)?;
             i += 1;
         }
     }
     content.end_text();
-    content.finish().to_vec()
+    Ok(content.finish().to_vec())
 }
 
 fn emit_text_run(
@@ -438,32 +438,33 @@ fn emit_text_run(
     run: &TextRun,
     encodings: &HashMap<Font, DocEncoding>,
     embedded_by_id: &HashMap<EmbeddedFontId, &EmbeddedFontPlan>,
-) {
+) -> Result<()> {
     content.set_font(Name(run.font.pdf_resource_name()), run.size_pt);
     let y_from_bottom = page_height_pt - run.baseline_from_top_pt;
     content.set_text_matrix([1.0, 0.0, 0.0, 1.0, run.x_pt, y_from_bottom]);
     let bytes = match run.font {
         Font::Base14(_) => encode_base14_run(&run.text, run.font, encodings),
         Font::Embedded(id) => {
-            // `plan_embedded` walks every page's runs and yields a
-            // plan for every face referenced. Missing plan here =
-            // broken invariant (e.g. a run was added after the
-            // planning pass). Loud assertion + empty fallback so
-            // the planner stays the single source of truth and
-            // bugs surface immediately.
-            let plan_opt = embedded_by_id.get(&id);
-            assert!(
-                plan_opt.is_some(),
-                "no embedded plan for font {:?} (id {:?}); planner missed a run?",
-                run.font,
-                id,
-            );
-            plan_opt
-                .map(|plan| embedded::encode_glyph_run(plan, &run.glyphs))
-                .unwrap_or_default()
+            let plan = embedded_by_id.get(&id).ok_or_else(|| {
+                CoreError::Diagnostic(Box::new(Diagnostic {
+                    severity: Severity::Error,
+                    code: DiagnosticCode("E092"),
+                    message: format!("missing embedded font plan for {:?} (id {id:?})", run.font),
+                    span: None,
+                    notes: vec![DiagnosticNote {
+                        message:
+                            "PDF emission expected an embedded plan for every embedded text run"
+                                .to_owned(),
+                        span: None,
+                    }],
+                    suggestions: Vec::new(),
+                }))
+            })?;
+            embedded::encode_glyph_run(plan, &run.glyphs)
         }
     };
     content.show(Str(&bytes));
+    Ok(())
 }
 
 /// Encode `text` against a Base14 face's `DocEncoding`. The planner
@@ -555,6 +556,51 @@ mod tests {
             }],
             images: Vec::new(),
         }
+    }
+
+    #[test]
+    fn missing_embedded_plan_returns_diagnostic() -> TestResult {
+        let face = EmbeddedFontId::Regular;
+        let page = Page {
+            number: 1,
+            width_pt: 595.276_f32,
+            height_pt: 841.89_f32,
+            runs: vec![TextRun {
+                x_pt: 68.0,
+                baseline_from_top_pt: 100.0,
+                size_pt: 12.0,
+                font: Font::Embedded(face),
+                text: "Body".to_owned(),
+                actual_text: None,
+                glyphs: mosaic_fonts::shape(face.data(), "Body"),
+            }],
+            images: Vec::new(),
+        };
+
+        let err = build_content_stream(
+            page.height_pt,
+            &page,
+            &HashMap::new(),
+            &HashMap::<EmbeddedFontId, &EmbeddedFontPlan>::new(),
+        )
+        .err()
+        .ok_or("missing embedded plan unexpectedly succeeded")?;
+        let diagnostic = match err {
+            CoreError::Diagnostic(diagnostic) => diagnostic,
+            other => return Err(format!("expected diagnostic error, got {other:?}").into()),
+        };
+        ensure!(
+            diagnostic.code.0 == "E092",
+            "wrong code: {:?}",
+            diagnostic.code.0
+        );
+        ensure!(
+            diagnostic.message.contains("Embedded(Regular)")
+                && diagnostic.message.contains("Regular"),
+            "missing context in message: {:?}",
+            diagnostic.message
+        );
+        Ok(())
     }
 
     #[test]
