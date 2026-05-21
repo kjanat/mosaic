@@ -22,7 +22,8 @@ code: with language arg
     arguments: (argument_list
       (attribute
         key: (identifier)
-        value: (string)))
+        value: (string
+          (string_content))))
     body: (raw_body
       (raw_body_open)
       (raw_body_content)
@@ -164,7 +165,8 @@ code: multiple attributes in argument list
     arguments: (argument_list
       (attribute
         key: (identifier)
-        value: (string))
+        value: (string
+          (string_content)))
       (attribute
         key: (identifier)
         value: (number)))

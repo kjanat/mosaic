@@ -8,19 +8,15 @@
   (#set! injection.language "latex")
   (#offset! @injection.content 0 1 0 -1))
 
-; `#code(lang: "rust")[[...]]` — inject the named language into the raw body.
-; `string` is a single token covering the quotes, so we use `#offset!` to
-; strip the surrounding `"` / `'` characters before the capture is consumed
-; as `@injection.language`.
 ((code_block
    arguments: (argument_list
      (attribute
        key: (identifier) @_k
-       value: (string) @injection.language))
+       value: (string (string_content) @injection.language)))
    body: (raw_body
      (raw_body_content) @injection.content))
   (#eq? @_k "lang")
-  (#offset! @injection.language 0 1 0 -1))
+  (#set! injection.include-children))
 
 ; Code spans carry no language tag in the current syntax, so we don't inject
 ; a default. Editors that want guesswork can add a project-local override.

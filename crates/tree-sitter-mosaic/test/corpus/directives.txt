@@ -10,7 +10,8 @@ set: text font/size
     arguments: (argument_list
       (attribute
         key: (identifier)
-        value: (string))
+        value: (string
+          (string_content)))
       (attribute
         key: (identifier)
         value: (dimension)))))
@@ -30,7 +31,8 @@ set: multi-line
     arguments: (argument_list
       (attribute
         key: (identifier)
-        value: (string))
+        value: (string
+          (string_content)))
       (attribute
         key: (identifier)
         value: (dimension)))))
@@ -43,7 +45,8 @@ import: with items
 
 (source_file
   (import_directive
-    path: (string)
+    path: (string
+      (string_content))
     items: (import_items
       (identifier)
       (identifier))))
@@ -56,7 +59,8 @@ import: bare
 
 (source_file
   (import_directive
-    path: (string)))
+    path: (string
+      (string_content))))
 
 ==================
 include
@@ -66,7 +70,8 @@ include
 
 (source_file
   (include_directive
-    path: (string)))
+    path: (string
+      (string_content))))
 
 ==================
 include: path with escaped backslash
@@ -76,7 +81,8 @@ include: path with escaped backslash
 
 (source_file
   (include_directive
-    path: (string)))
+    path: (string
+      (string_content))))
 
 ==================
 set: nested call as attribute value
@@ -106,7 +112,8 @@ import: single-quoted path
 
 (source_file
   (import_directive
-    path: (string)))
+    path: (string
+      (string_content))))
 
 ==================
 two adjacent directives without blank line
@@ -141,7 +148,8 @@ set: missing closing paren inserts MISSING ")"
     arguments: (argument_list
       (attribute
         key: (identifier)
-        value: (string))
+        value: (string
+          (string_content)))
       (MISSING ")"))))
 
 ==================
@@ -175,8 +183,10 @@ include: unterminated string literal recovers at next directive
 ---
 
 (source_file
-  (ERROR
-    (UNEXPECTED '\n'))
+  (include_directive
+    path: (string
+      (string_content)
+      (MISSING """)))
   (set_directive
     target: (identifier)
     arguments: (argument_list

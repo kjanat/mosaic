@@ -124,7 +124,8 @@ Hello world
     (paragraph_segment
       (text)))
   (import_directive
-    path: (string)))
+    path: (string
+      (string_content))))
 
 ==================
 paragraph: include directive starts next block
@@ -138,7 +139,8 @@ Hello world
     (paragraph_segment
       (text)))
   (include_directive
-    path: (string)))
+    path: (string
+      (string_content))))
 
 ==================
 paragraph: multiple blank lines collapse into one blank_line token

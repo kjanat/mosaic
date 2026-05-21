@@ -519,11 +519,13 @@ export default grammar({
 		// Literals
 		// -------------------------------------------------------------------
 
-		string: _ =>
-			token(choice(
-				seq('"', repeat(choice(/[^"\\\n\r]+/, /\\./)), '"'),
-				seq("'", repeat(choice(/[^'\\\n\r]+/, /\\./)), "'"),
-			)),
+		string: $ =>
+			choice(
+				seq('"', optional($.string_content), '"'),
+				seq("'", optional($.string_content), "'"),
+			),
+
+		string_content: _ => token.immediate(repeat1(choice(/[^"'\\\n\r]+/, /\\./))),
 
 		dimension: _ =>
 			token(seq(
