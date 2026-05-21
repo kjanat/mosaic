@@ -231,6 +231,9 @@ impl LayoutEngine {
                 NodeKind::Image => state.layout_image(*child_id, node),
                 NodeKind::Figure => state.layout_figure(document, node),
                 NodeKind::List => state.layout_list(document, node),
+                NodeKind::Raw if node.attributes.contains_key("raw.kind") => {
+                    state.layout_raw_block(node)
+                }
                 // `#set` blocks are stashed as `Raw` children of the
                 // root; folded into styles by `resolve_styles` above.
                 NodeKind::Raw if node.attributes.contains_key("set") => {}
@@ -583,6 +586,39 @@ impl LayoutState {
         let words = self.collect_words(document, paragraph, regular, size);
         self.flow_words(&words, leading);
         self.cursor_y += PARA_SPACE_AFTER_PT;
+    }
+
+    fn layout_raw_block(&mut self, raw: &Node) {
+        let Some(AttrValue::Str(text)) = raw.attributes.get("text") else {
+            return;
+        };
+        let size = self.text.size_pt;
+        let leading = self.text.leading;
+        let font = self.text.family.monospace;
+        let mut emitted = false;
+        for line in text.lines() {
+            if line.is_empty() {
+                if !self.page_has_content {
+                    self.cursor_y = self.page.margin_pt + ascent(font, size);
+                }
+                self.cursor_y += size * leading;
+                continue;
+            }
+            let subruns = shape_with_fallback(font, self.text.family.fallbacks, size, line);
+            let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
+            let word = Word {
+                text: line.to_owned(),
+                font,
+                size_pt: size,
+                width_pt,
+                subruns,
+            };
+            self.flow_words(&[word], leading);
+            emitted = true;
+        }
+        if emitted {
+            self.cursor_y += PARA_SPACE_AFTER_PT;
+        }
     }
 
     /// Lay out a top-level `Image` node as a block. The image is

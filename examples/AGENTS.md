@@ -19,6 +19,7 @@ examples/<name>/
 
 | Example  | Exercises                                                            |
 | -------- | -------------------------------------------------------------------- |
+| `code`   | Inline code, multiline inline code, raw `#pre` and `#code` blocks.   |
 | `hello`  | Noto Sans embedding, Unicode text, bold/italic, lists, image figure. |
 | `lists`  | Ordered/unordered lists, nesting, hanging indent, marker behavior.   |
 | `math`   | Base-14 Helvetica, `/Differences`, math-ish glyph copy/paste.        |

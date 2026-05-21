@@ -1,0 +1,59 @@
+#set document(
+  title: "Code in Mosaic",
+  author: "Mosaic contributors",
+  language: "en",
+)
+
+#set page(
+  paper: "A4",
+  margin: 24mm,
+  numbering: "bottom-center",
+)
+
+#set text(
+  font: "Noto Sans",
+  size: 11pt,
+  leading: 1.35,
+)
+
+= Code in Mosaic
+
+This example collects the supported ways to put code-like text in a
+Mosaic document. Inline code uses backticks, as in `cargo mos check`
+or `#set text(font: "Noto Sans")`.
+
+Inline code can also span a soft source line break when a short phrase
+needs to stay visually code-shaped in the editor and output:
+`a sad student wrote
+this`.
+
+== Preformatted command transcripts
+
+Use `#pre[...]` for terminal output, command transcripts, or other raw
+text where the content is not tied to a programming language.
+
+#pre[$ cargo mos check examples/code/main.mos
+$ cargo mos build examples/code/main.mos
+Finished `dev` profile]
+
+== Code blocks
+
+Use `#code[...]` for code examples. Mosaic preserves the raw block text
+and renders it with the monospace face.
+
+#code[fn main() {
+    println("hello, mosaic");
+}]
+
+Code blocks are raw bracket bodies. If the body needs a literal closing
+bracket, escape it so the block scanner does not treat it as the end of
+the block.
+
+#code[let brackets = "open [ and escaped close \]";
+println(brackets);]
+
+== Choosing a form
+
+Use inline code for identifiers and small fragments such as `NodeKind::Raw`.
+Use `#pre[...]` for pasted terminal sessions. Use `#code[...]` for source
+snippets that should stand on their own.

@@ -18,7 +18,7 @@ use mosaic_core::{
     SourceSpan, StyleId,
 };
 use mosaic_parse::{
-    DirectiveKind, Inline, InlineKind, Item, ListItem, SetArg, SetValue, SyntaxTree,
+    DirectiveKind, Inline, InlineKind, Item, ListItem, RawBlockKind, SetArg, SetValue, SyntaxTree,
 };
 
 pub use resolve::resolve;
@@ -128,6 +128,9 @@ impl Evaluator {
                 } => {
                     lower_list(&mut document, root, *ordered, items, span);
                 }
+                Item::RawBlock { kind, text, span } => {
+                    lower_raw_block(&mut document, root, *kind, text, span);
+                }
                 Item::Set {
                     kind,
                     name,
@@ -182,6 +185,39 @@ impl Evaluator {
             metadata,
         }
     }
+}
+
+fn lower_raw_block(
+    document: &mut Document,
+    root: NodeId,
+    kind: RawBlockKind,
+    text: &str,
+    span: &SourceSpan,
+) {
+    let mut attributes: AttrMap = BTreeMap::new();
+    attributes.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
+    attributes.insert(
+        "raw.kind".to_owned(),
+        AttrValue::Str(
+            match kind {
+                RawBlockKind::Pre => "pre",
+                RawBlockKind::Code => "code",
+            }
+            .to_owned(),
+        ),
+    );
+    document.alloc_child(
+        root,
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Raw,
+            span: span.clone(),
+            content_hash: Default::default(),
+            style_id: StyleId::default(),
+            children: Vec::new(),
+            attributes,
+        },
+    );
 }
 
 /// Lower a `#set name(...)` directive into a `Raw` node carrying the
