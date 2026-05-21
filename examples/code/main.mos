@@ -29,14 +29,26 @@ this`.
 
 == Preformatted command transcripts
 
-Use `#pre[[...]]` for terminal output, command transcripts, or other raw
-text where the content is not tied to a programming language.
+Use `#pre[[...]]` for terminal output, command transcripts, or other
+preformatted text where the content is not tied to a programming language.
 
 #pre[[
 $ cargo mos check examples/code/main.mos
 $ cargo mos build examples/code/main.mos
 Finished `dev` profile
 ]]
+
+Arguments are accepted before the raw body. The layout currently keeps the
+raw text literal; semantic handling of arguments is future work.
+
+#pre(indent: 2)[[
+step one
+step two
+]]
+
+Raw blocks can be empty.
+
+#pre[[]]
 
 == Code blocks
 
@@ -49,19 +61,47 @@ fn main() {
 }
 ]]
 
-Code blocks are raw long-bracket bodies. A plain `[[...]]` body can
-contain single closing brackets and backslash-bracket text literally.
-When the body needs `]]`, add matching equals signs to the delimiter.
+Code blocks can omit arguments when no language metadata is needed.
+
+#code[[
+let answer = 42;
+]]
+
+Raw blocks can carry trailing labels.
+
+#code[[
+let labelled = true;
+]] <ex:labelled-code>
+
+Code blocks are raw long-bracket bodies. A plain `[[...]]` body can contain
+single closing brackets and backslash-bracket text literally.
+
+#code(lang: "rust")[[
+let vector = vec![1, 2, 3];
+let bracket = "]";
+let slash_close = "\]";
+println!("{vector:?} {bracket} {slash_close}");
+]]
+
+When the body needs `]]`, add matching equals signs to the delimiter:
+`[=[...]=]`.
 
 #code(lang: "rust")[=[
-let brackets = "open [ and escaped close \]";
 let literal = "single ] and pair ]] are both fine";
-let slash_close = "\\]";
-println!("{brackets} {literal} {slash_close}");
+println!("{literal}");
 ]=]
+
+If the body itself needs `]=]`, use one more equals sign: `[==[...]==]`.
+
+#code(lang: "rust")[==[
+let delimiter_text = "this source contains ]=] literally";
+println!("{delimiter_text}");
+]==]
 
 == Choosing a form
 
 Use inline code for identifiers and small fragments such as `NodeKind::Raw`.
+Use multiline inline code only for short fragments that wrap in the source.
 Use `#pre[[...]]` for pasted terminal sessions. Use `#code[[...]]` for source
-snippets that should stand on their own.
+snippets that should stand on their own. Increase the number of equals signs
+when the block body contains the current closing delimiter.
