@@ -1,0 +1,13 @@
+= Top Heading
+// <- markup.heading.marker
+//  ^ markup.heading
+
+== Subsection
+// <- markup.heading.marker
+// ^ markup.heading.marker
+//   ^ markup.heading
+
+=== With *italic* word
+// <- markup.heading.marker
+//    ^ markup.heading
+//        ^ markup.italic

@@ -1,0 +1,533 @@
+/// <reference types="tree-sitter-cli/dsl" />
+// @ts-check
+
+/**
+ * Tree-sitter grammar for the Mosaic `.mos` document language.
+ *
+ * Mirrors `mosaic.ebnf` (also rendered in `EBNF.md`) 1:1 in structure. The
+ * three tokens that regex-only lexing cannot express cleanly (`blank_line`,
+ * `linebreak_escape`, raw `#pre`/`#code` body content) are emitted by the
+ * external scanner in `src/scanner.c`.
+ *
+ * @file Mosaic grammar for Tree-sitter
+ * @author Kaj Kowalski <info@kajkowalski.nl>
+ * @license MIT
+ */
+
+const PREC = {
+	emphasis: 1,
+	strong: 2,
+	strong_emphasis: 3,
+	linebreak_call: 2,
+	hash_call: 1,
+	attribute: 1,
+	heading_marker: 1,
+};
+
+export default grammar({
+	name: 'mosaic',
+
+	extras: $ => [
+		/[\t ]+/,
+	],
+
+	externals: $ => [
+		$.blank_line,
+		$.linebreak_escape,
+		$.raw_body_content,
+		$._error_sentinel,
+	],
+
+	word: $ => $.identifier,
+
+	supertypes: $ => [
+		$._block,
+		$._inline,
+		$._expression,
+	],
+
+	precedences: $ => [
+		[$.strong_emphasis, $.strong, $.emphasis],
+	],
+
+	conflicts: $ => [
+		[$.block_call, $.inline_call],
+		[$.paragraph, $.soft_break],
+	],
+
+	rules: {
+		// -------------------------------------------------------------------
+		// Document
+		// -------------------------------------------------------------------
+
+		source_file: $ => repeat(choice($.blank_line, $._block, $._line_end)),
+
+		_block: $ =>
+			choice(
+				$.comment,
+				$.set_directive,
+				$.import_directive,
+				$.include_directive,
+				$.heading,
+				$.verse_block,
+				$.pre_block,
+				$.code_block,
+				$.block_call,
+				$.paragraph,
+			),
+
+		_line_end: _ => choice('\n', '\r\n', '\r'),
+
+		// Hidden helper: one or more line endings used inside multi-line
+		// expression contexts (`argument_list`, `array`, `object`). Wrapped
+		// in a single rule so tree-sitter can reason about each insertion
+		// site as one symbol rather than adjacent repeats.
+		_nl: $ => prec.right(repeat1($._line_end)),
+
+		// -------------------------------------------------------------------
+		// Lexical trivia
+		// -------------------------------------------------------------------
+
+		comment: _ =>
+			token(choice(
+				seq('//', /[^\n\r]*/),
+				seq('/*', /[^*]*\*+([^/*][^*]*\*+)*/, '/'),
+			)),
+
+		// -------------------------------------------------------------------
+		// Block directives
+		// -------------------------------------------------------------------
+
+		set_directive: $ =>
+			prec.right(seq(
+				'#set',
+				field('target', $.identifier),
+				field('arguments', $.argument_list),
+				optional($._line_end),
+			)),
+
+		import_directive: $ =>
+			prec.right(seq(
+				'#import',
+				field('path', $.string),
+				optional(seq(':', field('items', $.import_items))),
+				optional($._line_end),
+			)),
+
+		import_items: $ => seq($.identifier, repeat(seq(',', $.identifier))),
+
+		include_directive: $ =>
+			prec.right(seq(
+				'#include',
+				field('path', $.string),
+				optional($._line_end),
+			)),
+
+		// -------------------------------------------------------------------
+		// Headings
+		// -------------------------------------------------------------------
+
+		heading: $ =>
+			prec.right(seq(
+				field('marker', $.heading_marker),
+				field('content', alias($._inline_sequence, $.inline_sequence)),
+				optional(field('label', $.block_label)),
+				optional($._line_end),
+			)),
+
+		// EBNF semantic restriction is 1..6 `=`; folded the required hspace1
+		// into the token so a bare run of `=` cannot start a heading.
+		heading_marker: _ => token(prec(PREC.heading_marker, /={1,6}[ \t]+/)),
+
+		// -------------------------------------------------------------------
+		// Verse / Pre / Code blocks
+		// -------------------------------------------------------------------
+
+		verse_block: $ =>
+			prec.right(seq(
+				'#verse',
+				optional(field('arguments', $.argument_list)),
+				field('body', $.verse_body),
+				optional(field('label', $.block_label)),
+				optional($._line_end),
+			)),
+
+		pre_block: $ =>
+			prec.right(seq(
+				'#pre',
+				optional(field('arguments', $.argument_list)),
+				field('body', $.raw_body),
+				optional(field('label', $.block_label)),
+				optional($._line_end),
+			)),
+
+		code_block: $ =>
+			prec.right(seq(
+				'#code',
+				optional(field('arguments', $.argument_list)),
+				field('body', $.raw_body),
+				optional(field('label', $.block_label)),
+				optional($._line_end),
+			)),
+
+		raw_body: $ => seq('[', repeat($.raw_body_content), ']'),
+
+		verse_body: $ =>
+			seq(
+				'[',
+				optional(seq(
+					$._verse_line,
+					repeat(seq($._line_end, $._verse_line)),
+					optional($._line_end),
+				)),
+				']',
+			),
+
+		_verse_line: $ => repeat1(choice($._verse_inline, $.verse_text)),
+
+		_verse_inline: $ =>
+			choice(
+				$.strong_emphasis,
+				$.strong,
+				$.emphasis,
+				$.code_span,
+				$.inline_math,
+				$.reference,
+				$.linebreak_call,
+				$.inline_call,
+				$.escaped_char,
+			),
+
+		verse_text: _ => token(prec(-1, /[^\n\r\]\\*`$@<#]+/)),
+
+		// -------------------------------------------------------------------
+		// Paragraphs
+		// -------------------------------------------------------------------
+
+		paragraph: $ =>
+			prec.right(seq(
+				optional(field('leading_label', $.leading_label)),
+				alias($._inline_sequence, $.paragraph_segment),
+				repeat(seq(
+					$._paragraph_join,
+					alias($._inline_sequence, $.paragraph_segment),
+				)),
+				optional(field('trailing_label', $.trailing_label)),
+				optional($._line_end),
+			)),
+
+		leading_label: $ => $.block_label,
+		trailing_label: $ => $.block_label,
+		block_label: $ => $.label,
+
+		_paragraph_join: $ => choice($.soft_break, $.linebreak_escape),
+
+		soft_break: $ => $._line_end,
+
+		// -------------------------------------------------------------------
+		// Inline
+		// -------------------------------------------------------------------
+
+		_inline_sequence: $ => prec.right(repeat1($._inline_atom)),
+
+		// EBNF lists `label` as an inline atom, but the suggested CST in
+		// EBNF.md and every realistic example puts `<name>` in trailing
+		// block-label position. Including it inline causes `inline_sequence`
+		// to greedily eat the block label. Keep labels as `block_label`
+		// only; literal `<` in prose is supported via `\<`.
+		_inline_atom: $ =>
+			choice(
+				$.strong_emphasis,
+				$.strong,
+				$.emphasis,
+				$.code_span,
+				$.inline_math,
+				$.reference,
+				$.linebreak_call,
+				$.inline_call,
+				$.escaped_char,
+				$.text,
+			),
+
+		_inline: $ =>
+			choice(
+				$.strong_emphasis,
+				$.strong,
+				$.emphasis,
+				$.code_span,
+				$.inline_math,
+				$.reference,
+				$.linebreak_call,
+				$.inline_call,
+				$.escaped_char,
+				$.text,
+			),
+
+		// EBNF defines `inline_call = hash_call | call_expr`. In practice the
+		// `call_expr` alternative (a qualified_name immediately followed by
+		// `(...)` without a leading `#`) is unreachable in paragraph
+		// position because `text` swallows the leading identifier first.
+		// We keep `call_expr` available in expression position only.
+		inline_call: $ => $.hash_call,
+
+		emphasis: $ =>
+			prec.dynamic(
+				PREC.emphasis,
+				seq(
+					'*',
+					repeat1($._emphasis_unit),
+					'*',
+				),
+			),
+
+		strong: $ =>
+			prec.dynamic(
+				PREC.strong,
+				seq(
+					'**',
+					repeat1($._strong_unit),
+					'**',
+				),
+			),
+
+		strong_emphasis: $ =>
+			prec.dynamic(
+				PREC.strong_emphasis,
+				seq(
+					'***',
+					repeat1($._strong_emphasis_unit),
+					'***',
+				),
+			),
+
+		_emphasis_unit: $ =>
+			choice(
+				$.strong_emphasis,
+				$.strong,
+				$.code_span,
+				$.inline_math,
+				$.reference,
+				$.linebreak_call,
+				$.inline_call,
+				$.escaped_char,
+				$.emph_text,
+			),
+
+		_strong_unit: $ =>
+			choice(
+				$.strong_emphasis,
+				$.emphasis,
+				$.code_span,
+				$.inline_math,
+				$.reference,
+				$.linebreak_call,
+				$.inline_call,
+				$.escaped_char,
+				$.emph_text,
+			),
+
+		_strong_emphasis_unit: $ =>
+			choice(
+				$.strong,
+				$.emphasis,
+				$.code_span,
+				$.inline_math,
+				$.reference,
+				$.linebreak_call,
+				$.inline_call,
+				$.escaped_char,
+				$.emph_text,
+			),
+
+		emph_text: _ => token(prec(-1, /[^*\\\n\r]+/)),
+
+		code_span: _ =>
+			token(seq(
+				'`',
+				repeat(choice(/[^`\n\r\\]+/, /\\./)),
+				'`',
+			)),
+
+		inline_math: $ =>
+			seq(
+				'$',
+				repeat(choice($.math_text, $.math_escape)),
+				'$',
+			),
+
+		math_text: _ => token(prec(-1, /[^$\\\n\r]+/)),
+
+		math_escape: _ => token(seq('\\', /[^\r\n]/)),
+
+		reference: $ => seq('@', field('target', $.label_name)),
+
+		label: $ => seq('<', field('name', $.label_name), '>'),
+
+		label_name: _ => token(/[A-Za-z_][A-Za-z0-9_-]*(:[A-Za-z_][A-Za-z0-9_-]*)*/),
+
+		escaped_char: _ => token(prec(1, seq('\\', /[^\r\n]/))),
+
+		// Tree-sitter pragmatic deviation from EBNF `text_char`: also exclude
+		// `[` and `]` so bracket-delimited structures (`content_body`,`array`)
+		// parse without ambiguity. Literal brackets in prose can be written via `\[` / `\]`.
+		// oxlint-disable-next-line no-useless-escape
+		text: _ => token(prec(-2, /[^\n\r#$*`@<\\\[\]]+/)),
+
+		// -------------------------------------------------------------------
+		// Calls and content bodies
+		// -------------------------------------------------------------------
+
+		hash_call: $ =>
+			prec.right(
+				PREC.hash_call,
+				seq(
+					'#',
+					field('function', $.qualified_name),
+					optional(field('arguments', $.argument_list)),
+					optional(field('body', $.content_body)),
+				),
+			),
+
+		linebreak_call: $ =>
+			prec.right(
+				PREC.linebreak_call,
+				seq(
+					'#linebreak',
+					optional(field('arguments', $.argument_list)),
+				),
+			),
+
+		block_call: $ =>
+			prec.dynamic(
+				1,
+				prec.right(seq(
+					$.hash_call,
+					optional(field('label', $.block_label)),
+					optional($._line_end),
+				)),
+			),
+
+		content_body: $ =>
+			seq(
+				'[',
+				repeat(choice($.blank_line, $._block, $._line_end)),
+				']',
+			),
+
+		// -------------------------------------------------------------------
+		// Expressions
+		// -------------------------------------------------------------------
+
+		_expression: $ =>
+			choice(
+				$.string,
+				$.dimension,
+				$.number,
+				$.boolean,
+				$.null,
+				$.array,
+				$.object,
+				$.call_expr,
+				$.qualified_name,
+			),
+
+		call_expr: $ =>
+			prec.right(seq(
+				field('function', $.qualified_name),
+				field('arguments', $.argument_list),
+			)),
+
+		argument_list: $ =>
+			seq(
+				'(',
+				optional($._nl),
+				optional(seq(
+					$._argument,
+					repeat(seq(
+						optional($._nl),
+						',',
+						optional($._nl),
+						$._argument,
+					)),
+					optional(seq(optional($._nl), ',')),
+				)),
+				optional($._nl),
+				')',
+			),
+
+		_argument: $ => choice($.attribute, $._expression),
+
+		attribute: $ =>
+			prec(
+				PREC.attribute,
+				seq(
+					field('key', $.identifier),
+					':',
+					optional($._nl),
+					field('value', $._expression),
+				),
+			),
+
+		array: $ =>
+			seq(
+				'[',
+				optional($._nl),
+				optional(seq(
+					$._expression,
+					repeat(seq(
+						optional($._nl),
+						',',
+						optional($._nl),
+						$._expression,
+					)),
+					optional(seq(optional($._nl), ',')),
+				)),
+				optional($._nl),
+				']',
+			),
+
+		object: $ =>
+			seq(
+				'{',
+				optional($._nl),
+				optional(seq(
+					$.attribute,
+					repeat(seq(
+						optional($._nl),
+						',',
+						optional($._nl),
+						$.attribute,
+					)),
+					optional(seq(optional($._nl), ',')),
+				)),
+				optional($._nl),
+				'}',
+			),
+
+		qualified_name: $ => prec.right(seq($.identifier, repeat(seq('.', $.identifier)))),
+
+		// -------------------------------------------------------------------
+		// Literals
+		// -------------------------------------------------------------------
+
+		string: _ =>
+			token(choice(
+				seq('"', repeat(choice(/[^"\\\n\r]+/, /\\./)), '"'),
+				seq("'", repeat(choice(/[^'\\\n\r]+/, /\\./)), "'"),
+			)),
+
+		dimension: _ =>
+			token(seq(
+				/[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)/,
+				/pt|mm|cm|in|px|em|rem|ch|fr|%/,
+			)),
+
+		number: _ => token(/[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)/),
+
+		boolean: _ => choice('true', 'false'),
+
+		null: _ => 'null',
+
+		identifier: _ => token(/[A-Za-z_][A-Za-z0-9_-]*/),
+	},
+});

@@ -1,0 +1,16 @@
+#set text(font: "Noto Sans", size: 11pt)
+// <- keyword
+//    ^ type
+//         ^ variable.parameter
+//               ^ string
+//                            ^ variable.parameter
+//                                  ^ number
+
+#import "@mosaic/templates/article": article, theme
+// <- keyword.import
+//       ^ string.special.path
+//                                     ^ variable
+
+#include "sections/intro.mos"
+// <- keyword.import
+//        ^ string.special.path

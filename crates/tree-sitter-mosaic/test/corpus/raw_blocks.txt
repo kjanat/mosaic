@@ -1,0 +1,150 @@
+==================
+pre: exact spacing
+==================
+#pre[  exact spacing]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+code: with language arg
+==================
+#code(lang: "rust")[fn main() {}]
+---
+
+(source_file
+  (code_block
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (string)))
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+pre: with escaped closing bracket
+==================
+#pre[contains \] bracket]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+pre: escaped backslash
+==================
+#pre[path\\here]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+pre: escaped backslash before closing bracket
+==================
+#pre[path\\]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+pre: empty body
+==================
+#pre[]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body)))
+
+==================
+pre: combined escaped backslash and bracket in one body
+==================
+#pre[path\\to\]file]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+pre: multi-line body
+==================
+#pre[line one
+line two
+line three]
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+code: bare body (no arguments)
+==================
+#code[plain code body]
+---
+
+(source_file
+  (code_block
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+pre: with argument
+==================
+#pre(indent: 2)[step over]
+---
+
+(source_file
+  (pre_block
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (number)))
+    body: (raw_body
+      (raw_body_content))))
+
+==================
+pre: with trailing block label
+==================
+#pre[snippet] <ex:demo>
+---
+
+(source_file
+  (pre_block
+    body: (raw_body
+      (raw_body_content))
+    label: (block_label
+      (label
+        name: (label_name)))))
+
+==================
+code: multiple attributes in argument list
+==================
+#code(lang: "rust", line: 42)[fn x() {}]
+---
+
+(source_file
+  (code_block
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (string))
+      (attribute
+        key: (identifier)
+        value: (number)))
+    body: (raw_body
+      (raw_body_content))))

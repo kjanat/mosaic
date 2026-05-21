@@ -1,0 +1,97 @@
+==================
+heading: level 1
+==================
+= Hello
+---
+
+(source_file
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text))))
+
+==================
+heading: level 3
+==================
+=== Subsection title
+---
+
+(source_file
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text))))
+
+==================
+heading: trailing label
+==================
+= Intro <sec:intro>
+---
+
+(source_file
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text))
+    label: (block_label
+      (label
+        name: (label_name)))))
+
+==================
+heading: with inline emphasis
+==================
+== The *quick* brown
+---
+
+(source_file
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text)
+      (emphasis
+        (emph_text))
+      (text))))
+
+==================
+heading: max level (6)
+==================
+====== Deep section
+---
+
+(source_file
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text))))
+
+==================
+heading: bare `=` without hspace is not a heading
+==================
+=
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))))
+
+==================
+heading: over-deep marker (7+) falls through to paragraph
+==================
+======= Too deep
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))))
+
+==================
+heading: marker with no content is ERROR (inline_sequence is repeat1)
+==================
+=	
+---
+
+(source_file
+  (ERROR
+    (heading_marker)))

@@ -6,3 +6,11 @@ target/
 build/
 
 /*.pdf
+
+node_modules/
+
+# tree-sitter grammar build artefacts
+*.wasm
+*.node
+prebuilds/
+log.html

@@ -1,0 +1,14 @@
+{
+	"name": "mosaic",
+	"private": true,
+	"repository": "kjanat/mosaic",
+	"workspaces": [
+		"crates/tree-sitter-mosaic"
+	],
+	"scripts": {
+		"postinstall": "bun --filter '*' postinstall"
+	},
+	"patchedDependencies": {
+		"tree-sitter@0.25.0": "patches/tree-sitter@0.25.0.patch"
+	}
+}

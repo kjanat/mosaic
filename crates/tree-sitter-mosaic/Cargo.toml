@@ -1,0 +1,136 @@
+[package]
+name                   = "tree-sitter-mosaic"
+version                = "0.0.0"
+edition.workspace      = true
+rust-version.workspace = true
+description            = "Mosaic grammar for tree-sitter"
+readme.workspace       = true
+repository.workspace   = true
+license.workspace      = true
+keywords               = ["incremental", "mosaic", "parsing", "tree-sitter"]
+categories             = ["parser-implementations", "parsing", "text-editors"]
+build                  = "bindings/rust/build.rs"
+include                = [
+  "LICENSE",
+  "bindings/rust/*",
+  "grammar.js",
+  "queries/*",
+  "src/*",
+  "tree-sitter.json",
+]
+
+[lib]
+path = "bindings/rust/lib.rs"
+
+[dependencies]
+tree-sitter-language = { workspace = true }
+
+[dev-dependencies]
+tree-sitter = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
+
+[lints.clippy]
+cargo_common_metadata              = "warn"
+cast_lossless                      = "warn"
+cast_possible_truncation           = "warn"
+cast_possible_wrap                 = "warn"
+cast_precision_loss                = "warn"
+cast_sign_loss                     = "warn"
+checked_conversions                = "warn"
+clear_with_drain                   = "warn"
+cloned_instead_of_copied           = "warn"
+collection_is_never_read           = "warn"
+dbg_macro                          = "warn"
+debug_assert_with_mut_call         = "warn"
+derive_partial_eq_without_eq       = "warn"
+doc_markdown                       = "warn"
+empty_line_after_doc_comments      = "warn"
+empty_line_after_outer_attr        = "warn"
+equatable_if_let                   = "warn"
+expect_used                        = "warn"
+explicit_deref_methods             = "warn"
+explicit_into_iter_loop            = "warn"
+explicit_iter_loop                 = "warn"
+flat_map_option                    = "warn"
+float_cmp_const                    = "warn"
+if_not_else                        = "warn"
+implicit_clone                     = "warn"
+inconsistent_struct_constructor    = "warn"
+inefficient_to_string              = "warn"
+items_after_statements             = "warn"
+iter_on_empty_collections          = "warn"
+iter_on_single_items               = "warn"
+iter_with_drain                    = "warn"
+lossy_float_literal                = "warn"
+manual_assert                      = "warn"
+manual_let_else                    = "warn"
+manual_ok_or                       = "warn"
+manual_string_new                  = "warn"
+many_single_char_names             = "warn"
+map_err_ignore                     = "warn"
+map_unwrap_or                      = "warn"
+match_same_arms                    = "warn"
+mem_forget                         = "warn"
+mismatching_type_param_order       = "warn"
+mut_mut                            = "warn"
+needless_collect                   = "warn"
+needless_continue                  = "warn"
+needless_for_each                  = "warn"
+needless_pass_by_value             = "warn"
+negative_feature_names             = "warn"
+or_fun_call                        = "warn"
+panic                              = "warn"
+panic_in_result_fn                 = "warn"
+path_buf_push_overwrite            = "warn"
+print_stderr                       = "warn"
+print_stdout                       = "warn"
+range_minus_one                    = "warn"
+range_plus_one                     = "warn"
+rc_buffer                          = "warn"
+rc_mutex                           = "warn"
+read_zero_byte_vec                 = "warn"
+redundant_clone                    = "warn"
+redundant_closure_for_method_calls = "warn"
+redundant_else                     = "warn"
+redundant_feature_names            = "warn"
+ref_binding_to_reference           = "warn"
+ref_option_ref                     = "warn"
+return_self_not_must_use           = "warn"
+semicolon_if_nothing_returned      = "warn"
+set_contains_or_insert             = "warn"
+significant_drop_tightening        = "warn"
+single_char_pattern                = "warn"
+single_match_else                  = "warn"
+single_option_map                  = "warn"
+stable_sort_primitive              = "warn"
+str_to_string                      = "warn"
+string_lit_as_bytes                = "warn"
+todo                               = "warn"
+trailing_empty_array               = "warn"
+trait_duplication_in_bounds        = "warn"
+trivial_regex                      = "warn"
+undocumented_unsafe_blocks         = "warn"
+uninhabited_references             = "warn"
+unnecessary_box_returns            = "warn"
+unnecessary_join                   = "warn"
+unnecessary_wraps                  = "warn"
+unnested_or_patterns               = "warn"
+unreachable                        = "warn"
+unreadable_literal                 = "warn"
+unused_peekable                    = "warn"
+use_self                           = "warn"
+used_underscore_binding            = "warn"
+useless_let_if_seq                 = "warn"
+verbose_bit_mask                   = "warn"
+verbose_file_reads                 = "warn"
+wildcard_dependencies              = "warn"
+wildcard_imports                   = "warn"
+
+[lints.rust]
+missing_debug_implementations = "warn"
+rust_2018_idioms              = { level = "warn", priority = -1 }
+unreachable_pub               = "warn"
+unsafe_code                   = { level = "deny", priority = 1 }
+unused_qualifications         = "warn"

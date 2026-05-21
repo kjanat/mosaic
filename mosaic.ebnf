@@ -1,0 +1,274 @@
+(* Mosaic reference grammar, tree-sitter oriented.
+   Contextual notes:
+   - heading, directives, and block_call are block forms only at the start
+     of a logical line (start of file, after a blank line, or after a
+     line_end inside a content body).
+   - comments are lexical trivia.
+   - soft_break is a contextual line_end that does not form a blank_line.
+   - #pre[...] and #code[...] bodies are raw; #verse[...] preserves line
+     endings but still parses inline markup per line.
+*)
+
+source_file         = { blank_line | block } ;
+
+block               = set_directive
+                    | import_directive
+                    | include_directive
+                    | heading
+                    | verse_block
+                    | pre_block
+                    | code_block
+                    | block_call
+                    | paragraph
+                    ;
+
+set_directive       = "#set", hspace1, identifier, opt_hspace, argument_list,
+                      [ line_end ] ;
+
+import_directive    = "#import", hspace1, string,
+                      [ opt_hspace, ":", opt_hspace, import_items ],
+                      [ line_end ] ;
+
+include_directive   = "#include", hspace1, string, [ line_end ] ;
+
+import_items        = identifier, { opt_hspace, ",", opt_hspace, identifier } ;
+
+heading             = heading_marker, hspace1, inline_sequence,
+                      [ opt_hspace, block_label ],
+                      [ line_end ] ;
+
+heading_marker      = "=", { "=" } ;         (* semantic restriction: 1..6 *)
+
+verse_block         = "#verse",
+                      [ opt_hspace, argument_list ],
+                      opt_ws, verse_body,
+                      [ opt_hspace, block_label ],
+                      [ line_end ] ;
+
+pre_block           = "#pre",
+                      [ opt_hspace, argument_list ],
+                      opt_ws, raw_body,
+                      [ opt_hspace, block_label ],
+                      [ line_end ] ;
+
+code_block          = "#code",
+                      [ opt_hspace, argument_list ],
+                      opt_ws, raw_body,
+                      [ opt_hspace, block_label ],
+                      [ line_end ] ;
+
+block_call          = hash_call,
+                      [ opt_hspace, block_label ],
+                      [ line_end ] ;
+
+paragraph           = [ leading_label ],
+                      paragraph_segment,
+                      { paragraph_join, paragraph_segment },
+                      [ trailing_label ],
+                      [ line_end ] ;
+
+leading_label       = block_label, opt_hspace ;
+trailing_label      = opt_hspace, block_label ;
+block_label         = label ;
+
+paragraph_segment   = inline_sequence ;
+paragraph_join      = soft_break | linebreak_escape ;
+soft_break          = line_end ;             (* contextual: not a blank_line *)
+linebreak_escape    = opt_hspace, "\\", opt_hspace, line_end ;
+
+hash_call           = "#", qualified_name,
+                      [ opt_hspace, argument_list ],
+                      [ opt_ws, content_body ] ;
+
+content_body        = "[", { blank_line | block }, "]" ;
+
+verse_body          = "[",
+                      [ verse_line, { line_end, verse_line }, [ line_end ] ],
+                      "]" ;
+
+verse_line          = { verse_inline | verse_text } ;
+
+verse_inline        = strong_emphasis
+                    | strong
+                    | emphasis
+                    | code_span
+                    | inline_math
+                    | reference
+                    | label
+                    | linebreak_call
+                    | inline_call
+                    | escaped_char
+                    ;
+
+verse_text          = verse_char, { verse_char } ;
+
+raw_body            = "[", { raw_escape | raw_char | line_end }, "]" ;
+raw_escape          = "\\]" | "\\\\" ;
+
+inline_sequence     = inline_atom, { inline_atom } ;
+
+inline_atom         = strong_emphasis
+                    | strong
+                    | emphasis
+                    | code_span
+                    | inline_math
+                    | reference
+                    | label
+                    | linebreak_call
+                    | inline_call
+                    | escaped_char
+                    | text
+                    ;
+
+inline_call         = hash_call | call_expr ;
+linebreak_call      = "#linebreak", [ opt_hspace, argument_list ] ;
+
+emphasis            = "*", emphasis_unit, { emphasis_unit }, "*" ;
+strong              = "**", strong_unit, { strong_unit }, "**" ;
+strong_emphasis     = "***", strong_emphasis_unit, { strong_emphasis_unit }, "***" ;
+
+emphasis_unit       = strong_emphasis
+                    | strong
+                    | code_span
+                    | inline_math
+                    | reference
+                    | label
+                    | linebreak_call
+                    | inline_call
+                    | escaped_char
+                    | emph_text
+                    ;
+
+strong_unit         = strong_emphasis
+                    | emphasis
+                    | code_span
+                    | inline_math
+                    | reference
+                    | label
+                    | linebreak_call
+                    | inline_call
+                    | escaped_char
+                    | emph_text
+                    ;
+
+strong_emphasis_unit = strong
+                     | emphasis
+                     | code_span
+                     | inline_math
+                     | reference
+                     | label
+                     | linebreak_call
+                     | inline_call
+                     | escaped_char
+                     | emph_text
+                     ;
+
+code_span           = "`", { code_char }, "`" ;
+inline_math         = "$", { math_char | math_escape }, "$" ;
+math_escape         = "\\", ? any Unicode scalar ? ;
+
+reference           = "@", label_name ;
+label               = "<", label_name, ">" ;
+escaped_char        = "\\", ? any Unicode scalar ? ;
+text                = text_char, { text_char } ;
+
+argument_list       = "(",
+                      opt_ws,
+                      [ argument,
+                        { opt_ws, ",", opt_ws, argument },
+                        [ opt_ws, "," ] ],
+                      opt_ws,
+                      ")" ;
+
+argument            = attribute | expression ;
+attribute           = identifier, opt_ws, ":", opt_ws, expression ;
+
+expression          = string
+                    | dimension
+                    | number
+                    | boolean
+                    | null
+                    | array
+                    | object
+                    | call_expr
+                    | qualified_name
+                    ;
+
+call_expr           = qualified_name, opt_hspace, argument_list ;
+
+array               = "[",
+                      opt_ws,
+                      [ expression,
+                        { opt_ws, ",", opt_ws, expression },
+                        [ opt_ws, "," ] ],
+                      opt_ws,
+                      "]" ;
+
+object              = "{",
+                      opt_ws,
+                      [ attribute,
+                        { opt_ws, ",", opt_ws, attribute },
+                        [ opt_ws, "," ] ],
+                      opt_ws,
+                      "}" ;
+
+(* ---------- lexical rules ---------- *)
+
+line_end            = "\r\n" | "\n" | "\r" ;
+
+hspace              = " " | "\t" ;
+hspace1             = hspace, { hspace } ;
+
+opt_hspace          = { hspace | comment } ;
+opt_ws              = { hspace | line_end | comment } ;
+
+comment             = line_comment | block_comment ;
+line_comment        = "//", { ? any Unicode scalar except line_end ? } ;
+block_comment       = "/*", { ? any Unicode scalar ? }, "*/" ;   (* non-nesting *)
+
+digit               = ? ASCII digit ? ;
+hex_digit           = ? ASCII hex digit ? ;
+
+ident_start         = ? ASCII letter or "_" ? ;
+ident_continue      = ? ASCII letter or digit or "_" or "-" ? ;
+
+identifier          = ident_start, { ident_continue } ;
+qualified_name      = identifier, { ".", identifier } ;
+
+label_segment       = ident_start, { ident_continue } ;
+label_name          = label_segment, { ":", label_segment } ;
+
+string              = dq_string | sq_string ;
+
+dq_string           = "\"", { dq_char | escape_seq }, "\"" ;
+sq_string           = "'",  { sq_char | escape_seq }, "'" ;
+
+dq_char             = ? any Unicode scalar except double quote, backslash, and line_end ? ;
+sq_char             = ? any Unicode scalar except single quote, backslash, and line_end ? ;
+
+escape_seq          = "\\",
+                      ( "\"" | "'" | "\\" | "n" | "r" | "t"
+                      | "[" | "]" | "<" | ">" | "*" | "`" | "$" | "@"
+                      | "#" | "u", "{", hex_digit, { hex_digit }, "}" ) ;
+
+number              = [ "+" | "-" ],
+                      ( digit, { digit }, [ ".", { digit } ]
+                      | ".", digit, { digit } ) ;
+
+dimension           = number, unit ;
+unit                = "pt" | "mm" | "cm" | "in" | "px"
+                    | "em" | "rem" | "ch" | "fr" | "%" ;
+
+boolean             = "true" | "false" ;
+null                = "null" ;
+
+blank_line          = { hspace }, line_end, { { hspace }, line_end } ;
+
+text_char           = ? any Unicode scalar except line_end and the opener
+                        characters "\", "*", "`", "$", "@", "<", "#" ? ;
+
+emph_text           = ? any Unicode scalar except line_end and "\", "*" ? ;
+code_char           = ? any Unicode scalar except "`" and line_end ? ;
+math_char           = ? any Unicode scalar except "$" and line_end ? ;
+raw_char            = ? any Unicode scalar except "]" ? ;
+verse_char          = ? any Unicode scalar except line_end and "]" ? ;

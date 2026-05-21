@@ -1,0 +1,10 @@
+#verse[Line one]
+// <- keyword
+//     ^ markup.quote
+
+#verse[*italic* line]
+//      ^ markup.italic
+
+#pre[raw text here]
+// <- keyword
+//   ^ markup.raw

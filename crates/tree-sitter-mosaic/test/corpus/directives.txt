@@ -1,0 +1,185 @@
+==================
+set: text font/size
+==================
+#set text(font: "Noto Sans", size: 11pt)
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (string))
+      (attribute
+        key: (identifier)
+        value: (dimension)))))
+
+==================
+set: multi-line
+==================
+#set page(
+  paper: "A4",
+  margin: 24mm,
+)
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (string))
+      (attribute
+        key: (identifier)
+        value: (dimension)))))
+
+==================
+import: with items
+==================
+#import "@mosaic/templates/article": article, theme
+---
+
+(source_file
+  (import_directive
+    path: (string)
+    items: (import_items
+      (identifier)
+      (identifier))))
+
+==================
+import: bare
+==================
+#import "lib.mos"
+---
+
+(source_file
+  (import_directive
+    path: (string)))
+
+==================
+include
+==================
+#include "sections/intro.mos"
+---
+
+(source_file
+  (include_directive
+    path: (string)))
+
+==================
+include: path with escaped backslash
+==================
+#include "sections\\intro.mos"
+---
+
+(source_file
+  (include_directive
+    path: (string)))
+
+==================
+set: nested call as attribute value
+==================
+#set page(size: a4(landscape: true))
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (call_expr
+          function: (qualified_name
+            (identifier))
+          arguments: (argument_list
+            (attribute
+              key: (identifier)
+              value: (boolean))))))))
+
+==================
+import: single-quoted path
+==================
+#import 'lib.mos'
+---
+
+(source_file
+  (import_directive
+    path: (string)))
+
+==================
+two adjacent directives without blank line
+==================
+#set a(x: 1)
+#set b(y: 2)
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (number))))
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (number)))))
+
+==================
+set: missing closing paren inserts MISSING ")"
+==================
+#set text(font: "Noto Sans"
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (string))
+      (MISSING ")"))))
+
+==================
+import: bare keyword without path is ERROR
+==================
+#import
+---
+
+(source_file
+  (ERROR))
+
+==================
+set: attribute with empty value
+==================
+#set text(font:)
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (qualified_name
+        (identifier))
+      (ERROR))))
+
+==================
+include: unterminated string literal recovers at next directive
+==================
+#include "unterminated
+#set a(b: 1)
+---
+
+(source_file
+  (ERROR
+    (UNEXPECTED '\n'))
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (number)))))

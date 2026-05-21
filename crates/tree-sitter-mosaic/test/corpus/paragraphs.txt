@@ -1,0 +1,160 @@
+==================
+paragraph: soft break
+==================
+Line one
+line two
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))
+    (soft_break)
+    (paragraph_segment
+      (text))))
+
+==================
+paragraph: linebreak escape
+==================
+Line one \
+Line two
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))
+    (linebreak_escape)
+    (paragraph_segment
+      (text))))
+
+==================
+paragraph: leading label
+==================
+<intro> The opening sentence.
+---
+
+(source_file
+  (paragraph
+    leading_label: (leading_label
+      (block_label
+        (label
+          name: (label_name))))
+    (paragraph_segment
+      (text))))
+
+==================
+paragraph: trailing label
+==================
+The closing sentence. <outro>
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))
+    trailing_label: (trailing_label
+      (block_label
+        (label
+          name: (label_name))))))
+
+==================
+paragraph: both leading and trailing label
+==================
+<intro> The middle. <outro>
+---
+
+(source_file
+  (paragraph
+    leading_label: (leading_label
+      (block_label
+        (label
+          name: (label_name))))
+    (paragraph_segment
+      (text))
+    trailing_label: (trailing_label
+      (block_label
+        (label
+          name: (label_name))))))
+
+==================
+paragraph: two paragraphs separated by blank line
+==================
+First.
+
+Second.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (blank_line)
+  (paragraph
+    (paragraph_segment
+      (text))))
+
+==================
+paragraph: set directive starts next block
+==================
+Hello world
+#set text(size: 12pt)
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (dimension)))))
+
+==================
+paragraph: import directive starts next block
+==================
+Hello world
+#import "lib.mos"
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (import_directive
+    path: (string)))
+
+==================
+paragraph: include directive starts next block
+==================
+Hello world
+#include "sections/intro.mos"
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (include_directive
+    path: (string)))
+
+==================
+paragraph: multiple blank lines collapse into one blank_line token
+==================
+First.
+
+
+
+Second.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (blank_line)
+  (paragraph
+    (paragraph_segment
+      (text))))

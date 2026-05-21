@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members  = ["crates/*"]
-exclude  = ["crates/tree-sitter-mosaic"]
+exclude  = ["crates/node_modules"]
 
 [workspace.package]
 version      = "0.0.0"
@@ -15,26 +15,30 @@ keywords     = ["compiler", "layout", "pdf", "typesetting", "typography"]
 categories   = ["compilers", "text-processing"]
 
 [workspace.dependencies]
-afm                = { path = "crates/afm", version = "0.0.0" }
-mosaic-bib         = { path = "crates/mosaic-bib", version = "0.0.0" }
-mosaic-cache       = { path = "crates/mosaic-cache", version = "0.0.0" }
-mosaic-core        = { path = "crates/mosaic-core", version = "0.0.0" }
-mosaic-eval        = { path = "crates/mosaic-eval", version = "0.0.0" }
-mosaic-fonts       = { path = "crates/mosaic-fonts", version = "0.0.0" }
-mosaic-html        = { path = "crates/mosaic-html", version = "0.0.0" }
-mosaic-layout      = { path = "crates/mosaic-layout", version = "0.0.0" }
-mosaic-lsp         = { path = "crates/mosaic-lsp", version = "0.0.0" }
-mosaic-packages    = { path = "crates/mosaic-packages", version = "0.0.0" }
-mosaic-parse       = { path = "crates/mosaic-parse", version = "0.0.0" }
-mosaic-pdf         = { path = "crates/mosaic-pdf", version = "0.0.0" }
-pdf-base14-metrics = { path = "crates/pdf-base14-metrics", version = "0.0.0" }
+afm                = { path = "crates/afm" }
+mosaic-bib         = { path = "crates/mosaic-bib" }
+mosaic-cache       = { path = "crates/mosaic-cache" }
+mosaic-core        = { path = "crates/mosaic-core" }
+mosaic-eval        = { path = "crates/mosaic-eval" }
+mosaic-fonts       = { path = "crates/mosaic-fonts" }
+mosaic-html        = { path = "crates/mosaic-html" }
+mosaic-layout      = { path = "crates/mosaic-layout" }
+mosaic-lsp         = { path = "crates/mosaic-lsp" }
+mosaic-packages    = { path = "crates/mosaic-packages" }
+mosaic-parse       = { path = "crates/mosaic-parse" }
+mosaic-pdf         = { path = "crates/mosaic-pdf" }
+pdf-base14-metrics = { path = "crates/pdf-base14-metrics" }
+tree-sitter-mosaic = { path = "crates/tree-sitter-mosaic" }
 
 # External dependencies
-lopdf      = "0.40"
-pdf-writer = "0.14"
-serde_json = "1"
-thiserror  = "2"
-toml       = "1.1"
+cc                   = "1.2"
+lopdf                = "0.40"
+pdf-writer           = "0.14"
+serde_json           = "1"
+thiserror            = "2"
+toml                 = "1.1"
+tree-sitter          = "0.26"
+tree-sitter-language = "0.1"
 
 [workspace.dependencies.clap]
 version  = "4.6"

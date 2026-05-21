@@ -1,0 +1,136 @@
+==================
+inline: reference, emphasis, strong, code span
+==================
+See @sec:intro with *emph* and **strong** and `code`.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (reference
+        target: (label_name))
+      (text)
+      (emphasis
+        (emph_text))
+      (text)
+      (strong
+        (emph_text))
+      (text)
+      (code_span)
+      (text))))
+
+==================
+inline: strong_emphasis
+==================
+That ***matters*** here.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (strong_emphasis
+        (emph_text))
+      (text))))
+
+==================
+inline: math
+==================
+The energy is $E = mc^2$ today.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (inline_math
+        (math_text))
+      (text))))
+
+==================
+inline: escaped chars
+==================
+Use \# for a literal hash.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (escaped_char)
+      (text))))
+
+==================
+inline: escaped backslash
+==================
+Use \\ for a literal backslash.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (escaped_char)
+      (text))))
+
+==================
+inline: escaped emphasis delimiter
+==================
+Use \* for a literal asterisk.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (escaped_char)
+      (text))))
+
+==================
+inline: escaped brackets
+==================
+Use \[ and \] for literal brackets.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (escaped_char)
+      (text)
+      (escaped_char)
+      (text))))
+
+==================
+inline: emphasis nested inside strong
+==================
+A **strong with *nested emphasis* inside** text.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (strong
+        (emph_text)
+        (emphasis
+          (emph_text))
+        (emph_text))
+      (text))))
+
+==================
+inline: hash call without args mid-paragraph
+==================
+Some #emoji prefix.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (inline_call
+        (hash_call
+          function: (qualified_name
+            (identifier))))
+      (text))))
