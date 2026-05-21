@@ -25,7 +25,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <wctype.h>
 
 enum TokenType {
     BLANK_LINE,

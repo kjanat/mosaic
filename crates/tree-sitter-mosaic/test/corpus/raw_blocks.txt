@@ -108,6 +108,19 @@ code: bare body (no arguments)
       (raw_body_close))))
 
 ==================
+code: zero equals with inner brackets
+==================
+#code[[let x = vec![1, 2, 3];]]
+---
+
+(source_file
+  (code_block
+    body: (raw_body
+      (raw_body_open)
+      (raw_body_content)
+      (raw_body_close))))
+
+==================
 pre: with argument
 ==================
 #pre(indent: 2)[[step over]]

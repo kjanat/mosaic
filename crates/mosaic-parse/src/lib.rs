@@ -604,12 +604,7 @@ impl<'a> Parser<'a> {
                 )
                 .with_span(self.span(line_start, i + 1)),
             );
-            if let Some(end) = self.scan_raw_brackets(i) {
-                self.pos = end;
-                self.skip_line();
-            } else {
-                self.skip_line();
-            }
+            self.skip_line();
             return;
         };
         if let Some((body_end, close_end)) = self.scan_long_raw_close(body_start, eq_count) {
@@ -839,20 +834,6 @@ impl<'a> Parser<'a> {
                 _ => {}
             }
             i += 1;
-        }
-        None
-    }
-
-    fn scan_raw_brackets(&self, start: usize) -> Option<usize> {
-        let bytes = self.src.as_bytes();
-        debug_assert_eq!(bytes.get(start), Some(&b'['));
-        let mut i = start + 1;
-        while i < bytes.len() {
-            match bytes[i] {
-                b'\\' if i + 1 < bytes.len() => i += 2,
-                b']' => return Some(i + 1),
-                _ => i += 1,
-            }
         }
         None
     }
@@ -1670,11 +1651,6 @@ fn normalize_raw_text(text: &str) -> String {
         .or_else(|| text.strip_prefix('\n'))
         .or_else(|| text.strip_prefix('\r'))
         .unwrap_or(text);
-    let text = text
-        .strip_suffix("\r\n")
-        .or_else(|| text.strip_suffix('\n'))
-        .or_else(|| text.strip_suffix('\r'))
-        .unwrap_or(text);
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
@@ -2239,6 +2215,22 @@ mod tests {
     }
 
     #[test]
+    fn raw_blocks_preserve_zero_equals_inner_brackets() {
+        let r = parse_str("#code[[let x = vec![1, 2, 3];]]\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let raw = r.tree.items[0].as_raw_block();
+        assert!(
+            raw.is_some(),
+            "expected raw block, got {:?}",
+            r.tree.items[0]
+        );
+        if let Some(raw) = raw {
+            assert_eq!(raw.kind, RawBlockKind::Code);
+            assert_eq!(raw.text, "let x = vec![1, 2, 3];");
+        }
+    }
+
+    #[test]
     fn raw_blocks_preserve_delimiter_like_text() {
         let r = parse_str("#pre[=[open \\] close ] and ]] close]=]\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
@@ -2280,7 +2272,7 @@ mod tests {
     }
 
     #[test]
-    fn raw_blocks_trim_delimiter_newlines_and_normalize_line_endings() {
+    fn raw_blocks_trim_leading_delimiter_newline_and_normalize_line_endings() {
         let r = parse_str("#code[[\r\n\tprintln!(\"hi\");\r\n]]\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         let raw = r.tree.items[0].as_raw_block();
@@ -2290,7 +2282,7 @@ mod tests {
             r.tree.items[0]
         );
         if let Some(raw) = raw {
-            assert_eq!(raw.text, "\tprintln!(\"hi\");");
+            assert_eq!(raw.text, "\tprintln!(\"hi\");\n");
         }
     }
 
