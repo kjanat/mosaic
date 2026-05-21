@@ -11,12 +11,12 @@ description    = "Mosaic (.mos) typesetting language support."
 repository     = "https://github.com/kjanat/mosaic"
 languages      = ["Mosaic"]
 
-# [grammars.mosaic] # TODO: pre-merge, set non-local shizz.
-# repository = "https://github.com/kjanat/mosaic"
-# rev        = "285515987cac25b313a9fa5206d5b8a14787a4f1"
-# path       = "crates/tree-sitter-mosaic"
-
 [grammars.mosaic]
-repository = "file:///home/kjanat/projects/mosaic"
-rev        = "zed-mosaic"
+repository = "https://github.com/kjanat/mosaic"
+rev        = "77d32b2363603741a6e5670ae6cfe71888b329a2"
 path       = "crates/tree-sitter-mosaic"
+
+# [grammars.mosaic]  # TODO: during dev, set local shizz.
+# repository = "file:///home/kjanat/projects/mosaic"
+# rev        = "zed-mosaic"
+# path       = "crates/tree-sitter-mosaic"
