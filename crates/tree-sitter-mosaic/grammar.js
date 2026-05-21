@@ -29,7 +29,6 @@ export default grammar({
 
 	extras: $ => [
 		/[\t ]+/,
-		$.comment,
 	],
 
 	externals: $ => [
@@ -65,6 +64,7 @@ export default grammar({
 
 		_block: $ =>
 			choice(
+				$.comment,
 				$.set_directive,
 				$.import_directive,
 				$.include_directive,

@@ -12,6 +12,10 @@
         "named": true
       },
       {
+        "type": "comment",
+        "named": true
+      },
+      {
         "type": "heading",
         "named": true
       },
@@ -1127,8 +1131,7 @@
   },
   {
     "type": "comment",
-    "named": true,
-    "extra": true
+    "named": true
   },
   {
     "type": "dimension",

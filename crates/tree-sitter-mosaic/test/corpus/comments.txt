@@ -13,6 +13,31 @@ comment: line comment is trivia
       (text))))
 
 ==================
+comment: url slash pair stays prose
+==================
+Visit http://example.com
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))))
+
+==================
+comment: slash star pair stays prose
+==================
+a /* b */ c
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (emphasis
+        (emph_text))
+      (text))))
+
+==================
 comment: block comment is trivia
 ==================
 /* block */ = Hi

@@ -1,8 +1,9 @@
-#verse[Line one
+#verse[Line one]
 // <- keyword
 //     ^ markup.quote
-*italic* line]
-// ^ markup.italic
+
+#verse[*italic* line]
+//      ^ markup.italic
 
 #pre[raw text here]
 // <- keyword

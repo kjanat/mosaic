@@ -28,6 +28,10 @@
       "members": [
         {
           "type": "SYMBOL",
+          "name": "comment"
+        },
+        {
+          "type": "SYMBOL",
           "name": "set_directive"
         },
         {
@@ -2080,10 +2084,6 @@
     {
       "type": "PATTERN",
       "value": "[\\t ]+"
-    },
-    {
-      "type": "SYMBOL",
-      "name": "comment"
     }
   ],
   "conflicts": [
