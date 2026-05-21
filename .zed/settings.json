@@ -7,10 +7,33 @@
 	"prettier": { "allowed": false },
 	"wrap_guides": [120],
 	"languages": {
-		"Markdown": { "language_servers": ["rumdl", "!markdownlint"], "wrap_guides": [100] },
+		"Markdown": {
+			"language_servers": ["rumdl", "!markdownlint"],
+			"wrap_guides": [100]
+		},
 		"JSON": { "wrap_guides": [140] },
 		"JSONC": { "wrap_guides": [140] },
 		"TOML": { "wrap_guides": [140] },
-		"Rust": { "wrap_guides": [100] }
+		"Rust": { "wrap_guides": [100] },
+		"Mosaic": {
+			"wrap_guides": [100],
+			"language_servers": ["mos-lsp"], // not entirely set on naming mos-lsp vs mosaic-lsp...
+			"formatter": "language_server"
+		}
+	},
+	"lsp": {
+		"mos-lsp": {
+			"binary": {
+				"path": "cargo",
+				"arguments": ["run", "--bin", "mos-lsp"],
+				"env": {
+					"CARGO_TERM_QUIET": "true",
+					"CARGO_PKG_VERSION_PRE": "zed"
+				}
+			},
+			"initialization_options": {},
+			"settings": {},
+			"enable_lsp_tasks": true
+		}
 	}
 }

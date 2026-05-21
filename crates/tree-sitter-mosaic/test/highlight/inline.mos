@@ -1,22 +1,32 @@
 A *italic* word.
-// ^ markup.italic
+// ^ emphasis
 
 Some **strong** phrase.
-//     ^ markup.strong
+//     ^ emphasis.strong
+
+Across *two
+//      ^ emphasis
+lines* now.
+// <- emphasis
 
 Use `code` inline.
-//    ^ markup.raw
+//    ^ text.literal
+
+Code `two
+//    ^ text.literal
+lines` now.
+// <- text.literal
 
 Math $x = 1$ goes here.
 //   ^ punctuation.special
-//    ^ markup.math
+//    ^ text.literal
 
 See @intro for context.
 //  ^ punctuation.special
-//   ^ markup.link.label
+//   ^ link_uri
 
 Refer to <anchor> label.
-//        ^ markup.link.label
+//        ^ link_uri
 
 Escaped \* asterisk.
 //      ^ string.escape

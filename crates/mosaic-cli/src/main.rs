@@ -8,7 +8,7 @@
 #![allow(clippy::print_stderr, clippy::print_stdout)]
 
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command as ProcessCommand, ExitCode};
 
 use clap::{Parser, Subcommand};
 use mosaic_core::{Diagnostic, Severity, SourceSpan, linecol};
@@ -39,6 +39,12 @@ enum Command {
     Build {
         #[arg(default_value = "main.mos")]
         entry: PathBuf,
+        /// Open the generated PDF after a successful build.
+        ///
+        /// Use `--open` for the platform default, or `--open=PROGRAM`
+        /// to invoke a specific viewer.
+        #[arg(long, value_name = "PROGRAM", num_args = 0..=1, require_equals = true)]
+        open: Option<Option<String>>,
         /// Refuse to update dependencies (manifest §15.3).
         #[arg(long)]
         frozen: bool,
@@ -91,9 +97,10 @@ fn main() -> ExitCode {
         Command::Check { entry } => run_check(&entry),
         Command::Build {
             entry,
+            open,
             frozen: _,
             reproducible: _,
-        } => run_build(&entry),
+        } => run_build(&entry, PdfOpen::from_cli(&open)),
         Command::Init { .. } => unimplemented_subcommand("init"),
         Command::Watch { .. } => unimplemented_subcommand("watch"),
         Command::Fmt { .. } => unimplemented_subcommand("fmt"),
@@ -152,7 +159,7 @@ fn run_check(entry: &Path) -> ExitCode {
 /// to `build/<entry-stem>.pdf`. MVP 0 produces a fixed-A4 document
 /// using the standard PDF base fonts (no embedding). Layout warnings
 /// (e.g. non-ASCII substitutions) print but don't fail the build.
-fn run_build(entry: &Path) -> ExitCode {
+fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
     let src = match std::fs::read_to_string(entry) {
         Ok(s) => s,
         Err(err) => {
@@ -225,7 +232,64 @@ fn run_build(entry: &Path) -> ExitCode {
         out.display(),
         started.elapsed().as_millis()
     );
+    if open.should_open() {
+        match open_pdf(&out, open) {
+            Ok(()) => println!("opened {}", out.display()),
+            Err(err) => {
+                eprintln!("mos build: {err}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
     ExitCode::SUCCESS
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PdfOpen<'a> {
+    No,
+    Default,
+    Program(&'a str),
+}
+
+impl<'a> PdfOpen<'a> {
+    fn from_cli(open: &'a Option<Option<String>>) -> Self {
+        match open {
+            None => Self::No,
+            Some(None) => Self::Default,
+            Some(Some(program)) if program.is_empty() => Self::Default,
+            Some(Some(program)) => Self::Program(program.as_str()),
+        }
+    }
+
+    fn should_open(self) -> bool {
+        !matches!(self, Self::No)
+    }
+}
+
+fn open_pdf(path: &Path, request: PdfOpen<'_>) -> Result<(), String> {
+    match request {
+        PdfOpen::No => Ok(()),
+        PdfOpen::Default => opener::open(path.as_os_str())
+            .map_err(|err| format!("could not open `{}`: {err}", path.display())),
+        PdfOpen::Program(program) => {
+            let mut command = ProcessCommand::new(program);
+            command.arg(path);
+            let status = command.status().map_err(|err| {
+                format!(
+                    "could not open `{}` with `{program}`: {err}",
+                    path.display()
+                )
+            })?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "opener `{program}` failed for `{}` with {status}",
+                    path.display()
+                ))
+            }
+        }
+    }
 }
 
 fn severity_label(s: Severity) -> &'static str {
@@ -301,4 +365,26 @@ fn render_span_caret(src: &str, span: &SourceSpan) {
         pad = " ".repeat(col.saturating_sub(1)),
         carets = "^".repeat(caret_chars),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PdfOpen;
+
+    #[test]
+    fn pdf_open_from_cli_distinguishes_absent_default_and_program() {
+        assert!(matches!(PdfOpen::from_cli(&None), PdfOpen::No));
+
+        let default = Some(None);
+        assert!(matches!(PdfOpen::from_cli(&default), PdfOpen::Default));
+
+        let empty = Some(Some(String::new()));
+        assert!(matches!(PdfOpen::from_cli(&empty), PdfOpen::Default));
+
+        let program = Some(Some("zathura".to_owned()));
+        assert!(matches!(
+            PdfOpen::from_cli(&program),
+            PdfOpen::Program("zathura")
+        ));
+    }
 }

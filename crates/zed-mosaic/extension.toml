@@ -1,0 +1,22 @@
+#:schema https://raw.githubusercontent.com/kjanat/zed-editor/refs/heads/feature/extension-toml-schema/crates/extension_api/schemas/extension.schema.json
+#:tombi schema.strict = false
+
+id             = "mosaic"
+name           = "Mosaic"
+# Keep in sync with (workspace) Cargo.toml
+version        = "0.0.0"
+schema_version = 1
+authors        = ["Kaj Kowalski <info@kajkowalski.nl>"]
+description    = "Mosaic (.mos) typesetting language support."
+repository     = "https://github.com/kjanat/mosaic"
+languages      = ["Mosaic"]
+
+[grammars.mosaic]
+repository = "https://github.com/kjanat/mosaic"
+rev        = "876686849b90b1cf6ce7c456a60e60d0b3ad5a3e"
+path       = "crates/tree-sitter-mosaic"
+
+# [grammars.mosaic]  # TODO: during dev, set local shizz.
+# repository = "file:///home/kjanat/projects/mosaic"
+# rev        = "zed-mosaic"
+# path       = "crates/tree-sitter-mosaic"

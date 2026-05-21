@@ -11,6 +11,7 @@
 //! - `#image(...)` and `#figure(...)` directives, sharing the same
 //!   `key: value` body grammar as `#set` plus an optional leading
 //!   positional string literal (`#image("path.png")`),
+//! - raw `#pre[[...]]` and `#code[[...]]` long-bracket blocks,
 //! - `<label>` attached to the preceding block (trailing on a heading or
 //!   leading on a paragraph), and `@label` cross-references as inline
 //!   [`InlineKind::Reference`] runs (manifest §3.3 and the MVP 1
@@ -62,6 +63,16 @@ pub enum Item {
         args: Vec<SetArg>,
         span: SourceSpan,
     },
+    /// Raw preformatted text or code block. Both forms preserve their
+    /// long-bracket body as text; the kind leaves room for later styling
+    /// or language-aware code rendering.
+    RawBlock {
+        kind: RawBlockKind,
+        args: Vec<SetArg>,
+        text: String,
+        label: Option<String>,
+        span: SourceSpan,
+    },
     /// A bullet (`- `) or numbered (`\d+\. `) list. Sibling items at
     /// the same indent are grouped under one list; deeper indents
     /// become nested lists hanging off the most recent item. Numbered
@@ -98,6 +109,22 @@ pub enum DirectiveKind {
     Image,
     /// `#figure(image: ..., caption: ...)` — captioned image container.
     Figure,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum RawBlockKind {
+    Pre,
+    Code,
+}
+
+/// Borrowed view of an [`Item::RawBlock`] payload.
+#[derive(Debug, Clone, Copy)]
+pub struct RawBlockView<'a> {
+    pub kind: RawBlockKind,
+    pub args: &'a [SetArg],
+    pub text: &'a str,
+    pub label: Option<&'a str>,
+    pub span: &'a SourceSpan,
 }
 
 /// One argument inside a directive body — either a `key: value`
@@ -253,6 +280,29 @@ impl Item {
         }
     }
 
+    /// Borrow the raw block payload if `self` is [`Item::RawBlock`].
+    #[must_use]
+    pub fn as_raw_block(&self) -> Option<RawBlockView<'_>> {
+        if let Self::RawBlock {
+            kind,
+            args,
+            text,
+            label,
+            span,
+        } = self
+        {
+            Some(RawBlockView {
+                kind: *kind,
+                args: args.as_slice(),
+                text: text.as_str(),
+                label: label.as_deref(),
+                span,
+            })
+        } else {
+            None
+        }
+    }
+
     /// Borrow the [`DirectiveKind`] tag if `self` is [`Item::Set`].
     #[must_use]
     pub fn directive_kind(&self) -> Option<DirectiveKind> {
@@ -285,7 +335,9 @@ impl Item {
     #[must_use]
     pub fn label(&self) -> Option<&str> {
         match self {
-            Self::Heading { label, .. } | Self::Paragraph { label, .. } => label.as_deref(),
+            Self::Heading { label, .. }
+            | Self::Paragraph { label, .. }
+            | Self::RawBlock { label, .. } => label.as_deref(),
             Self::Set { .. } | Self::List { .. } => None,
         }
     }
@@ -372,13 +424,14 @@ impl<'a> Parser<'a> {
         self.src.as_bytes()[self.pos..].starts_with(prefix.as_bytes())
     }
 
-    /// Returns the matched keyword (`"set"`, `"image"`, `"figure"`) if
+    /// Returns the matched keyword (`"set"`, `"image"`, `"figure"`,
+    /// `"pre"`, `"code"`) if
     /// the current position spells one of the recognised directive
     /// keywords followed by a token boundary (whitespace, EOF, or `(`).
     /// The boundary check guards against prefixes like `#setting` or
     /// `#imagery` being misrouted into the directive path.
     fn at_directive_keyword(&self) -> Option<&'static str> {
-        const KEYWORDS: &[&str] = &["set", "image", "figure"];
+        const KEYWORDS: &[&str] = &["set", "image", "figure", "pre", "code"];
         if !self.starts_with("#") {
             return None;
         }
@@ -392,9 +445,9 @@ impl<'a> Parser<'a> {
             if &bytes[after_hash..end] != kw.as_bytes() {
                 continue;
             }
-            let boundary = bytes
-                .get(end)
-                .is_none_or(|&b| b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' || b == b'(');
+            let boundary = bytes.get(end).is_none_or(|&b| {
+                b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' || b == b'(' || b == b'['
+            });
             if boundary {
                 return Some(kw);
             }
@@ -431,8 +484,11 @@ impl<'a> Parser<'a> {
     /// of the current line. `content_end` excludes any trailing `\r\n`
     /// or `\n`; `line_end` is the offset *after* the terminator.
     fn current_line_bounds(&self) -> (usize, usize, usize) {
+        self.line_bounds_from(self.pos)
+    }
+
+    fn line_bounds_from(&self, start: usize) -> (usize, usize, usize) {
         let bytes = self.src.as_bytes();
-        let start = self.pos;
         let mut end = start;
         while end < bytes.len() && bytes[end] != b'\n' {
             end += 1;
@@ -489,11 +545,112 @@ impl<'a> Parser<'a> {
     /// `#set` is the only directive that carries a separate inner
     /// identifier (`#set page(...)`); for `#image` and `#figure` the
     /// directive keyword itself is the [`Item::Set::name`] payload.
+    /// `#pre[[...]]` and `#code[[...]]` carry raw long-bracket bodies.
     fn parse_directive_block(&mut self, kw: &'static str) {
         if kw == "set" {
             self.parse_set_block();
+        } else if kw == "pre" || kw == "code" {
+            self.parse_raw_block(kw);
         } else {
             self.parse_call_block(kw);
+        }
+    }
+
+    fn parse_raw_block(&mut self, kw: &'static str) {
+        let (line_start, _content_end, _line_end) = self.current_line_bounds();
+        let bytes = self.src.as_bytes();
+        debug_assert!(self.src[line_start + 1..].starts_with(kw));
+        let mut i = line_start + 1 + kw.len();
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        let mut args = Vec::new();
+        if i < bytes.len() && bytes[i] == b'(' {
+            let Some(args_end) = self.scan_balanced_parens(i) else {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E012"),
+                        format!("unterminated `#{kw}(...)` block"),
+                    )
+                    .with_span(self.span(line_start, bytes.len())),
+                );
+                self.pos = bytes.len();
+                return;
+            };
+            args = self.parse_set_body(i + 1, args_end - 1, true);
+            i = args_end;
+            while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+                i += 1;
+            }
+        }
+        if i >= bytes.len() || bytes[i] != b'[' {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E011"),
+                    format!(
+                        "expected long-bracket raw body after `#{kw}` (for example `#{kw}[[...]]`)"
+                    ),
+                )
+                .with_span(self.span(line_start, i)),
+            );
+            self.skip_line();
+            return;
+        }
+        let Some((body_start, eq_count)) = self.scan_long_raw_open(i) else {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E011"),
+                    format!("raw `#{kw}` blocks require long brackets like `#{kw}[[...]]`"),
+                )
+                .with_span(self.span(line_start, i + 1)),
+            );
+            self.skip_line();
+            return;
+        };
+        if let Some((body_end, close_end)) = self.scan_long_raw_close(body_start, eq_count) {
+            let text = normalize_raw_text(&self.src[body_start..body_end]);
+            let (_, content_end, _) = self.line_bounds_from(close_end);
+            let (after_label, label) = strip_leading_label(self.src, close_end, content_end);
+            let kind = if kw == "code" {
+                RawBlockKind::Code
+            } else {
+                RawBlockKind::Pre
+            };
+            self.items.push(Item::RawBlock {
+                kind,
+                args,
+                text,
+                label,
+                span: self.span(line_start, after_label),
+            });
+            self.pos = after_label;
+            while self.pos < bytes.len() && (bytes[self.pos] == b' ' || bytes[self.pos] == b'\t') {
+                self.pos += 1;
+            }
+            if self.pos >= bytes.len() {
+                // EOF — nothing to do.
+            } else if bytes[self.pos] == b'\n' {
+                self.pos += 1;
+            } else if bytes[self.pos] == b'\r' && bytes.get(self.pos + 1) == Some(&b'\n') {
+                self.pos += 2;
+            } else {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode("E013"),
+                        format!("unexpected trailing content after raw `#{kw}` block"),
+                    )
+                    .with_span(self.span(self.pos, content_end)),
+                );
+            }
+        } else {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode("E012"),
+                    format!("unterminated raw `#{kw}` long-bracket block"),
+                )
+                .with_span(self.span(line_start, bytes.len())),
+            );
+            self.pos = bytes.len();
         }
     }
 
@@ -675,6 +832,38 @@ impl<'a> Parser<'a> {
                     }
                 }
                 _ => {}
+            }
+            i += 1;
+        }
+        None
+    }
+
+    fn scan_long_raw_open(&self, start: usize) -> Option<(usize, usize)> {
+        let bytes = self.src.as_bytes();
+        debug_assert_eq!(bytes.get(start), Some(&b'['));
+        let mut i = start + 1;
+        while i < bytes.len() && bytes[i] == b'=' {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'[' {
+            return None;
+        }
+        Some((i + 1, i - start - 1))
+    }
+
+    fn scan_long_raw_close(&self, start: usize, eq_count: usize) -> Option<(usize, usize)> {
+        let bytes = self.src.as_bytes();
+        let mut i = start;
+        while i < bytes.len() {
+            if bytes[i] == b']' {
+                let eq_start = i + 1;
+                let eq_end = eq_start + eq_count;
+                if eq_end < bytes.len()
+                    && bytes[eq_start..eq_end].iter().all(|b| *b == b'=')
+                    && bytes[eq_end] == b']'
+                {
+                    return Some((i, eq_end + 1));
+                }
             }
             i += 1;
         }
@@ -1456,6 +1645,15 @@ fn scan_label_chars(bytes: &[u8], from: usize) -> usize {
     i
 }
 
+fn normalize_raw_text(text: &str) -> String {
+    let text = text
+        .strip_prefix("\r\n")
+        .or_else(|| text.strip_prefix('\n'))
+        .or_else(|| text.strip_prefix('\r'))
+        .unwrap_or(text);
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
 /// If the substring `src[start..end]` begins with optional ASCII
 /// whitespace followed by `<label>`, return `(label_body_start, Some(id))`
 /// where `label_body_start` is the offset just past the closing `>`
@@ -1995,6 +2193,111 @@ mod tests {
         assert_eq!(args.len(), 1);
         assert!(matches!(args[0], SetArg::Positional { .. }));
         assert_eq!(args[0].value(), &SetValue::Str("scan.png".to_owned()));
+    }
+
+    #[test]
+    fn raw_blocks_preserve_body_text() {
+        let r = parse_str("#code[[fn main() {\n    println(\"hi\");\n}]]\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 1);
+        let raw = r.tree.items[0].as_raw_block();
+        assert!(
+            raw.is_some(),
+            "expected raw block, got {:?}",
+            r.tree.items[0]
+        );
+        if let Some(raw) = raw {
+            assert_eq!(raw.kind, RawBlockKind::Code);
+            assert!(raw.args.is_empty());
+            assert_eq!(raw.label, None);
+            assert_eq!(raw.text, "fn main() {\n    println(\"hi\");\n}");
+        }
+    }
+
+    #[test]
+    fn raw_blocks_preserve_zero_equals_inner_brackets() {
+        let r = parse_str("#code[[let x = vec![1, 2, 3];]]\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let raw = r.tree.items[0].as_raw_block();
+        assert!(
+            raw.is_some(),
+            "expected raw block, got {:?}",
+            r.tree.items[0]
+        );
+        if let Some(raw) = raw {
+            assert_eq!(raw.kind, RawBlockKind::Code);
+            assert_eq!(raw.text, "let x = vec![1, 2, 3];");
+        }
+    }
+
+    #[test]
+    fn raw_blocks_preserve_delimiter_like_text() {
+        let r = parse_str("#pre[=[open \\] close ] and ]] close]=]\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let raw = r.tree.items[0].as_raw_block();
+        assert!(
+            raw.is_some(),
+            "expected raw block, got {:?}",
+            r.tree.items[0]
+        );
+        if let Some(raw) = raw {
+            assert_eq!(raw.kind, RawBlockKind::Pre);
+            assert!(raw.args.is_empty());
+            assert_eq!(raw.label, None);
+            assert_eq!(raw.text, "open \\] close ] and ]] close");
+        }
+    }
+
+    #[test]
+    fn raw_blocks_preserve_arguments_and_label() {
+        let r = parse_str("#code(lang: \"rust\")[[fn main() {}]] <ex:code>\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 1);
+
+        let raw = r.tree.items[0].as_raw_block();
+        assert!(
+            raw.is_some(),
+            "expected raw block, got {:?}",
+            r.tree.items[0]
+        );
+        if let Some(raw) = raw {
+            assert_eq!(raw.kind, RawBlockKind::Code);
+            assert_eq!(raw.args.len(), 1);
+            assert_eq!(raw.args[0].key(), Some("lang"));
+            assert_eq!(raw.args[0].value(), &SetValue::Str("rust".to_owned()));
+            assert_eq!(raw.text, "fn main() {}");
+            assert_eq!(raw.label, Some("ex:code"));
+        }
+        assert_eq!(r.tree.items[0].label(), Some("ex:code"));
+    }
+
+    #[test]
+    fn raw_blocks_trim_leading_delimiter_newline_and_normalize_line_endings() {
+        let r = parse_str("#code[[\r\n\tprintln!(\"hi\");\r\n]]\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let raw = r.tree.items[0].as_raw_block();
+        assert!(
+            raw.is_some(),
+            "expected raw block, got {:?}",
+            r.tree.items[0]
+        );
+        if let Some(raw) = raw {
+            assert_eq!(raw.text, "\tprintln!(\"hi\");\n");
+        }
+    }
+
+    #[test]
+    fn bracket_raw_blocks_are_rejected() {
+        let r = parse_str("#code[fn main() {}]\n");
+        assert!(r.has_errors(), "{:?}", r.diagnostics);
+        assert!(r.tree.items.is_empty(), "{:?}", r.tree.items);
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.message.contains("long brackets")),
+            "{:?}",
+            r.diagnostics
+        );
     }
 
     #[test]

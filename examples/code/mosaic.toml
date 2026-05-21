@@ -1,0 +1,10 @@
+[project]
+name    = "code"
+version = "0.1.0"
+entry   = "main.mos"
+
+[document]
+language = "en"
+output   = ["pdf"]
+
+[dependencies]

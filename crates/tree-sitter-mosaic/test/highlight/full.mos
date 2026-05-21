@@ -10,31 +10,31 @@
 //                               ^ number
 
 #import "lib.mos": util
-// <- keyword.import
-//       ^ string.special.path
+// <- keyword
+//       ^ string.special
 //                   ^ variable
 
 = Introduction <intro>
-// <- markup.heading.marker
-//  ^ markup.heading
-//               ^ markup.link.label
+// <- punctuation.special
+//  ^ title
+//               ^ link_uri
 
 This paper covers *parsing* and **lowering** here.
-//                  ^ markup.italic
-//                                 ^ markup.strong
+//                  ^ emphasis
+//                                 ^ emphasis.strong
 
 See @intro section. Math is $x = 1$ here.
-//   ^ markup.link.label
-//                            ^ markup.math
+//   ^ link_uri
+//                            ^ text.literal
 
 == Background
 
 Use `mos check` to run.
-//    ^ markup.raw
+//    ^ text.literal
 
 Escape \[ works fine.
 //     ^ string.escape
 
-#pre[raw text body]
+#pre[[raw text body]]
 // <- keyword
-//    ^ markup.raw
+//     ^ text.literal

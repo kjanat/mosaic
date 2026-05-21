@@ -22,6 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     size_pt: 16.0,
                     font: Font::Base14(Base14Font::HelveticaBold),
                     text: "Romanian comma-below demo".to_owned(),
+                    actual_text: None,
                     glyphs: Vec::new(),
                 },
                 TextRun {
@@ -30,6 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     size_pt: 11.0,
                     font: Font::Base14(Base14Font::Helvetica),
                     text: "With comma-below (correct Romanian):".to_owned(),
+                    actual_text: None,
                     glyphs: Vec::new(),
                 },
                 TextRun {
@@ -39,6 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     font: Font::Base14(Base14Font::TimesRoman),
                     // Ș=U+0218, ș=U+0219, Ț=U+021A, ț=U+021B
                     text: "Șapte șopârle țipă în țară.".to_owned(),
+                    actual_text: None,
                     glyphs: Vec::new(),
                 },
                 TextRun {
@@ -47,6 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     size_pt: 11.0,
                     font: Font::Base14(Base14Font::Helvetica),
                     text: "Without (ASCII fallback, no diacritic):".to_owned(),
+                    actual_text: None,
                     glyphs: Vec::new(),
                 },
                 TextRun {
@@ -55,6 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     size_pt: 18.0,
                     font: Font::Base14(Base14Font::TimesRoman),
                     text: "Sapte sopirle tipa in tara.".to_owned(),
+                    actual_text: None,
                     glyphs: Vec::new(),
                 },
                 TextRun {
@@ -65,6 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     text: "Bonus: historical cedilla codepoints rendered \
                            with the glyph each AFM ships."
                         .to_owned(),
+                    actual_text: None,
                     glyphs: Vec::new(),
                 },
                 TextRun {
@@ -76,6 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // U+0162 Ţ (Tcommaaccent, AFM has no Tcedilla so
                     //           routes here despite the codepoint name).
                     text: "Ş vs Ș    ş vs ș    Ţ vs Ț    ţ vs ț".to_owned(),
+                    actual_text: None,
                     glyphs: Vec::new(),
                 },
                 TextRun {
@@ -87,6 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                            a comma hanging beneath (Scommaaccent/Tcommaaccent), \
                            the left has the cedilla hook (Scedilla)."
                         .to_owned(),
+                    actual_text: None,
                     glyphs: Vec::new(),
                 },
             ],

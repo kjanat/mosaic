@@ -1,13 +1,13 @@
 = Top Heading
-// <- markup.heading.marker
-//  ^ markup.heading
+// <- punctuation.special
+//  ^ title
 
 == Subsection
-// <- markup.heading.marker
-// ^ markup.heading.marker
-//   ^ markup.heading
+// <- punctuation.special
+// ^ punctuation.special
+//   ^ title
 
 === With *italic* word
-// <- markup.heading.marker
-//    ^ markup.heading
-//        ^ markup.italic
+// <- punctuation.special
+//    ^ title
+//        ^ emphasis

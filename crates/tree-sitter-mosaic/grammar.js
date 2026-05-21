@@ -5,9 +5,9 @@
  * Tree-sitter grammar for the Mosaic `.mos` document language.
  *
  * Mirrors `mosaic.ebnf` (also rendered in `EBNF.md`) 1:1 in structure. The
- * three tokens that regex-only lexing cannot express cleanly (`blank_line`,
- * `linebreak_escape`, raw `#pre`/`#code` body content) are emitted by the
- * external scanner in `src/scanner.c`.
+ * five tokens that regex-only lexing cannot express cleanly (`blank_line`,
+ * `linebreak_escape`, and raw `#pre`/`#code` long-bracket delimiters/content)
+ * are emitted by the external scanner in `src/scanner.c`.
  *
  * @file Mosaic grammar for Tree-sitter
  * @author Kaj Kowalski <info@kajkowalski.nl>
@@ -34,7 +34,9 @@ export default grammar({
 	externals: $ => [
 		$.blank_line,
 		$.linebreak_escape,
+		$.raw_body_open,
 		$.raw_body_content,
+		$.raw_body_close,
 		$._error_sentinel,
 	],
 
@@ -170,7 +172,7 @@ export default grammar({
 				optional($._line_end),
 			)),
 
-		raw_body: $ => seq('[', repeat($.raw_body_content), ']'),
+		raw_body: $ => seq($.raw_body_open, optional($.raw_body_content), $.raw_body_close),
 
 		verse_body: $ =>
 			seq(
@@ -310,6 +312,7 @@ export default grammar({
 				$.linebreak_call,
 				$.inline_call,
 				$.escaped_char,
+				$.soft_break,
 				$.emph_text,
 			),
 
@@ -323,6 +326,7 @@ export default grammar({
 				$.linebreak_call,
 				$.inline_call,
 				$.escaped_char,
+				$.soft_break,
 				$.emph_text,
 			),
 
@@ -336,17 +340,22 @@ export default grammar({
 				$.linebreak_call,
 				$.inline_call,
 				$.escaped_char,
+				$.soft_break,
 				$.emph_text,
 			),
 
 		emph_text: _ => token(prec(-1, /[^*\\\n\r]+/)),
 
-		code_span: _ =>
-			token(seq(
+		code_span: $ =>
+			seq(
 				'`',
-				repeat(choice(/[^`\n\r\\]+/, /\\./)),
+				repeat(choice($.code_text, $.code_escape, $.soft_break)),
 				'`',
-			)),
+			),
+
+		code_text: _ => token(prec(-1, /[^`\n\r\\]+/)),
+
+		code_escape: _ => token(seq('\\', /[^\r\n]/)),
 
 		inline_math: $ =>
 			seq(
@@ -510,11 +519,25 @@ export default grammar({
 		// Literals
 		// -------------------------------------------------------------------
 
-		string: _ =>
-			token(choice(
-				seq('"', repeat(choice(/[^"\\\n\r]+/, /\\./)), '"'),
-				seq("'", repeat(choice(/[^'\\\n\r]+/, /\\./)), "'"),
-			)),
+		string: $ =>
+			choice(
+				seq(
+					'"',
+					repeat(choice($.string_double_content, $.escape_sequence)),
+					token.immediate('"'),
+				),
+				seq(
+					"'",
+					repeat(choice($.string_single_content, $.escape_sequence)),
+					token.immediate("'"),
+				),
+			),
+
+		string_double_content: _ => token.immediate(prec(1, /[^"\\\n\r]+/)),
+
+		string_single_content: _ => token.immediate(prec(1, /[^'\\\n\r]+/)),
+
+		escape_sequence: _ => token.immediate(seq('\\', /./)),
 
 		dimension: _ =>
 			token(seq(

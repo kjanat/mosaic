@@ -1,0 +1,19 @@
+[package]
+name                   = "zed-mosaic"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+description            = "Zed editor extension for the Mosaic typesetting language"
+readme                 = "README.md"
+repository.workspace   = true
+license.workspace      = true
+publish                = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+zed_extension_api = { workspace = true }
+
+[lints]
+workspace = true

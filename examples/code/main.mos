@@ -1,0 +1,191 @@
+#set document(
+  title: "Code in Mosaic",
+  author: "Mosaic contributors",
+  language: "en",
+)
+
+#set page(
+  paper: "A4",
+  margin: 24mm,
+  numbering: "bottom-center",
+)
+
+#set text(
+  font: "Noto Sans",
+  size: 11pt,
+  leading: 1.35,
+)
+
+= Code in Mosaic
+
+This example collects the supported ways to put code-like text in a
+Mosaic document. Inline code uses backticks, as in `cargo mos check`
+or `#set text(font: "Noto Sans")`.
+
+Inline code can also span a soft source line break when a short phrase
+needs to stay visually code-shaped in the editor and output:
+`a sad student wrote
+this`.
+
+The source forms for those inline examples are:
+
+#code(lang: "mos")[=[
+`cargo mos check`
+`#set text(font: "Noto Sans")`
+
+`a sad student wrote
+this`
+]=]
+
+== Preformatted command transcripts
+
+Use `#pre[[...]]` for terminal output, command transcripts, or other
+preformatted text where the content is not tied to a programming language.
+
+#pre[[
+$ cargo mos check examples/code/main.mos
+$ cargo mos build examples/code/main.mos
+Finished `dev` profile
+]]
+
+The Mosaic source for that transcript block is:
+
+#code(lang: "mos")[=[
+#pre[[
+$ cargo mos check examples/code/main.mos
+$ cargo mos build examples/code/main.mos
+Finished `dev` profile
+]]
+]=]
+
+Arguments are accepted before the raw body. The layout currently keeps the
+raw text literal; semantic handling of arguments is future work.
+
+#pre(indent: 2)[[
+step one
+step two
+]]
+
+The Mosaic source for that argument form is:
+
+#code(lang: "mos")[=[
+#pre(indent: 2)[[
+step one
+step two
+]]
+]=]
+
+Raw blocks can be empty: `#pre[[]]`.
+
+#pre[[]]
+
+== Code blocks
+
+Use `#code[[...]]` for code examples. Mosaic preserves the raw block text
+and renders it with the monospace face.
+
+#code(lang: "rust")[[
+fn main() {
+	println!("hello, mosaic");
+}
+]]
+
+The Mosaic source for that language-tagged code block is:
+
+#code(lang: "mos")[=[
+#code(lang: "rust")[[
+fn main() {
+	println!("hello, mosaic");
+}
+]]
+]=]
+
+Code blocks can omit arguments when no language metadata is needed.
+
+#code[[
+let answer = 42;
+]]
+
+The Mosaic source for the bare code form is:
+
+#code(lang: "mos")[=[
+#code[[
+let answer = 42;
+]]
+]=]
+
+Raw blocks can carry trailing labels.
+
+#code[[
+let labelled = true;
+]] <ex:labelled-code>
+
+The Mosaic source for a labelled raw block is:
+
+#code(lang: "mos")[=[
+#code[[
+let labelled = true;
+]] <ex:labelled-code>
+]=]
+
+Code blocks are raw long-bracket bodies. A plain `[[...]]` body can contain
+single closing brackets and backslash-bracket text literally.
+
+#code(lang: "rust")[[
+let vector = vec![1, 2, 3];
+let bracket = "]";
+let slash_close = "\\]";
+println!("{vector:?} {bracket} {slash_close}");
+]]
+
+The Mosaic source for literal `]` and `\]` text is:
+
+#code(lang: "mos")[=[
+#code(lang: "rust")[[
+let vector = vec![1, 2, 3];
+let bracket = "]";
+let slash_close = "\\]";
+println!("{vector:?} {bracket} {slash_close}");
+]]
+]=]
+
+When the body needs `]]`, add matching equals signs to the delimiter:
+`[=[...]=]`.
+
+#code(lang: "rust")[=[
+let literal = "single ] and pair ]] are both fine";
+println!("{literal}");
+]=]
+
+The Mosaic source for a block containing `]]` is:
+
+#code(lang: "mos")[==[
+#code(lang: "rust")[=[
+let literal = "single ] and pair ]] are both fine";
+println!("{literal}");
+]=]
+]==]
+
+If the body itself needs `]=]`, use one more equals sign: `[==[...]==]`.
+
+#code(lang: "rust")[==[
+let delimiter_text = "this source contains ]=] literally";
+println!("{delimiter_text}");
+]==]
+
+The Mosaic source for a block containing `]=]` is:
+
+#code(lang: "mos")[===[
+#code(lang: "rust")[==[
+let delimiter_text = "this source contains ]=] literally";
+println!("{delimiter_text}");
+]==]
+]===]
+
+== Choosing a form
+
+Use inline code for identifiers and small fragments such as `NodeKind::Raw`.
+Use multiline inline code only for short fragments that wrap in the source.
+Use `#pre[[...]]` for pasted terminal sessions. Use `#code[[...]]` for source
+snippets that should stand on their own. Increase the number of equals signs
+when the block body contains the current closing delimiter.

@@ -17,7 +17,25 @@ See @sec:intro with *emph* and **strong** and `code`.
       (strong
         (emph_text))
       (text)
-      (code_span)
+      (code_span
+        (code_text))
+      (text))))
+
+==================
+inline: code span spans soft breaks
+==================
+Use `a sad student wrote
+this` now.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (code_span
+        (code_text)
+        (soft_break)
+        (code_text))
       (text))))
 
 ==================
@@ -116,6 +134,29 @@ A **strong with *nested emphasis* inside** text.
         (emph_text)
         (emphasis
           (emph_text))
+        (emph_text))
+      (text))))
+
+==================
+inline: emphasis and strong span soft breaks
+==================
+This is *italic
+across lines* and **strong
+across lines**.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (emphasis
+        (emph_text)
+        (soft_break)
+        (emph_text))
+      (text)
+      (strong
+        (emph_text)
+        (soft_break)
         (emph_text))
       (text))))
 

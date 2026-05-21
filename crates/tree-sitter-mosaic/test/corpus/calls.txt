@@ -12,10 +12,12 @@ call: figure with label
       arguments: (argument_list
         (attribute
           key: (identifier)
-          value: (string))
+          value: (string
+            (string_double_content)))
         (attribute
           key: (identifier)
-          value: (string))))
+          value: (string
+            (string_double_content)))))
     label: (block_label
       (label
         name: (label_name)))))
@@ -33,7 +35,8 @@ call: qualified name
         (identifier)
         (identifier))
       arguments: (argument_list
-        (string)))))
+        (string
+          (string_double_content))))))
 
 ==================
 call: linebreak inline
@@ -78,7 +81,8 @@ call: arguments and content body together
       arguments: (argument_list
         (attribute
           key: (identifier)
-          value: (string)))
+          value: (string
+            (string_double_content))))
       body: (content_body
         (paragraph
           (paragraph_segment
@@ -98,4 +102,5 @@ call: three-segment qualified name
         (identifier)
         (identifier))
       arguments: (argument_list
-        (string)))))
+        (string
+          (string_double_content))))))

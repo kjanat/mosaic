@@ -13,6 +13,7 @@ pub use mosaic_fonts::{
     glyph_width, shape_with_fallback, text_width,
 };
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use mosaic_core::{
@@ -95,6 +96,8 @@ const PARA_SPACE_AFTER_PT: f32 = 4.0;
 /// digit numbering will overflow the gutter visually until per-list
 /// gutter tuning lands.
 const LIST_MARKER_GUTTER_PT: f32 = 18.0;
+/// Number of columns represented by one tab in raw code/pre blocks.
+const RAW_BLOCK_TAB_WIDTH: usize = 4;
 
 /// Decoded raster image data shared between every page that places
 /// the same source image. Held by [`Arc`] so a single PNG referenced
@@ -161,6 +164,10 @@ pub struct TextRun {
     /// the source) and by the Base14 emit path (which encodes through
     /// `WinAnsiEncoding` + per-document `/Differences`).
     pub text: String,
+    /// Optional semantic replacement text for PDF `/ActualText`.
+    /// Raw blocks use this when the painted text must differ from
+    /// source text, e.g. tabs painted as spaces but copied as tabs.
+    pub actual_text: Option<String>,
     /// Shaped glyph stream for embedded-font runs. Empty for Base14
     /// runs, which emit through the byte-encoded `WinAnsi` path
     /// instead.
@@ -231,6 +238,9 @@ impl LayoutEngine {
                 NodeKind::Image => state.layout_image(*child_id, node),
                 NodeKind::Figure => state.layout_figure(document, node),
                 NodeKind::List => state.layout_list(document, node),
+                NodeKind::Raw if node.attributes.contains_key("raw.kind") => {
+                    state.layout_raw_block(node);
+                }
                 // `#set` blocks are stashed as `Raw` children of the
                 // root; folded into styles by `resolve_styles` above.
                 NodeKind::Raw if node.attributes.contains_key("set") => {}
@@ -565,6 +575,7 @@ impl LayoutState {
                 0,
                 Word {
                     text: prefix,
+                    actual_text: None,
                     font: bold,
                     size_pt: size,
                     width_pt,
@@ -583,6 +594,48 @@ impl LayoutState {
         let words = self.collect_words(document, paragraph, regular, size);
         self.flow_words(&words, leading);
         self.cursor_y += PARA_SPACE_AFTER_PT;
+    }
+
+    fn layout_raw_block(&mut self, raw: &Node) {
+        let Some(AttrValue::Str(text)) = raw.attributes.get("text") else {
+            return;
+        };
+        let size = self.text.size_pt;
+        let leading = self.text.leading;
+        let font = self.text.family.monospace;
+        let mut emitted = false;
+        for line in text.lines() {
+            if line.is_empty() {
+                if !self.page_has_content {
+                    self.cursor_y = self.page.margin_pt + ascent(font, size);
+                    self.page_has_content = true;
+                }
+                self.cursor_y += size * leading;
+                continue;
+            }
+            let expanded_line = expand_tabs(line, RAW_BLOCK_TAB_WIDTH);
+            let subruns = shape_with_fallback(
+                font,
+                self.text.family.fallbacks,
+                size,
+                expanded_line.as_ref(),
+            );
+            let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
+            let actual_text = (expanded_line.as_ref() != line).then(|| line.to_owned());
+            let word = Word {
+                text: expanded_line.into_owned(),
+                actual_text,
+                font,
+                size_pt: size,
+                width_pt,
+                subruns,
+            };
+            self.flow_words(&[word], leading);
+            emitted = true;
+        }
+        if emitted {
+            self.cursor_y += PARA_SPACE_AFTER_PT;
+        }
     }
 
     /// Lay out a top-level `Image` node as a block. The image is
@@ -923,6 +976,7 @@ impl LayoutState {
             let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
             let marker_word = Word {
                 text: marker_text,
+                actual_text: None,
                 font: regular,
                 size_pt: size,
                 width_pt,
@@ -1013,6 +1067,7 @@ impl LayoutState {
                 let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
                 out.push(Word {
                     text: piece.to_owned(),
+                    actual_text: None,
                     font,
                     size_pt: size,
                     width_pt,
@@ -1119,6 +1174,7 @@ impl LayoutState {
                     size_pt: marker.word.size_pt,
                     font: sub.font,
                     text: sub.text,
+                    actual_text: None,
                     glyphs: sub.glyphs,
                 });
                 marker_x += sub.advance_pt;
@@ -1141,6 +1197,7 @@ impl LayoutState {
                     size_pt: word.size_pt,
                     font: sub.font,
                     text: sub.text.clone(),
+                    actual_text: word.actual_text.clone(),
                     glyphs: sub.glyphs.clone(),
                 });
                 x += sub.advance_pt;
@@ -1190,6 +1247,7 @@ impl LayoutState {
         self.flush_line(
             &[Word {
                 text,
+                actual_text: None,
                 font: source.font,
                 size_pt: source.size_pt,
                 width_pt,
@@ -1212,6 +1270,7 @@ impl LayoutState {
 #[derive(Clone, Debug)]
 struct Word {
     text: String,
+    actual_text: Option<String>,
     /// Primary face — the style-resolved choice from the active
     /// `FontFamily` (regular/bold/italic/monospace). Used for line
     /// metrics (ascent/descent), inter-word spacing, and
@@ -1341,6 +1400,27 @@ fn read_length_attr(node: &Node, key: &str) -> Option<f32> {
     }
 }
 
+fn expand_tabs(line: &str, tab_width: usize) -> Cow<'_, str> {
+    if !line.contains('\t') {
+        return Cow::Borrowed(line);
+    }
+
+    let tab_width = tab_width.max(1);
+    let mut out = String::with_capacity(line.len());
+    let mut col = 0_usize;
+    for ch in line.chars() {
+        if ch == '\t' {
+            let spaces = tab_width - (col % tab_width);
+            out.extend(std::iter::repeat_n(' ', spaces));
+            col += spaces;
+        } else {
+            out.push(ch);
+            col += 1;
+        }
+    }
+    Cow::Owned(out)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -1432,6 +1512,24 @@ mod tests {
         );
         alloc_inline(doc, id, NodeKind::Text, text);
         id
+    }
+
+    fn make_raw_block(doc: &mut Document, text: &str) -> NodeId {
+        let mut attrs = AttrMap::new();
+        attrs.insert("raw.kind".to_owned(), AttrValue::Str("code".to_owned()));
+        attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
+        doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Raw,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        )
     }
 
     #[test]
@@ -1622,6 +1720,56 @@ mod tests {
             runs.iter().find(|r| r.text == "before").unwrap().font,
             Font::Base14(Base14Font::Helvetica)
         ));
+    }
+
+    #[test]
+    fn raw_block_tabs_render_as_spaces() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_raw_block(&mut doc, "\tprintln(\"hello\");");
+
+        let result = LayoutEngine::new().layout(&doc);
+
+        let rendered = result.graph.pages[0]
+            .runs
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect::<String>();
+        assert!(
+            !rendered.contains('\t'),
+            "raw block tabs should be expanded before shaping: {rendered:?}"
+        );
+        assert!(
+            rendered.contains("    println"),
+            "expected four-space tab expansion, got {rendered:?}"
+        );
+        assert!(
+            result.graph.pages[0]
+                .runs
+                .iter()
+                .any(|run| run.actual_text.as_deref() == Some("\tprintln(\"hello\");")),
+            "raw block tabs should retain their original text for extraction"
+        );
+    }
+
+    #[test]
+    fn raw_block_leading_blank_line_preserves_spacing() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_raw_block(&mut doc, "\ncode");
+
+        let result = LayoutEngine::new().layout(&doc);
+
+        let first_run = result.graph.pages[0]
+            .runs
+            .first()
+            .expect("raw block should emit text after the leading blank");
+        let expected_baseline = MARGIN_PT
+            + ascent(FontFamily::noto_sans().monospace, BODY_SIZE_PT)
+            + BODY_SIZE_PT * BODY_LEADING;
+        assert!(
+            (first_run.baseline_from_top_pt - expected_baseline).abs() < 0.01,
+            "baseline {}, expected {expected_baseline}",
+            first_run.baseline_from_top_pt
+        );
     }
 
     #[test]
