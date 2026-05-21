@@ -1,0 +1,143 @@
+<svg width="1536" height="838" viewBox="0 0 1536 838"
+     xmlns="http://www.w3.org/2000/svg">
+	<defs>
+		<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+			<stop offset="0%" stop-color="#f4f5f4" />
+			<stop offset="100%" stop-color="#eef0ef" />
+		</linearGradient>
+
+		<linearGradient id="navy" x1="0" y1="0" x2="1" y2="1">
+			<stop offset="0%" stop-color="#132437" />
+			<stop offset="100%" stop-color="#0d1a2b" />
+		</linearGradient>
+
+		<linearGradient id="slate" x1="0" y1="0" x2="1" y2="1">
+			<stop offset="0%" stop-color="#5a6873" />
+			<stop offset="100%" stop-color="#35424e" />
+		</linearGradient>
+
+		<linearGradient id="teal" x1="0" y1="0" x2="1" y2="1">
+			<stop offset="0%" stop-color="#18bfc1" />
+			<stop offset="100%" stop-color="#087f89" />
+		</linearGradient>
+
+		<radialGradient id="cyanGlow" cx="35%" cy="45%" r="70%">
+			<stop offset="0%" stop-color="#2be4df" />
+			<stop offset="100%" stop-color="#0b8b8d" />
+		</radialGradient>
+
+		<radialGradient id="gold" cx="55%" cy="48%" r="70%">
+			<stop offset="0%" stop-color="#ffd65e" />
+			<stop offset="55%" stop-color="#e4aa22" />
+			<stop offset="100%" stop-color="#b97a00" />
+		</radialGradient>
+
+		<filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+			<feGaussianBlur result="blur" stdDeviation="8" />
+			<feMerge>
+				<feMergeNode in="blur" />
+				<feMergeNode in="SourceGraphic" />
+			</feMerge>
+		</filter>
+	</defs>
+
+	<rect width="1536" height="838" fill="url(#bg)" />
+
+	<!-- Dark / slate blocks -->
+	<g opacity="0.96">
+		<rect x="462" y="159" width="150" height="76" fill="url(#navy)" />
+		<rect x="924" y="159" width="150" height="76" fill="url(#navy)" />
+
+		<rect x="462" y="254" width="143" height="68" fill="url(#slate)" />
+		<rect x="617" y="254" width="65" height="68" fill="url(#navy)" />
+
+		<rect x="855" y="254" width="64" height="68" fill="url(#navy)" />
+		<rect x="931" y="254" width="143" height="68" fill="url(#slate)" />
+
+		<rect x="462" y="341" width="73" height="68" fill="url(#slate)" />
+		<rect x="617" y="341" width="71" height="68" fill="url(#slate)" />
+		<rect x="693" y="341" width="65" height="68" fill="url(#navy)" />
+		<rect x="1001" y="341" width="73" height="76" fill="url(#slate)" />
+
+		<rect x="462" y="429" width="143" height="68" fill="url(#slate)" />
+		<rect x="693" y="429" width="72" height="74" fill="url(#navy)" />
+		<rect x="807" y="429" width="36" height="38" fill="url(#navy)" />
+		<rect x="1001" y="422" width="73" height="75" fill="url(#slate)" />
+
+		<rect x="462" y="516" width="73" height="76" fill="url(#navy)" />
+		<rect x="547" y="516" width="65" height="68" fill="url(#slate)" />
+		<rect x="1001" y="516" width="73" height="76" fill="url(#slate)" />
+
+		<rect x="462" y="604" width="73" height="75" fill="url(#navy)" />
+		<rect x="770" y="603" width="36" height="76" fill="url(#navy)" />
+		<rect x="806" y="603" width="37" height="76" fill="url(#slate)" />
+	</g>
+
+	<!-- Teal blocks -->
+	<g opacity="0.95">
+		<rect x="778" y="342" width="65" height="67" fill="url(#teal)" />
+		<rect x="848" y="342" width="64" height="75" fill="url(#teal)" />
+		<rect x="846" y="342" width="34" height="34" fill="#7de2d8" opacity="0.75" />
+
+		<rect x="770" y="429" width="73" height="74" fill="url(#cyanGlow)" />
+		<rect x="770" y="429" width="38" height="56" fill="#22d4ce" opacity="0.55" />
+	</g>
+
+	<!-- Connector rays -->
+	<g fill="none" stroke="#0c8f90" stroke-width="1.8" opacity="0.65" stroke-linecap="round">
+		<path d="M846 376 L924 516" />
+		<path d="M880 376 L924 516" />
+		<path d="M846 410 L924 516" />
+		<path d="M806 467 L924 550" />
+		<path d="M843 467 L924 550" />
+		<path d="M770 503 L924 516" />
+		<path d="M548 550 L924 550" />
+		<path d="M770 594 L924 550" />
+		<path d="M843 594 L924 550" />
+		<path d="M770 503 L770 536 L924 550" />
+	</g>
+
+	<!-- Output node -->
+	<rect x="924" y="516" width="65" height="68" fill="url(#teal)" opacity="0.97" />
+
+	<!-- Yellow block -->
+	<rect x="1001" y="602" width="73" height="77"
+	      fill="url(#gold)" opacity="0.96"
+	      filter="url(#softGlow)" />
+
+	<!-- Grid -->
+	<g fill="none" stroke="#3e4a53" stroke-width="1.45" opacity="0.85" shape-rendering="crispEdges">
+		<path d="
+		         M307 70 H1228
+		         M307 156 H1228
+		         M307 243 H1228
+		         M307 332 H1228
+		         M307 419 H1228
+		         M307 505 H1228
+		         M307 594 H1228
+		         M307 681 H1228
+		         M307 768 H1228
+		         
+		         M307 70 V768
+		         M383 70 V768
+		         M459 70 V768
+		         M537 70 V768
+		         M614 70 V768
+		         M690 70 V768
+		         M767 70 V768
+		         M845 70 V768
+		         M921 70 V768
+		         M998 70 V768
+		         M1076 70 V768
+		         M1153 70 V768
+		         M1228 70 V768
+		         " />
+	</g>
+
+	<!-- Tiny sparkle bottom-right -->
+	<g transform="translate(1478 779)" opacity="0.72">
+		<path d="M0 -29 C6 -10 10 -6 29 0 C10 6 6 10 0 29 C-6 10 -10 6 -29 0 C-10 -6 -6 -10 0 -29Z"
+		      fill="#ffffff" />
+		<circle cx="0" cy="0" r="3.2" fill="#ffffff" />
+	</g>
+</svg>

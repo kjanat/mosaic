@@ -1,0 +1,167 @@
+<svg width="500" height="700" viewBox="-0.15 -0.15 5.3 7.3"
+     xmlns="http://www.w3.org/2000/svg">
+	<defs>
+		<clipPath id="docClip">
+			<path d="M0 0H4L5 1V7H0Z" />
+		</clipPath>
+
+		<!-- Actual outside-the-cell coloured shadow / glow -->
+		<filter id="goldShadow"
+		        x="2.0" y="2.0" width="3.0" height="3.0"
+		        color-interpolation-filters="sRGB"
+		        filterUnits="userSpaceOnUse">
+			<!-- svg-lint-disable-next-line InvalidChild -->
+			<feDropShadow dx="0" dy="0" flood-color="#fff0a0" flood-opacity="0.95" stdDeviation="0.10" />
+			<!-- svg-lint-disable-next-line InvalidChild -->
+			<feDropShadow dx="0" dy="0" flood-color="#ffcc33" flood-opacity="0.62" stdDeviation="0.22" />
+			<!-- svg-lint-disable-next-line InvalidChild -->
+			<feDropShadow dx="0" dy="0" flood-color="#ffab00" flood-opacity="0.30" stdDeviation="0.38" />
+		</filter>
+
+		<linearGradient id="goldFill" x1="3" y1="3" x2="4" y2="4" gradientUnits="userSpaceOnUse">
+			<stop offset="0%" stop-color="#ffe664" />
+			<stop offset="45%" stop-color="#ffcf24" />
+			<stop offset="100%" stop-color="#f2b500" />
+		</linearGradient>
+
+		<linearGradient id="goldHighlight"
+		                x1="3.08" y1="3.08" x2="3.92" y2="3.92"
+		                gradientUnits="userSpaceOnUse">
+			<stop offset="0%" stop-color="#fff4b8" stop-opacity="0.28" />
+			<stop offset="100%" stop-color="#fff4b8" stop-opacity="0" />
+		</linearGradient>
+
+		<style>
+			<![CDATA[
+				.bg {
+					fill: #12233a;
+				}
+
+				.grid {
+					stroke: #08172d;
+					stroke-width: 0.12;
+					stroke-linecap: butt;
+					fill: none;
+				}
+
+				.m-line {
+					stroke: #08172d;
+					stroke-width: 0.12;
+					stroke-linecap: butt;
+					stroke-linejoin: miter;
+					fill: none;
+				}
+
+				.outline {
+					stroke: #08172d;
+					stroke-width: 0.16;
+					stroke-linejoin: round;
+					fill: none;
+				}
+
+				.ray {
+					stroke: #efe7a6;
+					stroke-width: 0.08;
+					stroke-linecap: round;
+					opacity: 0.72;
+				}
+			]]>
+		</style>
+	</defs>
+
+	<!-- Document -->
+	<path class="bg" d="M0 0H4L5 1V7H0Z" />
+
+	<!-- M fill: explicit geometry -->
+	<g clip-path="url(#docClip)">
+		<!-- left leg -->
+		<rect x="0" y="1" width="1" height="1" fill="#22cdd0" />
+		<rect x="0" y="2" width="1" height="1" fill="#30d4d8" />
+		<rect x="0" y="3" width="1" height="1" fill="#37cdd4" />
+		<rect x="0" y="4" width="1" height="1" fill="#31c7ce" />
+		<rect x="0" y="5" width="1" height="1" fill="#2cc0c8" />
+
+		<!-- right leg -->
+		<rect x="4" y="1" width="1" height="1" fill="#33d3d7" />
+		<rect x="4" y="2" width="1" height="1" fill="#61dad9" />
+		<rect x="4" y="3" width="1" height="1" fill="#79d9d8" />
+		<rect x="4" y="4" width="1" height="1" fill="#62d4d5" />
+		<rect x="4" y="5" width="1" height="1" fill="#39c4cc" />
+
+		<!-- upper-left arch -->
+		<polygon points="1,1 1.75,2 1,2" fill="#69ddd8" />
+		<polygon points="1,2 1.75,2 2,2.3333333 2,3 1,3" fill="#58d3d4" />
+		<polygon points="2,2.3333333 2.5,3 3,2.3333333 3,3 2,3" fill="#41cacc" />
+
+		<!-- upper-right arch, including the previously missing inside-facing bit -->
+		<polygon points="3.25,2 4,1 4,2" fill="#64dddb" />
+		<polygon points="3,2.3333333 3.25,2 4,2 4,3 3,3" fill="#6fdada" />
+		<polygon points="2.5,3 3,2.3333333 3,3" fill="#52d0d0" />
+
+		<!-- lower-left arch -->
+		<polygon points="1,3 2,3 2,4 1.8333333,4" fill="#4bcfd2" />
+		<polygon points="1.8333333,4 2,4 2,4.2" fill="#43c8cc" />
+		<rect x="2" y="3" width="1" height="1" fill="#39c9cf" />
+
+		<!-- lower valley -->
+		<polygon points="2,4 3,4 3,4.2 2.5,4.8 2,4.2" fill="#39cbd0" />
+		<polygon points="3,4 3.1666667,4 3,4.2" fill="#60d7d7" />
+	</g>
+
+	<!-- Base grid -->
+	<g class="grid" clip-path="url(#docClip)">
+		<!-- vertical -->
+		<line x1="0" y1="0" x2="0" y2="7" />
+		<line x1="1" y1="0" x2="1" y2="7" />
+		<line x1="2" y1="0" x2="2" y2="7" />
+		<line x1="3" y1="0" x2="3" y2="7" />
+		<line x1="4" y1="0" x2="4" y2="7" />
+		<line x1="5" y1="0" x2="5" y2="7" />
+
+		<!-- horizontal -->
+		<line x1="0" y1="0" x2="5" y2="0" />
+		<line x1="0" y1="1" x2="5" y2="1" />
+		<line x1="0" y1="2" x2="5" y2="2" />
+		<line x1="0" y1="3" x2="5" y2="3" />
+		<line x1="0" y1="4" x2="5" y2="4" />
+		<line x1="0" y1="5" x2="5" y2="5" />
+		<line x1="0" y1="6" x2="5" y2="6" />
+		<line x1="0" y1="7" x2="5" y2="7" />
+	</g>
+
+	<!-- M diagonals -->
+	<g class="m-line" clip-path="url(#docClip)">
+		<!-- upper arch: split, so no miter spike below -->
+		<line x1="1" y1="1" x2="2.5" y2="3" />
+		<line x1="2.5" y1="3" x2="4" y2="1" />
+
+		<!-- lower arch: joined cleanly at the valley -->
+		<polyline points="1,3 2.5,4.8 3.1666667,4" />
+	</g>
+
+	<!-- COLOURED SHADOW / GLOW outside the cell -->
+	<g clip-path="url(#docClip)">
+		<rect x="3" y="3" width="1" height="1"
+		      fill="#ffc61f"
+		      filter="url(#goldShadow)" />
+	</g>
+
+	<!-- Actual gold cell -->
+	<rect x="3" y="3" width="1" height="1" fill="url(#goldFill)" />
+	<rect x="3.08" y="3.08" width="0.84" height="0.84" fill="url(#goldHighlight)" />
+
+	<!-- Crisp cell border -->
+	<rect x="3" y="3" width="1" height="1"
+	      fill="none" stroke="#08172d" stroke-width="0.12" />
+
+	<!-- 4 rays -->
+	<g class="ray">
+		<line x1="3.5" y1="2.56" x2="3.5" y2="2.86" />
+		<line x1="3.5" y1="4.14" x2="3.5" y2="4.44" />
+		<line x1="2.56" y1="3.5" x2="2.86" y2="3.5" />
+		<line x1="4.14" y1="3.5" x2="4.44" y2="3.5" />
+	</g>
+
+	<!-- Outline -->
+	<path class="outline" d="M0 0H4L5 1V7H0Z" />
+</svg>
