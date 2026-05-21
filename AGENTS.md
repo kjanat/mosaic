@@ -91,7 +91,7 @@ skeletons or partial foundations.
 ## CONVENTIONS
 
 - Rust stable, edition 2024, MSRV 1.95, workspace resolver 3.
-- Workspace lints are strict. `unsafe_code = "forbid"`; CI uses `-D warnings`.
+- Workspace lints are strict. `unsafe_code = "forbid"`; CI uses `-D warnings -D clippy::all`.
 - Clippy set is curated. Do not enable whole pedantic/nursery/restriction groups.
 - Formatting runs through `dprint`; TOML via `tombi`; Rust via `rustfmt`.
 - Tests must stay clippy-clean. Many tests avoid `unwrap`, `expect`, and raw `panic`.
@@ -125,7 +125,7 @@ CI-equivalent core:
 
 ```bash
 dprint fmt --diff --allow-no-files --fail-on-change
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --all-features -- -D warnings -D clippy::all
 cargo build --workspace --all-targets
 cargo test --workspace
 cargo doc --workspace --no-deps

@@ -239,7 +239,7 @@ impl LayoutEngine {
                 NodeKind::Figure => state.layout_figure(document, node),
                 NodeKind::List => state.layout_list(document, node),
                 NodeKind::Raw if node.attributes.contains_key("raw.kind") => {
-                    state.layout_raw_block(node)
+                    state.layout_raw_block(node);
                 }
                 // `#set` blocks are stashed as `Raw` children of the
                 // root; folded into styles by `resolve_styles` above.

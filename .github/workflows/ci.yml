@@ -46,13 +46,13 @@ jobs:
         timeout-minutes: 1
 
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo lint
 
       - name: build
-        run: cargo build --workspace --all-targets
+        run: cargo bwa
 
       - name: test
-        run: cargo test --workspace
+        run: cargo tw
 
       - name: Upload debug binaries
         uses: actions/upload-artifact@v7
@@ -65,7 +65,7 @@ jobs:
           if-no-files-found: error
 
       - name: doc
-        run: cargo doc --workspace --no-deps
+        run: cargo dw
 
   msrv:
     name: build on MSRV
@@ -82,4 +82,4 @@ jobs:
         with: { key: msrv }
 
       - name: build
-        run: cargo build --workspace --all-targets
+        run: cargo bwa

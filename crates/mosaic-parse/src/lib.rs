@@ -268,6 +268,16 @@ impl Item {
         }
     }
 
+    /// Borrow the raw block payload if `self` is [`Item::RawBlock`].
+    #[must_use]
+    pub fn as_raw_block(&self) -> Option<(RawBlockKind, &str, &SourceSpan)> {
+        if let Self::RawBlock { kind, text, span } = self {
+            Some((*kind, text.as_str(), span))
+        } else {
+            None
+        }
+    }
+
     /// Borrow the [`DirectiveKind`] tag if `self` is [`Item::Set`].
     #[must_use]
     pub fn directive_kind(&self) -> Option<DirectiveKind> {
@@ -2100,22 +2110,32 @@ mod tests {
         let r = parse_str("#code[fn main() {\n    println(\"hi\");\n}]\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         assert_eq!(r.tree.items.len(), 1);
-        let Item::RawBlock { kind, text, .. } = &r.tree.items[0] else {
-            panic!("expected raw block, got {:?}", r.tree.items[0]);
-        };
-        assert_eq!(*kind, RawBlockKind::Code);
-        assert_eq!(text, "fn main() {\n    println(\"hi\");\n}");
+        let raw = r.tree.items[0].as_raw_block();
+        assert!(
+            raw.is_some(),
+            "expected raw block, got {:?}",
+            r.tree.items[0]
+        );
+        if let Some((kind, text, _)) = raw {
+            assert_eq!(kind, RawBlockKind::Code);
+            assert_eq!(text, "fn main() {\n    println(\"hi\");\n}");
+        }
     }
 
     #[test]
     fn raw_blocks_allow_escaped_closing_bracket() {
         let r = parse_str("#pre[open \\] close]\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
-        let Item::RawBlock { kind, text, .. } = &r.tree.items[0] else {
-            panic!("expected raw block, got {:?}", r.tree.items[0]);
-        };
-        assert_eq!(*kind, RawBlockKind::Pre);
-        assert_eq!(text, "open \\] close");
+        let raw = r.tree.items[0].as_raw_block();
+        assert!(
+            raw.is_some(),
+            "expected raw block, got {:?}",
+            r.tree.items[0]
+        );
+        if let Some((kind, text, _)) = raw {
+            assert_eq!(kind, RawBlockKind::Pre);
+            assert_eq!(text, "open \\] close");
+        }
     }
 
     #[test]
