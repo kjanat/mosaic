@@ -786,14 +786,18 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": false,
+      "required": true,
       "types": [
+        {
+          "type": "raw_body_close",
+          "named": true
+        },
         {
           "type": "raw_body_content",
           "named": true
         },
         {
-          "type": "raw_body_escape",
+          "type": "raw_body_open",
           "named": true
         }
       ]
@@ -1231,11 +1235,15 @@
     "named": true
   },
   {
+    "type": "raw_body_close",
+    "named": true
+  },
+  {
     "type": "raw_body_content",
     "named": true
   },
   {
-    "type": "raw_body_escape",
+    "type": "raw_body_open",
     "named": true
   },
   {

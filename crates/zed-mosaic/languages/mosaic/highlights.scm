@@ -67,7 +67,9 @@
 
 (inline_math) @text.literal
 (verse_block) @text.literal
+(raw_body_open) @punctuation.special
 (raw_body_content) @text.literal
+(raw_body_close) @punctuation.special
 
 ; --- Labels & references ----------------------------------------------------
 

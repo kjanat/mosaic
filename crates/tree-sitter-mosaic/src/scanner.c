@@ -1,6 +1,6 @@
 // External scanner for tree-sitter-mosaic.
 //
-// Emits four tokens that pure regex tokenisation cannot express cleanly:
+// Emits five tokens that pure regex tokenisation cannot express cleanly:
 //
 //   BLANK_LINE        : two or more line terminators (optionally separated by
 //                       horizontal whitespace). A single line_end is left to
@@ -14,29 +14,32 @@
 //                       (CommonMark hard break). The internal `escaped_char`
 //                       handles every other `\X` form.
 //
-//   RAW_BODY_CONTENT  : one chunk of `#pre[...]` / `#code[...]` body text.
-//                       Stops before raw escapes and the closing `]` so the
-//                       grammar can expose both separately.
+//   RAW_BODY_OPEN     : Lua-style long-bracket opener (`[=[`, `[[`, etc.).
 //
-//   RAW_BODY_ESCAPE   : `\\` or `\]` inside a raw body. `\]` means "literal
-//                       `]`, not the raw-body delimiter"; the Rust parser
-//                       decodes it before lowering.
+//   RAW_BODY_CONTENT  : literal `#pre` / `#code` body text.
 //
-// No persistent state; serialize length is 0.
+//   RAW_BODY_CLOSE    : matching long-bracket closer (`]=]`, `]]`, etc.).
 
 #include "tree_sitter/parser.h"
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <wctype.h>
 
 enum TokenType {
     BLANK_LINE,
     LINEBREAK_ESCAPE,
+    RAW_BODY_OPEN,
     RAW_BODY_CONTENT,
-    RAW_BODY_ESCAPE,
+    RAW_BODY_CLOSE,
     ERROR_SENTINEL,
 };
+
+typedef struct {
+    uint32_t raw_eq_count;
+    bool in_raw_body;
+} Scanner;
 
 /**
  * Determine whether a codepoint is a horizontal whitespace character (space or tab).
@@ -172,48 +175,65 @@ static bool scan_linebreak_escape(TSLexer *lexer) {
     return true;
 }
 
-/**
- * Scan a raw-body escape inside `#pre[...]` or `#code[...]`.
- *
- * @param lexer The Tree-sitter lexer to read from and advance.
- * @returns `true` if a raw-body escape was consumed and emitted.
- */
-static bool scan_raw_body_escape(TSLexer *lexer) {
-    if (lexer->lookahead != '\\') {
+static bool scan_raw_body_open(Scanner *scanner, TSLexer *lexer) {
+    if (lexer->lookahead != '[') {
         return false;
     }
     advance(lexer);
-    if (lexer->lookahead != ']' && lexer->lookahead != '\\') {
+    uint32_t eq_count = 0;
+    while (lexer->lookahead == '=') {
+        eq_count++;
+        advance(lexer);
+    }
+    if (lexer->lookahead != '[') {
         return false;
     }
     advance(lexer);
     lexer->mark_end(lexer);
-    lexer->result_symbol = RAW_BODY_ESCAPE;
+    scanner->raw_eq_count = eq_count;
+    scanner->in_raw_body = true;
+    lexer->result_symbol = RAW_BODY_OPEN;
     return true;
 }
 
-/**
- * Scan a single raw-body content chunk inside `#pre[...]` or `#code[...]`, consuming input until the next raw escape or unescaped `]`.
- *
- * The scanner consumes characters as content and stops before raw escape sequences (`\\` and `\]`) or the closing `]` (which is left for the grammar). Plain `\X` for other `X` remains content. On success it sets `lexer->result_symbol` to `RAW_BODY_CONTENT` and marks the token end.
- *
- * @param lexer The Tree-sitter lexer to read from and advance.
- * @returns `true` if at least one character was consumed and a `RAW_BODY_CONTENT` token was produced, `false` otherwise.
- */
-static bool scan_raw_body_content(TSLexer *lexer) {
+static bool scan_raw_body_close(Scanner *scanner, TSLexer *lexer) {
+    if (!scanner->in_raw_body || lexer->lookahead != ']') {
+        return false;
+    }
+    advance(lexer);
+    for (uint32_t i = 0; i < scanner->raw_eq_count; i++) {
+        if (lexer->lookahead != '=') {
+            return false;
+        }
+        advance(lexer);
+    }
+    if (lexer->lookahead != ']') {
+        return false;
+    }
+    advance(lexer);
+    lexer->mark_end(lexer);
+    scanner->raw_eq_count = 0;
+    scanner->in_raw_body = false;
+    lexer->result_symbol = RAW_BODY_CLOSE;
+    return true;
+}
+
+static bool scan_raw_body_content(Scanner *scanner, TSLexer *lexer) {
+    if (!scanner->in_raw_body) {
+        return false;
+    }
     bool consumed = false;
     while (lexer->lookahead != 0) {
         if (lexer->lookahead == ']') {
-            // Closing bracket; leave it for the grammar's literal `]`.
-            break;
-        }
-        if (lexer->lookahead == '\\') {
             advance(lexer);
-            if (lexer->lookahead == ']' || lexer->lookahead == '\\') {
+            uint32_t eq_seen = 0;
+            while (eq_seen < scanner->raw_eq_count && lexer->lookahead == '=') {
+                eq_seen++;
+                advance(lexer);
+            }
+            if (eq_seen == scanner->raw_eq_count && lexer->lookahead == ']') {
                 break;
             }
-            // Plain `\X` for any other X is also fine inside a raw body;
-            // the backslash is already consumed.
             consumed = true;
             lexer->mark_end(lexer);
             continue;
@@ -233,9 +253,7 @@ static bool scan_raw_body_content(TSLexer *lexer) {
  * Choose and run the appropriate external token scanner based on parser context.
  *
  * When Tree-sitter requests an external token, this function selects which
- * scanner to invoke according to `valid_symbols` and a fixed priority:
- * `RAW_BODY_ESCAPE` first, then `RAW_BODY_CONTENT`, then `LINEBREAK_ESCAPE`,
- * then `BLANK_LINE`.
+ * scanner to invoke according to `valid_symbols` and a fixed priority.
  * If `valid_symbols[ERROR_SENTINEL]` is set (error-recovery mode), the
  * function returns immediately without consuming input.
  *
@@ -248,7 +266,7 @@ bool tree_sitter_mosaic_external_scanner_scan(
     void *payload,
     TSLexer *lexer,
     const bool *valid_symbols) {
-    (void)payload;
+    Scanner *scanner = (Scanner *)payload;
 
     // During error recovery tree-sitter sets every external symbol in
     // `valid_symbols`. Bail out so we don't gobble unrelated input.
@@ -256,17 +274,20 @@ bool tree_sitter_mosaic_external_scanner_scan(
         return false;
     }
 
-    if (valid_symbols[RAW_BODY_ESCAPE]) {
-        if (scan_raw_body_escape(lexer)) {
+    if (valid_symbols[RAW_BODY_OPEN]) {
+        if (scan_raw_body_open(scanner, lexer)) {
             return true;
         }
     }
 
-    // Raw body has priority over paragraph-level escapes: when the parser asks
-    // for raw content, we must produce exactly one chunk and not interpret
-    // anything else.
+    if (valid_symbols[RAW_BODY_CLOSE]) {
+        if (scan_raw_body_close(scanner, lexer)) {
+            return true;
+        }
+    }
+
     if (valid_symbols[RAW_BODY_CONTENT]) {
-        if (scan_raw_body_content(lexer)) {
+        if (scan_raw_body_content(scanner, lexer)) {
             return true;
         }
     }
@@ -288,68 +309,44 @@ bool tree_sitter_mosaic_external_scanner_scan(
     return false;
 }
 
-/**
- * Create a new external scanner instance.
- *
- * @returns NULL because the scanner maintains no persistent state.
- */
 void *tree_sitter_mosaic_external_scanner_create(void) {
-    return NULL;
+    return calloc(1, sizeof(Scanner));
 }
 
-/**
- * Destroy the external scanner payload.
- *
- * No-op: this scanner maintains no persistent state, so the `payload` is ignored.
- *
- * @param payload Pointer previously returned by create; may be NULL and is not used.
- */
 void tree_sitter_mosaic_external_scanner_destroy(void *payload) {
-    (void)payload;
+    free(payload);
 }
 
-/**
- * Reset the external scanner's persistent state.
- *
- * This scanner maintains no persistent state; the provided `payload` is ignored.
- * @param payload Unused pointer to scanner state (may be NULL).
- */
 void tree_sitter_mosaic_external_scanner_reset(void *payload) {
-    (void)payload;
+    Scanner *scanner = (Scanner *)payload;
+    scanner->raw_eq_count = 0;
+    scanner->in_raw_body = false;
 }
 
-/**
- * Serialize the external scanner's persistent state into the provided buffer.
- *
- * The scanner maintains no persistent state; both `payload` and `buffer` are ignored.
- *
- * @param payload Pointer to scanner state (ignored).
- * @param buffer Destination buffer for serialized state (ignored).
- * @returns The number of bytes written into `buffer`. Always `0` (no state serialized).
- */
 unsigned tree_sitter_mosaic_external_scanner_serialize(
     void *payload,
     char *buffer) {
-    (void)payload;
-    (void)buffer;
-    return 0;
+    Scanner *scanner = (Scanner *)payload;
+    buffer[0] = scanner->in_raw_body ? 1 : 0;
+    buffer[1] = (char)(scanner->raw_eq_count & 0xff);
+    buffer[2] = (char)((scanner->raw_eq_count >> 8) & 0xff);
+    buffer[3] = (char)((scanner->raw_eq_count >> 16) & 0xff);
+    buffer[4] = (char)((scanner->raw_eq_count >> 24) & 0xff);
+    return 5;
 }
 
-/**
- * Restore the external scanner's state from a previously serialized buffer.
- *
- * This scanner does not keep persistent state; the function ignores all arguments
- * and performs no action.
- *
- * @param payload Unused scanner payload pointer.
- * @param buffer Unused pointer to serialized data.
- * @param length Unused length of the serialized data.
- */
 void tree_sitter_mosaic_external_scanner_deserialize(
     void *payload,
     const char *buffer,
     unsigned length) {
-    (void)payload;
-    (void)buffer;
-    (void)length;
+    Scanner *scanner = (Scanner *)payload;
+    scanner->raw_eq_count = 0;
+    scanner->in_raw_body = false;
+    if (length >= 5) {
+        scanner->in_raw_body = buffer[0] != 0;
+        scanner->raw_eq_count = (uint32_t)(unsigned char)buffer[1]
+            | ((uint32_t)(unsigned char)buffer[2] << 8)
+            | ((uint32_t)(unsigned char)buffer[3] << 16)
+            | ((uint32_t)(unsigned char)buffer[4] << 24);
+    }
 }

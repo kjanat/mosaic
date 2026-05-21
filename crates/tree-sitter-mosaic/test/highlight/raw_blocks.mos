@@ -5,6 +5,6 @@
 #verse[*italic* line]
 //      ^ emphasis
 
-#pre[raw text here]
+#pre[[raw text here]]
 // <- keyword
-//   ^ text.literal
+//    ^ text.literal

@@ -35,6 +35,6 @@ Use `mos check` to run.
 Escape \[ works fine.
 //     ^ string.escape
 
-#pre[raw text body]
+#pre[[raw text body]]
 // <- keyword
-//    ^ text.literal
+//     ^ text.literal

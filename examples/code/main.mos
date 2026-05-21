@@ -29,32 +29,39 @@ this`.
 
 == Preformatted command transcripts
 
-Use `#pre[...]` for terminal output, command transcripts, or other raw
+Use `#pre[[...]]` for terminal output, command transcripts, or other raw
 text where the content is not tied to a programming language.
 
-#pre[$ cargo mos check examples/code/main.mos
+#pre[[
+$ cargo mos check examples/code/main.mos
 $ cargo mos build examples/code/main.mos
-Finished `dev` profile]
+Finished `dev` profile
+]]
 
 == Code blocks
 
-Use `#code[...]` for code examples. Mosaic preserves the raw block text
+Use `#code[[...]]` for code examples. Mosaic preserves the raw block text
 and renders it with the monospace face.
 
-#code[fn main() {
+#code(lang: "rust")[[
+fn main() {
 	println!("hello, mosaic");
-}]
+}
+]]
 
-Code blocks are raw bracket bodies. If the body needs a literal closing
-bracket, escape it so the block scanner does not treat it as the end of
-the block.
+Code blocks are raw long-bracket bodies. A plain `[[...]]` body can
+contain single closing brackets and backslash-bracket text literally.
+When the body needs `]]`, add matching equals signs to the delimiter.
 
-#code[let brackets = "open [ and escaped close \]"
-...or unescaped non-close \\\];
-println!(brackets);]
+#code(lang: "rust")[=[
+let brackets = "open [ and escaped close \]";
+let literal = "single ] and pair ]] are both fine";
+let slash_close = "\\]";
+println!("{brackets} {literal} {slash_close}");
+]=]
 
 == Choosing a form
 
 Use inline code for identifiers and small fragments such as `NodeKind::Raw`.
-Use `#pre[...]` for pasted terminal sessions. Use `#code[...]` for source
+Use `#pre[[...]]` for pasted terminal sessions. Use `#code[[...]]` for source
 snippets that should stand on their own.

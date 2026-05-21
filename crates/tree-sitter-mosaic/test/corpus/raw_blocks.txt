@@ -1,18 +1,20 @@
 ==================
 pre: exact spacing
 ==================
-#pre[  exact spacing]
+#pre[[  exact spacing]]
 ---
 
 (source_file
   (pre_block
     body: (raw_body
-      (raw_body_content))))
+      (raw_body_open)
+      (raw_body_content)
+      (raw_body_close))))
 
 ==================
 code: with language arg
 ==================
-#code(lang: "rust")[fn main() {}]
+#code(lang: "rust")[[fn main() {}]]
 ---
 
 (source_file
@@ -22,99 +24,93 @@ code: with language arg
         key: (identifier)
         value: (string)))
     body: (raw_body
-      (raw_body_content))))
+      (raw_body_open)
+      (raw_body_content)
+      (raw_body_close))))
 
 ==================
-pre: with escaped closing bracket
+pre: literal closing bracket text
 ==================
-#pre[contains \] bracket]
+#pre[[contains ] bracket]]
 ---
 
 (source_file
   (pre_block
     body: (raw_body
+      (raw_body_open)
       (raw_body_content)
-      (raw_body_escape)
-      (raw_body_content))))
+      (raw_body_close))))
 
 ==================
-pre: escaped backslash
+pre: literal backslash close text
 ==================
-#pre[path\\here]
+#pre[[contains \] text]]
 ---
 
 (source_file
   (pre_block
     body: (raw_body
+      (raw_body_open)
       (raw_body_content)
-      (raw_body_escape)
-      (raw_body_content))))
+      (raw_body_close))))
 
 ==================
-pre: escaped backslash before closing bracket
+pre: long bracket allows shorter close pair
 ==================
-#pre[path\\]
+#pre[=[contains ]] text]=]
 ---
 
 (source_file
   (pre_block
     body: (raw_body
+      (raw_body_open)
       (raw_body_content)
-      (raw_body_escape))))
+      (raw_body_close))))
 
 ==================
 pre: empty body
 ==================
-#pre[]
----
-
-(source_file
-  (pre_block
-    body: (raw_body)))
-
-==================
-pre: combined escaped backslash and bracket in one body
-==================
-#pre[path\\to\]file]
+#pre[[]]
 ---
 
 (source_file
   (pre_block
     body: (raw_body
-      (raw_body_content)
-      (raw_body_escape)
-      (raw_body_content)
-      (raw_body_escape)
-      (raw_body_content))))
+      (raw_body_open)
+      (raw_body_close))))
 
 ==================
 pre: multi-line body
 ==================
-#pre[line one
+#pre[[line one
 line two
-line three]
+line three]]
 ---
 
 (source_file
   (pre_block
     body: (raw_body
-      (raw_body_content))))
+      (raw_body_open)
+      (raw_body_content)
+      (raw_body_close))))
 
 ==================
 code: bare body (no arguments)
 ==================
-#code[plain code body]
+#code[[plain code body]]
 ---
 
 (source_file
   (code_block
     body: (raw_body
-      (raw_body_content))))
+      (raw_body_open)
+      (raw_body_content)
+      (raw_body_close))))
 
 ==================
 pre: with argument
 ==================
-#pre(indent: 2)[step over]
+#pre(indent: 2)[[step over]]
 ---
 
 (source_file
@@ -124,18 +120,22 @@ pre: with argument
         key: (identifier)
         value: (number)))
     body: (raw_body
-      (raw_body_content))))
+      (raw_body_open)
+      (raw_body_content)
+      (raw_body_close))))
 
 ==================
 pre: with trailing block label
 ==================
-#pre[snippet] <ex:demo>
+#pre[[snippet]] <ex:demo>
 ---
 
 (source_file
   (pre_block
     body: (raw_body
-      (raw_body_content))
+      (raw_body_open)
+      (raw_body_content)
+      (raw_body_close))
     label: (block_label
       (label
         name: (label_name)))))
@@ -143,7 +143,7 @@ pre: with trailing block label
 ==================
 code: multiple attributes in argument list
 ==================
-#code(lang: "rust", line: 42)[fn x() {}]
+#code(lang: "rust", line: 42)[[fn x() {}]]
 ---
 
 (source_file
@@ -156,4 +156,6 @@ code: multiple attributes in argument list
         key: (identifier)
         value: (number)))
     body: (raw_body
-      (raw_body_content))))
+      (raw_body_open)
+      (raw_body_content)
+      (raw_body_close))))

@@ -15,6 +15,7 @@ Implemented:
 - Labels on headings and paragraph starts.
 - Lists: `-` and `N.`, nesting by spaces.
 - Directives: `#set name(...)`, `#image(...)`, `#figure(...)`.
+- Raw blocks: `#pre[[...]]` and `#code[[...]]`, with `[=[...]=]` delimiters for nested `]]`.
 - Values: string, int, float, length `mm`/`pt`/`em`, ident.
 
 Not implemented despite manifest examples:

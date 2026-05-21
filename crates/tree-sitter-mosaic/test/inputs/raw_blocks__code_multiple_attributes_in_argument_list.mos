@@ -1,1 +1,1 @@
-#code(lang: "rust", line: 42)[fn x() {}]
+#code(lang: "rust", line: 42)[[fn x() {}]]

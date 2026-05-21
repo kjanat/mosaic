@@ -7,8 +7,8 @@ Zed editor extension for the [Mosaic] typesetting language (`.mos`).
 - Language registration for `.mos` files (scope `source.mosaic`).
 - Tree-sitter highlighting via the `tree-sitter-mosaic` grammar (headings, emphasis, raw blocks,
   labels, references, directives, escapes).
-- Injections: LaTeX into inline math `$…$`, and the language declared in `#code(lang: "...")[…]` raw
-  blocks.
+- Injections: LaTeX into inline math `$…$`, and the language declared in `#code(lang: "...")[[…]]`
+  raw blocks.
 - Outline entries for headings and label targets.
 - Bracket matching, indentation, and Vim textobjects from Tree-sitter queries.
 - Runnables and default tasks for building the current document PDF and opening it.
