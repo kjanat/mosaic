@@ -10,9 +10,10 @@ Zed editor extension for the [Mosaic](https://github.com/kjanat/mosaic) typesett
   labels, references, directives, escapes).
 - Injections: LaTeX into inline math `$…$`, and the language declared in `#code(lang: "...")[…]` raw
   blocks.
+- Outline entries for headings and label targets.
+- Bracket matching, indentation, and Vim textobjects from Tree-sitter queries.
 
-Not yet wired (follow-up): `brackets.scm`, `indents.scm`, `outline.scm`, `textobjects.scm`, language
-server.
+Not yet wired (follow-up): language server.
 
 ## Install as a dev extension
 
@@ -26,12 +27,13 @@ The grammar is loaded from `crates/tree-sitter-mosaic` (sibling crate in this re
 
 ## Query files
 
-`languages/mosaic/highlights.scm` and `injections.scm` are copies of the canonical files at
+Zed query files in `languages/mosaic/` are copies of the canonical files at
 `crates/tree-sitter-mosaic/queries/`. Keep them in sync via:
 
 ```bash
 just sync-zed-queries
 ```
 
-Zed does not consume `locals.scm` or `tags.scm`, so those query files remain only in the parser
-crate.
+Zed's extension query loader does not consume Tree-sitter `locals.scm` or `tags.scm` under those
+filenames. Navigation and editing features use Zed query files such as `outline.scm`,
+`brackets.scm`, `indents.scm`, and `textobjects.scm`.
