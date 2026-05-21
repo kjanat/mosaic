@@ -1,3 +1,6 @@
+#:schema https://raw.githubusercontent.com/kjanat/zed-editor/refs/heads/feature/extension-toml-schema/crates/extension_api/schemas/extension.schema.json
+#:tombi schema.strict = false
+
 id             = "mosaic"
 name           = "Mosaic"
 version        = "0.0.1"
@@ -5,6 +8,7 @@ schema_version = 1
 authors        = ["Kaj Kowalski <info@kajkowalski.nl>"]
 description    = "Mosaic (.mos) typesetting language support."
 repository     = "https://github.com/kjanat/mosaic"
+languages      = ["Mosaic"]
 
 [grammars.mosaic]
 repository = "file:///home/kjanat/projects/mosaic"

@@ -1,7 +1,10 @@
-name          = "Mosaic"
-grammar       = "mosaic"
-path_suffixes = ["mos"]
-line_comments = ["// "]
-block_comment = ["/* ", " */"]
-tab_size      = 2
-hard_tabs     = false
+#:schema https://raw.githubusercontent.com/kjanat/zed-editor/refs/heads/feature/extension-toml-schema/crates/extension_api/schemas/language-config.schema.json
+
+name                  = "Mosaic"
+grammar               = "mosaic"
+code_fence_block_name = "mos"
+path_suffixes         = ["mos"]
+line_comments         = ["// "]
+block_comment         = ["/* ", " */"]
+tab_size              = 2
+hard_tabs             = false
