@@ -875,11 +875,19 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": false,
       "types": [
         {
-          "type": "string_content",
+          "type": "escape_sequence",
+          "named": true
+        },
+        {
+          "type": "string_double_content",
+          "named": true
+        },
+        {
+          "type": "string_single_content",
           "named": true
         }
       ]
@@ -1222,6 +1230,10 @@
     "named": true
   },
   {
+    "type": "escape_sequence",
+    "named": true
+  },
+  {
     "type": "escaped_char",
     "named": true
   },
@@ -1270,7 +1282,11 @@
     "named": true
   },
   {
-    "type": "string_content",
+    "type": "string_double_content",
+    "named": true
+  },
+  {
+    "type": "string_single_content",
     "named": true
   },
   {

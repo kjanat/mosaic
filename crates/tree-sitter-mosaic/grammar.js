@@ -521,11 +521,23 @@ export default grammar({
 
 		string: $ =>
 			choice(
-				seq('"', optional($.string_content), '"'),
-				seq("'", optional($.string_content), "'"),
+				seq(
+					'"',
+					repeat(choice($.string_double_content, $.escape_sequence)),
+					token.immediate('"'),
+				),
+				seq(
+					"'",
+					repeat(choice($.string_single_content, $.escape_sequence)),
+					token.immediate("'"),
+				),
 			),
 
-		string_content: _ => token.immediate(repeat1(choice(/[^"'\\\n\r]+/, /\\./))),
+		string_double_content: _ => token.immediate(prec(1, /[^"\\\n\r]+/)),
+
+		string_single_content: _ => token.immediate(prec(1, /[^'\\\n\r]+/)),
+
+		escape_sequence: _ => token.immediate(seq('\\', /./)),
 
 		dimension: _ =>
 			token(seq(

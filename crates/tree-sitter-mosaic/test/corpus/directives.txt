@@ -11,7 +11,7 @@ set: text font/size
       (attribute
         key: (identifier)
         value: (string
-          (string_content)))
+          (string_double_content)))
       (attribute
         key: (identifier)
         value: (dimension)))))
@@ -32,7 +32,7 @@ set: multi-line
       (attribute
         key: (identifier)
         value: (string
-          (string_content)))
+          (string_double_content)))
       (attribute
         key: (identifier)
         value: (dimension)))))
@@ -46,7 +46,7 @@ import: with items
 (source_file
   (import_directive
     path: (string
-      (string_content))
+      (string_double_content))
     items: (import_items
       (identifier)
       (identifier))))
@@ -60,7 +60,7 @@ import: bare
 (source_file
   (import_directive
     path: (string
-      (string_content))))
+      (string_double_content))))
 
 ==================
 include
@@ -71,7 +71,7 @@ include
 (source_file
   (include_directive
     path: (string
-      (string_content))))
+      (string_double_content))))
 
 ==================
 include: path with escaped backslash
@@ -82,7 +82,9 @@ include: path with escaped backslash
 (source_file
   (include_directive
     path: (string
-      (string_content))))
+      (string_double_content)
+      (escape_sequence)
+      (string_double_content))))
 
 ==================
 set: nested call as attribute value
@@ -113,7 +115,26 @@ import: single-quoted path
 (source_file
   (import_directive
     path: (string
-      (string_content))))
+      (string_single_content))))
+
+==================
+set: opposite quotes inside strings
+==================
+#set document(title: "has ' apostrophe", author: 'has " quote')
+---
+
+(source_file
+  (set_directive
+    target: (identifier)
+    arguments: (argument_list
+      (attribute
+        key: (identifier)
+        value: (string
+          (string_double_content)))
+      (attribute
+        key: (identifier)
+        value: (string
+          (string_single_content))))))
 
 ==================
 two adjacent directives without blank line
@@ -149,7 +170,7 @@ set: missing closing paren inserts MISSING ")"
       (attribute
         key: (identifier)
         value: (string
-          (string_content)))
+          (string_double_content)))
       (MISSING ")"))))
 
 ==================
@@ -185,7 +206,7 @@ include: unterminated string literal recovers at next directive
 (source_file
   (include_directive
     path: (string
-      (string_content)
+      (string_double_content)
       (MISSING """)))
   (set_directive
     target: (identifier)

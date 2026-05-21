@@ -125,7 +125,7 @@ Hello world
       (text)))
   (import_directive
     path: (string
-      (string_content))))
+      (string_double_content))))
 
 ==================
 paragraph: include directive starts next block
@@ -140,7 +140,7 @@ Hello world
       (text)))
   (include_directive
     path: (string
-      (string_content))))
+      (string_double_content))))
 
 ==================
 paragraph: multiple blank lines collapse into one blank_line token

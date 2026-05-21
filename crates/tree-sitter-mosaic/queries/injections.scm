@@ -12,7 +12,10 @@
    arguments: (argument_list
      (attribute
        key: (identifier) @_k
-       value: (string (string_content) @injection.language)))
+       value: (string [
+         (string_double_content)
+         (string_single_content)
+       ] @injection.language)))
    body: (raw_body
      (raw_body_content) @injection.content))
   (#eq? @_k "lang")
