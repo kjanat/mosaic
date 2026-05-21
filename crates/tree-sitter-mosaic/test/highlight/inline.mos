@@ -12,6 +12,11 @@ lines* now.
 Use `code` inline.
 //    ^ text.literal
 
+Code `two
+//    ^ text.literal
+lines` now.
+// <- text.literal
+
 Math $x = 1$ goes here.
 //   ^ punctuation.special
 //    ^ markup.math

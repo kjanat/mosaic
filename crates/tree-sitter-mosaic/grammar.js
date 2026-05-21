@@ -344,12 +344,16 @@ export default grammar({
 
 		emph_text: _ => token(prec(-1, /[^*\\\n\r]+/)),
 
-		code_span: _ =>
-			token(seq(
+		code_span: $ =>
+			seq(
 				'`',
-				repeat(choice(/[^`\n\r\\]+/, /\\./)),
+				repeat(choice($.code_text, $.code_escape, $.soft_break)),
 				'`',
-			)),
+			),
+
+		code_text: _ => token(prec(-1, /[^`\n\r\\]+/)),
+
+		code_escape: _ => token(seq('\\', /[^\r\n]/)),
 
 		inline_math: $ =>
 			seq(

@@ -58,7 +58,11 @@
 
 ; --- Code, math, raw blocks -------------------------------------------------
 
-(code_span) @text.literal
+(code_span
+  (code_text) @text.literal)
+
+(code_span
+  (code_escape) @string.escape)
 (inline_math) @markup.math
 (verse_block) @markup.quote
 (pre_block) @markup.raw.block
