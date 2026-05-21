@@ -70,7 +70,11 @@ for (const [prop, path] of queries) {
 			delete binding[prop];
 			try {
 				binding[prop] = readFileSync(path, 'utf8');
-			} catch {}
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				console.error(`Failed to load ${prop} from ${path}: ${message}`);
+				throw err;
+			}
 			return binding[prop];
 		},
 	});
