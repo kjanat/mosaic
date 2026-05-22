@@ -10,14 +10,15 @@ repository.workspace   = true
 license.workspace      = true
 keywords.workspace     = true
 categories.workspace   = true
+exclude                = ["AGENTS.md"]
 
 [dependencies]
 # PNG + JPEG decode for `#image(...)` directives. Default features are
 # turned off so we don't pull in TIFF, AVIF, WebP, etc. — image format
 # coverage beyond PNG/JPEG is a separate later slice.
-image     = { workspace = true }
-mos-core  = { workspace = true }
-mos-parse = { workspace = true }
+image.workspace     = true
+mos-core.workspace  = true
+mos-parse.workspace = true
 
 [lints]
 workspace = true

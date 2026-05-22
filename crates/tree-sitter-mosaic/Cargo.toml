@@ -11,7 +11,7 @@ keywords               = ["incremental", "mosaic", "parsing", "tree-sitter"]
 categories             = ["parser-implementations", "parsing", "text-editors"]
 build                  = "bindings/rust/build.rs"
 include                = [
-  "../../LICENSE*",
+  "/LICENSE",
   "bindings/rust/*",
   "grammar.js",
   "queries/*",

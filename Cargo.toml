@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members  = ["crates/*"]
-exclude  = ["crates/node_modules"]
+exclude  = ["crates/node_modules", "crates/zed-mosaic"]
 
 [workspace.package]
 version      = "0.0.0"
@@ -45,7 +45,6 @@ tree-sitter           = "0.26"
 tree-sitter-language  = "0.1"
 ttf-parser            = "0.25"
 unicode-normalization = "0.1.25"
-zed_extension_api     = "0.7.0"
 
 [workspace.dependencies.clap]
 version  = "4.6"

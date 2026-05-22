@@ -12,10 +12,10 @@ keywords.workspace     = true
 categories.workspace   = true
 
 [dependencies]
-mos-core  = { workspace = true }
-serde     = { workspace = true }
-thiserror = { workspace = true }
-toml      = { workspace = true }
+mos-core.workspace  = true
+serde.workspace     = true
+thiserror.workspace = true
+toml.workspace      = true
 
 [lints]
 workspace = true

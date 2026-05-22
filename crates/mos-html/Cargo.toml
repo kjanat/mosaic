@@ -12,8 +12,8 @@ keywords.workspace     = true
 categories.workspace   = true
 
 [dependencies]
-mos-core   = { workspace = true }
-mos-layout = { workspace = true }
+mos-core.workspace   = true
+mos-layout.workspace = true
 
 [lints]
 workspace = true

@@ -10,27 +10,28 @@ repository.workspace   = true
 license.workspace      = true
 keywords.workspace     = true
 categories.workspace   = true
+exclude                = ["AGENTS.md"]
 
 [dependencies]
-mos-core   = { workspace = true }
-mos-fonts  = { workspace = true }
-mos-layout = { workspace = true }
+mos-core.workspace   = true
+mos-fonts.workspace  = true
+mos-layout.workspace = true
 
 # FlateDecode compression for raster image XObject streams. Already in
 # the dependency graph via `image` → `png`; pulling it in directly
 # keeps the emit path's imports honest.
-flate2     = { workspace = true }
-pdf-writer = { workspace = true }
+flate2.workspace     = true
+pdf-writer.workspace = true
 # Used through `mos_fonts::subset` for the GlyphRemapper type only
 # (the actual subsetting happens inside mos-fonts). Direct dep so
 # the type appears in the public emit-side API without re-exporting
 # the whole crate through mos-fonts.
-subsetter  = { workspace = true }
+subsetter.workspace  = true
 
 [dev-dependencies]
 # `lopdf` only used in integration tests to parse the PDFs we produce
 # and assert the encoding/content-stream round-trips.
-lopdf = { workspace = true }
+lopdf.workspace = true
 
 [lints]
 workspace = true

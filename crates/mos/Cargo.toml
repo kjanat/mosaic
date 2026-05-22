@@ -16,20 +16,20 @@ name = "mos"
 path = "src/main.rs"
 
 [dependencies]
-mos-cache    = { workspace = true }
-mos-core     = { workspace = true }
-mos-eval     = { workspace = true }
-mos-html     = { workspace = true }
-mos-layout   = { workspace = true }
-mos-packages = { workspace = true }
-mos-parse    = { workspace = true }
-mos-pdf      = { workspace = true }
+mos-cache.workspace    = true
+mos-core.workspace     = true
+mos-eval.workspace     = true
+mos-html.workspace     = true
+mos-layout.workspace   = true
+mos-packages.workspace = true
+mos-parse.workspace    = true
+mos-pdf.workspace      = true
 
-clap   = { workspace = true }
-opener = { workspace = true }
+clap.workspace   = true
+opener.workspace = true
 
 [dev-dependencies]
-lopdf = { workspace = true }
+lopdf.workspace = true
 
 [lints]
 workspace = true

@@ -10,9 +10,10 @@ repository.workspace   = true
 license.workspace      = true
 keywords.workspace     = true
 categories.workspace   = true
+exclude                = ["AGENTS.md"]
 
 [dependencies]
-mos-core = { workspace = true }
+mos-core.workspace = true
 
 [lints]
 workspace = true
