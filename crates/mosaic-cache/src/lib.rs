@@ -3,6 +3,11 @@
 //! The dependency graph (`DepNode`) and content-addressed cache live
 //! here. The MVP 5 implementation will persist to `.mosaic-cache/`.
 
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 use std::collections::HashMap;
 
 use mosaic_core::ContentHash;

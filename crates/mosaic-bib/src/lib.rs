@@ -3,6 +3,11 @@
 //! Built-in CSL / BibLaTeX / BibTeX support — no separate Biber run.
 //! MVP 4 lands the real implementation.
 
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 /// A bibliography: the collection of entries keyed by citation key,
 /// loaded from a CSL/BibLaTeX/BibTeX source. Placeholder until MVP 4.
 #[derive(Clone, Debug, Default)]

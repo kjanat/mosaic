@@ -3,6 +3,11 @@
 //! Output preserves document semantics (`<section>`, `<figure>`,
 //! `<figcaption>`, …) rather than absolute-positioned rectangles.
 
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 use std::path::Path;
 
 use mosaic_core::{CoreError, Result};

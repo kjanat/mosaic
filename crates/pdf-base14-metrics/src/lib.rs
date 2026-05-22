@@ -8,6 +8,12 @@
 //! sibling [`afm`] crate at build time (see `build.rs`), and baked
 //! into Rust statics in `$OUT_DIR/baked.rs`.
 //!
+
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 //! [`tecnickcom/tc-font-core14-afms`]: https://github.com/tecnickcom/tc-font-core14-afms
 //! [`afm`]: https://crates.io/crates/afm
 //!

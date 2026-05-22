@@ -4,6 +4,11 @@
 //! (manifest §31). Every other crate depends on this one; nothing here
 //! depends on parsing, layout, or backends.
 
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;

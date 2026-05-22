@@ -30,8 +30,13 @@ jobs:
       - name: cargo doc
         run: cargo dw
 
+      - name: Copy docs assets
+        run: |
+          mkdir -p target/doc/assets
+          cp design/A4.svg target/doc/assets/A4.svg
+          cp design/A4.png target/doc/assets/A4.png
+
       - name: Write crate index
-        env: { FAVICON: "${{ vars.FAVICON }}" }
         run: |
           cat <<-HTML > target/doc/index.html
           	<!DOCTYPE html>
@@ -40,7 +45,7 @@ jobs:
           	  <meta charset="utf-8">
           	  <meta name="viewport" content="width=device-width, initial-scale=1">
           	  <link rel="stylesheet" href="index.css">
-          	  <link rel="icon" type="image/svg+xml" href="${FAVICON}">
+          	  <link rel="icon" type="image/svg+xml" href="assets/A4.svg">
           	  <title>Mosaic API docs</title>
           	</head>
           	<body>

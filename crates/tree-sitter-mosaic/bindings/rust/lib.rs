@@ -17,6 +17,11 @@
 //! [`Parser`]: https://docs.rs/tree-sitter/0.26.8/tree_sitter/struct.Parser.html
 //! [tree-sitter]: https://tree-sitter.github.io/
 
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 use tree_sitter_language::LanguageFn;
 
 // SAFETY: `tree_sitter_mosaic` is the C entry point emitted by

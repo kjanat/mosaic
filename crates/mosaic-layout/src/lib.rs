@@ -8,6 +8,11 @@
 //! §22.1, §22.2). Boundary-state reuse for incremental builds
 //! (§22.3, §33) is also out of scope here.
 
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 pub use mosaic_fonts::{
     Base14Font, EmbeddedFontId, Font, FontFamily, ShapedGlyph, WordSubRun, ascent, descent,
     glyph_width, shape_with_fallback, text_width,

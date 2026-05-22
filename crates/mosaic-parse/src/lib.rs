@@ -4,6 +4,12 @@
 //! Currently covers:
 //!
 //! - `= Heading` / `== Subheading` / `=== Subsubheading`,
+
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 //! - paragraphs (newline-joined non-empty line groups),
 //! - inline `*emphasis*`, `**strong**`, and `` `inline code` ``,
 //! - `#set name(...)` blocks, recorded with span and name but interpreted

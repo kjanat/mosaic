@@ -6,6 +6,11 @@
 //! runs the [`resolve`] pass to assign section numbers and rewrite
 //! `@label` cross-references (§6 stage 3, MVP 1).
 
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 mod image;
 mod resolve;
 mod set_schema;

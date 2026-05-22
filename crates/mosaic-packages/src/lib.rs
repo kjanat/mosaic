@@ -3,6 +3,11 @@
 //! Real dependency resolution and lockfile generation land later.
 //! For now this crate only defines the manifest schema and parses it.
 
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 

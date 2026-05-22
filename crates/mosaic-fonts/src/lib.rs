@@ -10,6 +10,12 @@
 //!   beyond `WinAnsi`, the math operators, `fi`/`fl` ligatures) goes
 //!   out through a per-document `/Differences` remap that
 //!   `mosaic-pdf` plans. Characters outside both tiers — Cyrillic,
+
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 //!   CJK, emoji — silently substitute to `?` in both the width and
 //!   emit paths (no warning, no panic; callers that want non-Latin
 //!   should pick the embedded family).

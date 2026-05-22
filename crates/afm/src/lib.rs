@@ -4,6 +4,12 @@
 //! [`5004.AFM_Spec`]: https://adobe-type-tools.github.io/font-tech-notes/pdfs/5004.AFM_Spec.pdf
 //!
 //! # Scope
+
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+)]
+
 //!
 //! Supports AFM **v4.x** (the format Adobe shipped with the Core 14
 //! PostScript fonts). The single entry point is [`parse`], which
