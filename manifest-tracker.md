@@ -1,0 +1,444 @@
+# Mosaic Manifest Tracker
+
+This tracks implementation work against `manifest.md`.
+
+Truth order:
+
+1. Code and tests.
+2. `README.md` Status.
+3. `manifest.md` design intent.
+
+Do not mark a manifesto idea complete unless it is implemented, tested or clearly exercised by an
+example.
+
+## Shipped Baseline
+
+- [x] Rust 2024 workspace with strict workspace lints.
+- [x] Crate split:
+  - [x] `mos`
+  - [x] `mos-core`
+  - [x] `mos-parse`
+  - [x] `mos-eval`
+  - [x] `mos-layout`
+  - [x] `mos-pdf`
+  - [x] `mos-html`
+  - [x] `mos-fonts`
+  - [x] `mos-bib`
+  - [x] `mos-cache`
+  - [x] `mos-lsp`
+  - [x] `mos-packages`
+  - [x] `adobe-font-metrics`
+  - [x] `pdf-base14-metrics`
+  - [x] `tree-sitter-mosaic`
+  - [x] `zed-mosaic`
+- [x] `mos check <entry.mos>` parses, lowers, resolves, and reports source diagnostics.
+- [x] `mos build <entry.mos>` parses, lowers, lays out, and writes `build/<entry-stem>.pdf`.
+- [x] Parser supports:
+  - [x] headings: `=`, `==`, `===`
+  - [x] paragraphs
+  - [x] inline emphasis
+  - [x] inline strong text
+  - [x] inline code
+  - [x] labels
+  - [x] references
+  - [x] unordered lists
+  - [x] ordered lists
+  - [x] `#set`
+  - [x] `#image`
+  - [x] `#figure`
+- [x] Lowering and resolving support:
+  - [x] typed semantic `Document`
+  - [x] document metadata
+  - [x] section numbering
+  - [x] duplicate label diagnostics
+  - [x] unknown label diagnostics
+  - [x] generic reference text
+  - [x] raster image directives
+  - [x] simple figure directives
+- [x] Layout supports:
+  - [x] greedy text flow
+  - [x] headings
+  - [x] paragraphs
+  - [x] lists with hanging indents
+  - [x] images
+  - [x] simple figures
+  - [x] captions
+  - [x] pages
+  - [x] paper sizes
+  - [x] margins
+  - [x] text styles
+- [x] PDF backend supports:
+  - [x] Base-14 metrics
+  - [x] `/Differences`
+  - [x] bundled Noto Sans embedding
+  - [x] Noto Sans subsetting
+  - [x] `/ToUnicode`
+  - [x] PNG image XObjects
+  - [x] JPEG image XObjects
+  - [x] title metadata
+  - [x] author metadata
+- [x] Example PDF snapshots exist for current examples.
+
+## Immediate Cleanup
+
+- [ ] Keep `README.md` Status aligned with shipped features.
+- [ ] Keep `AGENTS.md` aligned with crate layout, commands, and current shipped scope.
+- [ ] Update child `AGENTS.md` files when crate-local behavior changes.
+- [ ] Audit comments that still describe landed work as MVP 0-only stubs.
+- [ ] Audit README workspace layout for current examples and crate list.
+- [ ] Add or update tests before marking any item below complete.
+
+## CLI
+
+- [x] Wire `mos check`.
+- [x] Wire `mos build`.
+- [ ] Decide whether stub commands should stay visible in `--help`.
+- [ ] Implement `mos init`.
+- [ ] Implement `mos watch`.
+- [ ] Implement `mos fmt`.
+- [ ] Implement `mos test`.
+- [ ] Implement `mos profile`.
+- [ ] Implement `mos clean`.
+- [ ] Implement `mos package`.
+- [ ] Add `mos graph` for dependency inspection.
+- [ ] Add `mos bundle` for archival bundles.
+- [ ] Add `mos convert` only after a scoped import plan exists.
+- [ ] Add `mos build --frozen`.
+- [ ] Add `mos build --debug-layout`.
+
+## Parser And Syntax
+
+- [x] Parse headings.
+- [x] Parse paragraphs.
+- [x] Parse inline emphasis, strong, and code.
+- [x] Parse labels and references.
+- [x] Parse unordered and ordered lists.
+- [x] Parse current directives: `#set`, `#image`, `#figure`.
+- [ ] Preserve comments in the CST if formatter or tooling needs them.
+- [ ] Preserve useful formatting trivia for formatter support.
+- [ ] Add imports/includes.
+- [ ] Add citations.
+- [ ] Add inline math.
+- [ ] Add display math.
+- [ ] Add equations.
+- [ ] Add tables.
+- [ ] Add theorem-like blocks.
+- [ ] Add footnotes.
+- [ ] Define and test function-call syntax beyond current directives.
+- [ ] Define explicit grammar for document configuration.
+- [ ] Document supported syntax in user-facing docs.
+
+## Semantic Model And Resolver
+
+- [x] Lower syntax into typed document nodes.
+- [x] Preserve source spans for diagnostics.
+- [x] Resolve section hierarchy for current headings.
+- [x] Resolve section counters.
+- [x] Resolve labels.
+- [x] Diagnose duplicate labels.
+- [x] Diagnose unknown references.
+- [x] Resolve document metadata.
+- [ ] Make reference text kind-aware:
+  - [ ] section references
+  - [ ] figure references
+  - [ ] equation references
+  - [ ] table references
+  - [ ] theorem references
+- [ ] Resolve figure numbering.
+- [ ] Resolve equation numbering.
+- [ ] Resolve table numbering.
+- [ ] Resolve theorem numbering.
+- [ ] Resolve citation keys.
+- [ ] Add page-reference support.
+- [ ] Add internal fixpoint loop for layout-dependent values.
+- [ ] Add stable node IDs derived from durable inputs.
+- [ ] Add content hashes for semantic nodes.
+
+## Diagnostics
+
+- [x] Render source diagnostics with file, line, column, and carets.
+- [x] Report parse/lower/resolve errors without panicking.
+- [x] Report duplicate and unknown labels.
+- [ ] Add similar-label suggestions.
+- [ ] Add diagnostic codes.
+- [ ] Add structured suggestions.
+- [ ] Add layout warnings.
+- [ ] Add float placement diagnostics.
+- [ ] Add performance diagnostics.
+- [ ] Add non-convergence diagnostics for future fixpoint layout.
+
+## Layout
+
+- [x] Lay out headings, paragraphs, lists, images, figures, captions, and pages.
+- [x] Support paper sizes and margins from current settings.
+- [x] Support current text styles.
+- [ ] Replace greedy line breaking with a real paragraph algorithm.
+- [ ] Add Unicode line breaking.
+- [ ] Add language-aware hyphenation.
+- [ ] Add OpenType shaping through HarfBuzz or equivalent.
+- [ ] Segment text into script/language/font runs.
+- [ ] Produce glyph runs instead of simple text runs.
+- [ ] Add inline math layout.
+- [ ] Add displayed equation layout.
+- [ ] Add table layout.
+- [ ] Add code block layout.
+- [ ] Add keep-with-next behavior.
+- [ ] Add widow/orphan control.
+- [ ] Add footnote layout.
+- [ ] Add page styles.
+- [ ] Add layout constraints as explicit data.
+- [ ] Add layout compromise reporting.
+
+## Figures And Floats
+
+- [x] Support raster images.
+- [x] Support simple figures with captions.
+- [ ] Add figure numbering.
+- [ ] Add figure references with figure-aware labels.
+- [ ] Add anchored float placement.
+- [ ] Add allowed float positions.
+- [ ] Add float priority.
+- [ ] Add max-distance constraints.
+- [ ] Add ordering penalties.
+- [ ] Add whitespace penalties.
+- [ ] Add list of figures.
+- [ ] Add debug output for float decisions.
+
+## PDF Backend
+
+- [x] Emit deterministic PDFs for current layout output.
+- [x] Emit Base-14 text.
+- [x] Embed and subset bundled Noto Sans.
+- [x] Emit `/ToUnicode` maps.
+- [x] Emit PNG and JPEG images.
+- [x] Emit title and author metadata.
+- [ ] Add hyperlinks.
+- [ ] Add bookmarks/outlines.
+- [ ] Add vector graphics.
+- [ ] Add image recompression or pass-through policy.
+- [ ] Add tagged PDF support.
+- [ ] Add PDF/A mode.
+- [ ] Add source/PDF sync metadata if chosen.
+
+## Other Backends
+
+- [ ] Implement semantic HTML backend.
+- [ ] Add fixed-layout HTML mode only if needed.
+- [ ] Implement EPUB backend.
+- [ ] Implement SVG page backend.
+- [ ] Implement debug layout backend:
+  - [ ] boxes
+  - [ ] baselines
+  - [ ] constraints
+  - [ ] dirty nodes
+  - [ ] float decisions
+  - [ ] page break costs
+
+## Bibliography
+
+- [ ] Define citation syntax.
+- [ ] Parse citations.
+- [ ] Resolve citation keys.
+- [ ] Load bibliography databases.
+- [ ] Import BibTeX.
+- [ ] Import BibLaTeX.
+- [ ] Support CSL styles.
+- [ ] Render numeric citations.
+- [ ] Render author-year citations.
+- [ ] Render footnote citations.
+- [ ] Render citation clusters.
+- [ ] Render sorted bibliographies.
+- [ ] Track bibliography dependencies.
+- [ ] Keep `mos-bib` stub docs honest until real support lands.
+
+## Incremental Builds And Cache
+
+- [ ] Define dependency IDs and dependency kinds.
+- [ ] Track every computed artifact dependency.
+- [ ] Track paragraph layout dependencies:
+  - [ ] paragraph text
+  - [ ] font metrics
+  - [ ] available width
+  - [ ] style
+- [ ] Track figure dependencies:
+  - [ ] image file
+  - [ ] caption node
+  - [ ] figure style
+  - [ ] available width
+- [ ] Track reference dependencies:
+  - [ ] target label
+  - [ ] target number
+  - [ ] target page, where relevant
+- [ ] Track TOC dependencies:
+  - [ ] heading text
+  - [ ] heading number
+  - [ ] heading page
+- [ ] Add dirty-node invalidation.
+- [ ] Add paragraph layout cache.
+- [ ] Add persistent `.mos-cache/`.
+- [ ] Reuse clean semantic nodes.
+- [ ] Recompute only affected paragraphs.
+- [ ] Reflow only affected pages.
+- [ ] Update only affected references.
+- [ ] Report what changed during incremental builds.
+- [ ] Add watch mode on top of incremental invalidation.
+
+## Page Reflow And Fixpoints
+
+- [ ] Add page graph as a first-class output of layout.
+- [ ] Store page boundary signatures.
+- [ ] Reflow from first changed page.
+- [ ] Recompute pages until boundary state matches old build.
+- [ ] Reuse remaining pages after convergence.
+- [ ] Resolve layout-dependent values through a fixpoint:
+  - [ ] page references
+  - [ ] table of contents page numbers
+  - [ ] list of figures page numbers
+  - [ ] list of tables page numbers
+  - [ ] index locators
+- [ ] Detect oscillating documents.
+- [ ] Keep hashes of global layout states during stabilization.
+- [ ] Choose and document stable fallback policies.
+- [ ] Report stabilization iteration counts.
+
+## Project And Package System
+
+- [ ] Decide current contract for `mosaic.toml`.
+- [ ] Use `mosaic.toml` for project metadata.
+- [ ] Use `mosaic.toml` for document settings.
+- [ ] Use `mosaic.toml` for dependencies.
+- [ ] Add `mosaic.lock`.
+- [ ] Support package contents:
+  - [ ] functions
+  - [ ] styles
+  - [ ] templates
+  - [ ] assets
+  - [ ] bibliography styles
+  - [ ] layout policies
+- [ ] Define pure packages.
+- [ ] Define trusted packages with explicit consent.
+- [ ] Prevent arbitrary native code execution by default.
+- [ ] Resolve assets relative to project root unless explicitly overridden.
+- [ ] Support section imports.
+- [ ] Define standard project layout:
+  - [ ] `mosaic.toml`
+  - [ ] `mosaic.lock`
+  - [ ] `main.mos`
+  - [ ] `sections/`
+  - [ ] `figures/`
+  - [ ] `data/`
+  - [ ] `refs/`
+  - [ ] `styles/`
+  - [ ] `build/`
+  - [ ] `.mos-cache/`
+
+## Formatting And Editor Integration
+
+- [ ] Build `mos fmt`.
+- [ ] Define formatting rules for current syntax.
+- [ ] Format multiline function calls.
+- [ ] Preserve comments and meaningful trivia.
+- [ ] Complete `mos-lsp` beyond the current entry point.
+- [ ] Publish diagnostics over LSP.
+- [ ] Add go-to-definition for labels.
+- [ ] Add rename label.
+- [ ] Add citation autocomplete.
+- [ ] Add figure preview.
+- [ ] Add outline.
+- [ ] Add symbol search.
+- [ ] Add hover docs.
+- [ ] Add format-document support.
+- [ ] Add live preview sync.
+- [ ] Add bidirectional source/PDF sync.
+- [ ] Decide sync storage format:
+  - [ ] sidecar `.mosync`
+  - [ ] PDF metadata
+
+## Determinism And Reproducibility
+
+- [ ] Keep output ordering deterministic.
+- [ ] Use stable iteration order where output-observable.
+- [ ] Pin package versions through a lockfile.
+- [ ] Pin font resolution in reproducible mode.
+- [ ] Prevent undeclared network access during builds.
+- [ ] Prevent undeclared system time during builds.
+- [ ] Track `today()` or equivalent as a dependency if introduced.
+- [ ] Include engine version in reproducible build inputs.
+- [ ] Include layout policy in reproducible build inputs.
+- [ ] Include asset hashes in reproducible build inputs.
+- [ ] Add archival bundle support.
+- [ ] Include fonts in bundles only when licenses permit.
+
+## Scripting, Styles, And Templates
+
+- [ ] Define Mosaic expression language scope.
+- [ ] Decide whether advanced scripting uses custom language, Rhai, Starlark, WASM, or another host.
+- [ ] Prefer native Mosaic expressions for normal templates.
+- [ ] Define WASM plugin API only after package permissions are designed.
+- [ ] Require plugin/package manifests.
+- [ ] Make capabilities explicit:
+  - [ ] filesystem
+  - [ ] network
+  - [ ] determinism
+- [ ] Implement predictable style cascade:
+  - [ ] document defaults
+  - [ ] template defaults
+  - [ ] package styles
+  - [ ] local style rules
+  - [ ] inline overrides
+- [ ] Make templates normal packages.
+- [ ] Expose template parameters.
+
+## Testing
+
+- [x] Workspace tests run through `cargo test --workspace`.
+- [x] Strict clippy command exists through `cargo lint`.
+- [x] Example snapshot regeneration exists through `just examples`.
+- [ ] Add syntax tests for every supported grammar construct.
+- [ ] Add semantic lowering tests for every node type.
+- [ ] Add reference resolution tests by reference kind.
+- [ ] Add layout tree snapshot tests.
+- [ ] Add PDF metadata tests.
+- [ ] Add image PDF emission tests.
+- [ ] Add visual regression tests.
+- [ ] Compare layout trees instead of raw PDFs where practical.
+- [ ] Keep examples current when features change.
+
+## Later Or Parked Manifest Ideas
+
+These are design goals, not near-term implementation commitments.
+
+- [ ] Full constraint graph layout solver.
+- [ ] Cost-based regional page optimizer.
+- [ ] Table solver with intrinsic/fixed/fractional sizing.
+- [ ] Multipage tables with repeated headers.
+- [ ] Index rendering.
+- [ ] Glossary rendering.
+- [ ] DOI metadata import.
+- [ ] Package registry.
+- [ ] Sandboxed package execution.
+- [ ] Language-version gates.
+- [ ] Markdown import.
+- [ ] Pandoc JSON import.
+- [ ] Limited LaTeX math import.
+- [ ] Best-effort LaTeX document conversion.
+- [ ] Avoid arbitrary LaTeX package compatibility.
+
+## Non-Goals To Preserve
+
+- [ ] Do not become fully LaTeX-compatible.
+- [ ] Do not become a general programming language.
+- [ ] Do not become a web browser.
+- [ ] Do not become a desktop publishing GUI.
+- [ ] Do not become a Word clone.
+- [ ] Do not become a CSS clone.
+- [ ] Do not become a markdown-only toy.
+
+## Priority Rules
+
+- [ ] Prefer semantic correctness over visual cleverness.
+- [ ] Prefer deterministic builds over hidden convenience.
+- [ ] Prefer clear diagnostics over silent fallback.
+- [ ] Prefer scoped MVP slices over broad systems.
+- [ ] Keep compiler/domain logic out of the `mos` CLI crate.
+- [ ] Keep parse, lower, layout, and emit boundaries explicit.

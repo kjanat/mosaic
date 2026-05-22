@@ -8,14 +8,15 @@
 
 [![CI](https://github.com/kjanat/mosaic/actions/workflows/ci.yml/badge.svg)](https://github.com/kjanat/mosaic/actions/workflows/ci.yml)
 
-A semantic, incremental, constraint-based typesetting compiler — written in Rust, targeting
-PDF/HTML/EPUB.\
-Mosaic compiles `.mos` source files into documents through a dependency graph rather than a linear
-stream of typesetting commands, so editing one sentence reflows only the affected pages.
+A semantic, ~~incremental, constraint-based~~ typesetting compiler — written in Rust, targeting PDF
+~~/HTML/EPUB~~ .\
+Mosaic compiles `.mos` source files into documents ~~through a dependency graph rather than a linear
+stream of typesetting commands, so editing one sentence reflows only the affected pages~~.
 
 The full design — language, layout algorithm, package model, MVP roadmap — lives in
 [`manifest.md`](./manifest.md). This README is just enough to orient you and to get the workspace
-building.
+building. The actionable implementation checklist lives in
+[`manifest-tracker.md`](./manifest-tracker.md).
 
 ## Status
 

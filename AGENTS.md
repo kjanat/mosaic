@@ -11,7 +11,8 @@ Mosaic is a pre-alpha Rust 2024 workspace for a `.mos` typesetting compiler. Cur
 
 1. Current code and tests.
 2. README Status section.
-3. `manifest.md` for product direction only.
+3. `manifest-tracker.md` for actionable roadmap tracking.
+4. `manifest.md` for product direction only.
 
 If `manifest.md` disagrees with code, trust code. Mention mismatch. Do not silently build future MVP
 features because manifest dreams loudly.
@@ -19,6 +20,7 @@ features because manifest dreams loudly.
 ## MAINTENANCE
 
 - Update this file when repo structure, commands, shipped scope, or hard-won conventions change.
+- Update `manifest-tracker.md` when shipped features or roadmap task status changes.
 - Update child `AGENTS.md` files when local crate/example rules change enough to help future agents.
 - If `CLAUDE.md` exists as a symlink to this file, edit `AGENTS.md`. Do not replace or separately
   maintain `CLAUDE.md`.
@@ -52,6 +54,7 @@ Treat as aspirational/stub unless user asks:
 ./
 ├── Cargo.toml          # virtual workspace; no root src/
 ├── manifest.md         # roadmap/design manifesto, partly ahead/stale
+├── manifest-tracker.md # actionable todo tracker derived from manifest + current code
 ├── README.md           # best quick status doc
 ├── crates/             # 14 Rust crates, domain split
 ├── examples/           # self-contained .mos projects + committed PDF snapshots
@@ -65,6 +68,7 @@ Treat as aspirational/stub unless user asks:
 | Task              | Location                         | Notes                                                       |
 | ----------------- | -------------------------------- | ----------------------------------------------------------- |
 | Current status    | `README.md`                      | More accurate than manifest for shipped behavior.           |
+| Roadmap tracking  | `manifest-tracker.md`            | Actionable todo list; keep aligned with code and README.    |
 | Product direction | `manifest.md`                    | Design intent; many features not built.                     |
 | CLI behavior      | `crates/mos/src/main.rs`         | `check` and `build` real; other subcommands fail by design. |
 | Syntax            | `crates/mos-parse/src/lib.rs`    | CST, spans, recoverable parse diagnostics.                  |
