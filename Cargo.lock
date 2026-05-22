@@ -1015,6 +1015,7 @@ dependencies = [
  "rustybuzz",
  "subsetter",
  "ttf-parser",
+ "unicode-normalization",
 ]
 
 [[package]]

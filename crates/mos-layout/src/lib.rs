@@ -13,6 +13,7 @@
     html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
 )]
 
+use mos_fonts::nfc_text;
 pub use mos_fonts::{
     Base14Font, EmbeddedFontId, Font, FontFamily, ShapedGlyph, WordSubRun, ascent, descent,
     glyph_width, shape_with_fallback, text_width,
@@ -338,6 +339,8 @@ impl LayoutState {
                 if piece.is_empty() {
                     continue;
                 }
+                let piece = nfc_text(piece);
+                let piece = piece.as_ref();
                 let subruns = shape_with_fallback(font, self.text.family.fallbacks, size, piece);
                 let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
                 out.push(Word {
@@ -753,6 +756,23 @@ mod tests {
         let cyr = runs.iter().find(|r| r.text == "Привет").expect("cyr run");
         assert!(matches!(cyr.font, Font::Embedded(_)));
         assert!(!cyr.glyphs.is_empty(), "expected shaped glyphs");
+    }
+
+    #[test]
+    fn decomposed_text_is_normalized_before_shaping() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_paragraph(&mut doc, "S\u{0326}");
+
+        let result = LayoutEngine::new().layout(&doc);
+
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let run = result.graph.pages[0]
+            .runs
+            .iter()
+            .find(|r| r.text == "\u{0218}")
+            .expect("normalized run");
+        assert!(matches!(run.font, Font::Embedded(_)));
+        assert!(!run.glyphs.is_empty(), "expected shaped glyphs");
     }
 
     #[test]

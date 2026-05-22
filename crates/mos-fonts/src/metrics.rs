@@ -1,6 +1,13 @@
-use crate::{Base14Font, Font, extended_glyph_name, shape, winansi_byte};
+use crate::{Base14Font, Font, extended_glyph_name, normalize::nfc_text, shape, winansi_byte};
 
 /// Advance width of `text` rendered in `font` at `size` points.
+///
+/// Input is normalized through [`crate::nfc_text`] before any width
+/// calculation. Decomposed sequences such as `S\u{0326}` therefore
+/// measure as their precomposed NFC form (`Ș`) in both the Base14
+/// per-character AFM path and the embedded-font shaping path.
+/// [`glyph_width`] delegates here for a one-character string, so it
+/// inherits the same normalization behavior.
 ///
 /// For Base14 faces this sums per-character AFM widths (`WinAnsi`
 /// natives + extended Latin reachable via [`extended_glyph_name`]).
@@ -24,6 +31,8 @@ use crate::{Base14Font, Font, extended_glyph_name, shape, winansi_byte};
 /// ```
 #[must_use]
 pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
+    let text = nfc_text(text);
+    let text = text.as_ref();
     match font {
         Font::Base14(f) => {
             let mut units: f32 = 0.0;
@@ -241,6 +250,15 @@ mod tests {
         let font = Font::Embedded(EmbeddedFontId::Regular);
         let w = text_width(font, 12.0, "Привет");
         assert!(w > 0.0);
+    }
+
+    #[test]
+    fn embedded_text_width_normalizes_decomposed_romanian() {
+        let font = Font::Embedded(EmbeddedFontId::Regular);
+        let decomposed = text_width(font, 12.0, "S\u{0326}");
+        let precomposed = text_width(font, 12.0, "\u{0218}");
+
+        assert!((decomposed - precomposed).abs() < f32::EPSILON);
     }
 
     #[test]

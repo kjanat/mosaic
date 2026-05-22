@@ -37,6 +37,7 @@ mod embedded;
 mod family;
 mod font;
 mod metrics;
+mod normalize;
 mod resources;
 mod shape;
 
@@ -44,5 +45,6 @@ pub use embedded::{EmbeddedFont, ShapedGlyph, shape, subset};
 pub use family::FontFamily;
 pub use font::{EmbeddedFontId, Font};
 pub use metrics::{advance_units_to_pt, ascent, descent, glyph_width, text_width};
+pub use normalize::nfc_text;
 pub use pdf_base14_metrics::{Base14Font, extended_glyph_name, winansi_byte};
 pub use shape::{ShapedRun, WordSubRun, shape_text, shape_with_fallback};

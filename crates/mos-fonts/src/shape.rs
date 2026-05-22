@@ -1,9 +1,16 @@
-use crate::{EmbeddedFontId, Font, ShapedGlyph, advance_units_to_pt, shape, text_width};
+use crate::{
+    EmbeddedFontId, Font, ShapedGlyph, advance_units_to_pt, normalize::nfc_text, shape, text_width,
+};
 
 /// Shape `text` against `font` and return both the glyph stream and
 /// the advance widths in user-space points. Callers that need only the
 /// width can use [`text_width`]; callers that will also emit glyphs
 /// downstream should use this to avoid shaping twice.
+///
+/// Input is normalized through [`crate::nfc_text`] before shaping, so
+/// decomposed sequences are precomposed to Unicode NFC. Returned glyph
+/// cluster offsets are byte offsets into that normalized text, not
+/// necessarily the caller's original string.
 ///
 /// For Base14 faces, `glyphs` is empty (Base14 runs go out as
 /// `WinAnsi`-byte strings, not glyph IDs); only the width is computed.
@@ -20,6 +27,8 @@ use crate::{EmbeddedFontId, Font, ShapedGlyph, advance_units_to_pt, shape, text_
 /// ```
 #[must_use]
 pub fn shape_text(font: Font, size: f32, text: &str) -> ShapedRun {
+    let text = nfc_text(text);
+    let text = text.as_ref();
     match font {
         Font::Base14(_) => ShapedRun {
             glyphs: Vec::new(),
@@ -122,6 +131,11 @@ pub struct WordSubRun {
 /// the sub-run's local `text`, so `mos-pdf::plan_embedded` reads
 /// `/ToUnicode` clusters with no awareness of the parent word.
 ///
+/// Input is normalized through [`crate::nfc_text`] before fallback
+/// shaping. Each returned [`WordSubRun::text`] is therefore a slice of
+/// the normalized NFC string; decomposed caller input may not be
+/// byte-identical to returned text.
+///
 /// Base14 `primary`: returns a single sub-run with empty `glyphs`
 /// (Base14 has no glyph stream to inspect for `.notdef`; fallback
 /// isn't meaningful for that path). The advance comes from the AFM
@@ -151,6 +165,8 @@ pub fn shape_with_fallback(
     size_pt: f32,
     text: &str,
 ) -> Vec<WordSubRun> {
+    let text = nfc_text(text);
+    let text = text.as_ref();
     if text.is_empty() {
         return Vec::new();
     }
@@ -422,6 +438,18 @@ mod tests {
     }
 
     #[test]
+    fn shape_text_normalizes_decomposed_romanian() {
+        let font = Font::Embedded(EmbeddedFontId::Regular);
+        let decomposed = shape_text(font, 12.0, "S\u{0326}");
+        let precomposed = shape_text(font, 12.0, "\u{0218}");
+
+        let decomposed_gids: Vec<u16> = decomposed.glyphs.iter().map(|g| g.gid).collect();
+        let precomposed_gids: Vec<u16> = precomposed.glyphs.iter().map(|g| g.gid).collect();
+        assert_eq!(decomposed_gids, precomposed_gids);
+        assert!((decomposed.advance_pt - precomposed.advance_pt).abs() < f32::EPSILON);
+    }
+
+    #[test]
     fn embedded_fi_ligature_collapses_glyphs() {
         // Noto Sans contains an `fi` ligature; rustybuzz returns one
         // glyph for `fi` (not two). The substituted gid differs from
@@ -458,6 +486,16 @@ mod tests {
         assert!(!subs[0].glyphs.is_empty());
         assert!(subs[0].glyphs.iter().all(|g| g.gid != 0));
         assert!(subs[0].advance_pt > 0.0);
+    }
+
+    #[test]
+    fn fallback_shape_normalizes_subrun_text() {
+        let primary = Font::Embedded(EmbeddedFontId::Regular);
+        let fallbacks = &[EmbeddedFontId::Math];
+        let subs = shape_with_fallback(primary, fallbacks, 11.0, "S\u{0326}");
+
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].text, "\u{0218}");
     }
 
     #[test]
