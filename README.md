@@ -6,6 +6,8 @@
 
 # Mosaic
 
+[![CI](https://github.com/kjanat/mosaic/actions/workflows/ci.yml/badge.svg)](https://github.com/kjanat/mosaic/actions/workflows/ci.yml)
+
 A semantic, incremental, constraint-based typesetting compiler — written in Rust, targeting
 PDF/HTML/EPUB.\
 Mosaic compiles `.mos` source files into documents through a dependency graph rather than a linear
