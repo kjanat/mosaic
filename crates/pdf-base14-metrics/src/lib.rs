@@ -11,7 +11,7 @@
 
 #![doc(
     html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
 )]
 
 //! [`tecnickcom/tc-font-core14-afms`]: https://github.com/tecnickcom/tc-font-core14-afms

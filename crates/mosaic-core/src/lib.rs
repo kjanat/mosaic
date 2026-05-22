@@ -6,7 +6,7 @@
 
 #![doc(
     html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
 )]
 
 use std::collections::BTreeMap;

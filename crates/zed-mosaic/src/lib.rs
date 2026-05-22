@@ -2,7 +2,7 @@
 
 #![doc(
     html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
 )]
 
 use zed_extension_api as zed;

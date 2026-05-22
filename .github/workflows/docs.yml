@@ -31,43 +31,41 @@ jobs:
         run: cargo dw
 
       - name: Copy docs assets
-        run: |
-          mkdir -p target/doc/assets
-          cp design/A4.svg target/doc/assets/A4.svg
-          cp design/A4.png target/doc/assets/A4.png
+        env: { TARGET: target/doc/assets, INPUT: design/A4.svg }
+        run: mkdir -p "$TARGET" && cp "$INPUT" "$TARGET"
 
       - name: Write crate index
         run: |
-          cat <<-HTML > target/doc/index.html
-          	<!DOCTYPE html>
-          	<html lang="en">
-          	<head>
-          	  <meta charset="utf-8">
-          	  <meta name="viewport" content="width=device-width, initial-scale=1">
-          	  <link rel="stylesheet" href="index.css">
-          	  <link rel="icon" type="image/svg+xml" href="assets/A4.svg">
-          	  <title>Mosaic API docs</title>
-          	</head>
-          	<body>
-          	  <h1>Mosaic API docs</h1>
-          	  <ul>
-          	$(cd target/doc && for d in */index.html; do c=${d%/index.html}; n=${c//_/-}; printf '    <li><a href="%s">%s</a></li>\n' "$d" "$n"; done)
-          	  </ul>
-          	</body>
-          	</html>
+          cat<<HTML>target/doc/index.html
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <link rel="stylesheet" href="index.css">
+              <link rel="icon" type="image/svg+xml" href="assets/A4.svg">
+              <title>Mosaic API docs</title>
+            </head>
+            <body>
+              <h1>Mosaic API docs</h1>
+              <ul>
+            $(cd target/doc && for d in */index.html; do c=${d%/index.html}; n=${c//_/-}; printf '    <li><a href="%s">%s</a></li>\n' "$d" "$n"; done)
+              </ul>
+            </body>
+          </html>
           HTML
 
-          cat <<-CSS > target/doc/index.css
-          	:root { color-scheme: light dark; }
-          	body { font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
-          	      max-width: 720px; margin: 3rem auto; padding: 0 1.25rem; }
-          	h1 { font-weight: 600; font-size: 1.6rem; margin: 0 0 1.5rem; }
-          	ul { list-style: none; padding: 0; }
-          	li { padding: .45rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
-          	li:last-child { border-bottom: none; }
-          	a { color: #2563eb; text-decoration: none; font-weight: 500; }
-          	a:hover { text-decoration: underline; }
-          	@media (prefers-color-scheme: dark) { a { color: #60a5fa; } }
+          cat<<CSS>target/doc/index.css
+          :root { color-scheme: light dark; }
+          body { font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+                 max-width: 720px; margin: 3rem auto; padding: 0 1.25rem; }
+          h1 { font-weight: 600; font-size: 1.6rem; margin: 0 0 1.5rem; }
+          ul { list-style: none; padding: 0; }
+          li { padding: .45rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+          li:last-child { border-bottom: none; }
+          a { color: #2563eb; text-decoration: none; font-weight: 500; }
+          a:hover { text-decoration: underline; }
+          @media (prefers-color-scheme: dark) { a { color: #60a5fa; } }
           CSS
 
       - uses: actions/configure-pages@v6

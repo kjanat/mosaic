@@ -13,7 +13,7 @@
 
 #![doc(
     html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.png"
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
 )]
 
 //!   CJK, emoji — silently substitute to `?` in both the width and
