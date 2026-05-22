@@ -48,6 +48,35 @@ fn check_clean_source_succeeds() {
 }
 
 #[test]
+fn check_directory_uses_manifest_entry() {
+    let dir = temp_dir("mos-check-dir-manifest");
+    std::fs::create_dir(dir.path().join("doc")).expect("create fixture dir");
+    write_file(
+        &dir.path().join("doc"),
+        "mosaic.toml",
+        "[project]\nname = \"demo\"\nversion = \"0.1.0\"\nentry = \"chapter.mos\"\n",
+    );
+    write_file(&dir.path().join("doc"), "chapter.mos", "= Title\n\nbody\n");
+
+    let (code, stdout, stderr) = run(&["check", "doc"], dir.path());
+
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.starts_with("ok:"), "stdout={stdout:?}");
+}
+
+#[test]
+fn check_directory_without_manifest_uses_main_mos() {
+    let dir = temp_dir("mos-check-dir-main");
+    std::fs::create_dir(dir.path().join("doc")).expect("create fixture dir");
+    write_file(&dir.path().join("doc"), "main.mos", "= Title\n\nbody\n");
+
+    let (code, stdout, stderr) = run(&["check", "doc"], dir.path());
+
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.starts_with("ok:"), "stdout={stdout:?}");
+}
+
+#[test]
 fn check_unterminated_set_fails() {
     let dir = temp_dir("mos-check-err");
     write_file(dir.path(), "main.mos", "#set page(\nunclosed\n");
@@ -317,6 +346,24 @@ fn build_creates_output_directory() {
     assert_eq!(code, 0);
     assert!(dir.path().join("build").is_dir(), "build/ not created");
     assert!(dir.path().join("build/main.pdf").exists());
+}
+
+#[test]
+fn build_directory_uses_manifest_entry() {
+    let dir = temp_dir("mos-build-dir-manifest");
+    std::fs::create_dir(dir.path().join("doc")).expect("create fixture dir");
+    write_file(
+        &dir.path().join("doc"),
+        "mosaic.toml",
+        "[project]\nname = \"demo\"\nversion = \"0.1.0\"\nentry = \"chapter.mos\"\n",
+    );
+    write_file(&dir.path().join("doc"), "chapter.mos", "= Title\n\nbody\n");
+
+    let (code, stdout, stderr) = run(&["build", "doc"], dir.path());
+
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.contains("build/chapter.pdf"), "stdout={stdout:?}");
+    assert!(dir.path().join("build/chapter.pdf").exists());
 }
 
 /// Build a 4×3 RGBA PNG by hand without depending on an `image` crate

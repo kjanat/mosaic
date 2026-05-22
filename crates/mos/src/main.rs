@@ -119,7 +119,11 @@ fn unimplemented_subcommand(name: &str) -> ExitCode {
 /// `mos check` — parse + lower the entry file and report diagnostics.
 /// Exits 0 if no errors (warnings still print); 1 otherwise.
 fn run_check(entry: &Path) -> ExitCode {
-    let src = match std::fs::read_to_string(entry) {
+    let entry = match resolve_entry_path("check", entry) {
+        Ok(entry) => entry,
+        Err(()) => return ExitCode::FAILURE,
+    };
+    let src = match std::fs::read_to_string(&entry) {
         Ok(s) => s,
         Err(err) => {
             eprintln!("mos check: cannot read `{}`: {err}", entry.display());
@@ -127,7 +131,7 @@ fn run_check(entry: &Path) -> ExitCode {
         }
     };
 
-    let result = mos_eval::lower(&src, entry);
+    let result = mos_eval::lower(&src, &entry);
     let errors = result
         .diagnostics
         .iter()
@@ -160,7 +164,11 @@ fn run_check(entry: &Path) -> ExitCode {
 /// using the standard PDF base fonts (no embedding). Layout warnings
 /// (e.g. non-ASCII substitutions) print but don't fail the build.
 fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
-    let src = match std::fs::read_to_string(entry) {
+    let entry = match resolve_entry_path("build", entry) {
+        Ok(entry) => entry,
+        Err(()) => return ExitCode::FAILURE,
+    };
+    let src = match std::fs::read_to_string(&entry) {
         Ok(s) => s,
         Err(err) => {
             eprintln!("mos build: cannot read `{}`: {err}", entry.display());
@@ -169,7 +177,7 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
     };
 
     let started = std::time::Instant::now();
-    let result = mos_eval::lower(&src, entry);
+    let result = mos_eval::lower(&src, &entry);
     for diag in &result.diagnostics {
         render_diagnostic(diag, &src);
     }
@@ -242,6 +250,26 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+fn resolve_entry_path(command: &str, entry: &Path) -> Result<PathBuf, ()> {
+    if !entry.is_dir() {
+        return Ok(entry.to_path_buf());
+    }
+
+    let manifest_path = entry.join("mosaic.toml");
+    if manifest_path.is_file() {
+        let manifest = match mos_packages::ProjectManifest::load(&manifest_path) {
+            Ok(manifest) => manifest,
+            Err(err) => {
+                eprintln!("mos {command}: {err}");
+                return Err(());
+            }
+        };
+        return Ok(entry.join(manifest.project.entry));
+    }
+
+    Ok(entry.join("main.mos"))
 }
 
 #[derive(Debug, Clone, Copy)]
