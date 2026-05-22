@@ -116,7 +116,7 @@ fn emit_embedded_glyph_run(
     for op in ops {
         match op {
             ContentOp::SetTextMatrix(matrix) => {
-                flush_positioned(content, &mut pending);
+                emit_text_items(content, &mut pending);
                 content.set_text_matrix(matrix);
             }
             ContentOp::ShowCids(cids) => {
@@ -127,7 +127,7 @@ fn emit_embedded_glyph_run(
             }
         }
     }
-    flush_positioned(content, &mut pending);
+    emit_text_items(content, &mut pending);
 }
 
 enum PositionedItem {
@@ -135,10 +135,22 @@ enum PositionedItem {
     Adjust(f32),
 }
 
-fn flush_positioned(content: &mut Content, pending: &mut Vec<PositionedItem>) {
+fn emit_text_items(content: &mut Content, pending: &mut Vec<PositionedItem>) {
     if pending.is_empty() {
         return;
     }
+
+    if pending
+        .iter()
+        .any(|item| matches!(item, PositionedItem::Adjust(_)))
+    {
+        emit_positioned_text(content, pending);
+    } else {
+        emit_simple_text(content, pending);
+    }
+}
+
+fn emit_positioned_text(content: &mut Content, pending: &mut Vec<PositionedItem>) {
     let mut show = content.show_positioned();
     let mut items = show.items();
     for item in pending.drain(..) {
@@ -150,6 +162,15 @@ fn flush_positioned(content: &mut Content, pending: &mut Vec<PositionedItem>) {
             PositionedItem::Adjust(amount) => {
                 items.adjust(amount);
             }
+        }
+    }
+}
+
+fn emit_simple_text(content: &mut Content, pending: &mut Vec<PositionedItem>) {
+    for item in pending.drain(..) {
+        if let PositionedItem::Cids(cids) = item {
+            let bytes = embedded::cids_to_bytes(&cids);
+            content.show(Str(&bytes));
         }
     }
 }

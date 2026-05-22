@@ -492,6 +492,30 @@ fn positioned_adjustments_for_font(
     Ok(adjustments)
 }
 
+fn text_show_operator_counts(
+    content: &[u8],
+    resource_name: &[u8],
+) -> Result<(usize, usize), Box<dyn Error>> {
+    let decoded = Content::decode(content)?;
+    let mut current_font: Option<Vec<u8>> = None;
+    let mut simple = 0;
+    let mut positioned = 0;
+    for operation in decoded.operations {
+        match operation.operator.as_str() {
+            "Tf" => {
+                let Some(Object::Name(name)) = operation.operands.first() else {
+                    return Err("Tf operator missing font-name operand".into());
+                };
+                current_font = Some(name.clone());
+            }
+            "Tj" if current_font.as_deref() == Some(resource_name) => simple += 1,
+            "TJ" if current_font.as_deref() == Some(resource_name) => positioned += 1,
+            _ => {}
+        }
+    }
+    Ok((simple, positioned))
+}
+
 fn text_matrices_for_font(
     content: &[u8],
     resource_name: &[u8],
@@ -592,6 +616,20 @@ fn kerning_pair_emits_tj_adjustment() -> TestResult {
     ensure!(
         adjustments.iter().any(|amount| amount.abs() > f32::EPSILON),
         "expected non-zero TJ adjustment for kerned AV pair, got {adjustments:?}",
+    );
+    Ok(())
+}
+
+#[test]
+fn simple_embedded_run_emits_tj_not_tj_array() -> TestResult {
+    let (doc, _) = render(EmbeddedFontId::Regular, "П")?;
+    let content = extract_content_stream(&doc)?;
+    let (simple, positioned) = text_show_operator_counts(&content, b"F15")?;
+
+    ensure!(simple > 0, "expected simple Tj operator, got none");
+    ensure!(
+        positioned == 0,
+        "expected no TJ operator for unpositioned run, got {positioned}",
     );
     Ok(())
 }
