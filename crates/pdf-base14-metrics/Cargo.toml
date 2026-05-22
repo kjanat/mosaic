@@ -4,7 +4,7 @@ version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
 description            = "Pre-parsed Adobe Core 14 PDF font metrics (Helvetica, Times, Courier, Symbol, ZapfDingbats) baked into `&'static FontMetrics` constants at compile time."
-readme.workspace       = true
+readme                 = "README.md"
 homepage.workspace     = true
 repository.workspace   = true
 # Both components are SPDX-registered identifiers (v3.6+):

@@ -1,21 +1,34 @@
 # zed-mosaic
 
-Zed editor extension for the [Mosaic] typesetting language (`.mos`).
+Zed editor extension for the [Mosaic] typesetting language (`.mos`). It is a language-support
+extension only: register Mosaic files, load the Tree-sitter grammar, and provide editor
+queries/tasks.
 
 ## What it provides
 
-- Language registration for `.mos` files (scope `source.mosaic`).
-- Tree-sitter highlighting via the `tree-sitter-mosaic` grammar (headings, emphasis, raw blocks,
-  labels, references, directives, escapes).
-- Injections: LaTeX into inline math `$…$`, and the language declared in `#code(lang: "...")[[…]]`
-  raw blocks.
-- Outline entries for headings and label targets.
-- Bracket matching, auto-closing/surround pairs, indentation, list continuation, and Vim
-  textobjects.
-- Runnables and default tasks for building the current document PDF and opening it.
-- Default semantic token rules for the future Mosaic language server.
+- `.mos` language registration as `Mosaic`, grammar `mosaic`, Tree-sitter scope `source.mosaic`.
+- Highlighting through the sibling [`tree-sitter-mosaic`] grammar.
+- Zed queries for highlights, injections, outline, brackets, indents, textobjects, overrides, and
+  runnables.
+- Editor config for two-space indentation, soft wrap, comments, bracket pairs, word characters,
+  auto-closing/surround pairs, and list continuation.
+- Runnables/tasks for `mos build` and `mos build --open` on the current file.
+- Reserved semantic token style rules for a future Mosaic language server.
 
-Not yet wired (follow-up): language server.
+The Rust/WASM entrypoint in [`src/lib.rs`] only calls `register_extension!`; no LSP, commands, or
+runtime hooks are currently implemented.
+
+## Grammar registration
+
+[`extension.toml`] declares extension id `mosaic`, language `Mosaic`, and grammar `mosaic`. The
+grammar is loaded from this repository at [`crates/tree-sitter-mosaic`] using:
+
+- `repository = "https://github.com/kjanat/mosaic"`
+- `rev = "5628fc2d2c2e556e4d9241b5af7c1853adcfef82"`
+- `path = "crates/tree-sitter-mosaic"`
+
+During local grammar development, the commented `file:///home/kjanat/projects/mosaic` stanza in
+[`extension.toml`] shows the intended shape for pointing Zed at a local checkout/branch.
 
 ## Install as a dev extension
 
@@ -24,13 +37,11 @@ Not yet wired (follow-up): language server.
 3. Select this directory ([`crates/zed-mosaic/`]).
 4. Open any `examples/*/main.mos` to confirm highlighting and the language picker shows "Mosaic".
 
-The grammar is loaded from [`crates/tree-sitter-mosaic`] (sibling crate in this repo) via
-`[grammars.mosaic] path = …` in [`extension.toml`].
+## Queries and config
 
-## Query files
-
-Zed query files in [`languages/mosaic/`] are copies of the canonical files at
-[`crates/tree-sitter-mosaic/queries/`]. Keep them in sync via:
+[`languages/mosaic/config.toml`] maps `.mos` files and `mos` code fences/modelines to Mosaic. Query
+files in [`languages/mosaic/`] are Zed-facing copies/configuration. The canonical Tree-sitter query
+sources live at [`crates/tree-sitter-mosaic/queries/`]. Keep shared query files in sync via:
 
 ```bash
 just sync-zed-queries
@@ -38,7 +49,18 @@ just sync-zed-queries
 
 Zed's extension query loader does not consume Tree-sitter `locals.scm` or `tags.scm` under those
 filenames. Navigation and editing features use Zed query files such as [`outline.scm`],
-[`brackets.scm`], [`indents.scm`], [`textobjects.scm`], and [`runnables.scm`].
+[`brackets.scm`], [`indents.scm`], [`textobjects.scm`], [`runnables.scm`], and [`overrides.scm`].
+
+## Development and regeneration
+
+- Build/check the extension crate with normal workspace Rust commands, for example
+  `cargo check -p zed-mosaic`.
+- Regenerate the Tree-sitter parser from [`crates/tree-sitter-mosaic`] with `npm run generate` when
+  `grammar.js` changes.
+- Run `just sync-zed-queries` after changing canonical query files in
+  [`crates/tree-sitter-mosaic/queries/`].
+- Reinstall/reload the dev extension in Zed after changing `extension.toml`, language config,
+  queries, or the WASM entrypoint.
 
 ## Tasks
 
@@ -58,6 +80,15 @@ Zed `tasks.json` files by binding their own task to the same runnable tags.
 future LSP and maps those semantic tokens to Zed theme styles. It is inactive until the extension
 registers `mos-lsp` and Zed has semantic tokens enabled (`combined` or `full`)[^semantic-tokens].
 
+## Known non-goals
+
+- No language server integration yet. The workspace has a `mos-lsp` binary, but this extension does
+  not spawn or configure it.
+- No formatter, code actions, completion, diagnostics, package resolution, preview pane, or watch
+  mode.
+- No compiler behavior lives here. `mos check`/`mos build` remain owned by the main Mosaic crates
+  and CLI.
+
 <!-- sorted case-sensitive -->
 
 [^semantic-tokens]: https://zed.dev/docs/extensions/languages#syntax-highlighting-with-semantic-tokens
@@ -69,9 +100,12 @@ registers `mos-lsp` and Zed has semantic tokens enabled (`combined` or `full`)[^
 [`crates/zed-mosaic/`]: ../zed-mosaic/
 [`extension.toml`]: extension.toml
 [`indents.scm`]: languages/mosaic/indents.scm
+[`languages/mosaic/config.toml`]: languages/mosaic/config.toml
 [`languages/mosaic/`]: languages/mosaic/
 [`languages/mosaic/semantic_token_rules.json`]: languages/mosaic/semantic_token_rules.json
 [`languages/mosaic/tasks.json`]: languages/mosaic/tasks.json
 [`outline.scm`]: languages/mosaic/outline.scm
+[`overrides.scm`]: languages/mosaic/overrides.scm
 [`runnables.scm`]: languages/mosaic/runnables.scm
+[`src/lib.rs`]: src/lib.rs
 [`textobjects.scm`]: languages/mosaic/textobjects.scm

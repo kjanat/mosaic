@@ -4,7 +4,7 @@ version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
 description            = "Font discovery, shaping, and metrics for Mosaic (manifest §22.1)."
-readme.workspace       = true
+readme                 = "README.md"
 homepage.workspace     = true
 repository.workspace   = true
 # Engine code is MIT (workspace default); the bundled Noto Sans data under
