@@ -324,6 +324,7 @@ impl LayoutState {
             let font = match child.kind {
                 NodeKind::Strong => self.text.family.bold,
                 NodeKind::Emphasis => self.text.family.italic,
+                NodeKind::BoldItalic => self.text.family.bold_italic,
                 NodeKind::Raw => self.text.family.monospace,
                 // Nested list blocks under a `ListItem` are laid out
                 // separately by `layout_list`; skip them here so they
@@ -717,6 +718,25 @@ mod tests {
         assert!(matches!(
             italic.font,
             Font::Base14(Base14Font::HelveticaOblique)
+        ));
+    }
+
+    #[test]
+    fn bold_italic_run_uses_bold_oblique() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_paragraph(&mut doc, "before");
+        alloc_inline(&mut doc, para, NodeKind::BoldItalic, "both");
+        alloc_inline(&mut doc, para, NodeKind::Text, "after");
+        let result = LayoutEngine::new().layout(&doc);
+        let runs = &result.graph.pages[0].runs;
+        let both = runs
+            .iter()
+            .find(|r| r.text == "both")
+            .expect("bold-italic run");
+        assert!(matches!(
+            both.font,
+            Font::Base14(Base14Font::HelveticaBoldOblique)
         ));
     }
 

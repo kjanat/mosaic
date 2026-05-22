@@ -204,6 +204,7 @@ pub enum InlineKind {
     Text,
     Emphasis,
     Strong,
+    BoldItalic,
     Code,
     /// `@label` — a cross-reference to a labelled block. The
     /// [`Inline::text`] payload is the bare label name (no leading

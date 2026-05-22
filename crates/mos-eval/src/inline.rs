@@ -11,6 +11,7 @@ pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inlin
             InlineKind::Text => NodeKind::Text,
             InlineKind::Emphasis => NodeKind::Emphasis,
             InlineKind::Strong => NodeKind::Strong,
+            InlineKind::BoldItalic => NodeKind::BoldItalic,
             InlineKind::Code => NodeKind::Raw,
             InlineKind::Reference => NodeKind::Reference,
         };
