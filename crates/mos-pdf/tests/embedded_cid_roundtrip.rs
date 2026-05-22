@@ -63,6 +63,10 @@ fn build_fallback_graph(
     assert_eq!(family.regular, Font::Embedded(primary));
     assert_eq!(family.fallbacks, fallbacks);
 
+    build_default_graph(text)
+}
+
+fn build_default_graph(text: &str) -> (PageGraph, Vec<f32>) {
     let mut doc = mos_core::Document::new(PathBuf::from("fallback-test.mos"));
     let paragraph = doc.alloc_child(
         doc.root,
@@ -216,6 +220,20 @@ fn cyrillic_emits_type0_cid_font_chain() -> TestResult {
     ensure!(
         cmap_text.contains("041F"),
         "ToUnicode CMap missing U+041F (П):\n{cmap_text}",
+    );
+    Ok(())
+}
+
+#[test]
+fn decomposed_romanian_matches_precomposed_after_layout() -> TestResult {
+    let (decomposed, _) = build_default_graph("S\u{0326}");
+    let (precomposed, _) = build_default_graph("\u{0218}");
+    let (_, decomposed_bytes) = emit_graph(&decomposed)?;
+    let (_, precomposed_bytes) = emit_graph(&precomposed)?;
+
+    ensure!(
+        decomposed_bytes == precomposed_bytes,
+        "NFC-equivalent documents should emit identical PDFs"
     );
     Ok(())
 }
