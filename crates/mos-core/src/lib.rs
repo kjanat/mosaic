@@ -80,6 +80,7 @@ pub enum NodeKind {
     Text,
     Emphasis,
     Strong,
+    BoldItalic,
     Math,
     Equation,
     /// A captioned container — an image plus a caption paragraph, laid

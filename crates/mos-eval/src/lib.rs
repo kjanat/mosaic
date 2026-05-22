@@ -372,6 +372,17 @@ mod tests {
     }
 
     #[test]
+    fn lowers_nested_bold_italic_inline() {
+        let r = lower("***both***\n", &PathBuf::from("test.mos"));
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert!(
+            r.document.nodes().any(|n| n.kind == NodeKind::BoldItalic),
+            "expected bold-italic node in {:?}",
+            r.document.nodes().map(|n| n.kind).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn root_owns_top_level_items() {
         let r = lower("= A\n\n= B\n\npara\n", &PathBuf::from("test.mos"));
         let root = r.document.get(r.document.root).unwrap();

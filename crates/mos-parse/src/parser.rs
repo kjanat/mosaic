@@ -224,6 +224,74 @@ mod tests {
     }
 
     #[test]
+    fn nested_bold_italic_triple_delimiter() {
+        let r = parse_str("***x***\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].kind, InlineKind::BoldItalic);
+        assert_eq!(inlines[0].text, "x");
+    }
+
+    #[test]
+    fn nested_emphasis_inside_strong() {
+        let r = parse_str("**a *b* c**\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let kinds: Vec<InlineKind> = inlines.iter().map(|i| i.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                InlineKind::Strong,
+                InlineKind::BoldItalic,
+                InlineKind::Strong,
+            ],
+            "got {inlines:?}",
+        );
+        let texts: Vec<&str> = inlines.iter().map(|i| i.text.as_str()).collect();
+        assert_eq!(texts, vec!["a ", "b", " c"]);
+    }
+
+    #[test]
+    fn nested_strong_inside_emphasis() {
+        let r = parse_str("*a **b** c*\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let kinds: Vec<InlineKind> = inlines.iter().map(|i| i.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                InlineKind::Emphasis,
+                InlineKind::BoldItalic,
+                InlineKind::Emphasis,
+            ],
+            "got {inlines:?}",
+        );
+        let texts: Vec<&str> = inlines.iter().map(|i| i.text.as_str()).collect();
+        assert_eq!(texts, vec!["a ", "b", " c"]);
+    }
+
+    #[test]
+    fn ambiguous_inner_star_stays_strong_text() {
+        let r = parse_str("**a*b**\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].kind, InlineKind::Strong);
+        assert_eq!(inlines[0].text, "a*b");
+    }
+
+    #[test]
+    fn code_spans_do_not_parse_nested_emphasis() {
+        let r = parse_str("`***x***`\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].kind, InlineKind::Code);
+        assert_eq!(inlines[0].text, "***x***");
+    }
+
+    #[test]
     fn unterminated_emphasis_warns() {
         let r = parse_str("hi *there\n");
         assert!(!r.has_errors());
@@ -231,6 +299,17 @@ mod tests {
             r.diagnostics
                 .iter()
                 .any(|d| d.code.0 == "W021" && d.severity == Severity::Warning)
+        );
+    }
+
+    #[test]
+    fn unterminated_strong_warns() {
+        let r = parse_str("hi **there\n");
+        assert!(!r.has_errors());
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.code.0 == "W020" && d.severity == Severity::Warning)
         );
     }
 

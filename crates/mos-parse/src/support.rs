@@ -104,20 +104,6 @@ pub(super) fn next_char_boundary(src: &str, from: usize) -> usize {
     i
 }
 
-pub(super) fn find_subslice(haystack: &[u8], needle: &[u8], from: usize) -> Option<usize> {
-    if needle.is_empty() || from > haystack.len() {
-        return None;
-    }
-    let mut i = from;
-    while i + needle.len() <= haystack.len() {
-        if &haystack[i..i + needle.len()] == needle {
-            return Some(i);
-        }
-        i += 1;
-    }
-    None
-}
-
 pub(super) fn find_byte(haystack: &[u8], needle: u8, from: usize) -> Option<usize> {
     haystack[from..]
         .iter()
@@ -214,22 +200,4 @@ pub(super) fn strip_trailing_label(src: &str, start: usize, end: usize) -> (usiz
         text_end -= 1;
     }
     (text_end, Some(label))
-}
-
-/// Locate the closing `*` of an emphasis run starting at `from`. The
-/// match must be a *single* `*` -- neither preceded nor followed by
-/// another `*` -- to avoid swallowing a `**strong**` delimiter.
-pub(super) fn find_emphasis_close(haystack: &[u8], from: usize) -> Option<usize> {
-    let mut i = from;
-    while i < haystack.len() {
-        if haystack[i] == b'*' {
-            let prev_is_star = i > 0 && haystack[i - 1] == b'*';
-            let next_is_star = haystack.get(i + 1) == Some(&b'*');
-            if !prev_is_star && !next_is_star {
-                return Some(i);
-            }
-        }
-        i += 1;
-    }
-    None
 }
