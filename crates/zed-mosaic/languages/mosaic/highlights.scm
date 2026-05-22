@@ -47,6 +47,11 @@
 (heading
   content: (inline_sequence) @title)
 
+; --- Lists ------------------------------------------------------------------
+
+(unordered_list_marker) @punctuation.list_marker
+(ordered_list_marker) @punctuation.list_marker
+
 ; --- Inline emphasis --------------------------------------------------------
 
 (emphasis

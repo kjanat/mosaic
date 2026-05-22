@@ -10,7 +10,8 @@ Zed editor extension for the [Mosaic] typesetting language (`.mos`).
 - Injections: LaTeX into inline math `$…$`, and the language declared in `#code(lang: "...")[[…]]`
   raw blocks.
 - Outline entries for headings and label targets.
-- Bracket matching, indentation, and Vim textobjects from Tree-sitter queries.
+- Bracket matching, auto-closing/surround pairs, indentation, list continuation, and Vim
+  textobjects.
 - Runnables and default tasks for building the current document PDF and opening it.
 - Default semantic token rules for the future Mosaic language server.
 

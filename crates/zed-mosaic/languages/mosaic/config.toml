@@ -1,11 +1,51 @@
 #:schema https://raw.githubusercontent.com/kjanat/zed-editor/refs/heads/feature/extension-toml-schema/crates/extension_api/schemas/language-config.schema.json
+#:tombi schema.strict = false
 
 name                  = "Mosaic"
 grammar               = "mosaic"
-code_fence_block_name = "mos"
 path_suffixes         = ["mos"]
-line_comments         = ["// "]
-block_comment         = { start = "/*", end = "*/", prefix = " * ", tab_size = 1 }
+code_fence_block_name = "mos"
+modeline_aliases      = ["mos"]
 tab_size              = 2
 hard_tabs             = false
 soft_wrap             = "editor_width"
+word_characters       = ["-", ":"]
+
+autoclose_before = ";:.,=}])>"
+brackets         = [
+  { start = "{", end = "}", close = true, newline = true, not_in = ["comment", "string", "raw"] },
+  { start = "[", end = "]", close = true, newline = true, not_in = ["comment", "string", "raw"] },
+  { start = "(", end = ")", close = true, newline = true, not_in = ["comment", "string", "raw"] },
+  { start = "<", end = ">", close = true, newline = false, not_in = ["comment", "string", "raw"] },
+  { start = "\"", end = "\"", close = true, newline = false, not_in = ["comment", "string", "raw"] },
+  { start = "'", end = "'", close = true, newline = false, not_in = ["comment", "string", "raw"] },
+  { start = "`", end = "`", close = true, newline = false, not_in = ["comment", "string", "raw"] },
+  { start = "$", end = "$", close = true, newline = false, not_in = ["comment", "string", "raw"] },
+  { start = "*", end = "*", close = false, newline = false, surround = true, not_in = ["comment", "string", "raw"] },
+  { start = "**", end = "**", close = false, newline = false, surround = true, not_in = ["comment", "string", "raw"] },
+  { start = "***", end = "***", close = false, newline = false, surround = true, not_in = ["comment", "string", "raw"] },
+  { start = "/*", end = " */", close = true, newline = false, not_in = ["comment", "string", "raw"] },
+]
+
+unordered_list  = ["- "]
+ordered_list    = [{ pattern = "(\\d+)\\. ", format = "{1}. " }]
+rewrap_prefixes = ["-\\s+", "\\d+\\.\\s+"]
+
+decrease_indent_patterns = [
+  { pattern = "^\\s*-", valid_after = ["list_item"] },
+  { pattern = "^\\s*\\d", valid_after = ["list_item"] },
+]
+
+line_comments = ["// "]
+
+[documentation_comment]
+start    = "/**"
+end      = "*/"
+prefix   = " * "
+tab_size = 1
+
+[block_comment]
+start    = "/*"
+end      = "*/"
+prefix   = " * "
+tab_size = 1

@@ -22,6 +22,7 @@ const PREC = {
 	hash_call: 1,
 	attribute: 1,
 	heading_marker: 1,
+	list_marker: 1,
 };
 
 export default grammar({
@@ -71,6 +72,7 @@ export default grammar({
 				$.import_directive,
 				$.include_directive,
 				$.heading,
+				$.list,
 				$.verse_block,
 				$.pre_block,
 				$.code_block,
@@ -140,6 +142,22 @@ export default grammar({
 		// EBNF semantic restriction is 1..6 `=`; folded the required hspace1
 		// into the token so a bare run of `=` cannot start a heading.
 		heading_marker: _ => token(prec(PREC.heading_marker, /={1,6}[ \t]+/)),
+
+		// -------------------------------------------------------------------
+		// Lists
+		// -------------------------------------------------------------------
+
+		list: $ => prec.right(seq($.list_item, repeat(seq($._line_end, $.list_item)))),
+
+		list_item: $ =>
+			seq(
+				field('marker', choice($.unordered_list_marker, $.ordered_list_marker)),
+				field('content', alias($._inline_sequence, $.inline_sequence)),
+			),
+
+		unordered_list_marker: _ => token(prec(PREC.list_marker, /-[ \t]+/)),
+
+		ordered_list_marker: _ => token(prec(PREC.list_marker, /[0-9]+\.[ \t]+/)),
 
 		// -------------------------------------------------------------------
 		// Verse / Pre / Code blocks

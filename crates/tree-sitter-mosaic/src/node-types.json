@@ -28,6 +28,10 @@
         "named": true
       },
       {
+        "type": "list",
+        "named": true
+      },
+      {
         "type": "paragraph",
         "named": true
       },
@@ -608,6 +612,51 @@
         "types": [
           {
             "type": "argument_list",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "list",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "list_item",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "list_item",
+    "named": true,
+    "fields": {
+      "content": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "inline_sequence",
+            "named": true
+          }
+        ]
+      },
+      "marker": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ordered_list_marker",
+            "named": true
+          },
+          {
+            "type": "unordered_list_marker",
             "named": true
           }
         ]
@@ -1270,6 +1319,10 @@
     "named": true
   },
   {
+    "type": "ordered_list_marker",
+    "named": true
+  },
+  {
     "type": "raw_body_close",
     "named": true
   },
@@ -1296,6 +1349,10 @@
   {
     "type": "true",
     "named": false
+  },
+  {
+    "type": "unordered_list_marker",
+    "named": true
   },
   {
     "type": "verse_text",

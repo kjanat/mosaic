@@ -1,0 +1,68 @@
+==================
+list: unordered simple
+==================
+- one
+- two
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text)))
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text)))))
+
+==================
+list: ordered simple
+==================
+5. one
+9. two
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (ordered_list_marker)
+      content: (inline_sequence
+        (text)))
+    (list_item
+      marker: (ordered_list_marker)
+      content: (inline_sequence
+        (text)))))
+
+==================
+list: items carry inline markup
+==================
+- one *emph* and **strong**
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text)
+        (emphasis
+          (emph_text))
+        (text)
+        (strong
+          (emph_text))))))
+
+==================
+list: marker requires trailing whitespace
+==================
+-not a list
+1.not a list
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))
+    (soft_break)
+    (paragraph_segment
+      (text))))

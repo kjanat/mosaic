@@ -35,6 +35,9 @@ Use `mos check` to run.
 Escape \[ works fine.
 //     ^ string.escape
 
+- One list item.
+// <- punctuation.list_marker
+
 #pre[[raw text body]]
 // <- keyword
 //     ^ text.literal
