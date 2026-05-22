@@ -10,6 +10,8 @@ is not a general scripting engine yet.
 Implemented:
 
 - Headings, paragraphs, inline text/emphasis/strong/code/reference nodes.
+- `InlineKind::HardBreak` lowered to `NodeKind::HardBreak` with empty attributes
+  (no `text` payload; structural marker only).
 - Lists lowered to `List`/`ListItem` nodes.
 - `#set` nodes for document/page/text/image settings.
 - Document metadata: title, author, language.

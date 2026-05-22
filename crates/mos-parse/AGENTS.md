@@ -12,6 +12,9 @@ Implemented:
 - Headings: `=`, `==`, `===`.
 - Paragraphs.
 - Inline: `*emphasis*`, `**strong**`, backtick code, `@label` references.
+- Inline line-break controls: `\\` hard break (emits `InlineKind::HardBreak`),
+  `\-` soft-hyphen shorthand (expands to literal U+00AD in the text payload),
+  literal U+00A0 NBSP (preserved verbatim through to layout).
 - Labels on headings and paragraph starts.
 - Lists: `-` and `N.`, nesting by spaces.
 - Directives: `#set name(...)`, `#image(...)`, `#figure(...)`.
@@ -43,6 +46,9 @@ Not implemented despite manifest examples:
 - CRLF input spans index raw source; text payload may normalize line endings.
 - Spaces count for list indentation; tabs only tolerated after marker where existing code allows.
 - Parser should not load files, decode images, resolve refs, or assign document semantics.
+- Inline escape expansion (`\-` → U+00AD) buffers into a `pending` string and is flushed at
+  structural boundaries (delimiter close, code span, label reference, EOI). Adding new escapes
+  must route through the same buffer so spans and styling stay consistent.
 
 ## ANTI-PATTERNS
 
