@@ -18,7 +18,7 @@
 
 = Dear LaTeX,
 
-It has been **eleven years**. Eleven years of `\begin{document}`,
+It has been ***eleven years***. Eleven years of `\begin{document}`,
 of mysterious vertical-mode errors, of citations rendered as
 `[?]` because BibTeX had Opinions about the .bib file I had not
 yet finished saving. Eleven years of you greeting every PDF I
