@@ -69,6 +69,15 @@ include!(concat!(env!("OUT_DIR"), "/baked.rs"));
 /// Helvetica weights, four Times weights, four Courier weights,
 /// then Symbol and `ZapfDingbats`. [`Self::ALL`] iterates them in
 /// this order.
+///
+/// # Examples
+///
+/// ```
+/// use pdf_base14_metrics::Base14Font;
+///
+/// assert_eq!(Base14Font::ALL.len(), 14);
+/// assert_eq!(Base14Font::Helvetica.pdf_base_name(), "Helvetica");
+/// ```
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub enum Base14Font {
     /// Helvetica (regular).
@@ -121,6 +130,16 @@ impl Base14Font {
     ];
 
     /// Borrows the pre-parsed Adobe AFM metrics for this face.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pdf_base14_metrics::Base14Font;
+    ///
+    /// let metrics = Base14Font::Helvetica.metrics();
+    ///
+    /// assert_eq!(metrics.font_name, "Helvetica");
+    /// ```
     #[must_use]
     pub fn metrics(self) -> &'static FontMetrics<'static> {
         match self {
@@ -144,6 +163,14 @@ impl Base14Font {
     /// PDF `/BaseFont` name per PDF 1.7 §9.6.2.2. These are the
     /// exact bytes a conformant PDF writer puts after `/BaseFont`
     /// in a font resource dictionary.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pdf_base14_metrics::Base14Font;
+    ///
+    /// assert_eq!(Base14Font::TimesBoldItalic.pdf_base_name(), "Times-BoldItalic");
+    /// ```
     #[must_use]
     pub fn pdf_base_name(self) -> &'static str {
         match self {
@@ -173,6 +200,14 @@ impl Base14Font {
     /// goes through a pre-baked O(1) table. For the Latin Core 12
     /// faces, [`Self::glyph_width_by_name`] goes through a baked
     /// sorted index instead and is O(log n).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pdf_base14_metrics::Base14Font;
+    ///
+    /// assert_eq!(Base14Font::Helvetica.glyph_width("A"), Some(667.0));
+    /// ```
     #[must_use]
     pub fn glyph_width(self, name: &str) -> Option<f32> {
         self.metrics()
@@ -190,6 +225,15 @@ impl Base14Font {
     /// — their AFMs are intentionally unindexed because those faces
     /// don't participate in `/Differences`-style remapping. Callers
     /// that need Symbol/Dingbat widths must use [`Self::glyph_width`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pdf_base14_metrics::Base14Font;
+    ///
+    /// assert_eq!(Base14Font::Helvetica.glyph_width_by_name("A"), Some(667.0));
+    /// assert_eq!(Base14Font::Symbol.glyph_width_by_name("Alpha"), None);
+    /// ```
     #[must_use]
     pub fn glyph_width_by_name(self, name: &str) -> Option<f32> {
         let table = self.name_width_table()?;
@@ -232,6 +276,15 @@ impl Base14Font {
     /// per call: the table is baked at build time alongside the
     /// font metrics. Hot enough for `mos-fonts::text_width` to
     /// call once per character per typeset paragraph.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pdf_base14_metrics::Base14Font;
+    ///
+    /// assert_eq!(Base14Font::Helvetica.winansi_width(b'A'), Some(667.0));
+    /// assert_eq!(Base14Font::Symbol.winansi_width(b'A'), None);
+    /// ```
     #[must_use]
     pub fn winansi_width(self, code: u8) -> Option<f32> {
         self.winansi_table().and_then(|t| t[code as usize])
@@ -269,6 +322,15 @@ impl Base14Font {
 /// This is exposed primarily so downstream crates (e.g.
 /// `mos-fonts`) can delegate to the canonical table rather than
 /// maintain their own copy.
+///
+/// # Examples
+///
+/// ```
+/// use pdf_base14_metrics::winansi_glyph_name;
+///
+/// assert_eq!(winansi_glyph_name(b'A'), Some("A"));
+/// assert_eq!(winansi_glyph_name(0x7F), None);
+/// ```
 #[must_use]
 pub fn winansi_glyph_name(code: u8) -> Option<&'static str> {
     winansi_table::WINANSI_TABLE[code as usize]
@@ -288,6 +350,15 @@ pub fn winansi_glyph_name(code: u8) -> Option<&'static str> {
 ///
 /// O(n) scan over 256 slots — fine for callers that touch it once
 /// per text run, sensible to memoize for hotter paths.
+///
+/// # Examples
+///
+/// ```
+/// use pdf_base14_metrics::winansi_byte;
+///
+/// assert_eq!(winansi_byte('A'), Some(b'A'));
+/// assert_eq!(winansi_byte('Ж'), None);
+/// ```
 #[must_use]
 pub fn winansi_byte(ch: char) -> Option<u8> {
     winansi_char_map::WINANSI_CHAR_MAP
@@ -343,6 +414,15 @@ pub const __WINANSI_CHAR_MAP: [Option<char>; 256] = winansi_char_map::WINANSI_CH
 ///
 /// Used by the PDF backend's `/Differences`-based encoding planner
 /// to allocate slots for the extended tier.
+///
+/// # Examples
+///
+/// ```
+/// use pdf_base14_metrics::extended_glyph_name;
+///
+/// assert_eq!(extended_glyph_name('Ł'), Some("Lslash"));
+/// assert_eq!(extended_glyph_name('A'), None);
+/// ```
 #[must_use]
 pub fn extended_glyph_name(ch: char) -> Option<&'static str> {
     agl_subset::agl_glyph_name(ch)

@@ -14,6 +14,19 @@ use mos_core::{CoreError, Result};
 use mos_layout::PageGraph;
 
 /// Emit a `PageGraph` as an HTML file. Stub.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+///
+/// use mos_layout::PageGraph;
+///
+/// let graph = PageGraph::default();
+/// let result = mos_html::emit(&graph, Path::new("build/main.html"));
+///
+/// assert!(result.is_err());
+/// ```
 pub fn emit(_graph: &PageGraph, _out: &Path) -> Result<()> {
     Err(CoreError::Unimplemented("mos-html::emit"))
 }

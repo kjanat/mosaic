@@ -43,6 +43,20 @@ use crate::encoding::{DocEncoding, EncodingPlanner};
 /// dictionary. Populated by the lowerer from `#set document(...)`.
 /// The `language` field is captured but not yet emitted (it belongs in
 /// the catalog `/Lang` entry, which is the next slice).
+///
+/// # Examples
+///
+/// ```
+/// use mos_pdf::PdfMetadata;
+///
+/// let metadata = PdfMetadata {
+///     title: Some("Demo".to_owned()),
+///     author: Some("Mosaic".to_owned()),
+///     language: Some("en".to_owned()),
+/// };
+///
+/// assert_eq!(metadata.title.as_deref(), Some("Demo"));
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct PdfMetadata {
     pub title: Option<String>,
@@ -62,6 +76,22 @@ pub struct PdfMetadata {
 ///
 /// Returns a wrapped [`Diagnostic`] if writing the file (or creating
 /// its parent directory) fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+///
+/// use mos_layout::PageGraph;
+/// use mos_pdf::PdfMetadata;
+///
+/// let graph = PageGraph::default();
+/// let metadata = PdfMetadata::default();
+/// let diagnostics = mos_pdf::emit(&graph, &metadata, Path::new("build/main.pdf"))?;
+///
+/// assert!(diagnostics.is_empty());
+/// # Ok::<(), mos_core::CoreError>(())
+/// ```
 pub fn emit(graph: &PageGraph, metadata: &PdfMetadata, out: &Path) -> Result<Vec<Diagnostic>> {
     let (bytes, diagnostics) = build_pdf(graph, metadata)?;
     if let Some(parent) = out.parent()

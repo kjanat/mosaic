@@ -13,6 +13,25 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+/// Parsed `mosaic.toml` project manifest.
+///
+/// # Examples
+///
+/// ```
+/// use mos_packages::ProjectManifest;
+///
+/// let manifest: ProjectManifest = toml::from_str(
+///     r#"
+///     [project]
+///     name = "demo"
+///     version = "0.1.0"
+///     entry = "main.mos"
+///     "#,
+/// )?;
+///
+/// assert_eq!(manifest.project.name, "demo");
+/// # Ok::<(), toml::de::Error>(())
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectManifest {
@@ -25,6 +44,21 @@ pub struct ProjectManifest {
     pub dependencies: BTreeMap<String, String>,
 }
 
+/// Required `[project]` section of `mosaic.toml`.
+///
+/// # Examples
+///
+/// ```
+/// use mos_packages::ProjectSection;
+///
+/// let project = ProjectSection {
+///     name: "demo".to_owned(),
+///     version: "0.1.0".to_owned(),
+///     entry: "main.mos".to_owned(),
+/// };
+///
+/// assert_eq!(project.entry, "main.mos");
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectSection {
@@ -33,6 +67,17 @@ pub struct ProjectSection {
     pub entry: String,
 }
 
+/// Optional `[document]` defaults from `mosaic.toml`.
+///
+/// # Examples
+///
+/// ```
+/// use mos_packages::DocumentSection;
+///
+/// let section = DocumentSection::default();
+///
+/// assert!(section.output.is_empty());
+/// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentSection {
@@ -43,6 +88,19 @@ pub struct DocumentSection {
     pub output: Vec<String>,
 }
 
+/// Error returned when loading a manifest from disk.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// use mos_packages::{ManifestError, ProjectManifest};
+///
+/// let err = ProjectManifest::load(Path::new("definitely-missing-mosaic.toml")).err();
+///
+/// assert!(matches!(err, Some(ManifestError::Io { .. })));
+/// ```
 #[derive(thiserror::Error, Debug)]
 pub enum ManifestError {
     #[error("could not read manifest `{path}`: {source}")]
@@ -62,6 +120,19 @@ pub enum ManifestError {
 
 impl ProjectManifest {
     /// Load and parse a `mosaic.toml` from disk.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::path::Path;
+    ///
+    /// use mos_packages::ProjectManifest;
+    ///
+    /// let manifest = ProjectManifest::load(Path::new("mosaic.toml"))?;
+    ///
+    /// assert!(!manifest.project.entry.is_empty());
+    /// # Ok::<(), mos_packages::ManifestError>(())
+    /// ```
     pub fn load(path: &Path) -> Result<Self, ManifestError> {
         let text = std::fs::read_to_string(path).map_err(|source| ManifestError::Io {
             path: path.to_path_buf(),

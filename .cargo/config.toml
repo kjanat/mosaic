@@ -4,21 +4,19 @@
 # See: https://doc.rust-lang.org/cargo/reference/config.html
 
 [alias]
+# Release flavours.
+br   = "build --release"
 # Workspace shortcuts (built-in single-letter aliases b/c/d/t/r/rm
 # can't be redefined per the alias schema, so the workspace flavours
 # get short two-letter names).
-bw  = "build --workspace"
-bwa = "build --workspace --all-targets"
-cw  = "check --workspace --all-targets"
-dw  = "doc --workspace --no-deps"
-tw  = "test --workspace"
-
-# Release flavours.
-br = "build --release"
-rr = "run --release"
-
+bw   = "build --workspace"
+bwa  = "build --workspace --all-targets"
+cw   = "check --workspace --all-targets"
+dw   = "doc --workspace --no-deps"
+dwn  = ["--config", ".cargo/nightly.toml", "doc"]
 # Lints. Not aliased as `clippy` because that's an existing subcommand.
 lint = "clippy --workspace --all-targets --all-features -- -D warnings -D clippy::all"
-
 # Run the `mos` CLI from the workspace.
-mos = "run --release -q -p mos --"
+mos  = "run --release -q -p mos --"
+rr   = "run --release"
+tw   = "test --workspace"

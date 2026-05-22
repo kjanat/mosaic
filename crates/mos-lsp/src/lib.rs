@@ -11,6 +11,14 @@
 use mos_core::{CoreError, Result};
 
 /// Run the language server on stdio. Stub.
+///
+/// # Examples
+///
+/// ```
+/// let err = mos_lsp::run().err();
+///
+/// assert!(err.is_some());
+/// ```
 pub fn run() -> Result<()> {
     Err(CoreError::Unimplemented("mos-lsp::run"))
 }

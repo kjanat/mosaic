@@ -16,4 +16,8 @@ impl zed::Extension for MosaicExtension {
     }
 }
 
-zed::register_extension!(MosaicExtension);
+mod registration {
+    use super::MosaicExtension;
+
+    zed_extension_api::register_extension!(MosaicExtension);
+}

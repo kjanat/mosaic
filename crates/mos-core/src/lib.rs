@@ -20,18 +20,58 @@ use std::sync::Arc;
 /// rather than parse order. The MVP 0 lowerer (`mos-eval`) hands out
 /// monotonic IDs through `Document::alloc`; the hash-based derivation is
 /// deferred to MVP 5 when stable IDs become observable through the cache.
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::NodeId;
+///
+/// let root = NodeId(0);
+///
+/// assert_eq!(root.0, 0);
+/// ```
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
 pub struct NodeId(pub u64);
 
 /// Opaque content / dependency hash.
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::ContentHash;
+///
+/// let hash = ContentHash::default();
+///
+/// assert_eq!(hash.0, 0);
+/// ```
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
 pub struct ContentHash(pub u128);
 
 /// Identifier for a resolved style bundle.
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::StyleId;
+///
+/// let style = StyleId::default();
+///
+/// assert_eq!(style.0, 0);
+/// ```
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
 pub struct StyleId(pub u32);
 
 /// The kinds of nodes Mosaic recognises (manifest §5.1).
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::NodeKind;
+///
+/// let kind = NodeKind::Paragraph;
+///
+/// assert_eq!(kind, NodeKind::Paragraph);
+/// ```
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum NodeKind {
     Document,
@@ -67,6 +107,27 @@ pub enum NodeKind {
 }
 
 /// A semantic document node (manifest §5.1).
+///
+/// # Examples
+///
+/// ```
+/// use std::path::PathBuf;
+///
+/// use mos_core::{AttrMap, ContentHash, Node, NodeId, NodeKind, SourceSpan, StyleId};
+///
+/// let file = PathBuf::from("main.mos");
+/// let node = Node {
+///     id: NodeId(1),
+///     kind: NodeKind::Paragraph,
+///     span: SourceSpan::placeholder(file),
+///     content_hash: ContentHash::default(),
+///     style_id: StyleId::default(),
+///     children: Vec::new(),
+///     attributes: AttrMap::new(),
+/// };
+///
+/// assert_eq!(node.kind, NodeKind::Paragraph);
+/// ```
 #[derive(Clone, Debug)]
 pub struct Node {
     pub id: NodeId,
@@ -82,6 +143,17 @@ pub struct Node {
 /// later iteration; for now plain `String` keys are fine for the stub.
 pub type AttrMap = BTreeMap<String, AttrValue>;
 
+/// Attribute value carried on a semantic [`Node`].
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::AttrValue;
+///
+/// let value = AttrValue::Str("intro".to_owned());
+///
+/// assert_eq!(value, AttrValue::Str("intro".to_owned()));
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum AttrValue {
     Bool(bool),
@@ -109,6 +181,18 @@ pub enum AttrValue {
 }
 
 /// A byte-range location in a source file (manifest §6 stage 1).
+///
+/// # Examples
+///
+/// ```
+/// use std::path::PathBuf;
+///
+/// use mos_core::SourceSpan;
+///
+/// let span = SourceSpan::new(PathBuf::from("main.mos"), 2, 8);
+///
+/// assert_eq!(span.start, 2);
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceSpan {
     pub file: PathBuf,
@@ -118,12 +202,36 @@ pub struct SourceSpan {
 
 impl SourceSpan {
     /// Construct a span covering `start..end` in `file`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::SourceSpan;
+    ///
+    /// let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 9);
+    ///
+    /// assert_eq!(span.end, 9);
+    /// ```
     #[must_use]
     pub fn new(file: PathBuf, start: usize, end: usize) -> Self {
         Self { file, start, end }
     }
 
     /// A zero-length placeholder span anchored at the start of `file`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::SourceSpan;
+    ///
+    /// let span = SourceSpan::placeholder(PathBuf::from("main.mos"));
+    ///
+    /// assert_eq!((span.start, span.end), (0, 0));
+    /// ```
     #[must_use]
     pub fn placeholder(file: PathBuf) -> Self {
         Self {
@@ -135,6 +243,16 @@ impl SourceSpan {
 }
 
 /// Diagnostic severity (manifest §31).
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::Severity;
+///
+/// let severity = Severity::Error;
+///
+/// assert_eq!(severity, Severity::Error);
+/// ```
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Severity {
     Error,
@@ -144,15 +262,54 @@ pub enum Severity {
 }
 
 /// Stable diagnostic code (e.g. `E041`, `W203`, manifest §16).
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::DiagnosticCode;
+///
+/// let code = DiagnosticCode("E001");
+///
+/// assert_eq!(code.0, "E001");
+/// ```
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct DiagnosticCode(pub &'static str);
 
+/// Extra diagnostic context.
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::DiagnosticNote;
+///
+/// let note = DiagnosticNote {
+///     message: "while parsing heading".to_owned(),
+///     span: None,
+/// };
+///
+/// assert!(note.span.is_none());
+/// ```
 #[derive(Clone, Debug)]
 pub struct DiagnosticNote {
     pub message: String,
     pub span: Option<SourceSpan>,
 }
 
+/// Suggested source edit for a diagnostic.
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::Suggestion;
+///
+/// let suggestion = Suggestion {
+///     message: "insert closing marker".to_owned(),
+///     replacement: Some("]".to_owned()),
+///     span: None,
+/// };
+///
+/// assert_eq!(suggestion.replacement.as_deref(), Some("]"));
+/// ```
 #[derive(Clone, Debug)]
 pub struct Suggestion {
     pub message: String,
@@ -161,6 +318,16 @@ pub struct Suggestion {
 }
 
 /// A user-facing diagnostic (manifest §16, §31).
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::{Diagnostic, DiagnosticCode, Severity};
+///
+/// let diagnostic = Diagnostic::error(DiagnosticCode("E001"), "boom");
+///
+/// assert_eq!(diagnostic.severity, Severity::Error);
+/// ```
 #[derive(Clone, Debug)]
 pub struct Diagnostic {
     pub severity: Severity,
@@ -172,6 +339,17 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+    /// Construct an error diagnostic without a span.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::{Diagnostic, DiagnosticCode, Severity};
+    ///
+    /// let diagnostic = Diagnostic::error(DiagnosticCode("E001"), "boom");
+    ///
+    /// assert_eq!(diagnostic.severity, Severity::Error);
+    /// ```
     pub fn error(code: DiagnosticCode, message: impl Into<String>) -> Self {
         Self {
             severity: Severity::Error,
@@ -183,6 +361,20 @@ impl Diagnostic {
         }
     }
 
+    /// Attach a span to a diagnostic.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::{Diagnostic, DiagnosticCode, SourceSpan};
+    ///
+    /// let diagnostic = Diagnostic::error(DiagnosticCode("E001"), "boom")
+    ///     .with_span(SourceSpan::placeholder(PathBuf::from("main.mos")));
+    ///
+    /// assert!(diagnostic.span.is_some());
+    /// ```
     #[must_use]
     pub fn with_span(mut self, span: SourceSpan) -> Self {
         self.span = Some(span);
@@ -204,6 +396,14 @@ impl std::fmt::Display for Diagnostic {
 /// and column are at least 1, and offsets past the end of `src` are
 /// clamped to the end. Offsets that fall in the middle of a UTF-8
 /// code-point round down to the start of that code-point.
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::linecol;
+///
+/// assert_eq!(linecol("a\nb", 2), (2, 1));
+/// ```
 #[must_use]
 pub fn linecol(src: &str, byte_offset: usize) -> (usize, usize) {
     let mut clamped = byte_offset.min(src.len());
@@ -226,6 +426,16 @@ impl std::error::Error for Diagnostic {}
 
 /// Convenience top-level error type for crates that want a single
 /// `Result` alias without inventing their own.
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::CoreError;
+///
+/// let err = CoreError::Unimplemented("cache");
+///
+/// assert_eq!(err.to_string(), "not yet implemented: cache");
+/// ```
 #[derive(thiserror::Error, Debug)]
 pub enum CoreError {
     #[error("not yet implemented: {0}")]
@@ -242,6 +452,18 @@ pub type Result<T> = std::result::Result<T, CoreError>;
 /// Owns every [`Node`] and exposes them through their stable [`NodeId`].
 /// MVP 0 stores nodes in insertion order; the manifest §5.1 hash-derived
 /// IDs land alongside the cache work in MVP 5.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::PathBuf;
+///
+/// use mos_core::{Document, NodeId};
+///
+/// let doc = Document::new(PathBuf::from("main.mos"));
+///
+/// assert_eq!(doc.root, NodeId(0));
+/// ```
 #[derive(Debug)]
 pub struct Document {
     pub root: NodeId,
@@ -254,6 +476,18 @@ impl Document {
     /// Create an empty document rooted at `file`. Allocates the
     /// `Document` root node (`NodeId(0)`) eagerly so callers can append
     /// children to it immediately.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::Document;
+    ///
+    /// let doc = Document::new(PathBuf::from("main.mos"));
+    ///
+    /// assert_eq!(doc.len(), 1);
+    /// ```
     #[must_use]
     pub fn new(file: PathBuf) -> Self {
         let root_id = NodeId(0);
@@ -278,6 +512,28 @@ impl Document {
 
     /// Allocate `node` in the arena and return its assigned [`NodeId`].
     /// The `id` field on the input is overwritten with the fresh ID.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::{AttrMap, ContentHash, Document, Node, NodeId, NodeKind, SourceSpan, StyleId};
+    ///
+    /// let file = PathBuf::from("main.mos");
+    /// let mut doc = Document::new(file.clone());
+    /// let id = doc.alloc(Node {
+    ///     id: NodeId::default(),
+    ///     kind: NodeKind::Paragraph,
+    ///     span: SourceSpan::placeholder(file),
+    ///     content_hash: ContentHash::default(),
+    ///     style_id: StyleId::default(),
+    ///     children: Vec::new(),
+    ///     attributes: AttrMap::new(),
+    /// });
+    ///
+    /// assert_eq!(id, NodeId(1));
+    /// ```
     pub fn alloc(&mut self, mut node: Node) -> NodeId {
         let id = NodeId(self.next_id);
         self.next_id += 1;
@@ -294,6 +550,28 @@ impl Document {
     /// `Document`. Silently producing detached nodes would hide lowerer
     /// bugs in release builds, so this is intentionally a release-time
     /// assertion rather than a `debug_assert!`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::{AttrMap, ContentHash, Document, Node, NodeId, NodeKind, SourceSpan, StyleId};
+    ///
+    /// let file = PathBuf::from("main.mos");
+    /// let mut doc = Document::new(file.clone());
+    /// let child = doc.alloc_child(doc.root, Node {
+    ///     id: NodeId::default(),
+    ///     kind: NodeKind::Paragraph,
+    ///     span: SourceSpan::placeholder(file),
+    ///     content_hash: ContentHash::default(),
+    ///     style_id: StyleId::default(),
+    ///     children: Vec::new(),
+    ///     attributes: AttrMap::new(),
+    /// });
+    ///
+    /// assert_eq!(doc.get(doc.root).map(|node| node.children.as_slice()), Some(&[child][..]));
+    /// ```
     pub fn alloc_child(&mut self, parent: NodeId, node: Node) -> NodeId {
         assert!(
             self.nodes.contains_key(&parent),
@@ -308,6 +586,19 @@ impl Document {
         child_id
     }
 
+    /// Get a node by id.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::{Document, NodeKind};
+    ///
+    /// let doc = Document::new(PathBuf::from("main.mos"));
+    ///
+    /// assert_eq!(doc.get(doc.root).map(|node| node.kind), Some(NodeKind::Document));
+    /// ```
     #[must_use]
     pub fn get(&self, id: NodeId) -> Option<&Node> {
         self.nodes.get(&id)
@@ -316,22 +607,75 @@ impl Document {
     /// Mutable accessor for a single node. Used by the resolver
     /// (manifest §6 stage 3) to back-patch attributes like `number`
     /// onto sections and `text` onto `@label` references.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::{AttrValue, Document};
+    ///
+    /// let mut doc = Document::new(PathBuf::from("main.mos"));
+    /// if let Some(root) = doc.get_mut(doc.root) {
+    ///     root.attributes.insert("title".to_owned(), AttrValue::Str("Demo".to_owned()));
+    /// }
+    ///
+    /// assert!(doc.get(doc.root).is_some_and(|node| node.attributes.contains_key("title")));
+    /// ```
     #[must_use]
     pub fn get_mut(&mut self, id: NodeId) -> Option<&mut Node> {
         self.nodes.get_mut(&id)
     }
 
     /// Iterate over every node in the arena in insertion order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::{Document, NodeKind};
+    ///
+    /// let doc = Document::new(PathBuf::from("main.mos"));
+    /// let kinds: Vec<NodeKind> = doc.nodes().map(|node| node.kind).collect();
+    ///
+    /// assert_eq!(kinds, vec![NodeKind::Document]);
+    /// ```
     pub fn nodes(&self) -> impl Iterator<Item = &Node> {
         self.nodes.values()
     }
 
     /// Total number of nodes including the document root.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::Document;
+    ///
+    /// let doc = Document::new(PathBuf::from("main.mos"));
+    ///
+    /// assert_eq!(doc.len(), 1);
+    /// ```
     #[must_use]
     pub fn len(&self) -> usize {
         self.nodes.len()
     }
 
+    /// Return whether the document has no semantic content beyond the root.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::Document;
+    ///
+    /// let doc = Document::new(PathBuf::from("main.mos"));
+    ///
+    /// assert!(doc.is_empty());
+    /// ```
     #[must_use]
     pub fn is_empty(&self) -> bool {
         // The root always exists, so `Document` is never truly empty;

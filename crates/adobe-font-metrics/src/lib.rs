@@ -61,6 +61,21 @@ use std::fmt;
 /// `f32` rather than `i16` so AFMs that emit fractional values for
 /// `FontBBox` or character `B` records (rare but legal) round-trip
 /// without precision loss.
+///
+/// # Examples
+///
+/// ```
+/// use adobe_font_metrics::BBox;
+///
+/// let bbox = BBox {
+///     llx: -20.0,
+///     lly: -200.0,
+///     urx: 1000.0,
+///     ury: 900.0,
+/// };
+///
+/// assert_eq!(bbox.urx, 1000.0);
+/// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct BBox {
     /// Lower-left x coordinate.
@@ -74,6 +89,28 @@ pub struct BBox {
 }
 
 /// One entry from a `StartCharMetrics` block.
+///
+/// # Examples
+///
+/// ```
+/// use std::borrow::Cow;
+///
+/// use adobe_font_metrics::{BBox, CharacterMetric};
+///
+/// let metric = CharacterMetric {
+///     code: 65,
+///     name: Cow::Borrowed("A"),
+///     width_x: 667.0,
+///     bbox: Some(BBox {
+///         llx: 8.0,
+///         lly: 0.0,
+///         urx: 660.0,
+///         ury: 718.0,
+///     }),
+/// };
+///
+/// assert_eq!(metric.name, "A");
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct CharacterMetric<'a> {
     /// Encoding-table code, or `-1` if the glyph is unencoded.
@@ -89,6 +126,22 @@ pub struct CharacterMetric<'a> {
 }
 
 /// One entry from a `StartKernPairs` block.
+///
+/// # Examples
+///
+/// ```
+/// use std::borrow::Cow;
+///
+/// use adobe_font_metrics::KerningPair;
+///
+/// let pair = KerningPair {
+///     left: Cow::Borrowed("A"),
+///     right: Cow::Borrowed("V"),
+///     adjust: -80.0,
+/// };
+///
+/// assert_eq!(pair.adjust, -80.0);
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct KerningPair<'a> {
     /// PostScript name of the left-hand glyph.
@@ -106,6 +159,20 @@ pub struct KerningPair<'a> {
 /// `Cow` everywhere so a single type serves both runtime parsing
 /// (`Cow::Borrowed` slices of the source) and compile-time baked
 /// statics (`Cow::Borrowed` of `&'static`).
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), adobe_font_metrics::ParseError> {
+/// use adobe_font_metrics::{FontMetrics, parse};
+///
+/// let src = "StartFontMetrics 4.1\nFontName Demo\nFontBBox 0 0 1000 1000\nEndFontMetrics\n";
+/// let metrics: FontMetrics<'_> = parse(src)?;
+///
+/// assert_eq!(metrics.font_name, "Demo");
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct FontMetrics<'a> {
     /// PostScript `FontName` (e.g. `"Helvetica"`).
@@ -149,9 +216,33 @@ pub struct FontMetrics<'a> {
 }
 
 /// Convenience alias for fully-owned metrics (`'static`).
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), adobe_font_metrics::ParseError> {
+/// use adobe_font_metrics::{OwnedFontMetrics, parse};
+///
+/// let src = "StartFontMetrics 4.1\nFontName Demo\nFontBBox 0 0 1000 1000\nEndFontMetrics\n";
+/// let metrics: OwnedFontMetrics = parse(src)?.into_owned();
+///
+/// assert_eq!(metrics.font_name, "Demo");
+/// # Ok(())
+/// # }
+/// ```
 pub type OwnedFontMetrics = FontMetrics<'static>;
 
 /// Errors returned by [`parse`]. Line numbers are 1-based.
+///
+/// # Examples
+///
+/// ```
+/// use adobe_font_metrics::{ParseError, parse};
+///
+/// let err = parse("").err();
+///
+/// assert!(matches!(err, Some(ParseError::MissingHeader { line: 1 })));
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseError {
     /// First non-blank, non-comment line was not `StartFontMetrics`.
@@ -228,6 +319,24 @@ impl Error for ParseError {}
 
 impl<'a> CharacterMetric<'a> {
     /// Lift to `'static` by cloning any borrowed strings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::borrow::Cow;
+    ///
+    /// use adobe_font_metrics::CharacterMetric;
+    ///
+    /// let metric = CharacterMetric {
+    ///     code: 65,
+    ///     name: Cow::Borrowed("A"),
+    ///     width_x: 667.0,
+    ///     bbox: None,
+    /// };
+    /// let owned = metric.into_owned();
+    ///
+    /// assert_eq!(owned.name, "A");
+    /// ```
     #[must_use]
     pub fn into_owned(self) -> CharacterMetric<'static> {
         CharacterMetric {
@@ -241,6 +350,23 @@ impl<'a> CharacterMetric<'a> {
 
 impl<'a> KerningPair<'a> {
     /// Lift to `'static` by cloning any borrowed strings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::borrow::Cow;
+    ///
+    /// use adobe_font_metrics::KerningPair;
+    ///
+    /// let pair = KerningPair {
+    ///     left: Cow::Borrowed("A"),
+    ///     right: Cow::Borrowed("V"),
+    ///     adjust: -80.0,
+    /// };
+    /// let owned = pair.into_owned();
+    ///
+    /// assert_eq!(owned.right, "V");
+    /// ```
     #[must_use]
     pub fn into_owned(self) -> KerningPair<'static> {
         KerningPair {
@@ -255,6 +381,20 @@ impl<'a> FontMetrics<'a> {
     /// Lift to `'static`, cloning every borrowed slice. Intended for
     /// callers who need to outlive the source `&str` (caches, baked
     /// statics, cross-thread sends).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), adobe_font_metrics::ParseError> {
+    /// use adobe_font_metrics::{OwnedFontMetrics, parse};
+    ///
+    /// let src = "StartFontMetrics 4.1\nFontName Demo\nFontBBox 0 0 1000 1000\nEndFontMetrics\n";
+    /// let owned: OwnedFontMetrics = parse(src)?.into_owned();
+    ///
+    /// assert_eq!(owned.font_bbox.urx, 1000.0);
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn into_owned(self) -> OwnedFontMetrics {
         let chars: Vec<CharacterMetric<'static>> = self
@@ -313,6 +453,20 @@ enum State {
 /// Returns [`ParseError`] if the header is missing, the version is
 /// outside the 4.x range, a required field never appears, or any
 /// record is structurally malformed.
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), adobe_font_metrics::ParseError> {
+/// use adobe_font_metrics::parse;
+///
+/// let src = "StartFontMetrics 4.1\nFontName Demo\nFontBBox 0 0 1000 1000\nEndFontMetrics\n";
+/// let metrics = parse(src)?;
+///
+/// assert_eq!(metrics.font_name, "Demo");
+/// # Ok(())
+/// # }
+/// ```
 #[must_use = "discarding the parsed FontMetrics also discards any parse error"]
 pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
     let mut header_seen = false;
