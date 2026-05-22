@@ -105,6 +105,13 @@ pub enum NodeKind {
     /// item's text; nested [`NodeKind::List`] children describe deeper
     /// levels.
     ListItem,
+    /// `\\` — a forced line break inside a paragraph. Carries no
+    /// attributes; layout consumes it as a `WordItem::HardBreak`
+    /// sentinel in the inline word stream. A blank-line paragraph
+    /// break is **not** the same node — it ends the paragraph and
+    /// triggers paragraph-spacing leading, whereas `HardBreak` keeps
+    /// the same paragraph and applies normal inter-line leading.
+    HardBreak,
 }
 
 /// A semantic document node (manifest §5.1).

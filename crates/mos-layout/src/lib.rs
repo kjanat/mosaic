@@ -28,7 +28,7 @@ use mos_core::{AttrValue, Diagnostic, Document, Node, NodeKind};
 use style::resolve_styles;
 use support::{blank_page, expand_tabs, read_level, read_str_attr};
 use types::BODY_LEADING;
-use word::{Word, word_clusters};
+use word::{Word, WordItem, split_soft_hyphens, word_clusters};
 
 mod image;
 mod list;
@@ -238,14 +238,15 @@ impl LayoutState {
             let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
             words.insert(
                 0,
-                Word {
+                WordItem::Word(Word {
                     text: prefix,
                     actual_text: None,
                     font: bold,
                     size_pt: size,
                     width_pt,
                     subruns,
-                },
+                    shy_break_offsets: Vec::new(),
+                }),
             );
         }
         self.flow_words(&words, BODY_LEADING);
@@ -294,8 +295,9 @@ impl LayoutState {
                 size_pt: size,
                 width_pt,
                 subruns,
+                shy_break_offsets: Vec::new(),
             };
-            self.flow_words(&[word], leading);
+            self.flow_words(&[WordItem::Word(word)], leading);
             emitted = true;
         }
         if emitted {
@@ -304,23 +306,30 @@ impl LayoutState {
     }
 
     /// Walk `parent`'s inline children and produce a flat list of
-    /// [`Word`]s. Inline whitespace collapses to a single split point
-    /// (`split_ascii_whitespace` handles `\n`/`\r`/`\t` uniformly).
-    /// Each word is shaped once here; the resulting glyphs and width
-    /// flow through to [`TextRun`] without re-shaping during line
-    /// breaking.
+    /// [`WordItem`]s. Inline whitespace inside text runs collapses to
+    /// a single split point (`split_ascii_whitespace` handles
+    /// `\n`/`\r`/`\t` uniformly **and intentionally preserves U+00A0
+    /// NBSP** — non-ASCII whitespace stays inside the word so the
+    /// breaker never splits at NBSP). Each word is shaped once here;
+    /// the resulting glyphs and width flow through to [`TextRun`]
+    /// without re-shaping during line breaking. `NodeKind::HardBreak`
+    /// children are emitted as `WordItem::HardBreak` sentinels.
     fn collect_words(
         &mut self,
         document: &Document,
         parent: &Node,
         default_font: Font,
         size: f32,
-    ) -> Vec<Word> {
-        let mut out: Vec<Word> = Vec::new();
+    ) -> Vec<WordItem> {
+        let mut out: Vec<WordItem> = Vec::new();
         for child_id in &parent.children {
             let Some(child) = document.get(*child_id) else {
                 continue;
             };
+            if matches!(child.kind, NodeKind::HardBreak) {
+                out.push(WordItem::HardBreak);
+                continue;
+            }
             let font = match child.kind {
                 NodeKind::Strong => self.text.family.bold,
                 NodeKind::Emphasis => self.text.family.italic,
@@ -336,39 +345,75 @@ impl LayoutState {
                 Some(AttrValue::Str(s)) => s.as_str(),
                 _ => continue,
             };
+            // U+00A0 NBSP is intentionally preserved by
+            // `split_ascii_whitespace` (it only splits on ASCII
+            // whitespace), keeping `Mr.\u{A0}Smith` as one logical
+            // word. This is the documented contract.
             for piece in raw.split_ascii_whitespace() {
                 if piece.is_empty() {
                     continue;
                 }
                 let piece = nfc_text(piece);
                 let piece = piece.as_ref();
-                let subruns = shape_with_fallback(font, self.text.family.fallbacks, size, piece);
+                // Strip U+00AD before shaping so SHY never renders as
+                // a visible hyphen on either the embedded or Base-14
+                // path. Keep the codepoint offsets so a future
+                // Knuth-Plass breaker can hyphenate at the author's
+                // marked positions.
+                let (stripped, shy_offsets) = split_soft_hyphens(piece);
+                let subruns =
+                    shape_with_fallback(font, self.text.family.fallbacks, size, &stripped);
                 let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
-                out.push(Word {
-                    text: piece.to_owned(),
+                out.push(WordItem::Word(Word {
+                    text: stripped,
                     actual_text: None,
                     font,
                     size_pt: size,
                     width_pt,
                     subruns,
-                });
+                    shy_break_offsets: shy_offsets,
+                }));
             }
         }
         out
     }
 
-    /// Greedy line-break `words` and emit text runs onto the page,
+    /// Greedy line-break `items` and emit text runs onto the page,
     /// paginating as we go. `leading` is the line-height multiplier
-    /// applied per line.
-    fn flow_words(&mut self, words: &[Word], leading: f32) {
-        if words.is_empty() {
+    /// applied per line. `WordItem::HardBreak` forces a line flush
+    /// at its position (and produces a blank line when two hard
+    /// breaks are adjacent or one lands mid-paragraph with no words
+    /// behind it).
+    fn flow_words(&mut self, items: &[WordItem], leading: f32) {
+        if items.is_empty() {
             return;
         }
         let line_width = self.column_width_pt();
         let mut line: Vec<Word> = Vec::new();
         let mut line_width_used = 0.0_f32;
 
-        for word in words {
+        for item in items {
+            let word = match item {
+                WordItem::Word(w) => w,
+                WordItem::HardBreak => {
+                    if !line.is_empty() {
+                        self.flush_line(&line, leading);
+                        line.clear();
+                        line_width_used = 0.0;
+                    } else if self.page_has_content {
+                        // Blank-line bump only makes sense if there's
+                        // content above to push down from. A hard
+                        // break at the very top of a page (no prior
+                        // content) collapses silently -- matches
+                        // CommonMark's "ignore hard break at block
+                        // boundary" behaviour and avoids the
+                        // first-line-on-page baseline drop fighting
+                        // an empty-line advance.
+                        self.cursor_y += self.text.size_pt * leading;
+                    }
+                    continue;
+                }
+            };
             // Hard wrap: a single word wider than the column gets
             // chopped into character-sized pieces, each on its own
             // line. This is the contract MVP 0 documents.
@@ -531,6 +576,7 @@ impl LayoutState {
                 size_pt: source.size_pt,
                 width_pt,
                 subruns,
+                shy_break_offsets: Vec::new(),
             }],
             leading,
         );
@@ -1067,6 +1113,147 @@ mod tests {
             reference.font,
             Font::Base14(Base14Font::Helvetica)
         ));
+    }
+
+    // ---------- line-break controls (issue #26) ----------
+
+    fn alloc_hardbreak(doc: &mut Document, parent: NodeId) {
+        // HardBreak nodes carry no attributes -- layout dispatches on
+        // `NodeKind` alone (see `collect_words`).
+        doc.alloc_child(
+            parent,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::HardBreak,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
+    }
+
+    fn make_empty_paragraph(doc: &mut Document) -> NodeId {
+        doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Paragraph,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        )
+    }
+
+    #[test]
+    fn nbsp_keeps_two_words_in_a_single_run() {
+        // U+00A0 is *not* ASCII whitespace, so the greedy breaker
+        // never splits at it. The two halves end up as one TextRun
+        // with the NBSP byte preserved -- the documented contract.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        make_paragraph(&mut doc, "Mr.\u{A0}Smith");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_eq!(runs.len(), 1, "expected one TextRun, got {runs:?}");
+        assert_eq!(runs[0].text, "Mr.\u{A0}Smith");
+    }
+
+    #[test]
+    fn hard_break_advances_one_line_not_paragraph_spacing() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_inline(&mut doc, para, NodeKind::Text, "foo");
+        alloc_hardbreak(&mut doc, para);
+        alloc_inline(&mut doc, para, NodeKind::Text, "bar");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let foo = runs.iter().find(|r| r.text == "foo").expect("foo run");
+        let bar = runs.iter().find(|r| r.text == "bar").expect("bar run");
+        let delta = bar.baseline_from_top_pt - foo.baseline_from_top_pt;
+        // BODY_SIZE_PT × default leading is the inter-line distance;
+        // accept either 1.0 or the resolved style's default leading
+        // by checking against the computed product.
+        let expected = BODY_SIZE_PT * BODY_LEADING;
+        assert!(
+            (delta - expected).abs() < 0.01,
+            "expected inter-line delta {expected}, got {delta} (foo={}, bar={})",
+            foo.baseline_from_top_pt,
+            bar.baseline_from_top_pt
+        );
+    }
+
+    #[test]
+    fn two_hard_breaks_produce_a_blank_line() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_inline(&mut doc, para, NodeKind::Text, "foo");
+        alloc_hardbreak(&mut doc, para);
+        alloc_hardbreak(&mut doc, para);
+        alloc_inline(&mut doc, para, NodeKind::Text, "bar");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let foo = runs.iter().find(|r| r.text == "foo").expect("foo run");
+        let bar = runs.iter().find(|r| r.text == "bar").expect("bar run");
+        let delta = bar.baseline_from_top_pt - foo.baseline_from_top_pt;
+        // Two line advances: one to flush "foo", one for the blank
+        // line between the two hard breaks.
+        let one_line = BODY_SIZE_PT * BODY_LEADING;
+        let expected = 2.0 * one_line;
+        assert!(
+            (delta - expected).abs() < 0.01,
+            "expected delta {expected} for two-line gap, got {delta}"
+        );
+    }
+
+    #[test]
+    fn hard_break_at_paragraph_start_collapses_on_first_page_line() {
+        // When the paragraph begins with a hard break and nothing is
+        // on the page yet, the leading break has nothing above it to
+        // push down -- it collapses, matching CommonMark's "ignore
+        // hard break at block boundary".
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_hardbreak(&mut doc, para);
+        alloc_inline(&mut doc, para, NodeKind::Text, "foo");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_eq!(runs.len(), 1, "expected one run, got {runs:?}");
+        assert_eq!(runs[0].text, "foo");
+    }
+
+    #[test]
+    fn soft_hyphen_is_stripped_from_emitted_runs() {
+        // SHY codepoints must never appear in the rendered text --
+        // the greedy breaker can't honour them so they would render
+        // as visible hyphens (the bug this issue's piece 3a fixes).
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        make_paragraph(&mut doc, "super\u{AD}cali\u{AD}fragil");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_eq!(runs.len(), 1, "expected one run, got {runs:?}");
+        assert_eq!(runs[0].text, "supercalifragil");
+        assert!(
+            !runs[0].text.contains('\u{AD}'),
+            "SHY leaked into rendered text: {:?}",
+            runs[0].text
+        );
     }
 
     #[test]

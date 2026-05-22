@@ -4,6 +4,7 @@ use mos_core::{AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeId, No
 use mos_fonts::{ascent, text_width};
 
 use crate::support::{read_int_attr, read_length_attr};
+use crate::word::WordItem;
 use crate::{ImageHandle, ImagePlacement, LayoutState, PARA_SPACE_AFTER_PT};
 
 impl LayoutState {
@@ -113,14 +114,27 @@ impl LayoutState {
         let size = self.text.size_pt;
         let leading = self.text.leading;
         let regular = self.text.family.regular;
-        let words = self.collect_words(document, paragraph, regular, size);
-        if words.is_empty() {
+        let items = self.collect_words(document, paragraph, regular, size);
+        if items.is_empty() {
             return 0.0;
         }
         let line_width = self.column_width_pt();
         let mut lines: u32 = 1;
         let mut line_width_used = 0.0_f32;
-        for word in &words {
+        for item in &items {
+            let word = match item {
+                WordItem::Word(w) => w,
+                WordItem::HardBreak => {
+                    // A hard break consumes exactly one line worth
+                    // of vertical space whether the current line is
+                    // empty (blank line) or has content (flush +
+                    // start fresh). Match `flow_words` semantics so
+                    // the figure-height pre-flight stays accurate.
+                    lines += 1;
+                    line_width_used = 0.0;
+                    continue;
+                }
+            };
             if word.width_pt > line_width {
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                 let chunks = (word.width_pt / line_width).ceil().max(1.0) as u32;

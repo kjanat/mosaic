@@ -389,6 +389,38 @@ mod tests {
         assert_eq!(root.children.len(), 3);
     }
 
+    #[test]
+    fn hard_break_lowers_to_hardbreak_node_without_text_attr() {
+        let r = lower("foo\\\\bar\n", &PathBuf::from("test.mos"));
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+
+        // The paragraph is the second top-level node (after the
+        // document root). Find its children.
+        let root = r.document.get(r.document.root).unwrap();
+        let paragraph_id = *root.children.first().unwrap();
+        let paragraph = r.document.get(paragraph_id).unwrap();
+        let inline_kinds: Vec<NodeKind> = paragraph
+            .children
+            .iter()
+            .filter_map(|id| r.document.get(*id).map(|n| n.kind))
+            .collect();
+        assert_eq!(
+            inline_kinds,
+            vec![NodeKind::Text, NodeKind::HardBreak, NodeKind::Text],
+            "got {inline_kinds:?}"
+        );
+
+        // The HardBreak node must have no `text` attribute -- layout
+        // dispatch matches on kind, not on text presence.
+        let hardbreak_id = paragraph.children[1];
+        let hardbreak = r.document.get(hardbreak_id).unwrap();
+        assert!(
+            hardbreak.attributes.is_empty(),
+            "expected empty attribute map on HardBreak, got {:?}",
+            hardbreak.attributes
+        );
+    }
+
     /// Hand-craft a tiny PNG in a temp dir so the eval tests don't
     /// depend on `examples/` paths or the workspace layout.
     /// `::image::` (rather than `image::`) routes through the extern

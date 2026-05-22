@@ -14,6 +14,7 @@ pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inlin
             InlineKind::BoldItalic => NodeKind::BoldItalic,
             InlineKind::Code => NodeKind::Raw,
             InlineKind::Reference => NodeKind::Reference,
+            InlineKind::HardBreak => NodeKind::HardBreak,
         };
         let mut attributes: AttrMap = BTreeMap::new();
         match inline.kind {
@@ -26,6 +27,10 @@ pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inlin
                     AttrValue::Str(format!("?{}?", inline.text)),
                 );
             }
+            // Hard breaks are pure structural markers -- no text payload
+            // to lower, no attributes. Layout's `collect_words` matches
+            // on `NodeKind::HardBreak` directly.
+            InlineKind::HardBreak => {}
             _ => {
                 attributes.insert("text".to_owned(), AttrValue::Str(inline.text.clone()));
             }

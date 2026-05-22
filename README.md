@@ -25,6 +25,10 @@ substantially landed:
 
 - [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline `*emphasis*` / `**strong**` /
       `` `code` ``, `-` / `N.` lists with hanging indents, and `#set name(...)` blocks;
+- [x] author-facing line-break controls (issue #26 piece 1/2 + piece 3a): a literal U+00A0 NBSP that
+      the greedy breaker never splits, a `\\` hard line break for forced mid-paragraph breaks, and a
+      `\-` (or literal U+00AD) soft hyphen that is stripped from rendering today and will become a
+      permitted break point when Knuth-Plass lands — see `examples/linebreaks/`;
 - [x] lowering to a typed semantic `Document` graph in `mos-core`, with `#image(...)` and
       `#figure(...)` directives evaluated in `mos-eval` (manifest §5, §6 stage 2);
 - [x] `mos check` end-to-end — parse → lower → render diagnostics with `file:line:col` and source

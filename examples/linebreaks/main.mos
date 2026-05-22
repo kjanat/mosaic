@@ -1,0 +1,70 @@
+#set document(
+  title: "Author-Facing Line-Break Controls",
+  author: "Mosaic contributors",
+  language: "en",
+)
+
+#set page(
+  paper: "A4",
+  margin: 24mm,
+)
+
+= Three small contracts
+
+Mosaic gives authors three knobs for line breaks: a non-breaking
+space, a forced line break, and a soft hyphen. They are small
+contracts. Each does one thing, and only one thing.
+
+== Non-breaking space (U+00A0)
+
+A literal U+00A0 between two words tells the line-breaker that
+the pair must travel together. The greedy breaker honours this
+because it splits only at ASCII whitespace, and U+00A0 is not
+ASCII whitespace.
+
+Authors who refuse to break "Mr. Smith" across a line write it
+as `Mr.` followed immediately by U+00A0 and then `Smith`: Mr. Smith
+becomes Mr. Smith, joined and unsplittable. A page-numbering
+convention like "page 4" benefits from the same treatment.
+
+A single regular space — like the one between this word and the
+next — is, of course, breakable like any other.
+
+== Hard line break (`\\`)
+
+The escape `\\` forces a line break inside a paragraph without
+the extra leading that a blank-line paragraph break would emit.
+Use it when the *line* is the unit of meaning — addresses, verse,
+captions, the heroic-but-doomed code path where you really do
+want this on one line\\and this on the next without spawning a
+new paragraph.
+
+Stack two of them\\\\and you get a blank line between two
+otherwise-adjacent runs, still inside the same paragraph. The
+paragraph's overall spacing-after is paid once, at the end.
+
+A lone trailing `\` (no second backslash) is not an escape; it
+emits the diagnostic W025 and falls through as a literal
+backslash character.
+
+== Soft hyphen (`\-` or U+00AD)
+
+The soft hyphen marks a permitted-but-not-required break inside
+a word. It is the author saying "if you ever need to break this
+word, here is where to do it; otherwise pretend I was never
+here". The shorthand `\-` expands to a literal U+00AD; the
+codepoint itself works too.
+
+Under the MVP 2 greedy breaker that ships with this example, soft
+hyphens are *invisible*: the codepoint is stripped before shaping
+so the rendered word reads as if no hyphen marker were present.
+A word like su\-per\-cali\-fra\-gil\-is\-tic\-ex\-pi\-al\-i\-do\-cious
+renders as supercalifragilisticexpialidocious — the same as if
+none of the `\-` shorthands had been written.
+
+When the Knuth-Plass line-breaker lands, the same markers will
+*also* permit a hyphenated break at one of the marked positions
+whenever the line would otherwise be too wide for the column.
+The soft hyphen is groundwork for that day; today it is at
+worst a no-op, and at best a hint the future breaker will
+honour.

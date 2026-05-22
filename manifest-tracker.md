@@ -172,8 +172,15 @@ example.
 - [x] Lay out headings, paragraphs, lists, images, figures, captions, and pages.
 - [x] Support paper sizes and margins from current settings.
 - [x] Support current text styles.
-- [ ] Replace greedy line breaking with a real paragraph algorithm.
-- [ ] Add Unicode line breaking.
+- [x] Author-facing line-break controls (issue #26): U+00A0 NBSP preserved by the greedy breaker,
+      `\\` hard line break threaded through `InlineKind::HardBreak` / `NodeKind::HardBreak` /
+      `WordItem::HardBreak`, and `\-` / U+00AD soft hyphen stripped from shaping (offsets retained
+      on `Word.shy_break_offsets` for the future Knuth-Plass breaker).
+- [ ] Replace greedy line breaking with a real paragraph algorithm. (Issue #26 piece 3b-e — Knuth-
+      Plass + UAX #14 + SHY-as-penalty + chosen-break hyphen glyph emission. The author syntax for
+      SHY already lands as part of piece 3a; the algorithmic side is a separate PR.)
+- [ ] Add Unicode line breaking. (Same MVP 2 slice as Knuth-Plass; `unicode-linebreak` crate as the
+      planned dependency.)
 - [ ] Add language-aware hyphenation.
 - [ ] Add OpenType shaping through HarfBuzz or equivalent.
 - [ ] Segment text into script/language/font runs.
