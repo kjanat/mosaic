@@ -222,3 +222,266 @@ fn iso_size(w0_mm: u32, h0_mm: u32, n: u8) -> (u32, u32) {
     }
     (w, h)
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
+    )]
+
+    use std::path::PathBuf;
+
+    use mos_core::{
+        AttrMap, AttrValue, ContentHash, Document, Node, NodeId, NodeKind, SourceSpan, StyleId,
+    };
+
+    use crate::{A4_WIDTH_PT, MARGIN_PT};
+
+    use super::{paper_size_pt, resolve_styles};
+
+    fn alloc_set_block(doc: &mut Document, target: &str, args: &[(&str, AttrValue)]) -> NodeId {
+        let mut attrs = AttrMap::new();
+        attrs.insert("set".to_owned(), AttrValue::Str(target.to_owned()));
+        for (key, value) in args {
+            attrs.insert(format!("set.arg.{key}"), value.clone());
+        }
+        doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Raw,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        )
+    }
+
+    #[test]
+    fn set_page_margin_shifts_runs_inward() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(
+            &mut doc,
+            "page",
+            &[("margin", AttrValue::Length(50.0 * 72.0 / 25.4))],
+        );
+
+        let (page, _, diagnostics) = resolve_styles(&doc);
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let expected = 50.0_f32 * 72.0 / 25.4;
+        assert!((page.margin_pt - expected).abs() < 0.05);
+    }
+
+    #[test]
+    fn set_page_paper_a5_changes_page_dimensions() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(
+            &mut doc,
+            "page",
+            &[("paper", AttrValue::Str("A5".to_owned()))],
+        );
+
+        let (page, _, diagnostics) = resolve_styles(&doc);
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let expected_w = 148.0_f32 * 72.0 / 25.4;
+        let expected_h = 210.0_f32 * 72.0 / 25.4;
+        assert!(
+            (page.width_pt - expected_w).abs() < 1.0,
+            "w = {}",
+            page.width_pt
+        );
+        assert!(
+            (page.height_pt - expected_h).abs() < 1.0,
+            "h = {}",
+            page.height_pt
+        );
+    }
+
+    #[test]
+    fn set_text_size_changes_run_size() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(20.0))]);
+
+        let (_, text, diagnostics) = resolve_styles(&doc);
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert!((text.size_pt - 20.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn negative_margin_is_rejected_with_e025() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "page", &[("margin", AttrValue::Length(-10.0))]);
+
+        let (page, _, diagnostics) = resolve_styles(&doc);
+
+        assert!(diagnostics.iter().any(|d| d.code.0 == "E025"));
+        assert!((page.margin_pt - MARGIN_PT).abs() < 0.5);
+    }
+
+    #[test]
+    fn oversized_margin_is_rejected_with_e025() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "page", &[("margin", AttrValue::Length(400.0))]);
+
+        let (_, _, diagnostics) = resolve_styles(&doc);
+
+        assert!(diagnostics.iter().any(|d| d.code.0 == "E025"));
+    }
+
+    #[test]
+    fn paper_shrink_revalidates_carried_margin() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(
+            &mut doc,
+            "page",
+            &[
+                ("paper", AttrValue::Str("A0".to_owned())),
+                ("margin", AttrValue::Length(300.0)),
+            ],
+        );
+        alloc_set_block(
+            &mut doc,
+            "page",
+            &[("paper", AttrValue::Str("A5".to_owned()))],
+        );
+
+        let (page, _, diagnostics) = resolve_styles(&doc);
+
+        assert!(
+            diagnostics.iter().any(|d| d.code.0 == "E025"),
+            "expected E025 from paper shrink, got {diagnostics:?}"
+        );
+        assert!(
+            (page.width_pt - 2383.94).abs() < 1.0,
+            "w = {}",
+            page.width_pt
+        );
+    }
+
+    #[test]
+    fn earlier_valid_size_survives_later_rejection() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(50.0))]);
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(1000.0))]);
+
+        let (_, text, diagnostics) = resolve_styles(&doc);
+
+        assert!(diagnostics.iter().any(|d| d.code.0 == "E025"));
+        assert!((text.size_pt - 50.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn page_change_that_invalidates_carried_text_size_is_rejected() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(100.0))]);
+        alloc_set_block(
+            &mut doc,
+            "page",
+            &[("paper", AttrValue::Str("A8".to_owned()))],
+        );
+
+        let (page, text, diagnostics) = resolve_styles(&doc);
+
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.code.0 == "E025" && d.message.contains("page change")),
+            "expected E025 about page change, got {diagnostics:?}"
+        );
+        assert!((page.width_pt - A4_WIDTH_PT).abs() < 0.5);
+        assert!((text.size_pt - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn oversized_text_size_is_rejected_with_e025() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(1000.0))]);
+
+        let (_, text, diagnostics) = resolve_styles(&doc);
+
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.code.0 == "E025" && d.message.contains("vertical space")),
+            "expected E025 about vertical space, got {diagnostics:?}"
+        );
+        assert_eq!(text.size_pt, crate::types::BODY_SIZE_PT);
+    }
+
+    #[test]
+    fn rejected_text_size_says_previous_value_retained() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(14.0))]);
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(-1.0))]);
+
+        let (_, _, diagnostics) = resolve_styles(&doc);
+
+        let msg = diagnostics
+            .iter()
+            .find(|d| d.code.0 == "E025")
+            .expect("E025 emitted")
+            .message
+            .as_str();
+        assert!(
+            msg.contains("previous value retained"),
+            "message does not say `previous value retained`: {msg}"
+        );
+    }
+
+    #[test]
+    fn nonpositive_leading_is_rejected_with_e025() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "text", &[("leading", AttrValue::Float(0.0))]);
+
+        let (_, _, diagnostics) = resolve_styles(&doc);
+
+        assert!(diagnostics.iter().any(|d| d.code.0 == "E025"));
+    }
+
+    #[test]
+    fn unknown_paper_emits_e023() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(
+            &mut doc,
+            "page",
+            &[("paper", AttrValue::Str("Foolscap".to_owned()))],
+        );
+
+        let (page, _, diagnostics) = resolve_styles(&doc);
+
+        assert!(diagnostics.iter().any(|d| d.code.0 == "E023"));
+        assert!((page.width_pt - A4_WIDTH_PT).abs() < 0.5);
+    }
+
+    #[test]
+    fn last_set_wins() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(8.0))]);
+        alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(20.0))]);
+
+        let (_, text, diagnostics) = resolve_styles(&doc);
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert!((text.size_pt - 20.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn paper_size_pt_resolves_iso_a_and_letter() {
+        let (w, h) = paper_size_pt("A4").unwrap();
+        assert!((w - 595.276).abs() < 1.0);
+        assert!((h - 841.89).abs() < 1.0);
+        let (w, h) = paper_size_pt("A5").unwrap();
+        assert!((w - 419.527).abs() < 1.0);
+        assert!((h - 595.276).abs() < 1.0);
+        let (w, h) = paper_size_pt("Letter").unwrap();
+        assert_eq!((w, h), (612.0, 792.0));
+        assert!(paper_size_pt("Foolscap").is_none());
+    }
+}
