@@ -52,6 +52,7 @@ jobs:
           ENV
 
       - name: cargo publish (dry-run verification)
+        if: env.INPUT_DRY_RUN == 'true'
         run: cargo publish --locked --dry-run
 
       - name: mint crates.io token (trusted publishing)
@@ -63,4 +64,139 @@ jobs:
       - name: cargo publish
         if: ${{ !cancelled() && env.INPUT_DRY_RUN != 'true' }}
         env: { CARGO_REGISTRY_TOKEN: "${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}" }
-        run: cargo publish --locked
+        run: |
+          set -euo pipefail
+
+          version="${RELEASE_TAG#v}"
+          mapfile -t packages < <(
+            cargo metadata --no-deps --format-version 1 \
+              | jq -r '
+                def workspace_packages:
+                  .packages as $packages
+                  | ($packages | map({ key: .manifest_path, value: .name }) | from_entries) as $by_manifest
+                  | $packages
+                  | map({
+                    name,
+                    deps: [
+                      .dependencies[]?
+                      | select(.path != null)
+                      | $by_manifest[.path + "/Cargo.toml"] // empty
+                    ],
+                  });
+
+                def publish_order($remaining; $done):
+                  if ($remaining | length) == 0 then
+                    empty
+                  else
+                    ($remaining
+                      | map(select([.deps[] | select(. as $dep | ($done | index($dep)) == null)] | length == 0))
+                      | sort_by(.name)) as $ready
+                    | if ($ready | length) == 0 then
+                        error("workspace package dependency cycle")
+                      else
+                        $ready[].name,
+                        publish_order(
+                          ($remaining | map(select(.name as $name | ($ready | map(.name) | index($name)) == null)));
+                          ($done + ($ready | map(.name)))
+                        )
+                      end
+                  end;
+
+                workspace_packages as $packages | publish_order($packages; [])
+              '
+          )
+
+          crate_status() {
+            local pkg="${1}"
+
+            curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --header "User-Agent: ${GITHUB_REPOSITORY} crates-release" \
+              "https://crates.io/api/v1/crates/${pkg}/${version}"
+          }
+
+          wait_before_retry() {
+            local output="${1}"
+            local retry_at
+            local retry_epoch
+            local now_epoch
+            local sleep_for
+
+            if [[ "${output}" =~ try\ again\ after\ ([A-Za-z]{3},\ [0-9]{2}\ [A-Za-z]{3}\ [0-9]{4}\ [0-9]{2}:[0-9]{2}:[0-9]{2}\ GMT) ]]; then
+              retry_at="${BASH_REMATCH[1]}"
+              retry_epoch="$(date -u -d "${retry_at}" +%s)"
+              now_epoch="$(date -u +%s)"
+              sleep_for=$((retry_epoch - now_epoch + 5))
+
+              if (( sleep_for > 0 )); then
+                echo "wait: crates.io rate limit until ${retry_at} (${sleep_for}s)"
+                sleep "${sleep_for}"
+                return 0
+              fi
+            fi
+
+            echo "wait: fallback retry delay (90s)"
+            sleep 90
+          }
+
+          publish_crate() {
+            local pkg="${1}"
+            local output
+            local status
+
+            status="$(crate_status "${pkg}")"
+
+            if [[ "${status}" == "200" ]]; then
+              echo "skip: ${pkg} ${version} already published"
+              return 0
+            fi
+
+            if [[ "${status}" != "404" ]]; then
+              echo "error: crates.io returned HTTP ${status} while checking ${pkg} ${version}" >&2
+              return 1
+            fi
+
+            echo "publish needed: ${pkg} ${version} is not published yet"
+
+            for attempt in 1 2 3 4 5; do
+              echo "publish: ${pkg} ${version} (attempt ${attempt}/5)"
+
+              if output="$(cargo publish --locked -p "${pkg}" 2>&1)"; then
+                printf '%s\n' "${output}"
+                echo "ok: cargo publish accepted ${pkg} ${version}"
+
+                for check in 1 2 3 4 5 6 7 8 9 10; do
+                  status="$(crate_status "${pkg}")"
+
+                  if [[ "${status}" == "200" ]]; then
+                    echo "ok: ${pkg} ${version} is visible on crates.io"
+                    return 0
+                  fi
+
+                  echo "wait: ${pkg} ${version} not visible yet, HTTP ${status} (check ${check}/10)"
+                  sleep 15
+                done
+
+                echo "error: ${pkg} ${version} was accepted by cargo publish but did not become visible on crates.io" >&2
+                return 1
+              fi
+
+              printf '%s\n' "${output}"
+
+              status="$(crate_status "${pkg}")"
+
+              if [[ "${status}" == "200" ]]; then
+                echo "ok: ${pkg} ${version} became available after publish error"
+                return 0
+              fi
+
+              echo "retry: ${pkg} ${version} still not published, HTTP ${status}"
+              wait_before_retry "${output}"
+            done
+
+            echo "error: failed to publish ${pkg} ${version}" >&2
+            return 1
+          }
+
+          for pkg in "${packages[@]}"; do
+            publish_crate "${pkg}"
+          done
