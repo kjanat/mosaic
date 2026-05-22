@@ -15,20 +15,20 @@ keywords     = ["compiler", "layout", "pdf", "typesetting", "typography"]
 categories   = ["compilers", "text-processing"]
 
 [workspace.dependencies]
-adobe-font-metrics = { path = "crates/adobe-font-metrics" }
-mos-bib            = { path = "crates/mos-bib" }
-mos-cache          = { path = "crates/mos-cache" }
-mos-core           = { path = "crates/mos-core" }
-mos-eval           = { path = "crates/mos-eval" }
-mos-fonts          = { path = "crates/mos-fonts" }
-mos-html           = { path = "crates/mos-html" }
-mos-layout         = { path = "crates/mos-layout" }
-mos-lsp            = { path = "crates/mos-lsp" }
-mos-packages       = { path = "crates/mos-packages" }
-mos-parse          = { path = "crates/mos-parse" }
-mos-pdf            = { path = "crates/mos-pdf" }
-pdf-base14-metrics = { path = "crates/pdf-base14-metrics" }
-tree-sitter-mosaic = { path = "crates/tree-sitter-mosaic" }
+adobe-font-metrics = { path = "crates/adobe-font-metrics", version = "0.0.0" }
+mos-bib            = { path = "crates/mos-bib", version = "0.0.0" }
+mos-cache          = { path = "crates/mos-cache", version = "0.0.0" }
+mos-core           = { path = "crates/mos-core", version = "0.0.0" }
+mos-eval           = { path = "crates/mos-eval", version = "0.0.0" }
+mos-fonts          = { path = "crates/mos-fonts", version = "0.0.0" }
+mos-html           = { path = "crates/mos-html", version = "0.0.0" }
+mos-layout         = { path = "crates/mos-layout", version = "0.0.0" }
+mos-lsp            = { path = "crates/mos-lsp", version = "0.0.0" }
+mos-packages       = { path = "crates/mos-packages", version = "0.0.0" }
+mos-parse          = { path = "crates/mos-parse", version = "0.0.0" }
+mos-pdf            = { path = "crates/mos-pdf", version = "0.0.0" }
+pdf-base14-metrics = { path = "crates/pdf-base14-metrics", version = "0.0.0" }
+tree-sitter-mosaic = { path = "crates/tree-sitter-mosaic", version = "0.0.0" }
 
 # External dependencies
 cc                    = "1.2"
