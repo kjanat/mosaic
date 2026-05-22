@@ -115,4 +115,4 @@ examples/             hello, lists, math, polish — each with a committed PDF
 
 ## License
 
-[MIT](./LICENSE) Kaj Kowalski 2026.
+[MIT](./LICENSE) © Kaj Kowalski 2026.
