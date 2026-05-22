@@ -110,6 +110,18 @@ partial foundations.
 
 ## COMMANDS
 
+The `runner` and `run` commands come from the `runner-run` package
+([npm](https://npm.im/runner-run), [crates.io](https://crates.io/crates/runner-run)): a universal
+project task runner that auto-detects package managers/task runners and exposes one CLI across
+projects. `runner` is the main command: `runner install`, `runner list`, `runner doctor`,
+`runner why`, and `runner completions` are built-ins. `run <task>` is equivalent to
+`runner run <task>`: resolve a project task first, otherwise exec through the detected toolchain
+when supported. Use `run ...` for project commands when the user writes it (for example `run lint`,
+`run tw`, `run dwn`). It can chain tasks with `run -s ...` / `--sequential` or `run -p ...` /
+`--parallel`; the flags conflict. `runner install build test` installs deps, then runs `build` and
+`test` sequentially. Helper install sources: `npm` packages via `npm`,
+[Rust crates](https://crates.io/) via `cargo install`, and prebuilt Rust CLIs via `cargo-binstall`.
+
 ```bash
 cargo bw
 cargo cw
