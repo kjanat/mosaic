@@ -23,15 +23,20 @@ pub use types::{
     PageGraph, PageStyle, TextRun, TextStyle,
 };
 
-use std::borrow::Cow;
 use std::sync::Arc;
 
 use mos_core::{AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeId, NodeKind, Severity};
-use style::{pt_to_f32, resolve_styles};
+use style::resolve_styles;
+use support::{
+    blank_page, expand_tabs, read_int_attr, read_length_attr, read_level, read_str_attr,
+};
 use types::BODY_LEADING;
+use word::{Word, word_clusters};
 
 mod style;
+mod support;
 mod types;
+mod word;
 
 /// Heading sizes by level (1-indexed). Anything beyond level 3 falls
 /// back to body size — counters and section numbering land in MVP 1.
@@ -926,160 +931,6 @@ impl LayoutState {
         self.cursor_y = self.page.margin_pt;
         self.page_has_content = false;
     }
-}
-
-#[derive(Clone, Debug)]
-struct Word {
-    text: String,
-    actual_text: Option<String>,
-    /// Primary face — the style-resolved choice from the active
-    /// `FontFamily` (regular/bold/italic/monospace). Used for line
-    /// metrics (ascent/descent), inter-word spacing, and
-    /// character-wise hyphenation width estimates. Per-glyph fallback
-    /// faces (e.g. Noto Sans Math for `≤`) live inside [`Word::subruns`].
-    font: Font,
-    size_pt: f32,
-    /// Pre-computed advance width — populated when the word is
-    /// constructed in `collect_words` (sum of `subruns[i].advance_pt`)
-    /// so the line-breaker doesn't re-measure on every comparison.
-    width_pt: f32,
-    /// Per-glyph-fallback sub-runs produced by `shape_with_fallback`.
-    /// One sub-run per contiguous source span that shares a face;
-    /// each carries its own font + text slice + glyph stream with
-    /// cluster offsets rebased to its local text. `flush_line` emits
-    /// one [`TextRun`] per sub-run, advancing the x cursor by
-    /// `subrun.advance_pt` between them. For Base14 primary faces
-    /// the result is always a single sub-run with empty `glyphs`
-    /// (no fallback target — Base14 emit path uses `WinAnsi`-byte
-    /// strings instead).
-    subruns: Vec<WordSubRun>,
-}
-
-fn word_clusters(word: &Word) -> Vec<WordSubRun> {
-    let mut clusters = Vec::new();
-    for sub in &word.subruns {
-        if sub.glyphs.is_empty() {
-            for ch in sub.text.chars() {
-                let mut text = String::new();
-                text.push(ch);
-                clusters.push(WordSubRun {
-                    font: sub.font,
-                    advance_pt: text_width(sub.font, word.size_pt, &text),
-                    text,
-                    glyphs: Vec::new(),
-                });
-            }
-            continue;
-        }
-
-        let mut i = 0;
-        while i < sub.glyphs.len() {
-            let cluster = sub.glyphs[i].cluster;
-            let mut j = i + 1;
-            while j < sub.glyphs.len() && sub.glyphs[j].cluster == cluster {
-                j += 1;
-            }
-            let start = usize::try_from(cluster).unwrap_or(usize::MAX);
-            let end = if j < sub.glyphs.len() {
-                usize::try_from(sub.glyphs[j].cluster).unwrap_or(usize::MAX)
-            } else {
-                sub.text.len()
-            };
-            debug_assert!(start <= end && end <= sub.text.len());
-            let Some(text) = sub.text.get(start..end) else {
-                i = j;
-                continue;
-            };
-            let shift = u32::try_from(start).unwrap_or(u32::MAX);
-            let glyphs: Vec<_> = sub.glyphs[i..j]
-                .iter()
-                .map(|g| ShapedGlyph {
-                    cluster: g.cluster.saturating_sub(shift),
-                    ..*g
-                })
-                .collect();
-            clusters.push(WordSubRun {
-                font: sub.font,
-                text: text.to_owned(),
-                advance_pt: glyphs_advance_pt(sub.font, word.size_pt, &glyphs),
-                glyphs,
-            });
-            i = j;
-        }
-    }
-    clusters
-}
-
-fn glyphs_advance_pt(font: Font, size_pt: f32, glyphs: &[ShapedGlyph]) -> f32 {
-    let upem = match font {
-        Font::Embedded(id) => f32::from(id.data().units_per_em),
-        Font::Base14(_) => 1000.0,
-    };
-    // Sign-preserving conversion lives in mos_fonts to keep the
-    // two crates from drifting on hmtx semantics.
-    glyphs
-        .iter()
-        .map(|g| mos_fonts::advance_units_to_pt(g.advance_units, size_pt, upem))
-        .sum()
-}
-
-fn blank_page(number: u32, style: PageStyle) -> Page {
-    Page {
-        number,
-        width_pt: style.width_pt,
-        height_pt: style.height_pt,
-        runs: Vec::new(),
-        images: Vec::new(),
-    }
-}
-
-fn read_level(section: &Node) -> Option<u8> {
-    match section.attributes.get("level") {
-        Some(AttrValue::Int(n)) if *n >= 1 => u8::try_from((*n).clamp(1, 255)).ok(),
-        _ => None,
-    }
-}
-
-fn read_str_attr<'a>(node: &'a Node, key: &str) -> Option<&'a str> {
-    match node.attributes.get(key) {
-        Some(AttrValue::Str(s)) => Some(s.as_str()),
-        _ => None,
-    }
-}
-
-fn read_int_attr(node: &Node, key: &str) -> Option<i64> {
-    match node.attributes.get(key) {
-        Some(AttrValue::Int(n)) => Some(*n),
-        _ => None,
-    }
-}
-
-fn read_length_attr(node: &Node, key: &str) -> Option<f32> {
-    match node.attributes.get(key) {
-        Some(AttrValue::Length(pt)) => Some(pt_to_f32(*pt)),
-        _ => None,
-    }
-}
-
-fn expand_tabs(line: &str, tab_width: usize) -> Cow<'_, str> {
-    if !line.contains('\t') {
-        return Cow::Borrowed(line);
-    }
-
-    let tab_width = tab_width.max(1);
-    let mut out = String::with_capacity(line.len());
-    let mut col = 0_usize;
-    for ch in line.chars() {
-        if ch == '\t' {
-            let spaces = tab_width - (col % tab_width);
-            out.extend(std::iter::repeat_n(' ', spaces));
-            col += spaces;
-        } else {
-            out.push(ch);
-            col += 1;
-        }
-    }
-    Cow::Owned(out)
 }
 
 #[cfg(test)]
