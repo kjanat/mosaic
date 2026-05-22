@@ -7,4 +7,7 @@ entry   = "main.mos"
 language = "en"
 output   = ["pdf"]
 
+[output]
+pdf = "lists.pdf"
+
 [dependencies]

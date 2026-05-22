@@ -8,7 +8,7 @@ drive the `mos` CLI build pipeline yet.
 
 ## Scope
 
-- Defines `ProjectManifest`, `ProjectSection`, and `DocumentSection`.
+- Defines `ProjectManifest`, `ProjectSection`, `DocumentSection`, and `OutputSection`.
 - Parses `mosaic.toml` with `ProjectManifest::load(&Path)`.
 - Supports direct `toml::from_str::<ProjectManifest>(...)` parsing.
 - Rejects unknown fields through `serde(deny_unknown_fields)`.
@@ -37,6 +37,9 @@ entry   = "main.mos"
 language = "en"
 output   = ["pdf"]
 
+[output]
+pdf = "hello.pdf"
+
 [dependencies]
 ```
 
@@ -49,10 +52,11 @@ Fields:
 | `project.entry`     | `ProjectSection::entry: String`             | yes      | none    |
 | `document.language` | `DocumentSection::language: Option<String>` | no       | `None`  |
 | `document.output`   | `DocumentSection::output: Vec<String>`      | no       | `[]`    |
+| `output.pdf`        | `OutputSection::pdf: Option<String>`        | no       | `None`  |
 | `dependencies`      | `BTreeMap<String, String>`                  | no       | `{}`    |
 
-The crate does not validate version syntax, output backend names, dependency formats, or whether
-`project.entry` exists on disk. It only deserializes the schema.
+The crate does not validate version syntax, output backend names, dependency formats, output path
+safety, or whether `project.entry` exists on disk. It only deserializes the schema.
 
 ## API Behavior
 
@@ -75,9 +79,9 @@ fn read_manifest(path: &Path) -> Result<ProjectManifest, ManifestError> {
 
 ## Boundary
 
-This crate sits near `mos-core` as a project/package foundation crate. It should stay boring until
-real integration lands. The current CLI still accepts explicit `.mos` entry paths; do not assume
-`mosaic.toml` controls `mos build`, output backends, or dependency loading.
+This crate sits near `mos-core` as a project/package foundation crate. It should stay boring. The
+CLI reads `project.entry` and `output.pdf` for directory builds, but dependency loading and backend
+selection are still not implemented.
 
 ## Known Non-Goals
 
@@ -85,5 +89,5 @@ real integration lands. The current CLI still accepts explicit `.mos` entry path
 - No lockfile model or lockfile generation.
 - No dependency resolution.
 - No package fetching, cache population, or source checkout.
-- No CLI orchestration or build output selection.
+- No backend selection beyond deserializing declared output path strings.
 - No validation beyond TOML deserialization and unknown-field rejection.

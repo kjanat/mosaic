@@ -41,6 +41,9 @@ pub struct ProjectManifest {
     pub document: DocumentSection,
 
     #[serde(default)]
+    pub output: OutputSection,
+
+    #[serde(default)]
     pub dependencies: BTreeMap<String, String>,
 }
 
@@ -86,6 +89,28 @@ pub struct DocumentSection {
 
     #[serde(default)]
     pub output: Vec<String>,
+}
+
+/// Declared output paths from `mosaic.toml`.
+///
+/// Paths are interpreted by the CLI relative to the project directory.
+///
+/// # Examples
+///
+/// ```
+/// use mos_packages::OutputSection;
+///
+/// let section = OutputSection {
+///     pdf: Some("paper.pdf".to_owned()),
+/// };
+///
+/// assert_eq!(section.pdf.as_deref(), Some("paper.pdf"));
+/// ```
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutputSection {
+    #[serde(default)]
+    pub pdf: Option<String>,
 }
 
 /// Error returned when loading a manifest from disk.
@@ -142,5 +167,28 @@ impl ProjectManifest {
             path: path.to_path_buf(),
             source,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_optional_pdf_output_path() {
+        let manifest: ProjectManifest = toml::from_str(
+            r#"
+            [project]
+            name = "demo"
+            version = "0.1.0"
+            entry = "main.mos"
+
+            [output]
+            pdf = "demo.pdf"
+            "#,
+        )
+        .expect("manifest parses");
+
+        assert_eq!(manifest.output.pdf.as_deref(), Some("demo.pdf"));
     }
 }

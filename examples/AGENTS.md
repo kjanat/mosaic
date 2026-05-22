@@ -10,9 +10,9 @@ regression fossils, not normal `cargo test` snapshots.
 ```text
 examples/<name>/
 ├── main.mos
-├── mosaic.toml
+├── mosaic.toml       # declares [output].pdf = "<name>.pdf"
 ├── <name>.pdf        # committed snapshot
-└── build/main.pdf    # generated, ignored
+└── build/main.pdf    # fallback/generated path; ignored
 ```
 
 ## WHERE TO LOOK
@@ -28,10 +28,11 @@ examples/<name>/
 ## CONVENTIONS
 
 - Regenerate snapshots with `just examples` from repo root.
-- `just examples` runs `cargo mos build` inside each example dir, then copies `build/main.pdf` to
-  `<name>.pdf`.
-- Commit `<name>.pdf`; do not commit `build/main.pdf`.
-- `mosaic.toml` is mostly convention/docs today. Current CLI does not honor `output = ["html"]`.
+- `just examples` runs `cargo mos build examples/*`; each example manifest declares `[output].pdf`
+  so the CLI writes `<name>.pdf` directly.
+- Commit `<name>.pdf`; do not commit generated `build/*.pdf`.
+- `mosaic.toml` is partly active: CLI directory builds honor `project.entry` and `output.pdf`.
+  Current CLI still does not honor `document.output = ["html"]`.
 - `hello/demo.png` has a generator at `crates/mos-eval/examples/gen_demo_png.rs`.
 
 ## GOTCHAS

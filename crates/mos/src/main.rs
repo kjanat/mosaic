@@ -7,7 +7,7 @@
 
 #![allow(clippy::print_stderr, clippy::print_stdout)]
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
 
 use clap::{Parser, Subcommand};
@@ -37,8 +37,8 @@ enum Command {
 
     /// Build the project to its declared outputs.
     Build {
-        #[arg(default_value = "main.mos")]
-        entry: PathBuf,
+        #[arg(value_name = "PATH")]
+        entries: Vec<PathBuf>,
         /// Open the generated PDF after a successful build.
         ///
         /// Use `--open` for the platform default, or `--open=PROGRAM`
@@ -61,8 +61,8 @@ enum Command {
 
     /// Type-check and validate without producing output.
     Check {
-        #[arg(default_value = "main.mos")]
-        entry: PathBuf,
+        #[arg(value_name = "PATH")]
+        entries: Vec<PathBuf>,
     },
 
     /// Format `.mos` sources (manifest §18).
@@ -94,13 +94,13 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Check { entry } => run_check(&entry),
+        Command::Check { entries } => run_checks(&entries),
         Command::Build {
-            entry,
+            entries,
             open,
             frozen: _,
             reproducible: _,
-        } => run_build(&entry, PdfOpen::from_cli(&open)),
+        } => run_builds(&entries, PdfOpen::from_cli(&open)),
         Command::Init { .. } => unimplemented_subcommand("init"),
         Command::Watch { .. } => unimplemented_subcommand("watch"),
         Command::Fmt { .. } => unimplemented_subcommand("fmt"),
@@ -111,6 +111,53 @@ fn main() -> ExitCode {
     }
 }
 
+fn default_entries(entries: &[PathBuf]) -> Vec<PathBuf> {
+    if entries.is_empty() {
+        vec![PathBuf::from("main.mos")]
+    } else {
+        entries.to_owned()
+    }
+}
+
+fn run_checks(entries: &[PathBuf]) -> ExitCode {
+    run_many(entries, run_check)
+}
+
+fn run_builds(entries: &[PathBuf], open: PdfOpen<'_>) -> ExitCode {
+    run_many(entries, |entry| run_build(entry, open))
+}
+
+fn run_many(entries: &[PathBuf], mut run_one: impl FnMut(&Path) -> ExitCode) -> ExitCode {
+    let entries = default_entries(entries);
+    let many = entries.len() > 1;
+    let mut ran = false;
+    let mut failed = false;
+
+    for entry in &entries {
+        if should_skip_glob_file(entry, many) {
+            continue;
+        }
+        ran = true;
+        if run_one(entry) != ExitCode::SUCCESS {
+            failed = true;
+        }
+    }
+
+    if failed || !ran {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn should_skip_glob_file(entry: &Path, many: bool) -> bool {
+    many && entry.is_file() && !is_mos_source(entry)
+}
+
+fn is_mos_source(entry: &Path) -> bool {
+    entry.extension().is_some_and(|ext| ext == "mos")
+}
+
 fn unimplemented_subcommand(name: &str) -> ExitCode {
     eprintln!("mos {name}: not yet implemented (see manifest §30 MVP roadmap)");
     ExitCode::FAILURE
@@ -119,9 +166,8 @@ fn unimplemented_subcommand(name: &str) -> ExitCode {
 /// `mos check` — parse + lower the entry file and report diagnostics.
 /// Exits 0 if no errors (warnings still print); 1 otherwise.
 fn run_check(entry: &Path) -> ExitCode {
-    let entry = match resolve_entry_path("check", entry) {
-        Ok(entry) => entry,
-        Err(()) => return ExitCode::FAILURE,
+    let Ok(entry) = resolve_entry("check", entry).map(|entry| entry.source) else {
+        return ExitCode::FAILURE;
     };
     let src = match std::fs::read_to_string(&entry) {
         Ok(s) => s,
@@ -164,10 +210,10 @@ fn run_check(entry: &Path) -> ExitCode {
 /// using the standard PDF base fonts (no embedding). Layout warnings
 /// (e.g. non-ASCII substitutions) print but don't fail the build.
 fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
-    let entry = match resolve_entry_path("build", entry) {
-        Ok(entry) => entry,
-        Err(()) => return ExitCode::FAILURE,
+    let Ok(resolved) = resolve_entry("build", entry) else {
+        return ExitCode::FAILURE;
     };
+    let entry = resolved.source;
     let src = match std::fs::read_to_string(&entry) {
         Ok(s) => s,
         Err(err) => {
@@ -204,8 +250,11 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
         || std::ffi::OsString::from("out"),
         std::ffi::OsStr::to_os_string,
     );
-    let mut out = PathBuf::from("build");
-    out.push(format!("{}.pdf", stem.to_string_lossy()));
+    let out = resolved.output.unwrap_or_else(|| {
+        let mut path = resolved.output_base.join("build");
+        path.push(format!("{}.pdf", stem.to_string_lossy()));
+        path
+    });
 
     let metadata = mos_pdf::PdfMetadata {
         title: result.metadata.title.clone(),
@@ -252,9 +301,23 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn resolve_entry_path(command: &str, entry: &Path) -> Result<PathBuf, ()> {
+struct ResolvedEntry {
+    source: PathBuf,
+    output_base: PathBuf,
+    output: Option<PathBuf>,
+}
+
+fn resolve_entry(command: &str, entry: &Path) -> Result<ResolvedEntry, ()> {
     if !entry.is_dir() {
-        return Ok(entry.to_path_buf());
+        let output_base = entry
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
+        return Ok(ResolvedEntry {
+            source: entry.to_path_buf(),
+            output_base,
+            output: None,
+        });
     }
 
     let manifest_path = entry.join("mosaic.toml");
@@ -266,10 +329,39 @@ fn resolve_entry_path(command: &str, entry: &Path) -> Result<PathBuf, ()> {
                 return Err(());
             }
         };
-        return Ok(entry.join(manifest.project.entry));
+        return Ok(ResolvedEntry {
+            source: entry.join(manifest.project.entry),
+            output_base: entry.to_path_buf(),
+            output: match manifest.output.pdf.as_deref() {
+                Some(path) => Some(resolve_manifest_output(command, entry, path)?),
+                None => None,
+            },
+        });
     }
 
-    Ok(entry.join("main.mos"))
+    Ok(ResolvedEntry {
+        source: entry.join("main.mos"),
+        output_base: entry.to_path_buf(),
+        output: None,
+    })
+}
+
+fn resolve_manifest_output(command: &str, project_dir: &Path, output: &str) -> Result<PathBuf, ()> {
+    let output_path = Path::new(output);
+    if output_path.as_os_str().is_empty()
+        || output_path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        eprintln!(
+            "mos {command}: invalid PDF output path `{output}`; use a relative path inside the project"
+        );
+        return Err(());
+    }
+    Ok(project_dir.join(output_path))
 }
 
 #[derive(Debug, Clone, Copy)]

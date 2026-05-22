@@ -77,6 +77,35 @@ fn check_directory_without_manifest_uses_main_mos() {
 }
 
 #[test]
+fn check_accepts_many_entries_and_skips_non_mos_files() {
+    let dir = temp_dir("mos-check-many");
+    std::fs::create_dir(dir.path().join("one")).expect("create first fixture dir");
+    std::fs::create_dir(dir.path().join("two")).expect("create second fixture dir");
+    write_file(dir.path(), "AGENTS.md", "not a Mosaic source\n");
+    write_file(&dir.path().join("one"), "main.mos", "= One\n\nbody\n");
+    write_file(&dir.path().join("two"), "main.mos", "= Two\n\nbody\n");
+
+    let (code, stdout, stderr) = run(&["check", "AGENTS.md", "one", "two"], dir.path());
+
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert_eq!(stdout.matches("ok:").count(), 2, "stdout={stdout:?}");
+    assert!(stderr.is_empty(), "stderr={stderr:?}");
+}
+
+#[test]
+fn check_many_entries_fails_if_any_entry_fails() {
+    let dir = temp_dir("mos-check-many-fail");
+    write_file(dir.path(), "good.mos", "= Good\n\nbody\n");
+    write_file(dir.path(), "bad.mos", "#set page(\nunclosed\n");
+
+    let (code, stdout, stderr) = run(&["check", "good.mos", "bad.mos"], dir.path());
+
+    assert_eq!(code, 1, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.contains("ok:"), "stdout={stdout:?}");
+    assert!(stderr.contains("error[E012]"), "stderr={stderr:?}");
+}
+
+#[test]
 fn check_unterminated_set_fails() {
     let dir = temp_dir("mos-check-err");
     write_file(dir.path(), "main.mos", "#set page(\nunclosed\n");
@@ -363,7 +392,128 @@ fn build_directory_uses_manifest_entry() {
 
     assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
     assert!(stdout.contains("build/chapter.pdf"), "stdout={stdout:?}");
-    assert!(dir.path().join("build/chapter.pdf").exists());
+    assert!(dir.path().join("doc/build/chapter.pdf").exists());
+    assert!(!dir.path().join("doc/demo.pdf").exists());
+    assert!(!dir.path().join("build/chapter.pdf").exists());
+}
+
+#[test]
+fn build_directory_uses_declared_pdf_output() {
+    let dir = temp_dir("mos-build-output-pdf");
+    std::fs::create_dir(dir.path().join("doc")).expect("create fixture dir");
+    write_file(
+        &dir.path().join("doc"),
+        "mosaic.toml",
+        "[project]\nname = \"demo\"\nversion = \"0.1.0\"\nentry = \"main.mos\"\n\n[output]\npdf = \"demo.pdf\"\n",
+    );
+    write_file(&dir.path().join("doc"), "main.mos", "= Title\n\nbody\n");
+
+    let (code, stdout, stderr) = run(&["build", "doc"], dir.path());
+
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.contains("doc/demo.pdf"), "stdout={stdout:?}");
+    assert!(dir.path().join("doc/demo.pdf").exists());
+    assert!(!dir.path().join("doc/build/main.pdf").exists());
+}
+
+#[test]
+fn build_rejects_manifest_output_outside_project() {
+    let dir = temp_dir("mos-build-output-bad");
+    std::fs::create_dir(dir.path().join("doc")).expect("create fixture dir");
+    write_file(
+        &dir.path().join("doc"),
+        "mosaic.toml",
+        "[project]\nname = \"demo\"\nversion = \"0.1.0\"\nentry = \"main.mos\"\n\n[output]\npdf = \"../demo.pdf\"\n",
+    );
+    write_file(&dir.path().join("doc"), "main.mos", "= Title\n\nbody\n");
+
+    let (code, stdout, stderr) = run(&["build", "doc"], dir.path());
+
+    assert_eq!(code, 1, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.is_empty(), "stdout={stdout:?}");
+    assert!(
+        stderr.contains("invalid PDF output path"),
+        "stderr={stderr:?}"
+    );
+}
+
+#[test]
+fn build_many_project_directories_uses_declared_outputs() {
+    let dir = temp_dir("mos-build-many-projects");
+    for name in ["one", "two"] {
+        let project_dir = dir.path().join(name);
+        std::fs::create_dir(&project_dir).expect("create fixture dir");
+        write_file(
+            &project_dir,
+            "mosaic.toml",
+            &format!(
+                "[project]\nname = \"{name}\"\nversion = \"0.1.0\"\nentry = \"main.mos\"\n\n[output]\npdf = \"{name}.pdf\"\n"
+            ),
+        );
+        write_file(&project_dir, "main.mos", &format!("= {name}\n\nbody\n"));
+    }
+
+    let (code, stdout, stderr) = run(&["build", "one", "two"], dir.path());
+
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    for name in ["one", "two"] {
+        assert!(dir.path().join(name).join(format!("{name}.pdf")).exists());
+        assert!(!dir.path().join(name).join("build/main.pdf").exists());
+    }
+}
+
+#[test]
+fn build_directory_without_manifest_writes_inside_that_directory() {
+    let dir = temp_dir("mos-build-dir-main");
+    std::fs::create_dir(dir.path().join("doc")).expect("create fixture dir");
+    write_file(&dir.path().join("doc"), "main.mos", "= Title\n\nbody\n");
+
+    let (code, stdout, stderr) = run(&["build", "doc"], dir.path());
+
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.contains("doc/build/main.pdf"), "stdout={stdout:?}");
+    assert!(dir.path().join("doc/build/main.pdf").exists());
+    assert!(!dir.path().join("build/main.pdf").exists());
+}
+
+#[test]
+fn build_file_path_writes_next_to_source_file() {
+    let dir = temp_dir("mos-build-file-parent");
+    std::fs::create_dir(dir.path().join("doc")).expect("create fixture dir");
+    write_file(&dir.path().join("doc"), "main.mos", "= Title\n\nbody\n");
+
+    let (code, stdout, stderr) = run(&["build", "doc/main.mos"], dir.path());
+
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.contains("doc/build/main.pdf"), "stdout={stdout:?}");
+    assert!(dir.path().join("doc/build/main.pdf").exists());
+    assert!(!dir.path().join("build/main.pdf").exists());
+}
+
+#[test]
+fn build_accepts_many_entries() {
+    let dir = temp_dir("mos-build-many");
+    write_file(dir.path(), "one.mos", "= One\n\nbody\n");
+    write_file(dir.path(), "two.mos", "= Two\n\nbody\n");
+
+    let (code, stdout, stderr) = run(&["build", "one.mos", "two.mos"], dir.path());
+
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(dir.path().join("build/one.pdf").exists());
+    assert!(dir.path().join("build/two.pdf").exists());
+}
+
+#[test]
+fn build_skips_non_mos_files_when_multiple_entries_provided() {
+    let dir = temp_dir("mos-build-skip-non-mos");
+    write_file(dir.path(), "README.md", "not a source\n");
+    write_file(dir.path(), "one.mos", "= One\n\nbody\n");
+
+    let (code, stdout, stderr) = run(&["build", "README.md", "one.mos"], dir.path());
+
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(stderr.is_empty(), "stderr={stderr:?}");
+    assert!(dir.path().join("build/one.pdf").exists());
 }
 
 /// Build a 4×3 RGBA PNG by hand without depending on an `image` crate
