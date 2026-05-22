@@ -10,7 +10,7 @@ use mos_core::{
 };
 use mos_parse::{SetArg, SetValue};
 
-use crate::{coerce_positive_length, image};
+use crate::{image, set::coerce_positive_length};
 
 /// Lower a top-level `#image(...)` directive into a single
 /// [`NodeKind::Image`] node hanging off the document root. The decoded

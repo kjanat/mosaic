@@ -288,3 +288,31 @@ impl From<EmbeddedFontId> for Font {
         Self::Embedded(id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pdf_resource_name_is_f1_through_f20() {
+        for (i, font) in Font::ALL_BASE14.iter().enumerate() {
+            let expected = format!("F{}", i + 1);
+            assert_eq!(font.pdf_resource_name(), expected.as_bytes());
+        }
+        for (i, id) in EmbeddedFontId::ALL.iter().enumerate() {
+            let expected = format!("F{}", 15 + i);
+            assert_eq!(id.pdf_resource_name(), expected.as_bytes());
+        }
+    }
+
+    #[test]
+    fn font_all_base14_preserves_historical_resource_numbers() {
+        assert_eq!(Font::ALL_BASE14[0], Font::Base14(Base14Font::Helvetica));
+        assert_eq!(Font::ALL_BASE14[1], Font::Base14(Base14Font::HelveticaBold));
+        assert_eq!(
+            Font::ALL_BASE14[2],
+            Font::Base14(Base14Font::HelveticaOblique)
+        );
+        assert_eq!(Font::ALL_BASE14[3], Font::Base14(Base14Font::Courier));
+    }
+}
