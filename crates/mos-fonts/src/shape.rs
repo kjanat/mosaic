@@ -426,15 +426,36 @@ mod tests {
     }
 
     #[test]
-    fn embedded_shape_advances_match_pdf_width_path() {
+    fn embedded_shape_preserves_gpos_kerning() {
         let ef = EmbeddedFontId::Regular.data();
         let glyphs = shape(ef, "AV");
         assert!(!glyphs.is_empty());
-        for glyph in &glyphs {
-            assert_eq!(glyph.advance_units, i32::from(ef.advance_units(glyph.gid)));
-            assert_eq!(glyph.x_offset_units, 0);
-            assert_eq!(glyph.y_offset_units, 0);
-        }
+        let nominal: i32 = glyphs
+            .iter()
+            .map(|g| i32::from(ef.advance_units(g.gid)))
+            .sum();
+        let shaped: i32 = glyphs.iter().map(|g| g.advance_units).sum();
+
+        assert!(
+            shaped < nominal,
+            "expected AV kerning to tighten advance: shaped={shaped} nominal={nominal}"
+        );
+    }
+
+    #[test]
+    fn embedded_shape_preserves_combining_mark_offsets() {
+        let ef = EmbeddedFontId::Regular.data();
+        let glyphs = shape(ef, "q\u{0302}\u{0301}");
+        assert!(
+            glyphs.len() >= 3,
+            "expected base 'q' + 2 combining marks, got {glyphs:?}"
+        );
+        assert!(
+            glyphs[1..]
+                .iter()
+                .any(|g| g.x_offset_units != 0 || g.y_offset_units != 0),
+            "expected at least one combining mark offset, got {glyphs:?}"
+        );
     }
 
     #[test]
