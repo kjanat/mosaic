@@ -22,10 +22,12 @@ the pair must travel together. The greedy breaker honours this
 because it splits only at ASCII whitespace, and U+00A0 is not
 ASCII whitespace.
 
-Authors who refuse to break "Mr. Smith" across a line write it
-as `Mr.` followed immediately by U+00A0 and then `Smith`: Mr. Smith
-becomes Mr. Smith, joined and unsplittable. A page-numbering
-convention like "page 4" benefits from the same treatment.
+Authors who refuse to break "Mr. Smith" across a line write the
+literal source `Mr.<NBSP>Smith` (where `<NBSP>` is one U+00A0
+byte). Rendered, the pair joins as Mr. Smith — visually
+indistinguishable from a regular space, but treated by the
+breaker as an indivisible unit. Likewise `page<NBSP>4` keeps the
+label and number together, rendered as page 4.
 
 A single regular space — like the one between this word and the
 next — is, of course, breakable like any other.

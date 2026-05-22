@@ -1121,6 +1121,29 @@ mod tests {
     }
 
     #[test]
+    fn soft_hyphen_span_covers_the_consumed_source_bytes() {
+        // Regression: the `\-` shorthand was advancing `text_start`
+        // past the consumed bytes without recording where the run
+        // originally started, so the emitted Inline carried a
+        // zero-width span pointing at the post-`\-` bytes only.
+        let src = "a\\-b\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].text, "a\u{AD}b");
+        // The span should cover all four source bytes of `a\-b`,
+        // not just the trailing `b`. Newline is not part of the
+        // paragraph inline run.
+        assert_eq!(
+            inlines[0].span.end - inlines[0].span.start,
+            4,
+            "expected span over `a\\-b` (4 bytes), got {:?}",
+            inlines[0].span
+        );
+    }
+
+    #[test]
     fn soft_hyphen_shorthand_repeats_in_one_run() {
         // Multiple `\-` shorthands inside one text run accumulate into
         // a single Text inline -- the pending buffer flushes only at

@@ -52,14 +52,14 @@ Not implemented here yet:
 - `current_left_pt` and `pending_marker` must restore after nested lists.
 - Font family names come through semantic attrs; unknown fonts warn and fall back.
 - Keep layout deterministic. No hash-map-dependent output order.
-- NBSP (U+00A0) must stay inside a `Word`. The text extractor in `collect_words` splits on
-  ASCII whitespace only — do not swap in a UAX #14 splitter without preserving this contract.
-- `flow_words` consumes `Vec<WordItem>`; `WordItem::HardBreak` flushes the current line (or
-  advances one blank line if the buffer is empty) without paragraph spacing. Anything that
-  builds word streams (headings, raw blocks, list items) must wrap `Word`s in `WordItem::Word`.
-- `Word.shy_break_offsets` records SHY (U+00AD) byte positions in the stripped `text`. The
-  greedy breaker ignores them; the future Knuth-Plass breaker consumes them as Penalty points
-  with hyphen-glyph width on chosen break.
+- NBSP (U+00A0) must stay inside a `Word`. The text extractor in `collect_words` splits on ASCII
+  whitespace only — do not swap in a UAX #14 splitter without preserving this contract.
+- `flow_words` consumes `Vec<WordItem>`; `WordItem::HardBreak` flushes the current line (or advances
+  one blank line if the buffer is empty) without paragraph spacing. Anything that builds word
+  streams (headings, raw blocks, list items) must wrap `Word`s in `WordItem::Word`.
+- `Word.shy_break_offsets` records SHY (U+00AD) byte positions in the stripped `text`. The greedy
+  breaker ignores them; the future Knuth-Plass breaker consumes them as Penalty points with
+  hyphen-glyph width on chosen break.
 
 ## ANTI-PATTERNS
 

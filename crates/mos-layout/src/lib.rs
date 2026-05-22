@@ -361,6 +361,13 @@ impl LayoutState {
                 // Knuth-Plass breaker can hyphenate at the author's
                 // marked positions.
                 let (stripped, shy_offsets) = split_soft_hyphens(piece);
+                // A piece that was entirely SHY codepoints leaves
+                // nothing to shape; skip it so we don't emit a
+                // phantom zero-width word that would inflate the
+                // interword gap on either side.
+                if stripped.is_empty() {
+                    continue;
+                }
                 let subruns =
                     shape_with_fallback(font, self.text.family.fallbacks, size, &stripped);
                 let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
@@ -1234,6 +1241,35 @@ mod tests {
         let runs = &result.graph.pages[0].runs;
         assert_eq!(runs.len(), 1, "expected one run, got {runs:?}");
         assert_eq!(runs[0].text, "foo");
+    }
+
+    #[test]
+    fn shy_only_piece_does_not_emit_phantom_word() {
+        // A whitespace-delimited piece consisting entirely of SHY
+        // codepoints strips to empty -- skip it rather than emit a
+        // zero-width Word, which would push an extra space gap into
+        // the line because flush_line charges one space-advance per
+        // word past the first.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        // Three pieces after ASCII-whitespace split: "foo", "\u{AD}\u{AD}", "bar".
+        // The middle piece must produce zero Word items.
+        make_paragraph(&mut doc, "foo \u{AD}\u{AD} bar");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_eq!(
+            runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            vec!["foo", "bar"],
+            "got {runs:?}"
+        );
+        let foo_w = text_width(runs[0].font, runs[0].size_pt, "foo");
+        let space_w = text_width(runs[0].font, runs[0].size_pt, " ");
+        let gap = runs[1].x_pt - (runs[0].x_pt + foo_w);
+        assert!(
+            (gap - space_w).abs() < 0.01,
+            "expected one space gap ({space_w:.3}pt), got {gap:.3}pt -- phantom SHY-only word?"
+        );
     }
 
     #[test]
