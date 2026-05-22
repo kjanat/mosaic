@@ -18,5 +18,7 @@ dwn  = ["--config", ".cargo/nightly.toml", "doc"]
 lint = "clippy --workspace --all-targets --all-features -- -D warnings -D clippy::all"
 # Run the `mos` CLI from the workspace.
 mos  = "run --release -q -p mos --"
+# Install the workspace `mos` CLI binary locally.
+mosi = "install --path=crates/mos --bin=mos --force"
 rr   = "run --release"
 tw   = "test --workspace"
