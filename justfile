@@ -9,7 +9,7 @@ default:
 
 # Build every example and refresh its committed `<name>.pdf` snapshot
 # next to `main.mos`. GitHub previews these inline; the regen target
-# keeps them in sync with the current `mosaic-fonts` / `mosaic-pdf` state.
+# keeps them in sync with the current `mos-fonts` / `mos-pdf` state.
 examples:
     #!/usr/bin/env bash
     set -euo pipefail

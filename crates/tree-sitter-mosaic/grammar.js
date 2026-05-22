@@ -28,6 +28,7 @@ const PREC = {
 export default grammar({
 	name: 'mosaic',
 
+	// oxlint-disable-next-line no-unused-vars
 	extras: $ => [
 		/[\t ]+/,
 	],

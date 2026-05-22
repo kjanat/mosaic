@@ -15,38 +15,42 @@ keywords     = ["compiler", "layout", "pdf", "typesetting", "typography"]
 categories   = ["compilers", "text-processing"]
 
 [workspace.dependencies]
-afm                = { path = "crates/afm" }
-mosaic-bib         = { path = "crates/mosaic-bib" }
-mosaic-cache       = { path = "crates/mosaic-cache" }
-mosaic-core        = { path = "crates/mosaic-core" }
-mosaic-eval        = { path = "crates/mosaic-eval" }
-mosaic-fonts       = { path = "crates/mosaic-fonts" }
-mosaic-html        = { path = "crates/mosaic-html" }
-mosaic-layout      = { path = "crates/mosaic-layout" }
-mosaic-lsp         = { path = "crates/mosaic-lsp" }
-mosaic-packages    = { path = "crates/mosaic-packages" }
-mosaic-parse       = { path = "crates/mosaic-parse" }
-mosaic-pdf         = { path = "crates/mosaic-pdf" }
+adobe-font-metrics = { path = "crates/adobe-font-metrics" }
+mos-bib            = { path = "crates/mos-bib" }
+mos-cache          = { path = "crates/mos-cache" }
+mos-core           = { path = "crates/mos-core" }
+mos-eval           = { path = "crates/mos-eval" }
+mos-fonts          = { path = "crates/mos-fonts" }
+mos-html           = { path = "crates/mos-html" }
+mos-layout         = { path = "crates/mos-layout" }
+mos-lsp            = { path = "crates/mos-lsp" }
+mos-packages       = { path = "crates/mos-packages" }
+mos-parse          = { path = "crates/mos-parse" }
+mos-pdf            = { path = "crates/mos-pdf" }
 pdf-base14-metrics = { path = "crates/pdf-base14-metrics" }
 tree-sitter-mosaic = { path = "crates/tree-sitter-mosaic" }
 
 # External dependencies
 cc                   = "1.2"
+flate2               = "1.1"
 lopdf                = "0.40"
 opener               = "0.8"
 pdf-writer           = "0.14"
+rustybuzz            = "0.20"
 serde_json           = "1"
+subsetter            = "0.2"
 thiserror            = "2"
 toml                 = "1.1"
 tree-sitter          = "0.26"
 tree-sitter-language = "0.1"
+ttf-parser           = "0.25"
 zed_extension_api    = "0.7.0"
 
 [workspace.dependencies.clap]
 version  = "4.6"
 features = ["derive"]
 
-# `image` is the raster decoder used by `mosaic-eval` for `#image(...)`
+# `image` is the raster decoder used by `mos-eval` for `#image(...)`
 # directives. Default features are turned off so we ship only PNG + JPEG
 # support — TIFF/AVIF/WebP and SVG live behind separate later slices.
 [workspace.dependencies.image]
@@ -145,7 +149,7 @@ useless_let_if_seq            = "warn"
 
 # --- restriction cherry-picks (group itself is discouraged) -------
 # `print_stdout`/`print_stderr` are allowed at the binary crate that
-# legitimately writes to stdout (mosaic-cli) via crate-level attrs.
+# legitimately writes to stdout (mos) via crate-level attrs.
 dbg_macro                  = "warn"
 expect_used                = "warn"
 float_cmp_const            = "warn"

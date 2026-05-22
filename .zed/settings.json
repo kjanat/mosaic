@@ -17,12 +17,12 @@
 		"Rust": { "wrap_guides": [100] },
 		"Mosaic": {
 			"wrap_guides": [100],
-			"language_servers": ["mos-lsp"], // not entirely set on naming mos-lsp vs mosaic-lsp...
+			"language_servers": ["mos-lsp"],
 			"formatter": "language_server"
 		}
 	},
 	"lsp": {
-		"mos-lsp": {
+		"mos-lsp": { // pre-wired... does fuck all at the moment...
 			"binary": {
 				"path": "cargo",
 				"arguments": ["run", "--bin", "mos-lsp"],

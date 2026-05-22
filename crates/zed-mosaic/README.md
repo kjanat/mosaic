@@ -56,7 +56,7 @@ Zed `tasks.json` files by binding their own task to the same runnable tags.
 
 [`languages/mosaic/semantic_token_rules.json`] reserves the `mosaic*` custom token namespace for the
 future LSP and maps those semantic tokens to Zed theme styles. It is inactive until the extension
-registers `mosaic-lsp` and Zed has semantic tokens enabled (`combined` or `full`)[^semantic-tokens].
+registers `mos-lsp` and Zed has semantic tokens enabled (`combined` or `full`)[^semantic-tokens].
 
 <!-- sorted case-sensitive -->
 

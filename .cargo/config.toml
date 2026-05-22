@@ -20,5 +20,5 @@ rr = "run --release"
 # Lints. Not aliased as `clippy` because that's an existing subcommand.
 lint = "clippy --workspace --all-targets --all-features -- -D warnings -D clippy::all"
 
-# Run the `mos` CLI from the workspace without typing `-p mosaic-cli`.
-mos = "run --release -q -p mosaic-cli --"
+# Run the `mos` CLI from the workspace.
+mos = "run --release -q -p mos --"

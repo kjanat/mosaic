@@ -26,7 +26,7 @@
 // `WinAnsi` natives (`á`, `ß`, `€`, `“`, ...) are NOT in this table —
 // look them up through `winansi_byte` instead.
 //
-// Source: the Helvetica.afm `CharSet` minus the 216 names in
+// Source: the Helvetica.adobe-font-metrics `CharSet` minus the 216 names in
 // `WINANSI_TABLE`, cross-referenced with the Adobe Glyph List for New
 // Fonts (AGLFN). License-clean: the 99 entries below are derivative
 // of the vendored AFM `CharSet` (Adobe APAFML) plus public PDF/Unicode

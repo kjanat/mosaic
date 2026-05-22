@@ -1,11 +1,11 @@
 //! Integration tests for the baked Core 14 metrics. These pin the
-//! contract `mosaic-fonts` and `mosaic-pdf` rely on:
+//! contract `mos-fonts` and `mos-pdf` rely on:
 //!
 //! - Per-variant PDF `/BaseFont` strings (written verbatim into PDF
 //!   resource dictionaries).
 //! - Adobe-canonical glyph widths for `A` in Helvetica / Times /
 //!   Courier — the same values the legacy hand-typed
-//!   `mosaic-layout::metrics` table used to assert, now read through
+//!   `mos-layout::metrics` table used to assert, now read through
 //!   the parsed AFM instead of typed by hand.
 //! - PDF `WinAnsiEncoding` byte lookups span all four bands of the
 //!   table (ASCII, Win-specific, Latin-1, accented Latin), plus the
@@ -20,8 +20,8 @@ use pdf_base14_metrics::Base14Font;
 
 #[test]
 fn helvetica_capital_a_matches_adobe_core14_afm() {
-    // Adobe Helvetica.afm: `C 65 ; WX 667 ; N A ; B 14 0 654 718 ;`
-    // Helvetica-Bold.afm: WX 722. Helvetica-Oblique.afm: WX 667.
+    // Adobe Helvetica.adobe-font-metrics: `C 65 ; WX 667 ; N A ; B 14 0 654 718 ;`
+    // Helvetica-Bold.adobe-font-metrics: WX 722. Helvetica-Oblique.adobe-font-metrics: WX 667.
     assert_eq!(Base14Font::Helvetica.glyph_width("A"), Some(667.0));
     assert_eq!(Base14Font::HelveticaBold.glyph_width("A"), Some(722.0));
     assert_eq!(Base14Font::HelveticaOblique.glyph_width("A"), Some(667.0));
@@ -33,7 +33,7 @@ fn helvetica_capital_a_matches_adobe_core14_afm() {
 
 #[test]
 fn times_roman_capital_a() {
-    // Adobe Times-Roman.afm: `C 65 ; WX 722 ; N A ; B 15 0 706 674 ;`
+    // Adobe Times-Roman.adobe-font-metrics: `C 65 ; WX 722 ; N A ; B 15 0 706 674 ;`
     assert_eq!(Base14Font::TimesRoman.glyph_width("A"), Some(722.0));
 }
 
@@ -101,7 +101,7 @@ fn text_fonts_have_ascender_and_descender() {
 
 #[test]
 fn pdf_base_names_pin_all_14() {
-    // These bytes go verbatim into PDF resource dictionaries; mosaic-pdf
+    // These bytes go verbatim into PDF resource dictionaries; mos-pdf
     // depends on the exact strings remaining stable.
     let expected = [
         (Base14Font::Helvetica, "Helvetica"),

@@ -1,0 +1,23 @@
+[package]
+name                   = "mos-eval"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+description            = "Expression and scripting evaluator for Mosaic (manifest §4, §25)."
+readme.workspace       = true
+homepage.workspace     = true
+repository.workspace   = true
+license.workspace      = true
+keywords.workspace     = true
+categories.workspace   = true
+
+[dependencies]
+# PNG + JPEG decode for `#image(...)` directives. Default features are
+# turned off so we don't pull in TIFF, AVIF, WebP, etc. — image format
+# coverage beyond PNG/JPEG is a separate later slice.
+image     = { workspace = true }
+mos-core  = { workspace = true }
+mos-parse = { workspace = true }
+
+[lints]
+workspace = true

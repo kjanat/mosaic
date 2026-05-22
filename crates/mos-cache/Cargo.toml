@@ -1,0 +1,18 @@
+[package]
+name                   = "mos-cache"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+description            = "Incremental build cache for Mosaic (manifest §7, §32)."
+readme.workspace       = true
+homepage.workspace     = true
+repository.workspace   = true
+license.workspace      = true
+keywords.workspace     = true
+categories.workspace   = true
+
+[dependencies]
+mos-core = { workspace = true }
+
+[lints]
+workspace = true

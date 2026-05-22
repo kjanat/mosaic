@@ -24,8 +24,8 @@ substantially landed:
 
 - [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline `*emphasis*` / `**strong**` /
       `` `code` ``, `-` / `N.` lists with hanging indents, and `#set name(...)` blocks;
-- [x] lowering to a typed semantic `Document` graph in `mosaic-core`, with `#image(...)` and
-      `#figure(...)` directives evaluated in `mosaic-eval` (manifest §5, §6 stage 2);
+- [x] lowering to a typed semantic `Document` graph in `mos-core`, with `#image(...)` and
+      `#figure(...)` directives evaluated in `mos-eval` (manifest §5, §6 stage 2);
 - [x] `mos check` end-to-end — parse → lower → render diagnostics with `file:line:col` and source
       carets;
 - [x] `mos build` end-to-end — layout + PDF emission for the Base-14 core fonts and bundled Noto
@@ -38,7 +38,7 @@ Toolchain pinned via `rust-toolchain.toml` (stable, edition 2024, resolver 3). R
 
 ```sh
 cargo build --workspace            # or: cargo bw
-cargo run -p mosaic-cli -- --help  # or: cargo mos --help
+cargo run -p mos -- --help  # or: cargo mos --help
 ```
 
 The `mos` CLI exposes the manifest §15.1 subcommands. `check` and `build` are wired end-to-end; the
@@ -76,16 +76,16 @@ Defined in [`.cargo/config.toml`](./.cargo/config.toml). Cargo's alias schema fo
 single-letter built-ins (`b` / `c` / `d` / `t` / `r` / `rm`), so the workspace flavours get
 two-letter names instead:
 
-| alias        | expansion                                         | purpose                                             |
-| ------------ | ------------------------------------------------- | --------------------------------------------------- |
-| `cargo bw`   | `build --workspace`                               | build every crate                                   |
-| `cargo cw`   | `check --workspace --all-targets`                 | type-check including tests / examples / benches     |
-| `cargo tw`   | `test --workspace`                                | run every crate's test suite                        |
-| `cargo dw`   | `doc --workspace --no-deps`                       | rustdoc for our crates only                         |
-| `cargo br`   | `build --release`                                 | release build of the current package                |
-| `cargo rr`   | `run --release`                                   | release run of the current package                  |
-| `cargo lint` | `clippy --workspace --all-targets -- -D warnings` | strict clippy; warnings fail the run                |
-| `cargo mos`  | `run -q -p mosaic-cli --`                         | invoke the `mos` CLI without typing `-p mosaic-cli` |
+| alias        | expansion                                         | purpose                                         |
+| ------------ | ------------------------------------------------- | ----------------------------------------------- |
+| `cargo bw`   | `build --workspace`                               | build every crate                               |
+| `cargo cw`   | `check --workspace --all-targets`                 | type-check including tests / examples / benches |
+| `cargo tw`   | `test --workspace`                                | run every crate's test suite                    |
+| `cargo dw`   | `doc --workspace --no-deps`                       | rustdoc for our crates only                     |
+| `cargo br`   | `build --release`                                 | release build of the current package            |
+| `cargo rr`   | `run --release`                                   | release run of the current package              |
+| `cargo lint` | `clippy --workspace --all-targets -- -D warnings` | strict clippy; warnings fail the run            |
+| `cargo mos`  | `run -q -p mos --`                                | invoke the `mos` CLI                            |
 
 `cargo lint` is **not** aliased as `cargo clippy` because that name is already the clippy
 subcommand.
@@ -94,24 +94,27 @@ subcommand.
 
 ```text
 crates/
-  afm                 zero-dep AFM v4 parser (Adobe TN 5004)
-  pdf-base14-metrics  baked Core-14 PDF font metrics (built atop `afm`)
-  mosaic-core         document model, IDs, diagnostics      (manifest §5, §31)
-  mosaic-parse        parser for .mos                       (manifest §3, §6)
-  mosaic-eval         expression / template evaluator       (manifest §4, §25)
-  mosaic-layout       inline + block + page layout          (manifest §6, §22)
-  mosaic-pdf          PDF backend                           (manifest §21.1)
-  mosaic-html         semantic HTML backend                 (manifest §21.2)
-  mosaic-fonts        font discovery, shaping, metrics      (manifest §22.1)
-  mosaic-bib          bibliography / citation engine        (manifest §12)
-  mosaic-cache        incremental build cache               (manifest §7, §32)
-  mosaic-lsp          language server (lib + mos-lsp bin)   (manifest §17)
-  mosaic-packages     project / package manifest schema     (manifest §14)
-  mosaic-cli          `mos` command-line interface          (manifest §15.1)
-examples/             hello, lists, math, polish — each with a committed PDF
+  mos                  command-line interface                 (manifest §15.1)
+  mos-core             document model, IDs, diagnostics       (manifest §5, §31)
+  mos-parse            parser for .mos                        (manifest §3, §6)
+  mos-eval             expression / template evaluator        (manifest §4, §25)
+  mos-layout           inline, block, and page layout         (manifest §6, §22)
+  mos-pdf              PDF backend                            (manifest §21.1)
+  mos-html             semantic HTML backend                  (manifest §21.2)
+  mos-fonts            font discovery, shaping, metrics       (manifest §22.1)
+  mos-bib              bibliography / citation engine         (manifest §12)
+  mos-cache            incremental build cache                (manifest §7, §32)
+  mos-lsp              language server (lib + mos-lsp bin)    (manifest §17)
+  mos-packages         project / package manifest schema      (manifest §14)
+  adobe-font-metrics   zero-dep AFM v4 parser                 (Adobe TN 5004)
+  pdf-base14-metrics   baked Core-14 PDF font metrics         (uses adobe-font-metrics)
+  tree-sitter-mosaic   Tree-sitter grammar for Mosaic
+  zed-mosaic           Zed language extension for Mosaic
+examples/
+  hello, code, lists, math, polish (committed PDF snapshots)
 ```
 
-`afm` is the leaf-most crate (zero deps); nothing else depends on `mosaic-cli`.
+`adobe-font-metrics` is the leaf-most crate (zero deps); nothing else depends on `mos`.
 
 ## License
 

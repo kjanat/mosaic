@@ -5,17 +5,12 @@
 //! `ZapfDingbats` — exposed as `&'static FontMetrics<'static>` constants
 //! that cost nothing at runtime. The AFM files are vendored from
 //! [`tecnickcom/tc-font-core14-afms`] under `data/`, parsed by the
-//! sibling [`afm`] crate at build time (see `build.rs`), and baked
-//! into Rust statics in `$OUT_DIR/baked.rs`.
+//! sibling [`adobe-font-metrics`] crate at build time (see `build.rs`),
+//! and baked into Rust statics in `$OUT_DIR/baked.rs`.
 //!
 
-#![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
-)]
-
 //! [`tecnickcom/tc-font-core14-afms`]: https://github.com/tecnickcom/tc-font-core14-afms
-//! [`afm`]: https://crates.io/crates/afm
+//! [`adobe-font-metrics`]: https://crates.io/crates/adobe-font-metrics
 //!
 //! # Quick start
 //!
@@ -54,7 +49,7 @@
 
 #![deny(missing_docs)]
 
-pub use afm::{BBox, CharacterMetric, FontMetrics, KerningPair};
+pub use adobe_font_metrics::{BBox, CharacterMetric, FontMetrics, KerningPair};
 
 use std::borrow::Cow;
 
@@ -235,7 +230,7 @@ impl Base14Font {
     ///
     /// Implemented as a single `[Option<f32>; 256]` indexed load
     /// per call: the table is baked at build time alongside the
-    /// font metrics. Hot enough for `mosaic-fonts::text_width` to
+    /// font metrics. Hot enough for `mos-fonts::text_width` to
     /// call once per character per typeset paragraph.
     #[must_use]
     pub fn winansi_width(self, code: u8) -> Option<f32> {
@@ -272,7 +267,7 @@ impl Base14Font {
 /// assorted glyphs or DEL in CP1252).
 ///
 /// This is exposed primarily so downstream crates (e.g.
-/// `mosaic-fonts`) can delegate to the canonical table rather than
+/// `mos-fonts`) can delegate to the canonical table rather than
 /// maintain their own copy.
 #[must_use]
 pub fn winansi_glyph_name(code: u8) -> Option<&'static str> {
@@ -338,7 +333,7 @@ pub const __WINANSI_CHAR_MAP: [Option<char>; 256] = winansi_char_map::WINANSI_CH
 ///    (Cyrillic, CJK, emoji, most non-European scripts). The PDF
 ///    backend silently substitutes these to `?` for Base14 runs;
 ///    real coverage requires the bundled embedded family that
-///    `mosaic-fonts` provides.
+///    `mos-fonts` provides.
 ///
 /// The name `extended_glyph_name` is deliberately chosen over the
 /// shorter `glyph_name` to avoid surprising readers who reach for
@@ -373,7 +368,7 @@ mod tests {
 
     #[test]
     fn glyph_width_by_name_resolves_non_winansi_glyphs() {
-        // Helvetica.afm:  C -1 ; WX 222 ; N lslash ; ...  (well, lslash
+        // Helvetica.adobe-font-metrics:  C -1 ; WX 222 ; N lslash ; ...  (well, lslash
         // is actually encoded at C 248 in AdobeStandardEncoding, but
         // either way the width is the same.) The PDF spec lets us
         // address it through /Differences.

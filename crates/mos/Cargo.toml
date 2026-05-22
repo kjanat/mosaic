@@ -1,0 +1,35 @@
+[package]
+name                   = "mos"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+description            = "Command-line interface for the Mosaic typesetting engine (manifest §15.1)."
+readme.workspace       = true
+homepage.workspace     = true
+repository.workspace   = true
+license.workspace      = true
+keywords.workspace     = true
+categories.workspace   = true
+
+[[bin]]
+name = "mos"
+path = "src/main.rs"
+
+[dependencies]
+mos-cache    = { workspace = true }
+mos-core     = { workspace = true }
+mos-eval     = { workspace = true }
+mos-html     = { workspace = true }
+mos-layout   = { workspace = true }
+mos-packages = { workspace = true }
+mos-parse    = { workspace = true }
+mos-pdf      = { workspace = true }
+
+clap   = { workspace = true }
+opener = { workspace = true }
+
+[dev-dependencies]
+lopdf = { workspace = true }
+
+[lints]
+workspace = true

@@ -57,18 +57,18 @@ Reasons:
 The engine should be written as a set of Rust crates:
 
 ```text
-mosaic-cli        command-line interface
-mosaic-core       document model, IDs, diagnostics
-mosaic-parse      parser for the source language
-mosaic-eval       expression and scripting evaluator
-mosaic-layout     layout engine
-mosaic-pdf        PDF backend
-mosaic-html       HTML backend
-mosaic-fonts      font discovery, shaping, metrics
-mosaic-bib        bibliography/citation engine
-mosaic-cache      incremental build cache
-mosaic-lsp        language server
-mosaic-packages   package manager integration
+mos            command-line interface
+mos-core       document model, IDs, diagnostics
+mos-parse      parser for the source language
+mos-eval       expression and scripting evaluator
+mos-layout     layout engine
+mos-pdf        PDF backend
+mos-html       HTML backend
+mos-fonts      font discovery, shaping, metrics
+mos-bib        bibliography/citation engine
+mos-cache      incremental build cache
+mos-lsp        language server
+mos-packages   package manager integration
 ```
 
 No giant monolith. No “everything is global mutable state.” We have suffered enough.
@@ -965,7 +965,7 @@ project/
     main.pdf
     main.html
     debug/
-  .mosaic-cache/
+  .mos-cache/
 ```
 
 ### 15.3 Reproducible builds
@@ -1517,7 +1517,7 @@ my-paper/
   styles/
     journal.mos
   build/
-  .mosaic-cache/
+  .mos-cache/
 ```
 
 Import sections:
@@ -1632,14 +1632,14 @@ Goal:
 Features:
 
 ```text
-- parser                ✅  mosaic-parse: headings, paragraphs,
+- parser                ✅  mos-parse: headings, paragraphs,
                             inline emphasis/strong/code, `#set` blocks
 - sections              ✅  lowered as NodeKind::Section under the document root
 - paragraphs            ✅
 - bold/italic/code      ✅  inline emphasis (NodeKind::Emphasis), strong
                             (NodeKind::Strong), and code (NodeKind::Raw)
 - basic page layout     ⏳
-- PDF output            ⏳  mosaic-pdf::emit is still a stub
+- PDF output            ⏳  mos-pdf::emit is still a stub
 - diagnostics           ✅  recoverable; rendered with file:line:col + carets
                             by `mos check` (manifest §16)
 ```

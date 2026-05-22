@@ -34,10 +34,10 @@ exclude                = [
 ]
 
 [dependencies]
-afm = { workspace = true }
+adobe-font-metrics = { workspace = true }
 
 [build-dependencies]
-afm = { workspace = true }
+adobe-font-metrics = { workspace = true }
 
 [lints]
 workspace = true

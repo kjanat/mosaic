@@ -1,0 +1,51 @@
+# MOSAIC-PARSE KNOWLEDGE BASE
+
+## OVERVIEW
+
+`mos-parse` turns `.mos` bytes into syntax data plus recoverable diagnostics. It is syntax only;
+semantic meaning belongs in `mos-eval`.
+
+## CURRENT GRAMMAR
+
+Implemented:
+
+- Headings: `=`, `==`, `===`.
+- Paragraphs.
+- Inline: `*emphasis*`, `**strong**`, backtick code, `@label` references.
+- Labels on headings and paragraph starts.
+- Lists: `-` and `N.`, nesting by spaces.
+- Directives: `#set name(...)`, `#image(...)`, `#figure(...)`.
+- Raw blocks: `#pre[[...]]` and `#code[[...]]`, with `[=[...]=]` delimiters for nested `]]`.
+- Values: string, int, float, length `mm`/`pt`/`em`, ident.
+
+Not implemented despite manifest examples:
+
+- General function calls, `#let`, `if`, custom scripting, math `$...$`, equations, tables,
+  citations, includes, comments-preserving formatter CST.
+
+## WHERE TO LOOK
+
+| Task           | Location                       | Notes                                          |
+| -------------- | ------------------------------ | ---------------------------------------------- |
+| Public CST     | `SyntaxTree`, `Item`, `Inline` | Consumers should use typed variants.           |
+| Directive kind | `DirectiveKind`                | Load-bearing; do not infer from name strings.  |
+| Parser driver  | `Parser::run`                  | Top-level dispatch.                            |
+| Directives     | directive parser section       | Balanced parens, recovery, `#set` vs `#image`. |
+| Set values     | `parse_set_value`              | UTF-8 and length unit care.                    |
+| Paragraphs     | `parse_paragraph`              | Raw spans, normalized payload text.            |
+| Lists          | list parser section            | Indent/nesting rules.                          |
+| Inline runs    | inline parser section          | Non-nesting by design today.                   |
+
+## CONVENTIONS
+
+- Preserve source spans over raw input. Byte offsets must stay valid UTF-8 boundaries.
+- Prefer recoverable diagnostics over hard failure.
+- CRLF input spans index raw source; text payload may normalize line endings.
+- Spaces count for list indentation; tabs only tolerated after marker where existing code allows.
+- Parser should not load files, decode images, resolve refs, or assign document semantics.
+
+## ANTI-PATTERNS
+
+- Do not parse future manifest syntax unless current task explicitly asks for it.
+- Do not lower `#figure` or `#image` here. Return syntax; evaluator owns semantics.
+- Do not use `panic` for malformed user input.

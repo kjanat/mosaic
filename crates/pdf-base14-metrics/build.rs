@@ -1,7 +1,8 @@
 //! Build script: parses the 14 vendored Adobe Core 14 AFM files with
-//! the `afm` crate and code-generates `$OUT_DIR/baked.rs`, a single
-//! Rust file containing one `static <FONT>: afm::FontMetrics<'static>`
-//! per Core 14 face plus a per-Latin-font `[Option<f32>; 256]`
+//! the `adobe-font-metrics` crate and code-generates `$OUT_DIR/baked.rs`,
+//! a single Rust file containing one
+//! `static <FONT>: adobe_font_metrics::FontMetrics<'static>` per Core 14
+//! face plus a per-Latin-font `[Option<f32>; 256]`
 //! `WinAnsiEncoding` width table.
 //!
 //! The byte→`char` `WinAnsi` map lives in `src/winansi_char_map.rs`
@@ -86,7 +87,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     for (const_ident, file, is_latin) in FONTS {
         let path = manifest_dir.join("data").join("afm").join(file);
         let src = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let metrics = afm::parse(&src).map_err(|e| format!("parse {}: {e}", path.display()))?;
+        let metrics = adobe_font_metrics::parse(&src)
+            .map_err(|e| format!("parse {}: {e}", path.display()))?;
         emit_font(&mut buf, const_ident, &metrics, *is_latin)?;
     }
 
@@ -97,7 +99,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn emit_font(
     buf: &mut String,
     ident: &str,
-    m: &afm::FontMetrics<'_>,
+    m: &adobe_font_metrics::FontMetrics<'_>,
     is_latin: bool,
 ) -> Result<(), Box<dyn Error>> {
     // Per-glyph metrics → its own const array, referenced by the main static.
@@ -196,7 +198,7 @@ fn emit_font(
         writeln!(buf, "];\n")?;
     }
 
-    // The main static. Field order matches `afm::FontMetrics`'s
+    // The main static. Field order matches `adobe_font_metrics::FontMetrics`'s
     // declaration order (`clippy::inconsistent_struct_constructor`).
     writeln!(buf, "static {ident}: FontMetrics<'static> = FontMetrics {{")?;
 
@@ -267,7 +269,7 @@ fn emit_font(
     Ok(())
 }
 
-fn find_width(m: &afm::FontMetrics<'_>, name: &str) -> Option<f32> {
+fn find_width(m: &adobe_font_metrics::FontMetrics<'_>, name: &str) -> Option<f32> {
     m.character_metrics
         .iter()
         .find(|c| c.name == name)

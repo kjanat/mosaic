@@ -1,11 +1,7 @@
-crates/afm/tests/fixtures/**/*.afm  linguist-vendored -text -diff
-crates/pdf-base14-metrics/data/afm/*.afm  linguist-vendored -text -diff
-crates/pdf-base14-metrics/data/agl/glyphlist.txt linguist-vendored -diff
-
 # Binary by content. `-text` blocks CRLF/LF normalization (which would
 # corrupt the file), `-diff` tells `git diff` / `git log -p` not to
 # dump 800 KB of garbled bytes when these change. PDFs are rebuilt by
-# `just examples`; TTFs are vendored under `mosaic-fonts/data/`
+# `just examples`; TTFs are vendored under `mos-fonts/data/`
 # (see SOURCES.md for upstream provenance).
 *.pdf  -text -diff
 *.ttf  -text -diff

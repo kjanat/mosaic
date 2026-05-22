@@ -32,7 +32,7 @@ examples/<name>/
   `<name>.pdf`.
 - Commit `<name>.pdf`; do not commit `build/main.pdf`.
 - `mosaic.toml` is mostly convention/docs today. Current CLI does not honor `output = ["html"]`.
-- `hello/demo.png` has a generator at `crates/mosaic-eval/examples/gen_demo_png.rs`.
+- `hello/demo.png` has a generator at `crates/mos-eval/examples/gen_demo_png.rs`.
 
 ## GOTCHAS
 
