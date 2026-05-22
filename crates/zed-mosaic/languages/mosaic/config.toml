@@ -5,7 +5,7 @@ grammar               = "mosaic"
 code_fence_block_name = "mos"
 path_suffixes         = ["mos"]
 line_comments         = ["// "]
-block_comment         = ["/* ", " */"]
+block_comment         = { start = "/*", end = "*/", prefix = " * ", tab_size = 1 }
 tab_size              = 2
 hard_tabs             = false
 soft_wrap             = "editor_width"
