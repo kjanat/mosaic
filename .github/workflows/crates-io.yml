@@ -1,0 +1,66 @@
+name: crates-release
+run-name: "${{ format('{0}crates publish {1}', case(inputs.dry-run == true, 'dry: ', ''), case(github.event_name == 'workflow_dispatch', inputs.tag, github.ref_name)) }}"
+on:
+  push: { tags: [v*] }
+  workflow_dispatch:
+    inputs:
+      tag: { description: Release tag to publish (e.g. v0.6.0), required: true, type: string }
+      dry-run: { description: Dry run only (no upload to crates.io), required: false, default: false, type: boolean }
+permissions: { contents: read }
+env: { CARGO_TERM_COLOR: always }
+defaults: { run: { shell: bash } }
+jobs:
+  publish:
+    name: publish to crates.io
+    runs-on: ubuntu-latest
+    permissions: { contents: read, id-token: write }
+    environment: { name: crates-io, url: "${{ format('https://crates.io/crates/{0}/{1}', steps.meta.outputs.name, steps.meta.outputs.version) }}" }
+    env:
+      RELEASE_TAG: ${{ case(github.event_name == 'workflow_dispatch', inputs.tag, github.ref_name) }}
+      INPUT_DRY_RUN: ${{ inputs.dry-run || 'false' }}
+    steps:
+      - uses: actions/checkout@v6
+        with: { ref: "refs/tags/${{ env.RELEASE_TAG }}", persist-credentials: false }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: verify tag matches Cargo.toml version
+        id: meta
+        run: |
+          set -euo pipefail
+          tag_version="${RELEASE_TAG#v}"
+          repo_url="https://github.com/${GITHUB_REPOSITORY}"
+          metadata="$(cargo metadata --no-deps --format-version 1)"
+          pkg="$(jq -r --arg repo "${repo_url}" '[.packages[] | select(.repository == $repo and .name == "mos")][0].name // empty' <<<"${metadata}")"
+          manifest_version="$(jq -r --arg repo "${repo_url}" '[.packages[] | select(.repository == $repo and .name == "mos")][0].version // empty' <<<"${metadata}")"
+
+          if [[ -z "${pkg}" || -z "${manifest_version}" ]]; then
+            echo "error: no mos package metadata found for repository ${repo_url}" >&2
+            exit 1
+          fi
+
+          if [[ "${tag_version}" != "${manifest_version}" ]]; then
+            echo "error: tag ${RELEASE_TAG} (${tag_version}) does not match Cargo.toml version ${manifest_version}" >&2
+            exit 1
+          fi
+
+          echo "ok: tag ${RELEASE_TAG} matches Cargo.toml version ${manifest_version}"
+
+          # do NOT replace the tabs below with spaces... just foreshadowing...
+          cat <<-ENV | tee -a "${GITHUB_OUTPUT}"
+          	name=${pkg}
+          	version=${manifest_version}
+          ENV
+
+      - name: cargo publish (dry-run verification)
+        run: cargo publish --locked --dry-run
+
+      - name: mint crates.io token (trusted publishing)
+        id: auth
+        if: env.INPUT_DRY_RUN != 'true'
+        continue-on-error: true
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: cargo publish
+        if: ${{ !cancelled() && env.INPUT_DRY_RUN != 'true' }}
+        env: { CARGO_REGISTRY_TOKEN: "${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}" }
+        run: cargo publish --locked
