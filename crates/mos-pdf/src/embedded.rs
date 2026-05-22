@@ -63,6 +63,13 @@ pub(crate) struct EmbeddedFontPlan {
     pub gid_to_text: BTreeMap<u16, String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ContentOp {
+    SetTextMatrix([f32; 6]),
+    ShowCids(Vec<u16>),
+    AdjustText(f32),
+}
+
 /// Plan every embedded face touched by `runs`. Returns one
 /// [`EmbeddedFontPlan`] per face actually referenced, in stable
 /// (`EmbeddedFontId`-sorted) order.
@@ -312,15 +319,108 @@ fn subset_tag(subset_bytes: &[u8]) -> String {
     tag
 }
 
-/// Encode a run's shaped glyphs as big-endian `u16` pairs for the PDF
-/// content stream. Each `ShapedGlyph::gid` is remapped through
-/// `plan.remapper` to its subset GID, then written as two bytes.
-pub(crate) fn encode_glyph_run(plan: &EmbeddedFontPlan, glyphs: &[ShapedGlyph]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(glyphs.len() * 2);
-    for g in glyphs {
-        let cid = plan.remapper.get(g.gid).unwrap_or(0);
-        out.push((cid >> 8) as u8);
-        out.push((cid & 0xFF) as u8);
+/// Encode shaped glyphs into PDF text-content operations. Each
+/// `ShapedGlyph::gid` is remapped through `plan.remapper` to its
+/// subset CID. GPOS advances become `TJ` adjustments; glyphs with
+/// GPOS offsets get their own absolute `Tm` so marks draw at the shaped
+/// position and the next glyph resumes from the un-offset pen.
+pub(crate) fn encode_glyph_run(
+    plan: &EmbeddedFontPlan,
+    glyphs: &[ShapedGlyph],
+    size_pt: f32,
+    origin_x_pt: f32,
+    origin_y_pt: f32,
+) -> Vec<ContentOp> {
+    let font = plan.id.data();
+    let upem = f32::from(font.units_per_em);
+    let mut ops = Vec::new();
+    let mut pending = Vec::new();
+    let mut pen_units = 0_i32;
+    let mut normal_group_open = false;
+
+    for (index, glyph) in glyphs.iter().enumerate() {
+        let cid = if let Some(cid) = plan.remapper.get(glyph.gid) {
+            cid
+        } else {
+            debug_assert!(false, "GID {} missing from subset remapper", glyph.gid);
+            0
+        };
+        let has_offset = glyph.x_offset_units != 0 || glyph.y_offset_units != 0;
+        if has_offset {
+            flush_cids(&mut pending, &mut ops);
+            let offset_pen = [pen_units + glyph.x_offset_units, glyph.y_offset_units];
+            ops.push(ContentOp::SetTextMatrix([
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                origin_x_pt + units_to_pt(offset_pen[0], size_pt, upem),
+                origin_y_pt + units_to_pt(offset_pen[1], size_pt, upem),
+            ]));
+            pending.push(cid);
+            flush_cids(&mut pending, &mut ops);
+            normal_group_open = false;
+            pen_units += glyph.advance_units;
+            continue;
+        }
+
+        if !normal_group_open {
+            ops.push(ContentOp::SetTextMatrix([
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                origin_x_pt + units_to_pt(pen_units, size_pt, upem),
+                origin_y_pt,
+            ]));
+            normal_group_open = true;
+        }
+
+        pending.push(cid);
+
+        let nominal_units = i32::from(font.advance_units(glyph.gid));
+        let displacement_units = nominal_units - glyph.advance_units;
+        pen_units += glyph.advance_units;
+
+        if index + 1 < glyphs.len() && displacement_units != 0 {
+            flush_cids(&mut pending, &mut ops);
+            ops.push(ContentOp::AdjustText(units_to_text_adjust(
+                displacement_units,
+                upem,
+            )));
+        }
+    }
+    flush_cids(&mut pending, &mut ops);
+    ops
+}
+
+pub(crate) fn cids_to_bytes(cids: &[u16]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(cids.len() * 2);
+    for cid in cids {
+        out.extend_from_slice(&cid.to_be_bytes());
     }
     out
+}
+
+fn flush_cids(pending: &mut Vec<u16>, ops: &mut Vec<ContentOp>) {
+    if pending.is_empty() {
+        return;
+    }
+    ops.push(ContentOp::ShowCids(std::mem::take(pending)));
+}
+
+fn units_to_pt(units: i32, size_pt: f32, upem: f32) -> f32 {
+    units_to_f32(units) * size_pt / upem
+}
+
+fn units_to_text_adjust(units: i32, upem: f32) -> f32 {
+    units_to_f32(units) * 1000.0 / upem
+}
+
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "PDF coordinates are f32; i32 font-unit positions must not be clamped before scaling"
+)]
+fn units_to_f32(units: i32) -> f32 {
+    units as f32
 }

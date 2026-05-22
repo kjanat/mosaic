@@ -7,7 +7,7 @@ use mos_fonts::EmbeddedFontId;
 use mos_layout::{Font, TextRun};
 use pdf_writer::{Content, Name, Str, TextStr};
 
-use crate::embedded::{self, EmbeddedFontPlan};
+use crate::embedded::{self, ContentOp, EmbeddedFontPlan};
 use crate::encoding::DocEncoding;
 use crate::images;
 
@@ -77,9 +77,12 @@ fn emit_text_run(
 ) -> Result<()> {
     content.set_font(Name(run.font.pdf_resource_name()), run.size_pt);
     let y_from_bottom = page_height_pt - run.baseline_from_top_pt;
-    content.set_text_matrix([1.0, 0.0, 0.0, 1.0, run.x_pt, y_from_bottom]);
-    let bytes = match run.font {
-        Font::Base14(_) => encode_base14_run(&run.text, run.font, encodings),
+    match run.font {
+        Font::Base14(_) => {
+            content.set_text_matrix([1.0, 0.0, 0.0, 1.0, run.x_pt, y_from_bottom]);
+            let bytes = encode_base14_run(&run.text, run.font, encodings);
+            content.show(Str(&bytes));
+        }
         Font::Embedded(id) => {
             let plan = embedded_by_id.get(&id).ok_or_else(|| {
                 CoreError::Diagnostic(Box::new(Diagnostic {
@@ -96,11 +99,80 @@ fn emit_text_run(
                     suggestions: Vec::new(),
                 }))
             })?;
-            embedded::encode_glyph_run(plan, &run.glyphs)
+            emit_embedded_glyph_run(content, plan, run, y_from_bottom);
         }
-    };
-    content.show(Str(&bytes));
+    }
     Ok(())
+}
+
+fn emit_embedded_glyph_run(
+    content: &mut Content,
+    plan: &EmbeddedFontPlan,
+    run: &TextRun,
+    y_from_bottom: f32,
+) {
+    let ops = embedded::encode_glyph_run(plan, &run.glyphs, run.size_pt, run.x_pt, y_from_bottom);
+    let mut pending: Vec<PositionedItem> = Vec::new();
+    for op in ops {
+        match op {
+            ContentOp::SetTextMatrix(matrix) => {
+                emit_text_items(content, &mut pending);
+                content.set_text_matrix(matrix);
+            }
+            ContentOp::ShowCids(cids) => {
+                pending.push(PositionedItem::Cids(cids));
+            }
+            ContentOp::AdjustText(amount) => {
+                pending.push(PositionedItem::Adjust(amount));
+            }
+        }
+    }
+    emit_text_items(content, &mut pending);
+}
+
+enum PositionedItem {
+    Cids(Vec<u16>),
+    Adjust(f32),
+}
+
+fn emit_text_items(content: &mut Content, pending: &mut Vec<PositionedItem>) {
+    if pending.is_empty() {
+        return;
+    }
+
+    if pending
+        .iter()
+        .any(|item| matches!(item, PositionedItem::Adjust(_)))
+    {
+        emit_positioned_text(content, pending);
+    } else {
+        emit_simple_text(content, pending);
+    }
+}
+
+fn emit_positioned_text(content: &mut Content, pending: &mut Vec<PositionedItem>) {
+    let mut show = content.show_positioned();
+    let mut items = show.items();
+    for item in pending.drain(..) {
+        match item {
+            PositionedItem::Cids(cids) => {
+                let bytes = embedded::cids_to_bytes(&cids);
+                items.show(Str(&bytes));
+            }
+            PositionedItem::Adjust(amount) => {
+                items.adjust(amount);
+            }
+        }
+    }
+}
+
+fn emit_simple_text(content: &mut Content, pending: &mut Vec<PositionedItem>) {
+    for item in pending.drain(..) {
+        if let PositionedItem::Cids(cids) = item {
+            let bytes = embedded::cids_to_bytes(&cids);
+            content.show(Str(&bytes));
+        }
+    }
 }
 
 /// Encode `text` against a Base14 face's `DocEncoding`. The planner
