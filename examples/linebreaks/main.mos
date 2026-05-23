@@ -24,10 +24,11 @@ ASCII whitespace.
 
 Authors who refuse to break "Mr. Smith" across a line write the
 literal source `Mr.<NBSP>Smith` (where `<NBSP>` is one U+00A0
-byte). Rendered, the pair joins as Mr. Smith — visually
-indistinguishable from a regular space, but treated by the
-breaker as an indivisible unit. Likewise `page<NBSP>4` keeps the
-label and number together, rendered as page 4.
+code point — two bytes in UTF-8). Rendered, the pair joins
+as Mr. Smith — visually indistinguishable from a regular space,
+but treated by the breaker as an indivisible unit. Likewise
+`page<NBSP>4` keeps the label and number together, rendered as
+page 4.
 
 A single regular space — like the one between this word and the
 next — is, of course, breakable like any other.
