@@ -10,8 +10,9 @@ All notable changes to this project will be documented here. The format is based
 
 - Author-facing inline line-break controls (issue #26):
   - `\\` hard line break (`InlineKind::HardBreak` / `NodeKind::HardBreak`), flushes the current line
-    without paragraph spacing; two in a row produce a blank line; collapses silently at page start;
-    lone trailing `\` emits diagnostic `W025`.
+    without paragraph spacing; two in a row produce a blank line; collapses silently at paragraph
+    start (block-boundary semantics, regardless of whether prior blocks have painted on the page); a
+    lone trailing `\` at end of input emits diagnostic `W025`.
   - `\-` soft-hyphen shorthand expanding to U+00AD; SHY codepoints are stripped from the rendered
     text and their byte offsets recorded in `Word.shy_break_offsets` for the future Knuth-Plass
     hyphenation pass.
