@@ -58,16 +58,19 @@ word, here is where to do it; otherwise pretend I was never
 here". The shorthand `\-` expands to a literal U+00AD; the
 codepoint itself works too.
 
-Under the MVP 2 greedy breaker that ships with this example, soft
-hyphens are *invisible*: the codepoint is stripped before shaping
-so the rendered word reads as if no hyphen marker were present.
-A word like su\-per\-cali\-fra\-gil\-is\-tic\-ex\-pi\-al\-i\-do\-cious
-renders as supercalifragilisticexpialidocious — the same as if
-none of the `\-` shorthands had been written.
+Soft hyphens are *invisible when they aren't needed*: the codepoint
+is stripped before shaping, so a word like
+su\-per\-cali\-fra\-gil\-is\-tic\-ex\-pi\-al\-i\-do\-cious that
+comfortably fits a line renders as supercalifragilisticexpialidocious
+— the same as if none of the `\-` shorthands had been written.
 
-When the Knuth-Plass line-breaker lands, the same markers will
-*also* permit a hyphenated break at one of the marked positions
-whenever the line would otherwise be too wide for the column.
-The soft hyphen is groundwork for that day; today it is at
-worst a no-op, and at best a hint the future breaker will
-honour.
+When a word *would* overflow the line, the greedy breaker now picks
+the latest marked position whose prefix-plus-visible-hyphen still fits
+the remaining space, emits `prefix-` at the end of the current line,
+and continues with the suffix as the next word. If even the shortest
+marked prefix can't fit an empty line, the existing oversize-cluster
+fallback chops the word at glyph boundaries instead.
+
+Optimal (non-greedy) selection across a whole paragraph is left for
+the eventual Knuth-Plass line-breaker; the greedy slice here is the
+smallest change that turns the SHY markers into a visible feature.

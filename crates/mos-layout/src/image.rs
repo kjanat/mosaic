@@ -4,7 +4,7 @@ use mos_core::{AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeId, No
 use mos_fonts::{ascent, text_width};
 
 use crate::support::{read_int_attr, read_length_attr};
-use crate::word::WordItem;
+use crate::word::{ShyBreak, Word, WordItem, try_shy_break, word_clusters};
 use crate::{ImageHandle, ImagePlacement, LayoutState, PARA_SPACE_AFTER_PT};
 
 impl LayoutState {
@@ -119,60 +119,97 @@ impl LayoutState {
             return 0.0;
         }
         let line_width = self.column_width_pt();
-        // Track lines actually emitted so the count mirrors
-        // `flow_words` exactly. Starts at zero; a trailing partial
-        // line is counted at the end of the loop. The two flags
-        // duplicate the paragraph-local state machine in `flow_words`
-        // (collapse leading hard breaks, absorb a hard break after an
-        // implicit break, stack hard breaks into blank lines).
-        let mut lines: u32 = 0;
+        let mut lines = 0_u32;
+        let mut line_has_words = false;
         let mut line_width_used = 0.0_f32;
         let mut paragraph_emitted_line = false;
         let mut last_was_hardbreak_flush = false;
-        for item in &items {
-            let word = match item {
-                WordItem::Word(w) => w,
-                WordItem::HardBreak => {
-                    if line_width_used > 0.0 {
-                        lines += 1;
-                        line_width_used = 0.0;
-                        paragraph_emitted_line = true;
-                        last_was_hardbreak_flush = true;
-                    } else if last_was_hardbreak_flush {
-                        lines += 1;
-                    } else if paragraph_emitted_line {
-                        last_was_hardbreak_flush = true;
+        let mut pending: Option<Word> = None;
+        let mut item_idx = 0;
+
+        loop {
+            let word = if let Some(word) = pending.take() {
+                word
+            } else if item_idx < items.len() {
+                let item = &items[item_idx];
+                item_idx += 1;
+                match item {
+                    WordItem::Word(word) => word.clone(),
+                    WordItem::HardBreak => {
+                        if line_has_words {
+                            lines += 1;
+                            line_has_words = false;
+                            line_width_used = 0.0;
+                            paragraph_emitted_line = true;
+                            last_was_hardbreak_flush = true;
+                        } else if last_was_hardbreak_flush {
+                            lines += 1;
+                        } else if paragraph_emitted_line {
+                            last_was_hardbreak_flush = true;
+                        }
+                        continue;
                     }
-                    continue;
                 }
+            } else {
+                break;
             };
-            if word.width_pt > line_width {
-                if line_width_used > 0.0 {
-                    lines += 1;
-                    line_width_used = 0.0;
-                }
-                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                let chunks = (word.width_pt / line_width).ceil().max(1.0) as u32;
-                lines += chunks;
-                paragraph_emitted_line = true;
-                last_was_hardbreak_flush = false;
-                continue;
-            }
-            let space_w = if line_width_used > 0.0 {
+
+            let space_w = if line_has_words {
                 text_width(word.font, word.size_pt, " ")
             } else {
                 0.0
             };
-            if line_width_used > 0.0 && line_width_used + space_w + word.width_pt > line_width {
+
+            if line_width_used + space_w + word.width_pt <= line_width {
+                line_has_words = true;
+                line_width_used += space_w + word.width_pt;
+                continue;
+            }
+
+            if line_has_words
+                && let Some(ShyBreak { suffix, .. }) = try_shy_break(
+                    &word,
+                    line_width - line_width_used - space_w,
+                    self.text.family.fallbacks,
+                )
+            {
                 lines += 1;
-                line_width_used = word.width_pt;
+                line_has_words = false;
+                line_width_used = 0.0;
                 paragraph_emitted_line = true;
                 last_was_hardbreak_flush = false;
-            } else {
-                line_width_used += space_w + word.width_pt;
+                pending = Some(suffix);
+                continue;
             }
+
+            if line_has_words {
+                lines += 1;
+                line_has_words = false;
+                line_width_used = 0.0;
+                paragraph_emitted_line = true;
+                last_was_hardbreak_flush = false;
+            }
+
+            if word.width_pt > line_width {
+                if let Some(ShyBreak { suffix, .. }) =
+                    try_shy_break(&word, line_width, self.text.family.fallbacks)
+                {
+                    lines += 1;
+                    paragraph_emitted_line = true;
+                    last_was_hardbreak_flush = false;
+                    pending = Some(suffix);
+                    continue;
+                }
+                lines += oversize_chunk_count(&word, line_width);
+                paragraph_emitted_line = true;
+                last_was_hardbreak_flush = false;
+                continue;
+            }
+
+            line_has_words = true;
+            line_width_used = word.width_pt;
         }
-        if line_width_used > 0.0 {
+        if line_has_words {
             lines += 1;
         }
         #[allow(
@@ -244,6 +281,24 @@ impl LayoutState {
     }
 }
 
+fn oversize_chunk_count(word: &Word, line_width: f32) -> u32 {
+    let mut chunks = 0_u32;
+    let mut chunk_has_content = false;
+    let mut chunk_width = 0.0_f32;
+    for cluster in word_clusters(word) {
+        if chunk_width + cluster.advance_pt > line_width && chunk_has_content {
+            chunks += 1;
+            chunk_width = 0.0;
+        }
+        chunk_width += cluster.advance_pt;
+        chunk_has_content = true;
+    }
+    if chunk_has_content {
+        chunks += 1;
+    }
+    chunks
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -257,7 +312,10 @@ mod tests {
 
     use mos_core::{AttrMap, ContentHash, SourceSpan, StyleId};
 
-    use crate::{A4_WIDTH_PT, LayoutEngine, MARGIN_PT};
+    use mos_fonts::FontFamily;
+
+    use crate::types::{BODY_LEADING, BODY_SIZE_PT};
+    use crate::{A4_HEIGHT_PT, A4_WIDTH_PT, LayoutEngine, MARGIN_PT, PageStyle, TextStyle};
 
     use super::*;
 
@@ -297,6 +355,21 @@ mod tests {
                 attributes: attrs,
             },
         );
+    }
+
+    fn helvetica_state_with_column_width(column_width_pt: f32) -> LayoutState {
+        LayoutState::new(
+            PageStyle {
+                width_pt: A4_WIDTH_PT,
+                height_pt: A4_HEIGHT_PT,
+                margin_pt: (A4_WIDTH_PT - column_width_pt) * 0.5,
+            },
+            TextStyle {
+                size_pt: BODY_SIZE_PT,
+                leading: BODY_LEADING,
+                family: FontFamily::helvetica(),
+            },
+        )
     }
 
     fn make_paragraph(doc: &mut Document, text: &str) -> NodeId {
@@ -467,6 +540,26 @@ mod tests {
             .find(|r| r.text == "Caption" || r.text == "text.")
             .expect("caption run not found");
         assert!(caption_run.baseline_from_top_pt > page.images[0].top_from_top_pt);
+    }
+
+    #[test]
+    fn paragraph_height_measurement_counts_shy_breaks_like_flow() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let para = make_paragraph(&mut doc, "x super\u{AD}cali");
+        let line_width = text_width(
+            mos_fonts::Font::Base14(mos_fonts::Base14Font::Helvetica),
+            BODY_SIZE_PT,
+            "x super-",
+        ) + 1.0;
+        let mut state = helvetica_state_with_column_width(line_width);
+
+        let height = state.measure_paragraph_height(&doc, doc.get(para).expect("paragraph"));
+        let expected = 2.0 * BODY_SIZE_PT * BODY_LEADING;
+
+        assert!(
+            (height - expected).abs() < 0.01,
+            "expected two measured lines ({expected:.3}pt), got {height:.3}pt"
+        );
     }
 
     fn make_figure_with_image_and_caption(

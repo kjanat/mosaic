@@ -14,8 +14,11 @@ All notable changes to this project will be documented here. The format is based
     start (block-boundary semantics, regardless of whether prior blocks have painted on the page); a
     lone trailing `\` at end of input emits diagnostic `W025`.
   - `\-` soft-hyphen shorthand expanding to U+00AD; SHY codepoints are stripped from the rendered
-    text and their byte offsets recorded in `Word.shy_break_offsets` for the future Knuth-Plass
-    hyphenation pass.
+    text and their byte offsets recorded in `Word.shy_break_offsets`. The greedy line-breaker now
+    consumes those offsets: when a word would overflow the line it picks the latest fitting SHY
+    position, emits `prefix-` at end of line, and continues with the suffix as the next word. If no
+    SHY prefix fits even an empty line, the existing oversized-word cluster fallback still applies.
+    Optimal (non-greedy) selection is left for the Knuth-Plass cutover.
   - Non-breaking space U+00A0 preserved as a cohesive unit by the greedy line-breaker.
 - New `WordItem` enum (`Word` / `HardBreak`) replacing the bare `Vec<Word>` stream consumed by
   `flow_words`.

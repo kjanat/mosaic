@@ -58,8 +58,12 @@ Not implemented here yet:
   one blank line if the buffer is empty) without paragraph spacing. Anything that builds word
   streams (headings, raw blocks, list items) must wrap `Word`s in `WordItem::Word`.
 - `Word.shy_break_offsets` records SHY (U+00AD) byte positions in the stripped `text`. The greedy
-  breaker ignores them; the future Knuth-Plass breaker consumes them as Penalty points with
-  hyphen-glyph width on chosen break.
+  breaker consumes them via `try_shy_break` in `src/word.rs`: when a word would overflow the line it
+  picks the latest fitting SHY offset, emits `prefix-` (with a visible hyphen) and threads the
+  suffix back as the next word via a `pending` slot in `flow_words`. Boundary offsets (`0` /
+  `text.len()`) are ignored; if no SHY prefix fits even an empty line, `flush_oversize_word`'s
+  cluster fallback runs. The future Knuth-Plass breaker will reuse the same offsets as Penalty
+  points for optimal (non-greedy) selection.
 
 ## ANTI-PATTERNS
 
