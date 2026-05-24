@@ -180,7 +180,7 @@ example.
       still applies when no SHY prefix fits.
 - [ ] Replace greedy line breaking with a real paragraph algorithm. (Issue #26 piece 3b-e — Knuth-
       Plass + UAX #14 + SHY-as-penalty + optimal break selection. The greedy SHY hyphenation slice
-      now lands too; the algorithmic side that picks across the whole paragraph is a separate PR.)
+      has landed; optimal whole-paragraph selection remains separate future work.)
 - [ ] Add Unicode line breaking. (Same MVP 2 slice as Knuth-Plass; `unicode-linebreak` crate as the
       planned dependency.)
 - [ ] Add language-aware hyphenation.

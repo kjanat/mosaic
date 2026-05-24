@@ -90,11 +90,6 @@ pub(crate) fn try_shy_break(
         let mut prefix_text = String::with_capacity(prefix_src.len() + 1);
         prefix_text.push_str(prefix_src);
         prefix_text.push('-');
-        // Cheap pre-shape estimate so we only re-shape the winner.
-        let estimate = text_width(word.font, word.size_pt, &prefix_text);
-        if estimate > max_prefix_width {
-            continue;
-        }
         let prefix_subruns = shape_with_fallback(word.font, fallbacks, word.size_pt, &prefix_text);
         let prefix_width: f32 = prefix_subruns.iter().map(|s| s.advance_pt).sum();
         if prefix_width > max_prefix_width {
