@@ -167,9 +167,10 @@ pub(crate) enum WordItem {
 /// `o` leaves bytes `[0..o)` on the previous line and `[o..)` on the
 /// next.
 ///
-/// The greedy line-breaker ignores these offsets (it can only break
-/// at whitespace); the Knuth-Plass cutover treats each as a flagged
-/// Penalty(50) item with hyphen-glyph advance as its post-break width.
+/// The greedy line-breaker consumes these offsets through
+/// [`try_shy_break`] when a word would overflow; the Knuth-Plass
+/// cutover treats each as a flagged Penalty(50) item with hyphen-glyph
+/// advance as its post-break width.
 ///
 /// `text` is expected to be NFC-normalized. NFC does not decompose
 /// U+00AD, so no quasi-SHY sequences need to be handled.
