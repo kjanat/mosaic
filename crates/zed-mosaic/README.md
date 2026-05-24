@@ -24,7 +24,7 @@ runtime hooks are currently implemented.
 grammar is loaded from this repository at [`crates/tree-sitter-mosaic`] using:
 
 - `repository = "https://github.com/kjanat/mosaic"`
-- `rev = "5628fc2d2c2e556e4d9241b5af7c1853adcfef82"`
+- `rev = "e1b5ba0f1153f54499ec0197caaa696e93632bb2"`
 - `path = "crates/tree-sitter-mosaic"`
 
 During local grammar development, the commented `file:///home/kjanat/projects/mosaic` stanza in
