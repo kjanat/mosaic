@@ -1,6 +1,6 @@
 // External scanner for tree-sitter-mosaic.
 //
-// Emits five tokens that pure regex tokenisation cannot express cleanly:
+// Emits four tokens that pure regex tokenisation cannot express cleanly:
 //
 //   BLANK_LINE        : two or more line terminators (optionally separated by
 //                       horizontal whitespace). A single line_end is left to
@@ -9,10 +9,6 @@
 //                       BLANK_LINE is only requested at block-boundary
 //                       positions, but emitting only at >=2 line_ends keeps
 //                       us safe under any future grammar tweak.
-//
-//   LINEBREAK_ESCAPE  : `hspace* '\' hspace* line_end` in paragraph context
-//                       (CommonMark hard break). The internal `escaped_char`
-//                       handles every other `\X` form.
 //
 //   RAW_BODY_OPEN     : Lua-style long-bracket opener (`[=[`, `[[`, etc.).
 //
@@ -28,7 +24,6 @@
 
 enum TokenType {
     BLANK_LINE,
-    LINEBREAK_ESCAPE,
     RAW_BODY_OPEN,
     RAW_BODY_CONTENT,
     RAW_BODY_CLOSE,
@@ -146,34 +141,6 @@ static bool scan_blank_line(TSLexer *lexer) {
     return true;
 }
 
-/**
- * Scan for a CommonMark hard line break: optional horizontal whitespace, a
- * backslash, optional horizontal whitespace, then a line terminator.
- *
- * @param lexer Lexer positioned at the start of the potential sequence.
- * @returns `true` if the scanner consumed a linebreak-escape sequence and set
- *          `lexer->result_symbol = LINEBREAK_ESCAPE`, `false` otherwise.
- */
-static bool scan_linebreak_escape(TSLexer *lexer) {
-    while (is_hspace(lexer->lookahead)) {
-        advance(lexer);
-    }
-    if (lexer->lookahead != '\\') {
-        return false;
-    }
-    advance(lexer);
-    while (is_hspace(lexer->lookahead)) {
-        advance(lexer);
-    }
-    if (!is_line_end(lexer->lookahead)) {
-        return false;
-    }
-    consume_line_end(lexer);
-    lexer->mark_end(lexer);
-    lexer->result_symbol = LINEBREAK_ESCAPE;
-    return true;
-}
-
 static bool scan_raw_body_open(Scanner *scanner, TSLexer *lexer) {
     if (lexer->lookahead != '[') {
         return false;
@@ -287,14 +254,6 @@ bool tree_sitter_mosaic_external_scanner_scan(
 
     if (valid_symbols[RAW_BODY_CONTENT]) {
         if (scan_raw_body_content(scanner, lexer)) {
-            return true;
-        }
-    }
-
-    if (valid_symbols[LINEBREAK_ESCAPE]) {
-        // Speculative scan; mark_end is only set on success so we don't
-        // strand the parser if this fails.
-        if (scan_linebreak_escape(lexer)) {
             return true;
         }
     }
