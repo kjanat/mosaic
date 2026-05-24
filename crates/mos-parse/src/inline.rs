@@ -87,16 +87,94 @@ impl Parser<'_> {
     ) -> ParsedSegment {
         let bytes = slice.as_bytes();
         let mut out: Vec<Inline> = Vec::new();
+        // `pending` accumulates characters that belong to the current
+        // styled text run but aren't a verbatim slice of `slice` — at
+        // the moment, only the soft-hyphen shorthand `\-` (which
+        // contributes a U+00AD codepoint without `\` or `-` ever
+        // appearing in the run). When `pending` is non-empty, the run
+        // can't be captured by a single `slice[start..end]` so we
+        // switch to a `String`-buffered flush path. `pending_source_start`
+        // remembers the first source byte that fed `pending` so the
+        // emitted Inline's span still covers the full source extent
+        // (including the consumed `\-` bytes).
+        let mut pending: String = String::new();
+        let mut pending_source_start: Option<usize> = None;
         let mut i = from;
         let mut text_start = from;
         while i < bytes.len() {
             let c = bytes[i];
+            if c == b'\\' {
+                if i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
+                    self.flush_styled_text_with_pending(
+                        &mut out,
+                        slice,
+                        base,
+                        text_start,
+                        i,
+                        style,
+                        &mut pending,
+                        &mut pending_source_start,
+                    );
+                    out.push(Inline {
+                        kind: InlineKind::HardBreak,
+                        text: String::new(),
+                        span: self.span(base + i, base + i + 2),
+                    });
+                    i += 2;
+                    text_start = i;
+                    continue;
+                }
+                if i + 1 < bytes.len() && bytes[i + 1] == b'-' {
+                    // `\-` -> literal U+00AD soft hyphen. Splice the
+                    // preceding slice text into `pending`, append the
+                    // SHY codepoint, skip both source bytes. Remember
+                    // the earliest source byte covered by `pending` so
+                    // the eventual flush spans the original `\-` bytes
+                    // instead of collapsing to a zero-width range.
+                    if pending_source_start.is_none() {
+                        pending_source_start = Some(text_start);
+                    }
+                    pending.push_str(&slice[text_start..i]);
+                    pending.push('\u{AD}');
+                    i += 2;
+                    text_start = i;
+                    continue;
+                }
+                // Backslash followed by anything other than `\` or `-`
+                // is left to fall through as a literal `\` byte (the
+                // slice path picks it up at the next flush). A lone
+                // trailing `\` at end-of-input gets a warning so the
+                // author notices a likely-incomplete escape; a `\`
+                // followed by some other character is kept silent
+                // because the previous behaviour was "backslash is
+                // literal", and emitting a diagnostic for every
+                // `C:\Temp` / `\*foo*` / etc. would be noisy.
+                if i + 1 >= bytes.len() {
+                    self.diagnostics.push(self.warn(
+                        "W025",
+                        "lone trailing `\\` is not a recognized escape; treated as literal text",
+                        base + i,
+                        base + i + 1,
+                    ));
+                }
+                i += 1;
+                continue;
+            }
             if c == b'*' {
                 let run_len = star_run_len(bytes, i);
                 if let Some(delimiter) = close
                     && delimiter_closes(delimiter, run_len)
                 {
-                    self.flush_styled_text(&mut out, slice, base, text_start, i, style);
+                    self.flush_styled_text_with_pending(
+                        &mut out,
+                        slice,
+                        base,
+                        text_start,
+                        i,
+                        style,
+                        &mut pending,
+                        &mut pending_source_start,
+                    );
                     let width = delimiter.width();
                     return ParsedSegment {
                         inlines: out,
@@ -120,7 +198,16 @@ impl Parser<'_> {
                 );
 
                 if let Some(closed) = parsed.closed {
-                    self.flush_styled_text(&mut out, slice, base, text_start, i, style);
+                    self.flush_styled_text_with_pending(
+                        &mut out,
+                        slice,
+                        base,
+                        text_start,
+                        i,
+                        style,
+                        &mut pending,
+                        &mut pending_source_start,
+                    );
                     let mut children = parsed.inlines;
                     widen_span_to_delimiters(&mut children, base + i, base + closed.end);
                     out.extend(children);
@@ -138,7 +225,16 @@ impl Parser<'_> {
             }
             if c == b'`' {
                 if let Some(end) = find_byte(bytes, b'`', i + 1) {
-                    self.flush_styled_text(&mut out, slice, base, text_start, i, style);
+                    self.flush_styled_text_with_pending(
+                        &mut out,
+                        slice,
+                        base,
+                        text_start,
+                        i,
+                        style,
+                        &mut pending,
+                        &mut pending_source_start,
+                    );
                     out.push(Inline {
                         kind: InlineKind::Code,
                         text: slice[i + 1..end].to_owned(),
@@ -160,7 +256,16 @@ impl Parser<'_> {
             if c == b'@' {
                 let id_end = scan_label_chars(bytes, i + 1);
                 if id_end > i + 1 {
-                    self.flush_styled_text(&mut out, slice, base, text_start, i, style);
+                    self.flush_styled_text_with_pending(
+                        &mut out,
+                        slice,
+                        base,
+                        text_start,
+                        i,
+                        style,
+                        &mut pending,
+                        &mut pending_source_start,
+                    );
                     out.push(Inline {
                         kind: InlineKind::Reference,
                         text: slice[i + 1..id_end].to_owned(),
@@ -181,12 +286,64 @@ impl Parser<'_> {
             }
             i += 1;
         }
-        self.flush_styled_text(&mut out, slice, base, text_start, bytes.len(), style);
+        self.flush_styled_text_with_pending(
+            &mut out,
+            slice,
+            base,
+            text_start,
+            bytes.len(),
+            style,
+            &mut pending,
+            &mut pending_source_start,
+        );
         ParsedSegment {
             inlines: out,
             next: bytes.len(),
             closed: None,
         }
+    }
+
+    /// Flush `slice[from..to]` (possibly prefixed by buffered `pending`
+    /// text from earlier escape expansions like `\-` → U+00AD) into a
+    /// single styled-text inline. The span covers the full source range
+    /// from the earliest byte that fed `pending` (or `from` when pending
+    /// is empty) through `to`, so emitted inlines whose text includes
+    /// expanded escapes still carry a span covering the original source
+    /// bytes — including the consumed `\-` markers.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "transitional: extends the existing `flush_styled_text` (7-arg) with a buffered-text channel and a pending-source-start tracker for escape expansion. Bundling the slice/base/style triple into a context struct would churn every call site in `parse_inline_segment` for no net clarity."
+    )]
+    fn flush_styled_text_with_pending(
+        &self,
+        out: &mut Vec<Inline>,
+        slice: &str,
+        base: usize,
+        from: usize,
+        to: usize,
+        style: InlineStyle,
+        pending: &mut String,
+        pending_source_start: &mut Option<usize>,
+    ) {
+        if pending.is_empty() {
+            // Defensive: pending_source_start should always be paired
+            // with a non-empty pending. Clear it anyway so a future
+            // escape that splices into `pending` starts from a fresh
+            // state.
+            *pending_source_start = None;
+            self.flush_styled_text(out, slice, base, from, to, style);
+            return;
+        }
+        let mut text = std::mem::take(pending);
+        if from < to {
+            text.push_str(&slice[from..to]);
+        }
+        let span_from = pending_source_start.take().unwrap_or(from);
+        out.push(Inline {
+            kind: style.kind(),
+            text,
+            span: self.span(base + span_from, base + to),
+        });
     }
 
     fn flush_styled_text(

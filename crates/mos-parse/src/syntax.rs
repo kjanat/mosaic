@@ -210,6 +210,12 @@ pub enum InlineKind {
     /// [`Inline::text`] payload is the bare label name (no leading
     /// `@`); the resolver rewrites it to the target's resolved text.
     Reference,
+    /// `\\` — a forced line break inside a paragraph. The line
+    /// breaks here without the extra leading a blank-line paragraph
+    /// break would give. Carries no text payload. The shorthand for
+    /// a soft hyphen `\-` lowers to a literal U+00AD inside a
+    /// surrounding [`InlineKind::Text`] run, not to a separate variant.
+    HardBreak,
 }
 
 impl Item {

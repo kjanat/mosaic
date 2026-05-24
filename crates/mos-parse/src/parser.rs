@@ -1009,4 +1009,186 @@ mod tests {
         // Outer list's span should reach to the end of the nested item.
         assert!(span.end > src.find('b').unwrap());
     }
+
+    // ---------- line-break controls (issue #26) ----------
+
+    #[test]
+    fn nbsp_is_preserved_inside_a_single_text_inline() {
+        // U+00A0 NBSP is not ASCII whitespace; it must round-trip
+        // through the parser as one logical word, distinct from a
+        // regular space which would split the paragraph's text differently
+        // downstream. Pinned so a future UAX #14-aware splitter can't
+        // accidentally normalize NBSP to a regular space.
+        let r = parse_str("Mr.\u{A0}Smith\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].kind, InlineKind::Text);
+        assert!(
+            inlines[0].text.contains('\u{A0}'),
+            "expected NBSP in text payload, got {:?}",
+            inlines[0].text
+        );
+        assert_eq!(inlines[0].text, "Mr.\u{A0}Smith");
+    }
+
+    #[test]
+    fn hard_break_double_backslash() {
+        let r = parse_str("foo\\\\bar\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let kinds: Vec<InlineKind> = inlines.iter().map(|i| i.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![InlineKind::Text, InlineKind::HardBreak, InlineKind::Text],
+            "got {inlines:?}"
+        );
+        assert_eq!(inlines[0].text, "foo");
+        assert!(inlines[1].text.is_empty());
+        assert_eq!(inlines[2].text, "bar");
+    }
+
+    #[test]
+    fn hard_break_double_in_a_row() {
+        let r = parse_str("a\\\\\\\\b\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let kinds: Vec<InlineKind> = inlines.iter().map(|i| i.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                InlineKind::Text,
+                InlineKind::HardBreak,
+                InlineKind::HardBreak,
+                InlineKind::Text,
+            ],
+            "got {inlines:?}"
+        );
+    }
+
+    #[test]
+    fn hard_break_at_start_of_paragraph() {
+        let r = parse_str("\\\\foo\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let kinds: Vec<InlineKind> = inlines.iter().map(|i| i.kind).collect();
+        assert_eq!(kinds, vec![InlineKind::HardBreak, InlineKind::Text]);
+        assert_eq!(inlines[1].text, "foo");
+    }
+
+    #[test]
+    fn hard_break_then_strong() {
+        // `\\` flushes any pending text and slots cleanly between
+        // adjacent inline styles. Regression check that the delimiter
+        // scanner sees the right `text_start` after the hard break.
+        let r = parse_str("a\\\\**b**\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let kinds: Vec<InlineKind> = inlines.iter().map(|i| i.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![InlineKind::Text, InlineKind::HardBreak, InlineKind::Strong],
+            "got {inlines:?}"
+        );
+        assert_eq!(inlines[2].text, "b");
+    }
+
+    #[test]
+    fn lone_trailing_backslash_warns_with_w025() {
+        let r = parse_str("foo\\\n");
+        assert!(!r.has_errors());
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.code.0 == "W025" && d.severity == Severity::Warning),
+            "expected W025 warning, got {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn backslash_before_non_escape_byte_is_silent_literal() {
+        // `\` followed by a byte we don't recognise as an escape
+        // (`*`, `@`, `x`, drive-letter path, etc.) must not emit a
+        // diagnostic -- the prior contract was "backslash is literal",
+        // and only the trailing-`\` case crosses the bar where a
+        // warning helps the author. Three samples cover the cases that
+        // previously fired spurious W025s.
+        for src in [
+            "foo \\* bar\n",
+            "see C:\\Temp\\file\n",
+            "stray \\x literal\n",
+        ] {
+            let r = parse_str(src);
+            assert!(!r.has_errors(), "src {src:?}: {:?}", r.diagnostics);
+            assert!(
+                !r.diagnostics.iter().any(|d| d.code.0 == "W025"),
+                "src {src:?} produced unexpected W025: {:?}",
+                r.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn soft_hyphen_shorthand_expands_to_u00ad() {
+        // `\-` is a soft-hyphen shorthand: it expands inline to a
+        // literal U+00AD inside the current text run. No new IR
+        // variant -- SHY is just a codepoint that downstream shaping
+        // strips before rendering.
+        let r = parse_str("a\\-b\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].kind, InlineKind::Text);
+        assert_eq!(inlines[0].text, "a\u{AD}b");
+    }
+
+    #[test]
+    fn soft_hyphen_span_covers_the_consumed_source_bytes() {
+        // Regression: the `\-` shorthand was advancing `text_start`
+        // past the consumed bytes without recording where the run
+        // originally started, so the emitted Inline carried a
+        // zero-width span pointing at the post-`\-` bytes only.
+        let src = "a\\-b\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].text, "a\u{AD}b");
+        // The span should cover all four source bytes of `a\-b`,
+        // not just the trailing `b`. Newline is not part of the
+        // paragraph inline run.
+        assert_eq!(
+            inlines[0].span.end - inlines[0].span.start,
+            4,
+            "expected span over `a\\-b` (4 bytes), got {:?}",
+            inlines[0].span
+        );
+    }
+
+    #[test]
+    fn soft_hyphen_shorthand_repeats_in_one_run() {
+        // Multiple `\-` shorthands inside one text run accumulate into
+        // a single Text inline -- the pending buffer flushes only at
+        // run boundaries, not at every escape.
+        let r = parse_str("su\\-per\\-cali\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].kind, InlineKind::Text);
+        assert_eq!(inlines[0].text, "su\u{AD}per\u{AD}cali");
+    }
+
+    #[test]
+    fn literal_nbsp_codepoint_round_trips_through_emphasis() {
+        // Belt-and-suspenders: NBSP inside an emphasis run also survives
+        // unchanged (no whitespace-style normalization at the inline
+        // boundary).
+        let r = parse_str("*Mr.\u{A0}Smith*\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].kind, InlineKind::Emphasis);
+        assert_eq!(inlines[0].text, "Mr.\u{A0}Smith");
+    }
 }

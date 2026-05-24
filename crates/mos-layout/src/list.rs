@@ -70,6 +70,7 @@ impl LayoutState {
                 size_pt: size,
                 width_pt,
                 subruns,
+                shy_break_offsets: Vec::new(),
             };
             let marker_x = item_left - marker_gap_pt - marker_word.width_pt;
 

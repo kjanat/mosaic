@@ -28,7 +28,7 @@ use mos_core::{AttrValue, Diagnostic, Document, Node, NodeKind};
 use style::resolve_styles;
 use support::{blank_page, expand_tabs, read_level, read_str_attr};
 use types::BODY_LEADING;
-use word::{Word, word_clusters};
+use word::{Word, WordItem, split_soft_hyphens, word_clusters};
 
 mod image;
 mod list;
@@ -238,14 +238,15 @@ impl LayoutState {
             let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
             words.insert(
                 0,
-                Word {
+                WordItem::Word(Word {
                     text: prefix,
                     actual_text: None,
                     font: bold,
                     size_pt: size,
                     width_pt,
                     subruns,
-                },
+                    shy_break_offsets: Vec::new(),
+                }),
             );
         }
         self.flow_words(&words, BODY_LEADING);
@@ -294,8 +295,9 @@ impl LayoutState {
                 size_pt: size,
                 width_pt,
                 subruns,
+                shy_break_offsets: Vec::new(),
             };
-            self.flow_words(&[word], leading);
+            self.flow_words(&[WordItem::Word(word)], leading);
             emitted = true;
         }
         if emitted {
@@ -304,23 +306,30 @@ impl LayoutState {
     }
 
     /// Walk `parent`'s inline children and produce a flat list of
-    /// [`Word`]s. Inline whitespace collapses to a single split point
-    /// (`split_ascii_whitespace` handles `\n`/`\r`/`\t` uniformly).
-    /// Each word is shaped once here; the resulting glyphs and width
-    /// flow through to [`TextRun`] without re-shaping during line
-    /// breaking.
+    /// [`WordItem`]s. Inline whitespace inside text runs collapses to
+    /// a single split point (`split_ascii_whitespace` handles
+    /// `\n`/`\r`/`\t` uniformly **and intentionally preserves U+00A0
+    /// NBSP** — non-ASCII whitespace stays inside the word so the
+    /// breaker never splits at NBSP). Each word is shaped once here;
+    /// the resulting glyphs and width flow through to [`TextRun`]
+    /// without re-shaping during line breaking. `NodeKind::HardBreak`
+    /// children are emitted as `WordItem::HardBreak` sentinels.
     fn collect_words(
         &mut self,
         document: &Document,
         parent: &Node,
         default_font: Font,
         size: f32,
-    ) -> Vec<Word> {
-        let mut out: Vec<Word> = Vec::new();
+    ) -> Vec<WordItem> {
+        let mut out: Vec<WordItem> = Vec::new();
         for child_id in &parent.children {
             let Some(child) = document.get(*child_id) else {
                 continue;
             };
+            if matches!(child.kind, NodeKind::HardBreak) {
+                out.push(WordItem::HardBreak);
+                continue;
+            }
             let font = match child.kind {
                 NodeKind::Strong => self.text.family.bold,
                 NodeKind::Emphasis => self.text.family.italic,
@@ -336,39 +345,104 @@ impl LayoutState {
                 Some(AttrValue::Str(s)) => s.as_str(),
                 _ => continue,
             };
+            // U+00A0 NBSP is intentionally preserved by
+            // `split_ascii_whitespace` (it only splits on ASCII
+            // whitespace), keeping `Mr.\u{A0}Smith` as one logical
+            // word. This is the documented contract.
             for piece in raw.split_ascii_whitespace() {
                 if piece.is_empty() {
                     continue;
                 }
                 let piece = nfc_text(piece);
                 let piece = piece.as_ref();
-                let subruns = shape_with_fallback(font, self.text.family.fallbacks, size, piece);
+                // Strip U+00AD before shaping so SHY never renders as
+                // a visible hyphen on either the embedded or Base-14
+                // path. Keep the codepoint offsets so a future
+                // Knuth-Plass breaker can hyphenate at the author's
+                // marked positions.
+                let (stripped, shy_offsets) = split_soft_hyphens(piece);
+                // A piece that was entirely SHY codepoints leaves
+                // nothing to shape; skip it so we don't emit a
+                // phantom zero-width word that would inflate the
+                // interword gap on either side.
+                if stripped.is_empty() {
+                    continue;
+                }
+                let subruns =
+                    shape_with_fallback(font, self.text.family.fallbacks, size, &stripped);
                 let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
-                out.push(Word {
-                    text: piece.to_owned(),
+                out.push(WordItem::Word(Word {
+                    text: stripped,
                     actual_text: None,
                     font,
                     size_pt: size,
                     width_pt,
                     subruns,
-                });
+                    shy_break_offsets: shy_offsets,
+                }));
             }
         }
         out
     }
 
-    /// Greedy line-break `words` and emit text runs onto the page,
+    /// Greedy line-break `items` and emit text runs onto the page,
     /// paginating as we go. `leading` is the line-height multiplier
-    /// applied per line.
-    fn flow_words(&mut self, words: &[Word], leading: f32) {
-        if words.is_empty() {
+    /// applied per line. `WordItem::HardBreak` forces a line flush
+    /// at its position (and produces a blank line when two hard
+    /// breaks are adjacent or one lands mid-paragraph with no words
+    /// behind it).
+    fn flow_words(&mut self, items: &[WordItem], leading: f32) {
+        if items.is_empty() {
             return;
         }
         let line_width = self.column_width_pt();
         let mut line: Vec<Word> = Vec::new();
         let mut line_width_used = 0.0_f32;
+        // Paragraph-local state so hard-break collapsing follows
+        // block-boundary semantics rather than page-state ones:
+        // * `paragraph_emitted_line` is true once anything in this
+        //   paragraph has emitted vertical space (a flushed line, a
+        //   wrapped overflow, or an oversize chunk).
+        // * `last_was_hardbreak_flush` is true only after a hard
+        //   break flushed (or stacked onto) a line. Stacked hard
+        //   breaks emit blank lines; a hard break following an
+        //   implicit break (oversize / soft wrap) is absorbed without
+        //   adding a blank line, matching the author's natural
+        //   reading of "force a break here" when the line just
+        //   ended on its own.
+        let mut paragraph_emitted_line = false;
+        let mut last_was_hardbreak_flush = false;
 
-        for word in words {
+        for item in items {
+            let word = match item {
+                WordItem::Word(w) => w,
+                WordItem::HardBreak => {
+                    if !line.is_empty() {
+                        self.flush_line(&line, leading);
+                        line.clear();
+                        line_width_used = 0.0;
+                        paragraph_emitted_line = true;
+                        last_was_hardbreak_flush = true;
+                    } else if last_was_hardbreak_flush {
+                        // Stacked hard breaks: emit a blank line and
+                        // remain in the "just hard-broke" state so a
+                        // third break would emit another blank.
+                        self.cursor_y += self.text.size_pt * leading;
+                    } else if paragraph_emitted_line {
+                        // First hard break after an implicit break
+                        // (oversize chunk or soft-wrap flush). The
+                        // cursor already advanced past the previous
+                        // line, so this break is absorbed silently.
+                        // Promote the state so a *second* stacked
+                        // hard break still produces a blank line.
+                        last_was_hardbreak_flush = true;
+                    }
+                    // else: paragraph hasn't emitted anything yet --
+                    // leading hard breaks collapse silently regardless
+                    // of whether prior blocks have painted on the page.
+                    continue;
+                }
+            };
             // Hard wrap: a single word wider than the column gets
             // chopped into character-sized pieces, each on its own
             // line. This is the contract MVP 0 documents.
@@ -379,6 +453,8 @@ impl LayoutState {
                     line_width_used = 0.0;
                 }
                 self.flush_oversize_word(word, leading);
+                paragraph_emitted_line = true;
+                last_was_hardbreak_flush = false;
                 continue;
             }
             let space_w = if line.is_empty() {
@@ -392,6 +468,8 @@ impl LayoutState {
                 // Post-flush the line is empty, so no leading space
                 // is charged before the wrapped word.
                 line_width_used = word.width_pt;
+                paragraph_emitted_line = true;
+                last_was_hardbreak_flush = false;
             } else {
                 line_width_used += space_w + word.width_pt;
             }
@@ -531,6 +609,7 @@ impl LayoutState {
                 size_pt: source.size_pt,
                 width_pt,
                 subruns,
+                shy_break_offsets: Vec::new(),
             }],
             leading,
         );
@@ -1067,6 +1146,248 @@ mod tests {
             reference.font,
             Font::Base14(Base14Font::Helvetica)
         ));
+    }
+
+    // ---------- line-break controls (issue #26) ----------
+
+    fn alloc_hardbreak(doc: &mut Document, parent: NodeId) {
+        // HardBreak nodes carry no attributes -- layout dispatches on
+        // `NodeKind` alone (see `collect_words`).
+        doc.alloc_child(
+            parent,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::HardBreak,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        );
+    }
+
+    fn make_empty_paragraph(doc: &mut Document) -> NodeId {
+        doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Paragraph,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: AttrMap::new(),
+            },
+        )
+    }
+
+    #[test]
+    fn nbsp_keeps_two_words_in_a_single_run() {
+        // U+00A0 is *not* ASCII whitespace, so the greedy breaker
+        // never splits at it. The two halves end up as one TextRun
+        // with the NBSP byte preserved -- the documented contract.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        make_paragraph(&mut doc, "Mr.\u{A0}Smith");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_eq!(runs.len(), 1, "expected one TextRun, got {runs:?}");
+        assert_eq!(runs[0].text, "Mr.\u{A0}Smith");
+    }
+
+    #[test]
+    fn hard_break_advances_one_line_not_paragraph_spacing() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_inline(&mut doc, para, NodeKind::Text, "foo");
+        alloc_hardbreak(&mut doc, para);
+        alloc_inline(&mut doc, para, NodeKind::Text, "bar");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let foo = runs.iter().find(|r| r.text == "foo").expect("foo run");
+        let bar = runs.iter().find(|r| r.text == "bar").expect("bar run");
+        let delta = bar.baseline_from_top_pt - foo.baseline_from_top_pt;
+        // BODY_SIZE_PT × default leading is the inter-line distance;
+        // accept either 1.0 or the resolved style's default leading
+        // by checking against the computed product.
+        let expected = BODY_SIZE_PT * BODY_LEADING;
+        assert!(
+            (delta - expected).abs() < 0.01,
+            "expected inter-line delta {expected}, got {delta} (foo={}, bar={})",
+            foo.baseline_from_top_pt,
+            bar.baseline_from_top_pt
+        );
+    }
+
+    #[test]
+    fn two_hard_breaks_produce_a_blank_line() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_inline(&mut doc, para, NodeKind::Text, "foo");
+        alloc_hardbreak(&mut doc, para);
+        alloc_hardbreak(&mut doc, para);
+        alloc_inline(&mut doc, para, NodeKind::Text, "bar");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let foo = runs.iter().find(|r| r.text == "foo").expect("foo run");
+        let bar = runs.iter().find(|r| r.text == "bar").expect("bar run");
+        let delta = bar.baseline_from_top_pt - foo.baseline_from_top_pt;
+        // Two line advances: one to flush "foo", one for the blank
+        // line between the two hard breaks.
+        let one_line = BODY_SIZE_PT * BODY_LEADING;
+        let expected = 2.0 * one_line;
+        assert!(
+            (delta - expected).abs() < 0.01,
+            "expected delta {expected} for two-line gap, got {delta}"
+        );
+    }
+
+    #[test]
+    fn hard_break_at_paragraph_start_collapses_on_first_page_line() {
+        // When the paragraph begins with a hard break and nothing is
+        // on the page yet, the leading break has nothing above it to
+        // push down -- it collapses, matching CommonMark's "ignore
+        // hard break at block boundary".
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_hardbreak(&mut doc, para);
+        alloc_inline(&mut doc, para, NodeKind::Text, "foo");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_eq!(runs.len(), 1, "expected one run, got {runs:?}");
+        assert_eq!(runs[0].text, "foo");
+    }
+
+    #[test]
+    fn hard_break_after_oversize_word_does_not_add_blank_line() {
+        // Regression: an oversize word emits chunks via
+        // `flush_oversize_word`, which implicitly ends the line. A
+        // following hard break used to add *another* line on top of
+        // that implicit end. The break should now be absorbed so
+        // `oversize\\next` produces `next` on the immediate next
+        // line, not a blank-then-next.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_empty_paragraph(&mut doc);
+        // A 500-char run of `a` is certainly wider than the default A4
+        // column; the layout chops it into oversize chunks.
+        let huge: String = "a".repeat(500);
+        alloc_inline(&mut doc, para, NodeKind::Text, &huge);
+        alloc_hardbreak(&mut doc, para);
+        alloc_inline(&mut doc, para, NodeKind::Text, "next");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let next = runs.iter().find(|r| r.text == "next").expect("next run");
+        // The last oversize chunk is the run whose text is all `a`s
+        // and whose baseline is the highest among `a`-only runs.
+        let last_chunk_baseline = runs
+            .iter()
+            .filter(|r| !r.text.is_empty() && r.text.chars().all(|c| c == 'a'))
+            .map(|r| r.baseline_from_top_pt)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(
+            last_chunk_baseline.is_finite(),
+            "did not find any oversize-chunk runs"
+        );
+        let one_line = BODY_SIZE_PT * BODY_LEADING;
+        let delta = next.baseline_from_top_pt - last_chunk_baseline;
+        assert!(
+            (delta - one_line).abs() < 0.01,
+            "expected one-line gap ({one_line:.3}pt) between last oversize chunk and `next`, got {delta:.3}pt -- hard break emitted extra blank?"
+        );
+    }
+
+    #[test]
+    fn leading_hard_break_collapses_after_prior_page_content() {
+        // A hard break at the start of a paragraph must collapse even
+        // when prior paragraphs have painted on the page -- the rule
+        // is block-boundary, not page-state. Compare against a control
+        // doc whose second paragraph has no leading hard break: the
+        // two layouts must agree on the vertical position of `second`.
+        let layout_one = |with_leading_break: bool| {
+            let mut doc = Document::new(PathBuf::from("test.mos"));
+            pin_helvetica(&mut doc);
+            make_paragraph(&mut doc, "first");
+            let p2 = make_empty_paragraph(&mut doc);
+            if with_leading_break {
+                alloc_hardbreak(&mut doc, p2);
+            }
+            alloc_inline(&mut doc, p2, NodeKind::Text, "second");
+            LayoutEngine::new().layout(&doc).graph.pages[0]
+                .runs
+                .iter()
+                .find(|r| r.text == "second")
+                .expect("second run")
+                .baseline_from_top_pt
+        };
+        let actual = layout_one(true);
+        let control = layout_one(false);
+        assert!(
+            (actual - control).abs() < 0.01,
+            "leading hard break should collapse: control baseline {control:.3}pt, got {actual:.3}pt"
+        );
+    }
+
+    #[test]
+    fn shy_only_piece_does_not_emit_phantom_word() {
+        // A whitespace-delimited piece consisting entirely of SHY
+        // codepoints strips to empty -- skip it rather than emit a
+        // zero-width Word, which would push an extra space gap into
+        // the line because flush_line charges one space-advance per
+        // word past the first.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        // Three pieces after ASCII-whitespace split: "foo", "\u{AD}\u{AD}", "bar".
+        // The middle piece must produce zero Word items.
+        make_paragraph(&mut doc, "foo \u{AD}\u{AD} bar");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_eq!(
+            runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            vec!["foo", "bar"],
+            "got {runs:?}"
+        );
+        let foo_w = text_width(runs[0].font, runs[0].size_pt, "foo");
+        let space_w = text_width(runs[0].font, runs[0].size_pt, " ");
+        let gap = runs[1].x_pt - (runs[0].x_pt + foo_w);
+        assert!(
+            (gap - space_w).abs() < 0.01,
+            "expected one space gap ({space_w:.3}pt), got {gap:.3}pt -- phantom SHY-only word?"
+        );
+    }
+
+    #[test]
+    fn soft_hyphen_is_stripped_from_emitted_runs() {
+        // SHY codepoints must never appear in the rendered text --
+        // the greedy breaker can't honour them so they would render
+        // as visible hyphens (the bug this issue's piece 3a fixes).
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        make_paragraph(&mut doc, "super\u{AD}cali\u{AD}fragil");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_eq!(runs.len(), 1, "expected one run, got {runs:?}");
+        assert_eq!(runs[0].text, "supercalifragil");
+        assert!(
+            !runs[0].text.contains('\u{AD}'),
+            "SHY leaked into rendered text: {:?}",
+            runs[0].text
+        );
     }
 
     #[test]

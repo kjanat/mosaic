@@ -25,6 +25,10 @@ substantially landed:
 
 - [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline `*emphasis*` / `**strong**` /
       `` `code` ``, `-` / `N.` lists with hanging indents, and `#set name(...)` blocks;
+- [x] author-facing line-break controls (issue #26 piece 1/2 + piece 3a): a literal U+00A0 NBSP that
+      the greedy breaker never splits, a `\\` hard line break for forced mid-paragraph breaks, and a
+      `\-` (or literal U+00AD) soft hyphen that is stripped from rendering today and will become a
+      permitted break point when Knuth-Plass lands — see `examples/linebreaks/`;
 - [x] lowering to a typed semantic `Document` graph in `mos-core`, with `#image(...)` and
       `#figure(...)` directives evaluated in `mos-eval` (manifest §5, §6 stage 2);
 - [x] `mos check` end-to-end — parse → lower → render diagnostics with `file:line:col` and source
@@ -61,12 +65,13 @@ A second binary, `mos-lsp`, is the language server entry point editors will spaw
 Each directory under `examples/` is a self-contained Mosaic project (`main.mos` + `mosaic.toml`) and
 ships a committed `<name>.pdf` snapshot so GitHub previews render inline:
 
-| project           | exercises                                                       |
-| ----------------- | --------------------------------------------------------------- |
-| `examples/hello`  | bundled Noto Sans, multilingual coverage, real italic/bold cuts |
-| `examples/lists`  | bullet / numbered lists, hanging indent, adaptive gutter        |
-| `examples/math`   | Base-14 Helvetica via `/Differences`, math operators            |
-| `examples/polish` | Polish diacritics through Noto Sans                             |
+| project               | exercises                                                       |
+| --------------------- | --------------------------------------------------------------- |
+| `examples/hello`      | bundled Noto Sans, multilingual coverage, real italic/bold cuts |
+| `examples/lists`      | bullet / numbered lists, hanging indent, adaptive gutter        |
+| `examples/math`       | Base-14 Helvetica via `/Differences`, math operators            |
+| `examples/polish`     | Polish diacritics through Noto Sans                             |
+| `examples/linebreaks` | NBSP (U+00A0), hard line break (`\\`), soft hyphen (`\-`)       |
 
 Regenerate every snapshot with `just examples` (rebuilds each project and copies `build/main.pdf`
 next to its `main.mos`).
