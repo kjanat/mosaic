@@ -5,9 +5,9 @@
  * Tree-sitter grammar for the Mosaic `.mos` document language.
  *
  * Mirrors `mosaic.ebnf` (also rendered in `EBNF.md`) 1:1 in structure. The
- * five tokens that regex-only lexing cannot express cleanly (`blank_line`,
- * `linebreak_escape`, and raw `#pre`/`#code` long-bracket delimiters/content)
- * are emitted by the external scanner in `src/scanner.c`.
+ * four tokens that regex-only lexing cannot express cleanly (`blank_line`
+ * and raw `#pre`/`#code` long-bracket delimiters/content) are emitted by
+ * the external scanner in `src/scanner.c`.
  *
  * @file Mosaic grammar for Tree-sitter
  * @author Kaj Kowalski <info@kajkowalski.nl>
@@ -35,7 +35,6 @@ export default grammar({
 
 	externals: $ => [
 		$.blank_line,
-		$.linebreak_escape,
 		$.raw_body_open,
 		$.raw_body_content,
 		$.raw_body_close,
@@ -216,7 +215,10 @@ export default grammar({
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
+				$.hard_break,
+				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 			),
 
 		verse_text: _ => token(prec(-1, /[^\n\r\]\\*`$@<#]+/)),
@@ -241,7 +243,12 @@ export default grammar({
 		trailing_label: $ => $.block_label,
 		block_label: $ => $.label,
 
-		_paragraph_join: $ => choice($.soft_break, $.linebreak_escape),
+		// Now that `\\` is a real inline atom (`hard_break`), the only thing
+		// joining adjacent paragraph segments is a plain newline. The rule is
+		// kept as a hidden alias so a future grammar change (e.g. an explicit
+		// `#linebreak` block-level form) can extend it without rewriting every
+		// `paragraph` call site.
+		_paragraph_join: $ => $.soft_break,
 
 		soft_break: $ => $._line_end,
 
@@ -266,7 +273,10 @@ export default grammar({
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
+				$.hard_break,
+				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 				$.text,
 			),
 
@@ -280,7 +290,10 @@ export default grammar({
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
+				$.hard_break,
+				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 				$.text,
 			),
 
@@ -330,7 +343,10 @@ export default grammar({
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
+				$.hard_break,
+				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 				$.soft_break,
 				$.emph_text,
 			),
@@ -344,7 +360,10 @@ export default grammar({
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
+				$.hard_break,
+				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 				$.soft_break,
 				$.emph_text,
 			),
@@ -358,7 +377,10 @@ export default grammar({
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
+				$.hard_break,
+				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 				$.soft_break,
 				$.emph_text,
 			),
@@ -393,7 +415,32 @@ export default grammar({
 
 		label_name: _ => token(/[A-Za-z_][A-Za-z0-9_-]*(:[A-Za-z_][A-Za-z0-9_-]*)*/),
 
-		escaped_char: _ => token(prec(1, seq('\\', /[^\r\n]/))),
+		// Hard line break: `\\` inside inline text. Compiler lowers this to
+		// `InlineKind::HardBreak` (see `mos-parse/src/inline.rs`).
+		hard_break: _ => token('\\\\'),
+
+		// Soft hyphen shorthand: `\-` inside inline text. Compiler expands
+		// this to the U+00AD soft hyphen codepoint (see `mos-parse/src/inline.rs`).
+		soft_hyphen_escape: _ => token('\\-'),
+
+		// Generic inline escape `\X` for any other character (e.g. `\#`,
+		// `\*`, `\[`, `\]`, `\<`). `\` and `-` are excluded so the dedicated
+		// `hard_break` and `soft_hyphen_escape` tokens win the lexer's
+		// longest-match race. The compiler leaves unrecognised backslashes
+		// literal (the `\` stays in the text run; no diagnostic) rather
+		// than stripping them, so editor and compiler agree on byte content
+		// for these forms (see `mos-parse/src/inline.rs`).
+		escaped_char: _ => token(seq('\\', /[^\\\-\r\n]/)),
+
+		// A bare `\` that does not form one of the recognised 2-char escape
+		// tokens above — typically `\` at end of input or immediately before
+		// a newline. The compiler treats this as literal text and emits
+		// diagnostic `W025` for the trailing-newline case; surfacing it as
+		// a discrete node lets editors distinguish "lone backslash" from a
+		// structural parse error. Length-1, so `hard_break` (`\\`),
+		// `soft_hyphen_escape` (`\-`), and `escaped_char` (`\X`) always win
+		// the longest-match race whenever any of them apply.
+		loose_backslash: _ => token('\\'),
 
 		// Tree-sitter pragmatic deviation from EBNF `text_char`: also exclude
 		// `[` and `]` so bracket-delimited structures (`content_body`,`array`)

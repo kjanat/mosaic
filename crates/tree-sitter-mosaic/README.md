@@ -12,7 +12,8 @@ the compiler parser used by `mos check` or `mos build`.
 - `#set`, `#import`, and `#include` directives.
 - Headings with `=` through `======` markers.
 - Ordered and unordered lists.
-- Paragraphs with soft breaks and trailing `\` linebreak escapes.
+- Paragraphs with soft breaks, `\\` hard breaks, and `\-` soft-hyphen escapes matching the
+  compiler's inline parser.
 - Inline emphasis `*...*`, strong `**...**`, strong emphasis `***...***`, code spans, inline math,
   labels, references, escapes, and `#linebreak`.
 - Block and inline `#name(...)` calls, qualified names such as `#std.image(...)`, optional content
@@ -29,8 +30,7 @@ The grammar follows the repository `EBNF.md` shape, with pragmatic Tree-sitter c
 Source of truth:
 
 - `grammar.js` defines the grammar.
-- `src/scanner.c` implements external tokens for blank lines, linebreak escapes, and raw block
-  bodies.
+- `src/scanner.c` implements external tokens for blank lines and raw block bodies.
 - `queries/*.scm` define editor queries for highlights, injections, outline, indents, textobjects,
   runnables, and overrides.
 

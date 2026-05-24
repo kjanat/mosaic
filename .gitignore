@@ -8,6 +8,7 @@ build/
 /*.pdf
 
 node_modules/
+package-lock.json
 
 # tree-sitter grammar build artefacts
 *.wasm

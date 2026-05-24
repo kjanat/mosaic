@@ -36,10 +36,11 @@ manifest’s goal of normalizing math into structured data rather than glyph sou
 Read the grammar below with four contextual rules in mind. First, headings, directives, and block
 calls are block forms only at the start of a logical line. Second, comments are lexical trivia, but
 line endings are significant and must **not** be placed in Tree-sitter `extras`. Third, a single
-newline between nonblank paragraph lines is a soft break, while a trailing backslash before newline
-is an explicit hard break. Fourth, `#verse[...]` preserves line endings while `#pre[...]` and
-`#code[...]` preserve raw text; that mirrors CommonMark’s paragraph/hard-break model and AsciiDoc’s
-verse-vs-literal distinction.
+newline between nonblank paragraph lines is a soft break, while `\\` inside inline text is a hard
+line break (`\-` expands to a U+00AD soft hyphen, a break opportunity consumed by the line-breaker;
+a bare trailing `\` is literal, with compiler diagnostic `W025`). Fourth, `#verse[...]` preserves
+line endings while `#pre[...]` and `#code[...]` preserve raw text; that mirrors CommonMark’s
+paragraph/hard-break model and AsciiDoc’s verse-vs-literal distinction.
 
 ```ebnf
 (* Mosaic reference grammar, tree-sitter oriented.
@@ -116,9 +117,8 @@ trailing_label      = opt_hspace, block_label ;
 block_label         = label ;
 
 paragraph_segment   = inline_sequence ;
-paragraph_join      = soft_break | linebreak_escape ;
+paragraph_join      = soft_break ;
 soft_break          = line_end ;             (* contextual: not a blank_line *)
-linebreak_escape    = opt_hspace, "\\", opt_hspace, line_end ;
 
 hash_call           = "#", qualified_name,
                       [ opt_hspace, argument_list ],
@@ -141,7 +141,10 @@ verse_inline        = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     ;
 
 verse_text          = verse_char, { verse_char } ;
@@ -160,7 +163,10 @@ inline_atom         = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     | text
                     ;
 
@@ -179,7 +185,10 @@ emphasis_unit       = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     | emph_text
                     ;
 
@@ -191,7 +200,10 @@ strong_unit         = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     | emph_text
                     ;
 
@@ -203,7 +215,10 @@ strong_emphasis_unit = strong
                      | label
                      | linebreak_call
                      | inline_call
+                     | hard_break
+                     | soft_hyphen_escape
                      | escaped_char
+                     | loose_backslash
                      | emph_text
                      ;
 
@@ -213,7 +228,19 @@ math_escape         = "\\", ? any Unicode scalar ? ;
 
 reference           = "@", label_name ;
 label               = "<", label_name, ">" ;
-escaped_char        = "\\", ? any Unicode scalar ? ;
+
+(* Inline line-break controls (mirrored from mos-parse inline lowering).
+   `\\` is a hard line break (NodeKind::HardBreak). `\-` expands to a
+   U+00AD soft hyphen consumed by the greedy line-breaker. `escaped_char`
+   covers all other `\X` forms (e.g. `\#`, `\*`, `\[`, `\]`, `\<`); the
+   compiler treats the unrecognised forms as literal `X`. A bare `\` that
+   does not form one of those tokens is `loose_backslash`; at end of line
+   the compiler additionally emits diagnostic `W025`. *)
+hard_break          = "\\\\" ;
+soft_hyphen_escape  = "\\-" ;
+escaped_char        = "\\", ? any Unicode scalar except "\", "-", or line_end ? ;
+loose_backslash     = "\\" ;                 (* bare `\`, e.g. before line_end *)
+
 text                = text_char, { text_char } ;
 
 argument_list       = "(",
@@ -352,7 +379,7 @@ abstract buckets such as `_block`, `_inline`, and `_expression`.
 | `supertypes`        | `_block`, `_inline`, `_expression`                                                    |
 | lexical precedence  | `***` > `**` > `*`; reference/label tokens over generic text                          |
 | parse conflicts     | `[strong, strong_emphasis]`, `[emphasis, strong_emphasis]`, `[paragraph, block_call]` |
-| likely externals    | `blank_line`, `linebreak_escape`, raw `pre/code` body text                            |
+| likely externals    | `blank_line`, raw `pre/code` body delimiters and content                              |
 
 ## Ambiguities and scanner guidance
 
@@ -361,23 +388,25 @@ Tree-sitter grammar if left implicit. Tree-sitter’s own guidance is to solve o
 with lexical precedence and explicit parse conflicts, and to reserve external scanners for tokens
 that are impossible or simply too inconvenient to express with regexes alone.
 
-| Ambiguity                                              | Why it happens                                                         | Recommended resolution                                                                                                                                                         |
-| ------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `***x***` vs nested `**` + `*`                         | Three delimiter lengths compete on the same prefix                     | Give `***` highest lexical precedence, then `**`, then `*`; retain parse conflicts between `strong` and `strong_emphasis` and between `emphasis` and `strong_emphasis`         |
-| soft paragraph break vs blank line                     | Paragraphs are line-oriented; blank lines terminate blocks             | Treat `blank_line` as its own token; parse paragraphs from contiguous nonblank lines only                                                                                      |
-| trailing `\` vs literal backslash                      | Backslash is both escape and hard-break marker                         | Emit `linebreak_escape` only in paragraph context when `\` is immediately before `line_end`; otherwise parse as `escaped_char` or raw text                                     |
-| `<label>` vs literal `<` text                          | Labels reuse angle brackets                                            | Recognize label only for `<` + valid `label_name` + `>` with no interior whitespace; otherwise leave `<` to text or require `\<`                                               |
-| `@label` vs email-like prose                           | `@` is used for references                                             | Recognize references only outside raw/code/math blocks and only when followed by `label_name`; require escaping for literal email-like text until autolink/email syntax exists |
-| `#foo[...]` vs array literal                           | Both use brackets                                                      | After `#`-prefixed call headers, `[` always opens `content_body`; arrays occur only in expression position, typically inside `(...)`, after `:`, or after `,`                  |
-| raw `#pre[...]` or `#code[...]` content containing `]` | Raw bodies need a terminator                                           | Support `\]` in raw mode and treat the body as scanner-driven raw text, not recursively parsed content                                                                         |
-| multiline comments around blank lines                  | Comments can cross lines while blank lines are structurally meaningful | Keep comments lexical, but let line endings remain visible to the parser; do not let “newline as trivia” erase block boundaries                                                |
+| Ambiguity                                              | Why it happens                                                         | Recommended resolution                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `***x***` vs nested `**` + `*`                         | Three delimiter lengths compete on the same prefix                     | Give `***` highest lexical precedence, then `**`, then `*`; retain parse conflicts between `strong` and `strong_emphasis` and between `emphasis` and `strong_emphasis`                                                                                                                                                                        |
+| soft paragraph break vs blank line                     | Paragraphs are line-oriented; blank lines terminate blocks             | Treat `blank_line` as its own token; parse paragraphs from contiguous nonblank lines only                                                                                                                                                                                                                                                     |
+| `\\` / `\-` / `\X` / bare `\`                          | One leading char overlaps four distinct inline atoms                   | Define `hard_break = "\\\\"` and `soft_hyphen_escape = "\\-"` as 2-char tokens that win the lexer's longest-match; `escaped_char` matches `\X` with `\` and `-` excluded from `X`; a bare `\` (typically before `line_end`) falls through to length-1 `loose_backslash` and is literal text (compiler emits `W025` in the trailing-line case) |
+| `<label>` vs literal `<` text                          | Labels reuse angle brackets                                            | Recognize label only for `<` + valid `label_name` + `>` with no interior whitespace; otherwise leave `<` to text or require `\<`                                                                                                                                                                                                              |
+| `@label` vs email-like prose                           | `@` is used for references                                             | Recognize references only outside raw/code/math blocks and only when followed by `label_name`; require escaping for literal email-like text until autolink/email syntax exists                                                                                                                                                                |
+| `#foo[...]` vs array literal                           | Both use brackets                                                      | After `#`-prefixed call headers, `[` always opens `content_body`; arrays occur only in expression position, typically inside `(...)`, after `:`, or after `,`                                                                                                                                                                                 |
+| raw `#pre[...]` or `#code[...]` content containing `]` | Raw bodies need a terminator                                           | Support `\]` in raw mode and treat the body as scanner-driven raw text, not recursively parsed content                                                                                                                                                                                                                                        |
+| multiline comments around blank lines                  | Comments can cross lines while blank lines are structurally meaningful | Keep comments lexical, but let line endings remain visible to the parser; do not let “newline as trivia” erase block boundaries                                                                                                                                                                                                               |
 
-For `tree-sitter-mosaic`, I would start with an external scanner only for `blank_line`,
-`linebreak_escape`, and raw `#pre` / `#code` body text. I would **not** start with an external
-scanner for emphasis: a conservative precedence-based grammar for `***` / `**` / `*` is enough
-initially, and full CommonMark-grade delimiter-run semantics can come later if real documents demand
-them. That matches Tree-sitter’s own advice about externals, and it keeps the first grammar much
-easier to reason about.
+For `tree-sitter-mosaic`, I would start with an external scanner only for `blank_line` and the raw
+`#pre` / `#code` body delimiters and content. Inline line-break controls (`hard_break`,
+`soft_hyphen_escape`, `escaped_char`, `loose_backslash`) stay in `grammar.js` as regular tokens —
+2-char escapes win the lexer's longest-match, and the bare `\` falls through to the 1-char
+`loose_backslash`. I would **not** start with an external scanner for emphasis: a conservative
+precedence-based grammar for `***` / `**` / `*` is enough initially, and full CommonMark-grade
+delimiter-run semantics can come later if real documents demand them. That matches Tree-sitter’s own
+advice about externals, and it keeps the first grammar much easier to reason about.
 
 ## Test corpus and parsing flow
 
@@ -385,18 +414,18 @@ This corpus is deliberately small but high-yield: each example isolates one bloc
 and keeps the expected CST obvious. It is suitable both as a prose reference set and as
 `tree-sitter test` corpus input for the first parser iteration.
 
-| Case                | Snippet                                                                           | Expected parse highlight                                                   |
-| ------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| settings            | `#set text(font: "Noto Sans", size: 11pt)`                                        | one `set_directive` with two `attribute` children                          |
-| heading label       | `= Intro <sec:intro>`                                                             | one `heading`, one trailing `label`                                        |
-| soft break          | `Line one`<br>`line two`                                                          | one `paragraph`, one `soft_break`, **not** two paragraphs                  |
-| explicit line break | `Line one \`<br>`Line two`                                                        | one `paragraph` with `linebreak_escape` join                               |
-| refs and styles     | `See @sec:intro with *emph* and **strong** and \`code\`.`                         | one `paragraph` containing `reference`, `emphasis`, `strong`, `code_span`  |
-| import/include      | `#import "@mosaic/templates/article": article`<br>`#include "sections/intro.mos"` | two top-level directive nodes                                              |
-| labeled call        | `#figure(image: "demo.png", caption: "Demo") <fig:demo>`                          | one `block_call` with `argument_list` and trailing `label`                 |
-| verse               | `#verse[First line`<br>`Second *line*]`                                           | one `verse_block`; line boundaries preserved; inline emphasis still parsed |
-| code                | `#code(lang: "rust")[fn main() {}`<br>`]`                                         | one `code_block`; body remains raw; no inline parsing inside               |
-| arrays and objects  | `#set layout(allowed: [top, bottom], opts: {widows: true})`                       | nested `array` and `object` expressions inside one `argument_list`         |
+| Case                | Snippet                                                                           | Expected parse highlight                                                                                                                                    |
+| ------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| settings            | `#set text(font: "Noto Sans", size: 11pt)`                                        | one `set_directive` with two `attribute` children                                                                                                           |
+| heading label       | `= Intro <sec:intro>`                                                             | one `heading`, one trailing `label`                                                                                                                         |
+| soft break          | `Line one`<br>`line two`                                                          | one `paragraph`, one `soft_break`, **not** two paragraphs                                                                                                   |
+| explicit line break | `Line one \\`<br>`Line two`                                                       | one `paragraph` containing a `hard_break` inline atom between the two text runs (a bare trailing `\` is `loose_backslash` + `soft_break`, not a hard break) |
+| refs and styles     | `See @sec:intro with *emph* and **strong** and \`code\`.`                         | one `paragraph` containing `reference`, `emphasis`, `strong`, `code_span`                                                                                   |
+| import/include      | `#import "@mosaic/templates/article": article`<br>`#include "sections/intro.mos"` | two top-level directive nodes                                                                                                                               |
+| labeled call        | `#figure(image: "demo.png", caption: "Demo") <fig:demo>`                          | one `block_call` with `argument_list` and trailing `label`                                                                                                  |
+| verse               | `#verse[First line`<br>`Second *line*]`                                           | one `verse_block`; line boundaries preserved; inline emphasis still parsed                                                                                  |
+| code                | `#code(lang: "rust")[fn main() {}`<br>`]`                                         | one `code_block`; body remains raw; no inline parsing inside                                                                                                |
+| arrays and objects  | `#set layout(allowed: [top, bottom], opts: {widows: true})`                       | nested `array` and `object` expressions inside one `argument_list`                                                                                          |
 
 The parsing pipeline should mirror the repo’s own architecture: parse source into a concrete syntax
 tree, lower to semantic nodes, resolve imports/labels/references/counters, and only then enter

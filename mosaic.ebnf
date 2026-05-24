@@ -72,9 +72,8 @@ trailing_label      = opt_hspace, block_label ;
 block_label         = label ;
 
 paragraph_segment   = inline_sequence ;
-paragraph_join      = soft_break | linebreak_escape ;
+paragraph_join      = soft_break ;
 soft_break          = line_end ;             (* contextual: not a blank_line *)
-linebreak_escape    = opt_hspace, "\\", opt_hspace, line_end ;
 
 hash_call           = "#", qualified_name,
                       [ opt_hspace, argument_list ],
@@ -97,7 +96,10 @@ verse_inline        = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     ;
 
 verse_text          = verse_char, { verse_char } ;
@@ -116,7 +118,10 @@ inline_atom         = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     | text
                     ;
 
@@ -135,7 +140,10 @@ emphasis_unit       = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     | emph_text
                     ;
 
@@ -147,7 +155,10 @@ strong_unit         = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     | emph_text
                     ;
 
@@ -159,7 +170,10 @@ strong_emphasis_unit = strong
                      | label
                      | linebreak_call
                      | inline_call
+                     | hard_break
+                     | soft_hyphen_escape
                      | escaped_char
+                     | loose_backslash
                      | emph_text
                      ;
 
@@ -169,7 +183,19 @@ math_escape         = "\\", ? any Unicode scalar ? ;
 
 reference           = "@", label_name ;
 label               = "<", label_name, ">" ;
-escaped_char        = "\\", ? any Unicode scalar ? ;
+
+(* Inline line-break controls (mirrored from mos-parse inline lowering).
+   `\\` is a hard line break (NodeKind::HardBreak). `\-` expands to a
+   U+00AD soft hyphen consumed by the greedy line-breaker. `escaped_char`
+   covers all other `\X` forms (e.g. `\#`, `\*`, `\[`, `\]`, `\<`); the
+   compiler treats the unrecognised forms as literal `X`. A bare `\` that
+   does not form one of those tokens is `loose_backslash`; at end of line
+   the compiler additionally emits diagnostic `W025`. *)
+hard_break          = "\\\\" ;
+soft_hyphen_escape  = "\\-" ;
+escaped_char        = "\\", ? any Unicode scalar except "\", "-", or line_end ? ;
+loose_backslash     = "\\" ;                 (* bare `\`, e.g. before line_end *)
+
 text                = text_char, { text_char } ;
 
 argument_list       = "(",

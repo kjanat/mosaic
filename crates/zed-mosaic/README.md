@@ -21,11 +21,8 @@ runtime hooks are currently implemented.
 ## Grammar registration
 
 [`extension.toml`] declares extension id `mosaic`, language `Mosaic`, and grammar `mosaic`. The
-grammar is loaded from this repository at [`crates/tree-sitter-mosaic`] using:
-
-- `repository = "https://github.com/kjanat/mosaic"`
-- `rev = "5628fc2d2c2e556e4d9241b5af7c1853adcfef82"`
-- `path = "crates/tree-sitter-mosaic"`
+grammar is loaded from this repository at [`crates/tree-sitter-mosaic`]. Keep the pinned grammar
+`rev` in [`extension.toml`] aligned with the commit containing the generated Tree-sitter artifacts.
 
 During local grammar development, the commented `file:///home/kjanat/projects/mosaic` stanza in
 [`extension.toml`] shows the intended shape for pointing Zed at a local checkout/branch.

@@ -80,17 +80,44 @@ Use \# for a literal hash.
       (text))))
 
 ==================
-inline: escaped backslash
+inline: hard break in text
 ==================
-Use \\ for a literal backslash.
+foo\\bar.
 ---
 
 (source_file
   (paragraph
     (paragraph_segment
       (text)
-      (escaped_char)
+      (hard_break)
       (text))))
+
+==================
+inline: soft hyphen escape
+==================
+super\-cali fragilistic.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (soft_hyphen_escape)
+      (text))))
+
+==================
+inline: hard break inside emphasis
+==================
+*foo\\bar*
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (emphasis
+        (emph_text)
+        (hard_break)
+        (emph_text)))))
 
 ==================
 inline: escaped emphasis delimiter

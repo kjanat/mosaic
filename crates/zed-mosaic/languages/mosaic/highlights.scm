@@ -87,7 +87,8 @@
 ; --- Escapes ----------------------------------------------------------------
 
 (escaped_char) @string.escape
-(linebreak_escape) @string.escape
+(hard_break) @string.escape
+(soft_hyphen_escape) @string.escape
 
 ; --- Calls (override @variable on the function identifier) ------------------
 
