@@ -28,7 +28,7 @@ use mos_core::{AttrValue, Diagnostic, Document, Node, NodeKind};
 use style::resolve_styles;
 use support::{blank_page, expand_tabs, read_level, read_str_attr};
 use types::BODY_LEADING;
-use word::{Word, WordItem, split_soft_hyphens, word_clusters};
+use word::{ShyBreak, Word, WordItem, split_soft_hyphens, try_shy_break, word_clusters};
 
 mod image;
 mod list;
@@ -412,68 +412,123 @@ impl LayoutState {
         //   ended on its own.
         let mut paragraph_emitted_line = false;
         let mut last_was_hardbreak_flush = false;
+        // Suffix produced by a SHY split takes priority over the
+        // next `items` entry. A single source word with several SHYs
+        // may break twice (`super\-cali\-fragil\-istic` on a narrow
+        // column), so the suffix re-enters the same dispatch loop.
+        let mut pending: Option<Word> = None;
+        let mut item_idx = 0;
 
-        for item in items {
-            let word = match item {
-                WordItem::Word(w) => w,
-                WordItem::HardBreak => {
-                    if !line.is_empty() {
-                        self.flush_line(&line, leading);
-                        line.clear();
-                        line_width_used = 0.0;
-                        paragraph_emitted_line = true;
-                        last_was_hardbreak_flush = true;
-                    } else if last_was_hardbreak_flush {
-                        // Stacked hard breaks: emit a blank line and
-                        // remain in the "just hard-broke" state so a
-                        // third break would emit another blank.
-                        self.cursor_y += self.text.size_pt * leading;
-                    } else if paragraph_emitted_line {
-                        // First hard break after an implicit break
-                        // (oversize chunk or soft-wrap flush). The
-                        // cursor already advanced past the previous
-                        // line, so this break is absorbed silently.
-                        // Promote the state so a *second* stacked
-                        // hard break still produces a blank line.
-                        last_was_hardbreak_flush = true;
+        loop {
+            let word_owned: Word = if let Some(w) = pending.take() {
+                w
+            } else if item_idx < items.len() {
+                let item = &items[item_idx];
+                item_idx += 1;
+                match item {
+                    WordItem::Word(w) => w.clone(),
+                    WordItem::HardBreak => {
+                        if !line.is_empty() {
+                            self.flush_line(&line, leading);
+                            line.clear();
+                            line_width_used = 0.0;
+                            paragraph_emitted_line = true;
+                            last_was_hardbreak_flush = true;
+                        } else if last_was_hardbreak_flush {
+                            // Stacked hard breaks: emit a blank line
+                            // and remain in the "just hard-broke"
+                            // state so a third break emits another
+                            // blank.
+                            self.cursor_y += self.text.size_pt * leading;
+                        } else if paragraph_emitted_line {
+                            // First hard break after an implicit
+                            // break (oversize chunk or soft-wrap
+                            // flush). The cursor already advanced
+                            // past the previous line, so this break
+                            // is absorbed silently. Promote the
+                            // state so a *second* stacked hard
+                            // break still produces a blank line.
+                            last_was_hardbreak_flush = true;
+                        }
+                        // else: paragraph hasn't emitted anything
+                        // yet -- leading hard breaks collapse
+                        // silently regardless of whether prior
+                        // blocks have painted on the page.
+                        continue;
                     }
-                    // else: paragraph hasn't emitted anything yet --
-                    // leading hard breaks collapse silently regardless
-                    // of whether prior blocks have painted on the page.
-                    continue;
                 }
+            } else {
+                break;
             };
-            // Hard wrap: a single word wider than the column gets
-            // chopped into character-sized pieces, each on its own
-            // line. This is the contract MVP 0 documents.
-            if word.width_pt > line_width {
-                if !line.is_empty() {
+
+            let space_w = if line.is_empty() {
+                0.0
+            } else {
+                text_width(word_owned.font, word_owned.size_pt, " ")
+            };
+
+            // Word fits on the current line: append and continue.
+            if line_width_used + space_w + word_owned.width_pt <= line_width {
+                line_width_used += space_w + word_owned.width_pt;
+                line.push(word_owned);
+                continue;
+            }
+
+            // Word does not fit. First try a SHY break that lets us
+            // keep filling the current partially-occupied line.
+            if !line.is_empty()
+                && let Some(ShyBreak { prefix, suffix }) = try_shy_break(
+                    &word_owned,
+                    line_width - line_width_used - space_w,
+                    self.text.family.fallbacks,
+                )
+            {
+                line.push(prefix);
+                self.flush_line(&line, leading);
+                line.clear();
+                line_width_used = 0.0;
+                paragraph_emitted_line = true;
+                last_was_hardbreak_flush = false;
+                pending = Some(suffix);
+                continue;
+            }
+
+            // Either no SHY fit the current line, or the line was
+            // already empty. Flush any in-progress line and decide
+            // what to do on a fresh empty line.
+            if !line.is_empty() {
+                self.flush_line(&line, leading);
+                line.clear();
+                line_width_used = 0.0;
+                paragraph_emitted_line = true;
+                last_was_hardbreak_flush = false;
+            }
+
+            // On the now-empty line: if the word still doesn't fit
+            // the full column, try a SHY break against the empty
+            // line before falling back to cluster chopping.
+            if word_owned.width_pt > line_width {
+                if let Some(ShyBreak { prefix, suffix }) =
+                    try_shy_break(&word_owned, line_width, self.text.family.fallbacks)
+                {
+                    line.push(prefix);
                     self.flush_line(&line, leading);
                     line.clear();
                     line_width_used = 0.0;
+                    paragraph_emitted_line = true;
+                    last_was_hardbreak_flush = false;
+                    pending = Some(suffix);
+                    continue;
                 }
-                self.flush_oversize_word(word, leading);
+                self.flush_oversize_word(&word_owned, leading);
                 paragraph_emitted_line = true;
                 last_was_hardbreak_flush = false;
                 continue;
             }
-            let space_w = if line.is_empty() {
-                0.0
-            } else {
-                text_width(word.font, word.size_pt, " ")
-            };
-            if !line.is_empty() && line_width_used + space_w + word.width_pt > line_width {
-                self.flush_line(&line, leading);
-                line.clear();
-                // Post-flush the line is empty, so no leading space
-                // is charged before the wrapped word.
-                line_width_used = word.width_pt;
-                paragraph_emitted_line = true;
-                last_was_hardbreak_flush = false;
-            } else {
-                line_width_used += space_w + word.width_pt;
-            }
-            line.push(word.clone());
+
+            // Word fits the empty line as-is (a plain soft wrap).
+            line_width_used = word_owned.width_pt;
+            line.push(word_owned);
         }
         if !line.is_empty() {
             self.flush_line(&line, leading);
@@ -1373,8 +1428,8 @@ mod tests {
     #[test]
     fn soft_hyphen_is_stripped_from_emitted_runs() {
         // SHY codepoints must never appear in the rendered text --
-        // the greedy breaker can't honour them so they would render
-        // as visible hyphens (the bug this issue's piece 3a fixes).
+        // when the word fits, the greedy breaker leaves it alone and
+        // no visible hyphen is emitted.
         let mut doc = Document::new(PathBuf::from("test.mos"));
         pin_helvetica(&mut doc);
         make_paragraph(&mut doc, "super\u{AD}cali\u{AD}fragil");
@@ -1388,6 +1443,136 @@ mod tests {
             "SHY leaked into rendered text: {:?}",
             runs[0].text
         );
+    }
+
+    /// Insert a `#set page(margin: <pt>)` block so the column is
+    /// narrow enough to force soft-hyphen breaks in subsequent
+    /// paragraphs. Mirrors the helper in `style.rs`.
+    fn pin_narrow_margin(doc: &mut Document, margin_pt: f32) {
+        let mut attrs = AttrMap::new();
+        attrs.insert("set".to_owned(), AttrValue::Str("page".to_owned()));
+        attrs.insert(
+            "set.arg.margin".to_owned(),
+            AttrValue::Length(f64::from(margin_pt)),
+        );
+        doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Raw,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        );
+    }
+
+    #[test]
+    fn shy_breaks_word_when_line_overflows() {
+        // `su\u{AD}per` on a column narrow enough that "super"
+        // overflows but "su-" fits. The greedy breaker must split
+        // at the SHY offset, render "su-" on the first line, and
+        // continue with "per" on the second.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        // Column ≈ 25pt (just over `su-` at 12pt Helvetica, under
+        // the full `super`).
+        pin_narrow_margin(&mut doc, (A4_WIDTH_PT - 25.0) / 2.0);
+        make_paragraph(&mut doc, "su\u{AD}per");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let texts: Vec<&str> = runs.iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(texts, vec!["su-", "per"], "got {runs:?}");
+        assert!(runs[1].baseline_from_top_pt > runs[0].baseline_from_top_pt);
+        for r in runs {
+            assert!(
+                !r.text.contains('\u{AD}'),
+                "SHY leaked into rendered text: {:?}",
+                r.text
+            );
+        }
+    }
+
+    #[test]
+    fn shy_picks_latest_fitting_break() {
+        // Two SHYs in `super\u{AD}cali\u{AD}fragil` (offsets 5, 9).
+        // Column wide enough for "supercali-" but not the full word
+        // must pick the latest fitting offset (9), not the earliest.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let font = Font::Base14(Base14Font::Helvetica);
+        let target = text_width(font, BODY_SIZE_PT, "supercali-") + 2.0;
+        pin_narrow_margin(&mut doc, (A4_WIDTH_PT - target) / 2.0);
+        make_paragraph(&mut doc, "super\u{AD}cali\u{AD}fragil");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let texts: Vec<&str> = runs.iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(texts, vec!["supercali-", "fragil"], "got {runs:?}");
+    }
+
+    #[test]
+    fn shy_at_zero_or_end_offset_is_ignored() {
+        // `\u{AD}foo\u{AD}` strips to "foo" with offsets [0, 3] --
+        // both are boundary positions and must be ignored. With a
+        // column too narrow for "foo" the SHY path returns None and
+        // the existing oversize-cluster fallback fires; no bare
+        // leading or trailing hyphen appears.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let font = Font::Base14(Base14Font::Helvetica);
+        // Narrower than "foo" so the column can't hold it whole.
+        let target = text_width(font, BODY_SIZE_PT, "fo");
+        pin_narrow_margin(&mut doc, (A4_WIDTH_PT - target) / 2.0);
+        make_paragraph(&mut doc, "\u{AD}foo\u{AD}");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        // Boundary SHYs ignored: no run is just "-" and no run
+        // ends with "-" (that would mean a SHY break was taken).
+        for r in runs {
+            assert_ne!(r.text, "-", "bare hyphen run from boundary SHY");
+            assert!(
+                !r.text.ends_with('-'),
+                "trailing hyphen from boundary SHY: {:?}",
+                r.text
+            );
+        }
+        let joined: String = runs.iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(joined, "foo", "all clusters together still spell foo");
+    }
+
+    #[test]
+    fn shy_falls_back_to_oversize_when_no_break_fits() {
+        // Column so narrow that neither prefix at the SHY offset
+        // ("super-" nor "supercali-") fits. The breaker falls
+        // through to `flush_oversize_word`, which chops by
+        // shaped clusters -- no SHY-driven `-` appears.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let font = Font::Base14(Base14Font::Helvetica);
+        // Narrower than even "su-": forces every candidate to fail.
+        let target = text_width(font, BODY_SIZE_PT, "s") + 0.5;
+        pin_narrow_margin(&mut doc, (A4_WIDTH_PT - target) / 2.0);
+        make_paragraph(&mut doc, "super\u{AD}cali");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        // Cluster fallback emits single-character runs; none of
+        // them end with `-` (the source has no `-` and the SHY
+        // path never fired).
+        for r in runs {
+            assert!(
+                !r.text.ends_with('-'),
+                "oversize fallback emitted hyphen: {:?}",
+                r.text
+            );
+        }
+        let joined: String = runs.iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(joined, "supercali");
     }
 
     #[test]

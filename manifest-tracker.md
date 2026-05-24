@@ -174,11 +174,13 @@ example.
 - [x] Support current text styles.
 - [x] Author-facing line-break controls (issue #26): U+00A0 NBSP preserved by the greedy breaker,
       `\\` hard line break threaded through `InlineKind::HardBreak` / `NodeKind::HardBreak` /
-      `WordItem::HardBreak`, and `\-` / U+00AD soft hyphen stripped from shaping (offsets retained
-      on `Word.shy_break_offsets` for the future Knuth-Plass breaker).
+      `WordItem::HardBreak`, and `\-` / U+00AD soft hyphen stripped from shaping with offsets
+      consumed greedily by the line-breaker via `try_shy_break` — overflowing words pick the latest
+      fitting SHY position and emit `prefix-` + suffix across two lines; oversize cluster fallback
+      still applies when no SHY prefix fits.
 - [ ] Replace greedy line breaking with a real paragraph algorithm. (Issue #26 piece 3b-e — Knuth-
-      Plass + UAX #14 + SHY-as-penalty + chosen-break hyphen glyph emission. The author syntax for
-      SHY already lands as part of piece 3a; the algorithmic side is a separate PR.)
+      Plass + UAX #14 + SHY-as-penalty + optimal break selection. The greedy SHY hyphenation slice
+      now lands too; the algorithmic side that picks across the whole paragraph is a separate PR.)
 - [ ] Add Unicode line breaking. (Same MVP 2 slice as Knuth-Plass; `unicode-linebreak` crate as the
       planned dependency.)
 - [ ] Add language-aware hyphenation.
