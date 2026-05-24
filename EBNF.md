@@ -36,10 +36,11 @@ manifest’s goal of normalizing math into structured data rather than glyph sou
 Read the grammar below with four contextual rules in mind. First, headings, directives, and block
 calls are block forms only at the start of a logical line. Second, comments are lexical trivia, but
 line endings are significant and must **not** be placed in Tree-sitter `extras`. Third, a single
-newline between nonblank paragraph lines is a soft break, while a trailing backslash before newline
-is an explicit hard break. Fourth, `#verse[...]` preserves line endings while `#pre[...]` and
-`#code[...]` preserve raw text; that mirrors CommonMark’s paragraph/hard-break model and AsciiDoc’s
-verse-vs-literal distinction.
+newline between nonblank paragraph lines is a soft break, while `\\` inside inline text is a hard
+line break (`\-` expands to a U+00AD soft hyphen, a break opportunity consumed by the line-breaker;
+a bare trailing `\` is literal, with compiler diagnostic `W025`). Fourth, `#verse[...]` preserves
+line endings while `#pre[...]` and `#code[...]` preserve raw text; that mirrors CommonMark’s
+paragraph/hard-break model and AsciiDoc’s verse-vs-literal distinction.
 
 ```ebnf
 (* Mosaic reference grammar, tree-sitter oriented.
@@ -116,9 +117,8 @@ trailing_label      = opt_hspace, block_label ;
 block_label         = label ;
 
 paragraph_segment   = inline_sequence ;
-paragraph_join      = soft_break | linebreak_escape ;
+paragraph_join      = soft_break ;
 soft_break          = line_end ;             (* contextual: not a blank_line *)
-linebreak_escape    = opt_hspace, "\\", opt_hspace, line_end ;
 
 hash_call           = "#", qualified_name,
                       [ opt_hspace, argument_list ],
@@ -141,7 +141,10 @@ verse_inline        = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     ;
 
 verse_text          = verse_char, { verse_char } ;
@@ -160,7 +163,10 @@ inline_atom         = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     | text
                     ;
 
@@ -179,7 +185,10 @@ emphasis_unit       = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     | emph_text
                     ;
 
@@ -191,7 +200,10 @@ strong_unit         = strong_emphasis
                     | label
                     | linebreak_call
                     | inline_call
+                    | hard_break
+                    | soft_hyphen_escape
                     | escaped_char
+                    | loose_backslash
                     | emph_text
                     ;
 
@@ -203,7 +215,10 @@ strong_emphasis_unit = strong
                      | label
                      | linebreak_call
                      | inline_call
+                     | hard_break
+                     | soft_hyphen_escape
                      | escaped_char
+                     | loose_backslash
                      | emph_text
                      ;
 
@@ -213,7 +228,19 @@ math_escape         = "\\", ? any Unicode scalar ? ;
 
 reference           = "@", label_name ;
 label               = "<", label_name, ">" ;
-escaped_char        = "\\", ? any Unicode scalar ? ;
+
+(* Inline line-break controls (mirrored from mos-parse inline lowering).
+   `\\` is a hard line break (NodeKind::HardBreak). `\-` expands to a
+   U+00AD soft hyphen consumed by the greedy line-breaker. `escaped_char`
+   covers all other `\X` forms (e.g. `\#`, `\*`, `\[`, `\]`, `\<`); the
+   compiler treats the unrecognised forms as literal `X`. A bare `\` that
+   does not form one of those tokens is `loose_backslash`; at end of line
+   the compiler additionally emits diagnostic `W025`. *)
+hard_break          = "\\\\" ;
+soft_hyphen_escape  = "\\-" ;
+escaped_char        = "\\", ? any Unicode scalar except "\", "-", or line_end ? ;
+loose_backslash     = "\\" ;                 (* bare `\`, e.g. before line_end *)
+
 text                = text_char, { text_char } ;
 
 argument_list       = "(",

@@ -218,6 +218,7 @@ export default grammar({
 				$.hard_break,
 				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 			),
 
 		verse_text: _ => token(prec(-1, /[^\n\r\]\\*`$@<#]+/)),
@@ -275,6 +276,7 @@ export default grammar({
 				$.hard_break,
 				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 				$.text,
 			),
 
@@ -291,6 +293,7 @@ export default grammar({
 				$.hard_break,
 				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 				$.text,
 			),
 
@@ -343,6 +346,7 @@ export default grammar({
 				$.hard_break,
 				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 				$.soft_break,
 				$.emph_text,
 			),
@@ -359,6 +363,7 @@ export default grammar({
 				$.hard_break,
 				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 				$.soft_break,
 				$.emph_text,
 			),
@@ -375,6 +380,7 @@ export default grammar({
 				$.hard_break,
 				$.soft_hyphen_escape,
 				$.escaped_char,
+				$.loose_backslash,
 				$.soft_break,
 				$.emph_text,
 			),
@@ -423,6 +429,16 @@ export default grammar({
 		// longest-match race. The compiler treats other `\X` forms as a
 		// literal `X` (no diagnostic) per `mos-parse/src/inline.rs`.
 		escaped_char: _ => token(seq('\\', /[^\\\-\r\n]/)),
+
+		// A bare `\` that does not form one of the recognised 2-char escape
+		// tokens above — typically `\` at end of input or immediately before
+		// a newline. The compiler treats this as literal text and emits
+		// diagnostic `W025` for the trailing-newline case; surfacing it as
+		// a discrete node lets editors distinguish "lone backslash" from a
+		// structural parse error. Length-1, so `hard_break` (`\\`),
+		// `soft_hyphen_escape` (`\-`), and `escaped_char` (`\X`) always win
+		// the longest-match race whenever any of them apply.
+		loose_backslash: _ => token('\\'),
 
 		// Tree-sitter pragmatic deviation from EBNF `text_char`: also exclude
 		// `[` and `]` so bracket-delimited structures (`content_body`,`array`)

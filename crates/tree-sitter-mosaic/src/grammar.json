@@ -790,6 +790,10 @@
         {
           "type": "SYMBOL",
           "name": "escaped_char"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "loose_backslash"
         }
       ]
     },
@@ -967,6 +971,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "loose_backslash"
+        },
+        {
+          "type": "SYMBOL",
           "name": "text"
         }
       ]
@@ -1017,6 +1025,10 @@
         {
           "type": "SYMBOL",
           "name": "escaped_char"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "loose_backslash"
         },
         {
           "type": "SYMBOL",
@@ -1145,6 +1157,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "loose_backslash"
+        },
+        {
+          "type": "SYMBOL",
           "name": "soft_break"
         },
         {
@@ -1198,6 +1214,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "loose_backslash"
+        },
+        {
+          "type": "SYMBOL",
           "name": "soft_break"
         },
         {
@@ -1248,6 +1268,10 @@
         {
           "type": "SYMBOL",
           "name": "escaped_char"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "loose_backslash"
         },
         {
           "type": "SYMBOL",
@@ -1459,6 +1483,13 @@
             "value": "[^\\\\\\-\\r\\n]"
           }
         ]
+      }
+    },
+    "loose_backslash": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "\\"
       }
     },
     "text": {

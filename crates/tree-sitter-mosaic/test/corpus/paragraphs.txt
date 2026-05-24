@@ -13,10 +13,9 @@ line two
     (paragraph_segment
       (text))))
 
-=========================================
-paragraph: trailing single backslash is not a hard break
-:error
-=========================================
+==========================================
+paragraph: trailing single backslash is literal, not a hard break
+==========================================
 Line one \
 Line two
 ---
@@ -24,7 +23,8 @@ Line two
 (source_file
   (paragraph
     (paragraph_segment
-      (text))
+      (text)
+      (loose_backslash))
     (soft_break)
     (paragraph_segment
       (text))))

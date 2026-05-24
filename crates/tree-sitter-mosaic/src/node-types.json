@@ -343,6 +343,10 @@
           "named": true
         },
         {
+          "type": "loose_backslash",
+          "named": true
+        },
+        {
           "type": "reference",
           "named": true
         },
@@ -565,6 +569,10 @@
           "named": true
         },
         {
+          "type": "loose_backslash",
+          "named": true
+        },
+        {
           "type": "reference",
           "named": true
         },
@@ -773,6 +781,10 @@
         },
         {
           "type": "linebreak_call",
+          "named": true
+        },
+        {
+          "type": "loose_backslash",
           "named": true
         },
         {
@@ -1003,6 +1015,10 @@
           "named": true
         },
         {
+          "type": "loose_backslash",
+          "named": true
+        },
+        {
           "type": "reference",
           "named": true
         },
@@ -1059,6 +1075,10 @@
         },
         {
           "type": "linebreak_call",
+          "named": true
+        },
+        {
+          "type": "loose_backslash",
           "named": true
         },
         {
@@ -1165,6 +1185,10 @@
         },
         {
           "type": "linebreak_call",
+          "named": true
+        },
+        {
+          "type": "loose_backslash",
           "named": true
         },
         {
@@ -1348,6 +1372,10 @@
   },
   {
     "type": "label_name",
+    "named": true
+  },
+  {
+    "type": "loose_backslash",
     "named": true
   },
   {
