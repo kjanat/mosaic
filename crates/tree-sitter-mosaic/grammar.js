@@ -242,6 +242,11 @@ export default grammar({
 		trailing_label: $ => $.block_label,
 		block_label: $ => $.label,
 
+		// Now that `\\` is a real inline atom (`hard_break`), the only thing
+		// joining adjacent paragraph segments is a plain newline. The rule is
+		// kept as a hidden alias so a future grammar change (e.g. an explicit
+		// `#linebreak` block-level form) can extend it without rewriting every
+		// `paragraph` call site.
 		_paragraph_join: $ => $.soft_break,
 
 		soft_break: $ => $._line_end,
