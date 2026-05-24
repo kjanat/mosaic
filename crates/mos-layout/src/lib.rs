@@ -398,6 +398,20 @@ impl LayoutState {
         let line_width = self.column_width_pt();
         let mut line: Vec<Word> = Vec::new();
         let mut line_width_used = 0.0_f32;
+        // Paragraph-local state so hard-break collapsing follows
+        // block-boundary semantics rather than page-state ones:
+        // * `paragraph_emitted_line` is true once anything in this
+        //   paragraph has emitted vertical space (a flushed line, a
+        //   wrapped overflow, or an oversize chunk).
+        // * `last_was_hardbreak_flush` is true only after a hard
+        //   break flushed (or stacked onto) a line. Stacked hard
+        //   breaks emit blank lines; a hard break following an
+        //   implicit break (oversize / soft wrap) is absorbed without
+        //   adding a blank line, matching the author's natural
+        //   reading of "force a break here" when the line just
+        //   ended on its own.
+        let mut paragraph_emitted_line = false;
+        let mut last_was_hardbreak_flush = false;
 
         for item in items {
             let word = match item {
@@ -407,17 +421,25 @@ impl LayoutState {
                         self.flush_line(&line, leading);
                         line.clear();
                         line_width_used = 0.0;
-                    } else if self.page_has_content {
-                        // Blank-line bump only makes sense if there's
-                        // content above to push down from. A hard
-                        // break at the very top of a page (no prior
-                        // content) collapses silently -- matches
-                        // CommonMark's "ignore hard break at block
-                        // boundary" behaviour and avoids the
-                        // first-line-on-page baseline drop fighting
-                        // an empty-line advance.
+                        paragraph_emitted_line = true;
+                        last_was_hardbreak_flush = true;
+                    } else if last_was_hardbreak_flush {
+                        // Stacked hard breaks: emit a blank line and
+                        // remain in the "just hard-broke" state so a
+                        // third break would emit another blank.
                         self.cursor_y += self.text.size_pt * leading;
+                    } else if paragraph_emitted_line {
+                        // First hard break after an implicit break
+                        // (oversize chunk or soft-wrap flush). The
+                        // cursor already advanced past the previous
+                        // line, so this break is absorbed silently.
+                        // Promote the state so a *second* stacked
+                        // hard break still produces a blank line.
+                        last_was_hardbreak_flush = true;
                     }
+                    // else: paragraph hasn't emitted anything yet --
+                    // leading hard breaks collapse silently regardless
+                    // of whether prior blocks have painted on the page.
                     continue;
                 }
             };
@@ -431,6 +453,8 @@ impl LayoutState {
                     line_width_used = 0.0;
                 }
                 self.flush_oversize_word(word, leading);
+                paragraph_emitted_line = true;
+                last_was_hardbreak_flush = false;
                 continue;
             }
             let space_w = if line.is_empty() {
@@ -444,6 +468,8 @@ impl LayoutState {
                 // Post-flush the line is empty, so no leading space
                 // is charged before the wrapped word.
                 line_width_used = word.width_pt;
+                paragraph_emitted_line = true;
+                last_was_hardbreak_flush = false;
             } else {
                 line_width_used += space_w + word.width_pt;
             }
@@ -1241,6 +1267,78 @@ mod tests {
         let runs = &result.graph.pages[0].runs;
         assert_eq!(runs.len(), 1, "expected one run, got {runs:?}");
         assert_eq!(runs[0].text, "foo");
+    }
+
+    #[test]
+    fn hard_break_after_oversize_word_does_not_add_blank_line() {
+        // Regression: an oversize word emits chunks via
+        // `flush_oversize_word`, which implicitly ends the line. A
+        // following hard break used to add *another* line on top of
+        // that implicit end. The break should now be absorbed so
+        // `oversize\\next` produces `next` on the immediate next
+        // line, not a blank-then-next.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_empty_paragraph(&mut doc);
+        // A 500-char run of `a` is certainly wider than the default A4
+        // column; the layout chops it into oversize chunks.
+        let huge: String = "a".repeat(500);
+        alloc_inline(&mut doc, para, NodeKind::Text, &huge);
+        alloc_hardbreak(&mut doc, para);
+        alloc_inline(&mut doc, para, NodeKind::Text, "next");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let next = runs.iter().find(|r| r.text == "next").expect("next run");
+        // The last oversize chunk is the run whose text is all `a`s
+        // and whose baseline is the highest among `a`-only runs.
+        let last_chunk_baseline = runs
+            .iter()
+            .filter(|r| !r.text.is_empty() && r.text.chars().all(|c| c == 'a'))
+            .map(|r| r.baseline_from_top_pt)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(
+            last_chunk_baseline.is_finite(),
+            "did not find any oversize-chunk runs"
+        );
+        let one_line = BODY_SIZE_PT * BODY_LEADING;
+        let delta = next.baseline_from_top_pt - last_chunk_baseline;
+        assert!(
+            (delta - one_line).abs() < 0.01,
+            "expected one-line gap ({one_line:.3}pt) between last oversize chunk and `next`, got {delta:.3}pt -- hard break emitted extra blank?"
+        );
+    }
+
+    #[test]
+    fn leading_hard_break_collapses_after_prior_page_content() {
+        // A hard break at the start of a paragraph must collapse even
+        // when prior paragraphs have painted on the page -- the rule
+        // is block-boundary, not page-state. Compare against a control
+        // doc whose second paragraph has no leading hard break: the
+        // two layouts must agree on the vertical position of `second`.
+        let layout_one = |with_leading_break: bool| {
+            let mut doc = Document::new(PathBuf::from("test.mos"));
+            pin_helvetica(&mut doc);
+            make_paragraph(&mut doc, "first");
+            let p2 = make_empty_paragraph(&mut doc);
+            if with_leading_break {
+                alloc_hardbreak(&mut doc, p2);
+            }
+            alloc_inline(&mut doc, p2, NodeKind::Text, "second");
+            LayoutEngine::new().layout(&doc).graph.pages[0]
+                .runs
+                .iter()
+                .find(|r| r.text == "second")
+                .expect("second run")
+                .baseline_from_top_pt
+        };
+        let actual = layout_one(true);
+        let control = layout_one(false);
+        assert!(
+            (actual - control).abs() < 0.01,
+            "leading hard break should collapse: control baseline {control:.3}pt, got {actual:.3}pt"
+        );
     }
 
     #[test]

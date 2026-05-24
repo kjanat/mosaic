@@ -119,30 +119,43 @@ impl LayoutState {
             return 0.0;
         }
         let line_width = self.column_width_pt();
-        let mut lines: u32 = 1;
+        // Track lines actually emitted so the count mirrors
+        // `flow_words` exactly. Starts at zero; a trailing partial
+        // line is counted at the end of the loop. The two flags
+        // duplicate the paragraph-local state machine in `flow_words`
+        // (collapse leading hard breaks, absorb a hard break after an
+        // implicit break, stack hard breaks into blank lines).
+        let mut lines: u32 = 0;
         let mut line_width_used = 0.0_f32;
+        let mut paragraph_emitted_line = false;
+        let mut last_was_hardbreak_flush = false;
         for item in &items {
             let word = match item {
                 WordItem::Word(w) => w,
                 WordItem::HardBreak => {
-                    // A hard break consumes exactly one line worth
-                    // of vertical space whether the current line is
-                    // empty (blank line) or has content (flush +
-                    // start fresh). Match `flow_words` semantics so
-                    // the figure-height pre-flight stays accurate.
-                    lines += 1;
-                    line_width_used = 0.0;
+                    if line_width_used > 0.0 {
+                        lines += 1;
+                        line_width_used = 0.0;
+                        paragraph_emitted_line = true;
+                        last_was_hardbreak_flush = true;
+                    } else if last_was_hardbreak_flush {
+                        lines += 1;
+                    } else if paragraph_emitted_line {
+                        last_was_hardbreak_flush = true;
+                    }
                     continue;
                 }
             };
             if word.width_pt > line_width {
-                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                let chunks = (word.width_pt / line_width).ceil().max(1.0) as u32;
                 if line_width_used > 0.0 {
                     lines += 1;
+                    line_width_used = 0.0;
                 }
-                lines += chunks.saturating_sub(1);
-                line_width_used = 0.0;
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let chunks = (word.width_pt / line_width).ceil().max(1.0) as u32;
+                lines += chunks;
+                paragraph_emitted_line = true;
+                last_was_hardbreak_flush = false;
                 continue;
             }
             let space_w = if line_width_used > 0.0 {
@@ -153,9 +166,14 @@ impl LayoutState {
             if line_width_used > 0.0 && line_width_used + space_w + word.width_pt > line_width {
                 lines += 1;
                 line_width_used = word.width_pt;
+                paragraph_emitted_line = true;
+                last_was_hardbreak_flush = false;
             } else {
                 line_width_used += space_w + word.width_pt;
             }
+        }
+        if line_width_used > 0.0 {
+            lines += 1;
         }
         #[allow(
             clippy::cast_precision_loss,

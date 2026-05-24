@@ -140,14 +140,23 @@ impl Parser<'_> {
                     text_start = i;
                     continue;
                 }
-                // Lone trailing or unrecognized `\`. Warn once and let
-                // the byte fall through as literal text.
-                self.diagnostics.push(self.warn(
-                    "W025",
-                    "lone `\\` is not a recognized escape; treated as literal text",
-                    base + i,
-                    base + i + 1,
-                ));
+                // Backslash followed by anything other than `\` or `-`
+                // is left to fall through as a literal `\` byte (the
+                // slice path picks it up at the next flush). A lone
+                // trailing `\` at end-of-input gets a warning so the
+                // author notices a likely-incomplete escape; a `\`
+                // followed by some other character is kept silent
+                // because the previous behaviour was "backslash is
+                // literal", and emitting a diagnostic for every
+                // `C:\Temp` / `\*foo*` / etc. would be noisy.
+                if i + 1 >= bytes.len() {
+                    self.diagnostics.push(self.warn(
+                        "W025",
+                        "lone trailing `\\` is not a recognized escape; treated as literal text",
+                        base + i,
+                        base + i + 1,
+                    ));
+                }
                 i += 1;
                 continue;
             }

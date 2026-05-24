@@ -1107,6 +1107,29 @@ mod tests {
     }
 
     #[test]
+    fn backslash_before_non_escape_byte_is_silent_literal() {
+        // `\` followed by a byte we don't recognise as an escape
+        // (`*`, `@`, `x`, drive-letter path, etc.) must not emit a
+        // diagnostic -- the prior contract was "backslash is literal",
+        // and only the trailing-`\` case crosses the bar where a
+        // warning helps the author. Three samples cover the cases that
+        // previously fired spurious W025s.
+        for src in [
+            "foo \\* bar\n",
+            "see C:\\Temp\\file\n",
+            "stray \\x literal\n",
+        ] {
+            let r = parse_str(src);
+            assert!(!r.has_errors(), "src {src:?}: {:?}", r.diagnostics);
+            assert!(
+                !r.diagnostics.iter().any(|d| d.code.0 == "W025"),
+                "src {src:?} produced unexpected W025: {:?}",
+                r.diagnostics
+            );
+        }
+    }
+
+    #[test]
     fn soft_hyphen_shorthand_expands_to_u00ad() {
         // `\-` is a soft-hyphen shorthand: it expands inline to a
         // literal U+00AD inside the current text run. No new IR

@@ -65,12 +65,13 @@ A second binary, `mos-lsp`, is the language server entry point editors will spaw
 Each directory under `examples/` is a self-contained Mosaic project (`main.mos` + `mosaic.toml`) and
 ships a committed `<name>.pdf` snapshot so GitHub previews render inline:
 
-| project           | exercises                                                       |
-| ----------------- | --------------------------------------------------------------- |
-| `examples/hello`  | bundled Noto Sans, multilingual coverage, real italic/bold cuts |
-| `examples/lists`  | bullet / numbered lists, hanging indent, adaptive gutter        |
-| `examples/math`   | Base-14 Helvetica via `/Differences`, math operators            |
-| `examples/polish` | Polish diacritics through Noto Sans                             |
+| project               | exercises                                                       |
+| --------------------- | --------------------------------------------------------------- |
+| `examples/hello`      | bundled Noto Sans, multilingual coverage, real italic/bold cuts |
+| `examples/lists`      | bullet / numbered lists, hanging indent, adaptive gutter        |
+| `examples/math`       | Base-14 Helvetica via `/Differences`, math operators            |
+| `examples/polish`     | Polish diacritics through Noto Sans                             |
+| `examples/linebreaks` | NBSP (U+00A0), hard line break (`\\`), soft hyphen (`\-`)       |
 
 Regenerate every snapshot with `just examples` (rebuilds each project and copies `build/main.pdf`
 next to its `main.mos`).
