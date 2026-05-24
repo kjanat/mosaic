@@ -29,6 +29,9 @@ All notable changes to this project will be documented here. The format is based
 - Tree-sitter grammar (`crates/tree-sitter-mosaic`) realigned with the compiler's inline parser for
   the author-facing line-break controls (issue #26): `\\` now parses as a dedicated `hard_break`
   node and `\-` as `soft_hyphen_escape`, both highlighted under `@string.escape`. The external
-  `linebreak_escape` token is removed; a trailing single `\` + newline (which the compiler warns as
-  `W025`) is no longer reported as a successful hard break. `escaped_char` continues to cover `\#`,
-  `\*`, `\[`, `\]`, `\<`, etc. Mirrored into `crates/zed-mosaic` via `just sync-zed-queries`.
+  `linebreak_escape` token is removed; a bare `\` that does not form one of the recognised escape
+  tokens (typically a trailing `\` before a newline, which the compiler also warns as `W025`) parses
+  as `loose_backslash` rather than a structural ERROR, matching the compiler's "literal text"
+  treatment. `escaped_char` continues to cover `\#`, `\*`, `\[`, `\]`, `\<`, etc. Mirrored into
+  `crates/zed-mosaic` via `just sync-zed-queries`, and the Zed extension grammar `rev` is bumped to
+  pick up the new node types. `mosaic.ebnf` and `EBNF.md` refreshed to match.
