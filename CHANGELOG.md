@@ -23,3 +23,12 @@ All notable changes to this project will be documented here. The format is based
 - New `WordItem` enum (`Word` / `HardBreak`) replacing the bare `Vec<Word>` stream consumed by
   `flow_words`.
 - `examples/linebreaks/` project demonstrating all three controls.
+
+### Changed
+
+- Tree-sitter grammar (`crates/tree-sitter-mosaic`) realigned with the compiler's inline parser for
+  the author-facing line-break controls (issue #26): `\\` now parses as a dedicated `hard_break`
+  node and `\-` as `soft_hyphen_escape`, both highlighted under `@string.escape`. The external
+  `linebreak_escape` token is removed; a trailing single `\` + newline (which the compiler warns as
+  `W025`) is no longer reported as a successful hard break. `escaped_char` continues to cover `\#`,
+  `\*`, `\[`, `\]`, `\<`, etc. Mirrored into `crates/zed-mosaic` via `just sync-zed-queries`.
