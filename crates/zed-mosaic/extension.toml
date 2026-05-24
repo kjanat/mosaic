@@ -13,7 +13,7 @@ languages      = ["Mosaic"]
 
 [grammars.mosaic]
 repository = "https://github.com/kjanat/mosaic"
-rev        = "e1b5ba0f1153f54499ec0197caaa696e93632bb2"
+rev        = "c11d50c61ceaf3b74b736ec12d5145e0827fe49f"
 path       = "crates/tree-sitter-mosaic"
 
 # [grammars.mosaic]  # TODO: during dev, set local shizz.
