@@ -426,8 +426,10 @@ export default grammar({
 		// Generic inline escape `\X` for any other character (e.g. `\#`,
 		// `\*`, `\[`, `\]`, `\<`). `\` and `-` are excluded so the dedicated
 		// `hard_break` and `soft_hyphen_escape` tokens win the lexer's
-		// longest-match race. The compiler treats other `\X` forms as a
-		// literal `X` (no diagnostic) per `mos-parse/src/inline.rs`.
+		// longest-match race. The compiler leaves unrecognised backslashes
+		// literal (the `\` stays in the text run; no diagnostic) rather
+		// than stripping them, so editor and compiler agree on byte content
+		// for these forms (see `mos-parse/src/inline.rs`).
 		escaped_char: _ => token(seq('\\', /[^\\\-\r\n]/)),
 
 		// A bare `\` that does not form one of the recognised 2-char escape
