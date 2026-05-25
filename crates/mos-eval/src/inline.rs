@@ -14,6 +14,7 @@ pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inlin
             InlineKind::BoldItalic => NodeKind::BoldItalic,
             InlineKind::Code => NodeKind::Raw,
             InlineKind::Reference => NodeKind::Reference,
+            InlineKind::Citation => NodeKind::Citation,
             InlineKind::HardBreak => NodeKind::HardBreak,
         };
         let mut attributes: AttrMap = BTreeMap::new();
@@ -25,6 +26,19 @@ pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inlin
                 attributes.insert(
                     "text".to_owned(),
                     AttrValue::Str(format!("?{}?", inline.text)),
+                );
+            }
+            InlineKind::Citation => {
+                // Bibliography loading and rendering are out of scope
+                // for this slice (MVP 4). Record the bare key so a
+                // later resolver can rewrite the placeholder text once
+                // a bibliography database exists; until then layout
+                // renders `[?key?]` so the citation is visible in
+                // output the same way unresolved refs are.
+                attributes.insert("key".to_owned(), AttrValue::Str(inline.text.clone()));
+                attributes.insert(
+                    "text".to_owned(),
+                    AttrValue::Str(format!("[?{}?]", inline.text)),
                 );
             }
             // Hard breaks are pure structural markers -- no text payload

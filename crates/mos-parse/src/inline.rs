@@ -286,6 +286,46 @@ impl Parser<'_> {
                 i += 1;
                 continue;
             }
+            if c == b'[' && i + 1 < bytes.len() && bytes[i + 1] == b'@' {
+                // `[@key]` — citation. Only enter the citation branch
+                // once we have seen `[@`, so a bare `[` keeps its
+                // current literal-text behaviour and never warns.
+                let key_start = i + 2;
+                let key_end = scan_label_chars(bytes, key_start);
+                if key_end > key_start && key_end < bytes.len() && bytes[key_end] == b']' {
+                    self.flush_styled_text_with_pending(
+                        &mut out,
+                        slice,
+                        base,
+                        text_start,
+                        i,
+                        style,
+                        &mut pending,
+                        &mut pending_source_start,
+                    );
+                    let end = key_end + 1;
+                    out.push(Inline {
+                        kind: InlineKind::Citation,
+                        text: slice[key_start..key_end].to_owned(),
+                        span: self.span(base + i, base + end),
+                    });
+                    i = end;
+                    text_start = i;
+                    continue;
+                }
+                // Either the key was empty or the `]` was missing /
+                // misplaced. Warn once and let the bytes fall through
+                // as literal text — the user still sees `[@…` in
+                // their output and the parser keeps going.
+                self.diagnostics.push(self.warn(
+                    "W026",
+                    "malformed citation `[@…]`; expected `[@key]`; treated as text",
+                    base + i,
+                    base + key_end.max(key_start),
+                ));
+                i += 1;
+                continue;
+            }
             i += 1;
         }
         self.flush_styled_text_with_pending(

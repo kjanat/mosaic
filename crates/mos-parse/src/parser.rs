@@ -1255,4 +1255,133 @@ mod tests {
         assert_eq!(inlines[0].kind, InlineKind::Emphasis);
         assert_eq!(inlines[0].text, "Mr.\u{A0}Smith");
     }
+
+    // -----------------------------------------------------------------
+    // Citation syntax (MVP 4 slice)
+    //
+    // The chosen citation form is `[@key]`. The key alphabet matches
+    // the existing label alphabet (`[A-Za-z0-9_:.-]`, see
+    // `support::scan_label_chars`). A single key per `[@…]` group is
+    // the only form recognised in this slice — list forms like
+    // `[@a; @b]` and prefix/suffix bodies (`[see @key, p. 33]`) are
+    // deferred to a later bibliography slice and parse here as
+    // literal text. Malformed citations (`[@`, `[@key`, `[@]`) emit a
+    // recoverable `W026` warning and fall through to literal text;
+    // the parser does not panic on any input.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn citation_basic_emits_citation_inline_with_key_and_span() {
+        let src = "see [@smith2024] for details\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let kinds: Vec<InlineKind> = inlines.iter().map(|i| i.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![InlineKind::Text, InlineKind::Citation, InlineKind::Text],
+            "got {inlines:?}",
+        );
+        let citation = &inlines[1];
+        assert_eq!(citation.text, "smith2024");
+        // Span covers `[@smith2024]` — the full source extent, not
+        // just the key.
+        let span_text = &src[citation.span.start..citation.span.end];
+        assert_eq!(span_text, "[@smith2024]");
+    }
+
+    #[test]
+    fn citation_key_accepts_label_alphabet() {
+        // Same alphabet as labels: alnum + `_`, `-`, `:`, `.`.
+        let r = parse_str("[@bib:knuth_84.tex-2]\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].kind, InlineKind::Citation);
+        assert_eq!(inlines[0].text, "bib:knuth_84.tex-2");
+    }
+
+    #[test]
+    fn citation_bare_bracket_stays_literal_text() {
+        // A bare `[` (no immediate `@`) must not trigger the citation
+        // branch and must not emit a warning — `[` is a freely
+        // available character in prose.
+        let r = parse_str("write [this] not that\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert!(
+            r.diagnostics.is_empty(),
+            "bare `[` should not warn, got {:?}",
+            r.diagnostics,
+        );
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].kind, InlineKind::Text);
+        assert!(inlines[0].text.contains("[this]"));
+    }
+
+    #[test]
+    fn citation_unterminated_warns_and_recovers_as_text() {
+        // `[@key` with no closing `]` before end-of-paragraph must
+        // emit `W026` and leave the source bytes as literal text.
+        let r = parse_str("see [@smith2024 missing close\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.code.0 == "W026" && d.severity == Severity::Warning),
+            "expected W026, got {:?}",
+            r.diagnostics,
+        );
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert!(
+            inlines.iter().all(|i| i.kind != InlineKind::Citation),
+            "unterminated citation must not emit a Citation node: {inlines:?}",
+        );
+    }
+
+    #[test]
+    fn citation_empty_key_warns_and_recovers_as_text() {
+        // `[@]` with no key is malformed.
+        let r = parse_str("look [@] here\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "W026"),
+            "expected W026, got {:?}",
+            r.diagnostics,
+        );
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert!(inlines.iter().all(|i| i.kind != InlineKind::Citation));
+    }
+
+    #[test]
+    fn citation_inside_emphasis_round_trips() {
+        // Citations nest inside styled runs just like any other inline.
+        let r = parse_str("*see [@smith2024]*\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let kinds: Vec<InlineKind> = inlines.iter().map(|i| i.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![InlineKind::Emphasis, InlineKind::Citation],
+            "got {inlines:?}",
+        );
+        assert_eq!(inlines[1].text, "smith2024");
+    }
+
+    #[test]
+    fn citation_multiple_keys_each_emit_one_node() {
+        // Two adjacent `[@a]` `[@b]` groups become two Citation
+        // inlines. List form `[@a; @b]` is intentionally NOT
+        // recognised in this slice and parses as a malformed
+        // citation + literal text.
+        let r = parse_str("[@first] and [@second]\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let citation_keys: Vec<&str> = inlines
+            .iter()
+            .filter(|i| i.kind == InlineKind::Citation)
+            .map(|i| i.text.as_str())
+            .collect();
+        assert_eq!(citation_keys, vec!["first", "second"]);
+    }
 }
