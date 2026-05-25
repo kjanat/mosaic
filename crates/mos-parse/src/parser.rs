@@ -424,6 +424,26 @@ mod tests {
     }
 
     #[test]
+    fn set_without_identifier_emits_e010() {
+        // `#set` followed only by whitespace before the newline has no
+        // target identifier. The parser must diagnose with E010 and
+        // skip the line rather than treat the next line as the body.
+        let r = parse_str("#set\nbody\n");
+        let e010: Vec<_> = r.diagnostics.iter().filter(|d| d.code.0 == "E010").collect();
+        assert_eq!(
+            e010.len(),
+            1,
+            "expected exactly one E010, got {:?}",
+            r.diagnostics
+        );
+        assert!(
+            e010[0].message.contains("#set"),
+            "E010 message should mention `#set`, got {:?}",
+            e010[0].message
+        );
+    }
+
+    #[test]
     fn set_missing_colon_emits_e015() {
         let r = parse_str("#set page(paper \"A4\")\n");
         assert!(

@@ -259,10 +259,31 @@ mod tests {
     #[test]
     fn duplicate_label_emits_e041_and_keeps_first() {
         let (doc, diags) = lower("= A <dup>\n\n= B <dup>\n\nsee @dup\n");
-        assert!(
-            diags.iter().any(|d| d.code.0 == "E041"),
-            "expected E041, got {diags:?}"
+        let e041: Vec<&Diagnostic> = diags.iter().filter(|d| d.code.0 == "E041").collect();
+        assert_eq!(
+            e041.len(),
+            1,
+            "expected exactly one E041, got {diags:?}"
         );
+        let d = e041[0];
+        assert_eq!(d.code, DiagnosticCode("E041"));
+        assert_eq!(d.severity, Severity::Error);
+        assert!(
+            d.message.contains("`dup`"),
+            "E041 message should name the duplicated label, got {:?}",
+            d.message
+        );
+        // The duplicate diagnostic must point at the *second* occurrence
+        // and carry a note back to the first declaration. Editor UIs
+        // rely on both spans to render the redeclaration jump.
+        let span = d.span.as_ref().expect("E041 carries a span");
+        assert_eq!(
+            &"= A <dup>\n\n= B <dup>\n\nsee @dup\n"[span.start..span.end].chars().next(),
+            &Some('='),
+            "E041 span should cover the duplicate's node, got {span:?}"
+        );
+        assert_eq!(d.notes.len(), 1, "E041 should reference the first decl");
+        assert!(d.notes[0].span.is_some(), "first-decl note must carry a span");
         // Reference still resolves to the first declaration's number.
         let r = doc
             .nodes()
@@ -277,9 +298,23 @@ mod tests {
     #[test]
     fn unknown_label_emits_e042() {
         let (doc, diags) = lower("see @no:such\n");
+        let e042: Vec<&Diagnostic> = diags.iter().filter(|d| d.code.0 == "E042").collect();
+        assert_eq!(
+            e042.len(),
+            1,
+            "expected exactly one E042 even with the fixpoint loop, got {diags:?}"
+        );
+        let d = e042[0];
+        assert_eq!(d.code, DiagnosticCode("E042"));
+        assert_eq!(d.severity, Severity::Error);
         assert!(
-            diags.iter().any(|d| d.code.0 == "E042"),
-            "expected E042, got {diags:?}"
+            d.message.contains("`no:such`"),
+            "E042 message should name the missing label, got {:?}",
+            d.message
+        );
+        assert!(
+            d.span.is_some(),
+            "E042 must carry a span so editors can jump to the bad reference"
         );
         let r = doc
             .nodes()
