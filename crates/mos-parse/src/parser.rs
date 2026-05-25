@@ -1323,6 +1323,11 @@ mod tests {
     fn citation_unterminated_warns_and_recovers_as_text() {
         // `[@key` with no closing `]` before end-of-paragraph must
         // emit `W026` and leave the source bytes as literal text.
+        // Critically, recovery must NOT let the `@key` chars fall
+        // through to the `@`-reference branch — that would inject a
+        // phantom `Reference` inline and trip the resolver's
+        // unknown-label diagnostic (`E042`) on what was a citation
+        // mistake, not a label mistake.
         let r = parse_str("see [@smith2024 missing close\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         assert!(
@@ -1336,6 +1341,10 @@ mod tests {
         assert!(
             inlines.iter().all(|i| i.kind != InlineKind::Citation),
             "unterminated citation must not emit a Citation node: {inlines:?}",
+        );
+        assert!(
+            inlines.iter().all(|i| i.kind != InlineKind::Reference),
+            "unterminated citation must not leak a phantom Reference: {inlines:?}",
         );
     }
 
@@ -1351,6 +1360,37 @@ mod tests {
         );
         let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
         assert!(inlines.iter().all(|i| i.kind != InlineKind::Citation));
+    }
+
+    #[test]
+    fn citation_multi_key_form_is_deferred_and_does_not_leak_references() {
+        // `[@a; @b]` is the pandoc multi-key form. This slice does
+        // NOT support it — recognising it as one citation list is a
+        // future bibliography slice (MVP 4 follow-up). Until then it
+        // must surface as a single `W026` warning and consume the
+        // whole `[@…]` extent so neither `@a` nor `@b` slips out as
+        // a `Reference` inline. Without aggressive recovery the
+        // resolver would later raise `E042` on `@a`/`@b` because
+        // they're not labelled blocks; that would be doubly wrong:
+        // the diagnostic would point at the wrong feature and would
+        // promote a parser warning into a resolver error.
+        let r = parse_str("compare [@smith2024; @jones2025] now\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let w026: Vec<_> = r
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.0 == "W026")
+            .collect();
+        assert_eq!(w026.len(), 1, "expected exactly one W026, got {w026:?}");
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert!(
+            inlines.iter().all(|i| i.kind != InlineKind::Citation),
+            "multi-key form must not emit a Citation node: {inlines:?}",
+        );
+        assert!(
+            inlines.iter().all(|i| i.kind != InlineKind::Reference),
+            "multi-key form must not leak phantom References: {inlines:?}",
+        );
     }
 
     #[test]

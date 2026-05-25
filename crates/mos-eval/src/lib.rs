@@ -788,11 +788,6 @@ mod tests {
         // `[@]` with an empty key must surface as a parse warning
         // (W026) and produce zero `NodeKind::Citation` nodes — the
         // semantic model only carries citations that parsed cleanly.
-        // (Recovery after W026 lets the bytes fall through to the
-        // surrounding text run; this test deliberately uses a form
-        // whose recovery does not accidentally form a valid
-        // `@label` reference, which would trigger an unrelated
-        // unknown-label diagnostic from the resolver.)
         let r = lower("look [@] here\n", &PathBuf::from("test.mos"));
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         assert!(
@@ -805,6 +800,63 @@ mod tests {
             "no Citation nodes expected, got {:?}",
             r.document.nodes().map(|n| n.kind).collect::<Vec<_>>(),
         );
+    }
+
+    #[test]
+    fn unterminated_citation_does_not_leak_into_reference_resolver() {
+        // Regression: an unterminated `[@key` used to advance just past
+        // `[`, leaving `@key` to be re-tokenized by the `@`-reference
+        // branch. The resolver then surfaced a bogus `E042 unknown
+        // label` on what was a citation typo, not a label typo.
+        // Recovery in the parser now consumes the malformed citation
+        // extent end-to-end so no phantom `Reference` reaches the
+        // resolver.
+        let r = lower(
+            "see [@smith2024 missing close\n",
+            &PathBuf::from("test.mos"),
+        );
+        assert!(
+            !r.has_errors(),
+            "no errors expected, got {:?}",
+            r.diagnostics,
+        );
+        assert!(
+            r.diagnostics.iter().any(|d| d.code.0 == "W026"),
+            "expected W026, got {:?}",
+            r.diagnostics,
+        );
+        assert!(
+            !r.diagnostics.iter().any(|d| d.code.0 == "E042"),
+            "malformed citation must not surface as unknown-label E042: {:?}",
+            r.diagnostics,
+        );
+        assert!(!r.document.nodes().any(|n| n.kind == NodeKind::Citation));
+        assert!(!r.document.nodes().any(|n| n.kind == NodeKind::Reference));
+    }
+
+    #[test]
+    fn deferred_multi_key_citation_does_not_leak_into_reference_resolver() {
+        // `[@a; @b]` is the pandoc multi-key form and is deferred to
+        // a later bibliography slice. Until then it must round-trip
+        // as a single `W026` warning with zero `Citation`/`Reference`
+        // nodes and zero `E042` follow-on errors from the resolver.
+        let r = lower(
+            "compare [@smith2024; @jones2025] now\n",
+            &PathBuf::from("test.mos"),
+        );
+        assert!(
+            !r.has_errors(),
+            "no errors expected, got {:?}",
+            r.diagnostics,
+        );
+        assert!(r.diagnostics.iter().any(|d| d.code.0 == "W026"));
+        assert!(
+            !r.diagnostics.iter().any(|d| d.code.0 == "E042"),
+            "multi-key citation must not surface as unknown-label E042: {:?}",
+            r.diagnostics,
+        );
+        assert!(!r.document.nodes().any(|n| n.kind == NodeKind::Citation));
+        assert!(!r.document.nodes().any(|n| n.kind == NodeKind::Reference));
     }
 
     #[test]

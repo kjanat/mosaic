@@ -313,17 +313,34 @@ impl Parser<'_> {
                     text_start = i;
                     continue;
                 }
-                // Either the key was empty or the `]` was missing /
-                // misplaced. Warn once and let the bytes fall through
-                // as literal text — the user still sees `[@…` in
-                // their output and the parser keeps going.
+                // Either the key was empty, the `]` was missing, or
+                // the body uses a not-yet-supported form (`[@a; @b]`,
+                // prefix/suffix). Warn once and *consume* the
+                // citation-candidate extent so the trailing `@key`
+                // bytes don't fall back through to the `@`-reference
+                // branch — that would surface a bogus E042 in the
+                // resolver for what was syntactically a malformed
+                // citation, not an unknown label.
+                //
+                // Recovery extent:
+                // * if a `]` exists later in this inline slice,
+                //   consume up to and including it (covers
+                //   `[@a; @b]`, `[@see @key, p. 33]`, `[@]`);
+                // * otherwise skip past `[@` only (covers truly
+                //   unterminated `[@key…` at end of paragraph) and
+                //   let the bare key chars settle as literal text.
+                let recovery_end = if let Some(close) = find_byte(bytes, b']', key_start) {
+                    close + 1
+                } else {
+                    key_start
+                };
                 self.diagnostics.push(self.warn(
                     "W026",
                     "malformed citation `[@…]`; expected `[@key]`; treated as text",
                     base + i,
-                    base + key_end.max(key_start),
+                    base + recovery_end,
                 ));
-                i += 1;
+                i = recovery_end;
                 continue;
             }
             i += 1;
