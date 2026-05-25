@@ -31,14 +31,16 @@ example.
   - [x] `pdf-base14-metrics`
   - [x] `tree-sitter-mosaic`
   - [x] `zed-mosaic`
-- [x] `mos check <entry.mos>` parses, lowers, resolves, and reports source diagnostics.
-- [x] `mos build <entry.mos>` parses, lowers, lays out, and writes `build/<entry-stem>.pdf`.
+- [x] `mos check <entry.mos|project-dir>` parses, lowers, resolves, and reports source diagnostics.
+- [x] `mos build <entry.mos|project-dir>` parses, lowers, lays out, and writes PDF output:
+      `build/<entry-stem>.pdf` for direct source files or project-declared `[output].pdf` paths.
+- [x] `mos check` and `mos build` accept multiple entries and skip non-`.mos` glob matches.
 - [x] Parser supports:
   - [x] headings: `=`, `==`, `===`
   - [x] paragraphs
-  - [x] inline emphasis
-  - [x] inline strong text
+  - [x] inline emphasis, strong text, and nested bold-italic text
   - [x] inline code
+  - [x] inline line-break controls: `\\` hard break, `\-` soft hyphen, U+00A0 NBSP
   - [x] labels
   - [x] references
   - [x] unordered lists
@@ -67,6 +69,7 @@ example.
   - [x] paper sizes
   - [x] margins
   - [x] text styles
+  - [x] author-facing line-break controls: NBSP, hard breaks, and greedy SHY breaks
 - [x] PDF backend supports:
   - [x] Base-14 metrics
   - [x] `/Differences`
@@ -75,6 +78,7 @@ example.
   - [x] `/ToUnicode`
   - [x] PNG image XObjects
   - [x] JPEG image XObjects
+  - [x] positioned embedded glyph output for GPOS advances/offsets
   - [x] title metadata
   - [x] author metadata
 - [x] Example PDF snapshots exist for current examples.
@@ -85,13 +89,17 @@ example.
 - [ ] Keep `AGENTS.md` aligned with crate layout, commands, and current shipped scope.
 - [ ] Update child `AGENTS.md` files when crate-local behavior changes.
 - [ ] Audit comments that still describe landed work as MVP 0-only stubs.
-- [ ] Audit README workspace layout for current examples and crate list.
+- [x] Audit README workspace layout for current examples and crate list.
 - [ ] Add or update tests before marking any item below complete.
 
 ## CLI
 
 - [x] Wire `mos check`.
 - [x] Wire `mos build`.
+- [x] Accept project directories for `check`/`build` using `[project].entry`, with `main.mos` as the
+      fallback entry.
+- [x] Build project-declared PDF outputs from `[output].pdf` relative to the project directory.
+- [x] Accept multiple `check`/`build` inputs and ignore non-`.mos` paths from shell globs.
 - [ ] Decide whether stub commands should stay visible in `--help`.
 - [ ] Implement `mos init`.
 - [ ] Implement `mos watch`.
@@ -110,7 +118,9 @@ example.
 
 - [x] Parse headings.
 - [x] Parse paragraphs.
-- [x] Parse inline emphasis, strong, and code.
+- [x] Parse inline emphasis, strong, nested bold-italic, and code.
+- [x] Parse inline line-break controls: `\\` hard break, `\-` soft hyphen shorthand, and literal
+      U+00A0 NBSP preservation.
 - [x] Parse labels and references.
 - [x] Parse unordered and ordered lists.
 - [x] Parse current directives: `#set`, `#image`, `#figure`.
@@ -172,6 +182,10 @@ example.
 - [x] Lay out headings, paragraphs, lists, images, figures, captions, and pages.
 - [x] Support paper sizes and margins from current settings.
 - [x] Support current text styles.
+- [x] Normalize layout/font text inputs to NFC before measuring and shaping (issue #19).
+- [x] Shape embedded-font text through rustybuzz and preserve GPOS advances/offsets in layout
+      metrics (issue #20).
+- [x] Carry embedded shaped glyphs and fallback sub-runs through text layout for PDF emission.
 - [x] Author-facing line-break controls (issue #26): U+00A0 NBSP preserved by the greedy breaker,
       `\\` hard line break threaded through `InlineKind::HardBreak` / `NodeKind::HardBreak` /
       `WordItem::HardBreak`, and `\-` / U+00AD soft hyphen stripped from shaping with offsets
@@ -184,9 +198,8 @@ example.
 - [ ] Add Unicode line breaking. (Same MVP 2 slice as Knuth-Plass; `unicode-linebreak` crate as the
       planned dependency.)
 - [ ] Add language-aware hyphenation.
-- [ ] Add OpenType shaping through HarfBuzz or equivalent.
-- [ ] Segment text into script/language/font runs.
-- [ ] Produce glyph runs instead of simple text runs.
+- [ ] Add full script/language/font-run segmentation.
+- [ ] Add language/script-specific OpenType feature configuration.
 - [ ] Add inline math layout.
 - [ ] Add displayed equation layout.
 - [ ] Add table layout.
@@ -221,6 +234,7 @@ example.
 - [x] Emit `/ToUnicode` maps.
 - [x] Emit PNG and JPEG images.
 - [x] Emit title and author metadata.
+- [x] Emit embedded shaped glyph runs with GPOS positioning via `TJ`/`Tm` operators.
 - [ ] Add hyperlinks.
 - [ ] Add bookmarks/outlines.
 - [ ] Add vector graphics.
@@ -312,8 +326,10 @@ example.
 
 ## Project And Package System
 
-- [ ] Decide current contract for `mosaic.toml`.
-- [ ] Use `mosaic.toml` for project metadata.
+- [x] Define current project directory contract: read `mosaic.toml` if present, use
+      `[project].entry` for the entry source, otherwise fall back to `main.mos`.
+- [x] Use `[output].pdf` for declared project PDF output paths.
+- [ ] Use `mosaic.toml` for project metadata beyond the current entry/output fields.
 - [ ] Use `mosaic.toml` for document settings.
 - [ ] Use `mosaic.toml` for dependencies.
 - [ ] Add `mosaic.lock`.
@@ -343,6 +359,10 @@ example.
 
 ## Formatting And Editor Integration
 
+- [x] Keep `tree-sitter-mosaic` aligned with current parser syntax, including nested emphasis and
+      line-break controls.
+- [x] Mirror shared Zed highlight queries from `tree-sitter-mosaic` and pin the Zed grammar
+      revision.
 - [ ] Build `mos fmt`.
 - [ ] Define formatting rules for current syntax.
 - [ ] Format multiline function calls.
@@ -403,6 +423,7 @@ example.
 - [x] Workspace tests run through `cargo test --workspace`.
 - [x] Strict clippy command exists through `cargo lint`.
 - [x] Example snapshot regeneration exists through `just examples`.
+- [x] Tree-sitter corpus/highlight tests cover current line-break controls.
 - [ ] Add syntax tests for every supported grammar construct.
 - [ ] Add semantic lowering tests for every node type.
 - [ ] Add reference resolution tests by reference kind.

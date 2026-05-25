@@ -2,8 +2,8 @@
 
 ## OVERVIEW
 
-`crates/` is a 14-crate Rust workspace split by compiler phase and backend domain. Keep dependency
-direction boring. Boring good. Cycles bad rock.
+`crates/` holds 15 Cargo workspace crates plus `zed-mosaic`, an intentionally excluded Zed
+extension. Keep dependency direction boring. Boring good. Cycles bad rock.
 
 ## CRATE GRAPH
 
@@ -24,6 +24,8 @@ mos-core
 └── mos-bib
 
 mos = top orchestration only
+tree-sitter-mosaic = editor grammar side world
+zed-mosaic = excluded Zed extension side world
 ```
 
 Side/future domains: `mos-cache`, `mos-packages`, `mos-bib`, `mos-lsp` should stay close to
@@ -43,6 +45,8 @@ Side/future domains: `mos-cache`, `mos-packages`, `mos-bib`, `mos-lsp` should st
 | AFM parser            | `adobe-font-metrics` | Zero-dep parser below metrics crate.               |
 | Core-14 metrics       | `pdf-base14-metrics` | Vendored data + build-generated table.             |
 | Manifest schema       | `mos-packages`       | Parses `mosaic.toml`; no registry yet.             |
+| Tree-sitter grammar   | `tree-sitter-mosaic` | Editor syntax and queries; separate from compiler. |
+| Zed extension         | `zed-mosaic`         | Excluded from workspace; query copies and tasks.   |
 | Cache                 | `mos-cache`          | Trait/in-memory stub; no persistence yet.          |
 | LSP                   | `mos-lsp`            | Binary exists; behavior stub.                      |
 | Bibliography          | `mos-bib`            | Placeholder only.                                  |
@@ -56,6 +60,8 @@ Side/future domains: `mos-cache`, `mos-packages`, `mos-bib`, `mos-lsp` should st
 - `mos-pdf`/`mos-html`: backend sinks. No lowering or layout policy.
 - `mos`: orchestrate, print diagnostics, map errors to exit codes. No compiler logic.
 - `adobe-font-metrics`/`pdf-base14-metrics`: isolated vendor/metrics layer.
+- `tree-sitter-mosaic`: editor CST only. No compiler lowering/layout/backend truth.
+- `zed-mosaic`: Zed packaging and copied queries only. Not a workspace crate.
 
 ## CONVENTIONS
 
@@ -71,3 +77,5 @@ Side/future domains: `mos-cache`, `mos-packages`, `mos-bib`, `mos-lsp` should st
 - Do not route parser behavior by directive name when `DirectiveKind` exists.
 - Do not add backend-specific attributes to core unless every backend can tolerate them.
 - Do not make CLI read `mosaic.toml` semantics unless explicitly implementing that slice.
+- Do not edit generated Tree-sitter parser artifacts by hand.
+- Do not update Zed query copies without syncing from canonical Tree-sitter queries.

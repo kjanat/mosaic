@@ -68,6 +68,7 @@ ships a committed `<name>.pdf` snapshot so GitHub previews render inline:
 
 | project               | exercises                                                       |
 | --------------------- | --------------------------------------------------------------- |
+| `examples/code`       | inline code, `#pre`, `#code`, long-bracket raw blocks           |
 | `examples/hello`      | bundled Noto Sans, multilingual coverage, real italic/bold cuts |
 | `examples/lists`      | bullet / numbered lists, hanging indent, adaptive gutter        |
 | `examples/math`       | Base-14 Helvetica via `/Differences`, math operators            |
@@ -118,7 +119,7 @@ crates/
   tree-sitter-mosaic   Tree-sitter grammar for Mosaic
   zed-mosaic           Zed language extension for Mosaic
 examples/
-  hello, code, lists, math, polish (committed PDF snapshots)
+  hello, code, linebreaks, lists, math, polish (committed PDF snapshots)
 ```
 
 `adobe-font-metrics` is the leaf-most crate (zero deps); nothing else depends on `mos`.
