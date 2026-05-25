@@ -23,9 +23,12 @@ not in scope for MVP 1.
 
 - `@label` references resolve against a `label → NodeId` index built from the
   lowered `Document`.
-- Reference text is the target's resolved `number` attribute (sections today;
-  figure/equation/table/theorem numbering when those kinds land — still
-  layout-independent).
+- Reference text uses the target's resolved `number` attribute when present
+  (sections today; figure/equation/table/theorem numbering when those kinds
+  land — still layout-independent). When the target has no `number`
+  attribute — e.g. a paragraph-attached label — the resolver falls back to
+  the bare label string. See `paragraph_label_indexes_paragraph` in
+  `crates/mos-eval/src/resolve.rs`.
 - Diagnostics: `E041` duplicate label, `E042` unknown reference.
 - Reference text is `text`-only. The resolver never reads layout output.
 
@@ -68,14 +71,24 @@ Layout → resolver, after each pagination attempt:
 - A `LayoutSignature` — an opaque hash of page boundaries — so the driver can
   tell whether the new pagination matches the previous iteration.
 
-Driver loop (owned by `mos-eval` or a new orchestration layer, not by
-`mos-layout`):
+Driver loop ownership: **above** both `mos-eval` and `mos-layout`. The
+workspace crate graph is `mos-core → mos-parse → mos-eval → mos-layout`, and
+`mos` orchestrates the pipeline. `mos-eval` cannot own the loop because it
+sits upstream of `mos-layout` and must not depend on it; `mos-layout` cannot
+own the loop because it must not call back into semantic resolution. The
+driver therefore lives in `mos` (today's orchestrator) or in a dedicated
+orchestration crate introduced when the fixpoint lands. `mos-eval` exposes
+the rewrite step as a function the driver can call repeatedly; `mos-layout`
+exposes the page-number/signature output. Neither crate gains a dependency
+on the other.
 
-1. Resolve text-only references.
-2. Run layout with the current `NodeId → PageNumber` estimate (empty on first
-   pass).
-3. Rewrite page-dependent references from the new map.
-4. Re-run layout. If `LayoutSignature` matches the previous iteration, stop.
+1. Call `mos-eval` to resolve text-only references.
+2. Call `mos-layout` with the current `NodeId → PageNumber` estimate (empty on
+   first pass).
+3. Call `mos-eval` again to rewrite page-dependent references from the new
+   map.
+4. Re-run `mos-layout`. If `LayoutSignature` matches the previous iteration,
+   stop.
 5. Cap iterations; emit a non-convergence diagnostic on overflow and fall back
    to the last attempt's numbers.
 
@@ -86,33 +99,44 @@ Implications this contract locks in now:
   deterministic per source.
 - Layout must not store reference text on placed boxes. Reference rewriting
   stays in `mos-eval`; layout publishes page numbers, not strings.
-- The resolver owns the iteration count and any diagnostics about
-  non-convergence, because it is the only stage that knows which references
-  are layout-dependent.
+- The driver owns the iteration count and non-convergence diagnostics. The
+  resolver tags which references are layout-dependent (because only it
+  knows), but it does not run the loop.
 
 Nothing in this contract is implemented in MVP 1.
 
 ## Syntax reservation
 
-**Decision: do not reserve page-reference syntax now.** Leave it undefined.
+**Decision: do not reserve page-reference syntax now, and explicitly flag the
+prefix-based design space as a breaking-change risk.** Leave it undefined.
 
-Reasons:
+The current parser (`crates/mos-parse/src/inline.rs`) accepts any
+`scan_label_chars` run after `@` as opaque label text — colons included. That
+means `@page:foo`, `@p:foo`, `@pg:foo`, and any other `prefix:label` form is
+**already a valid label reference today**. The corollary:
 
-- Current `@label` accepts colon-prefixed identifiers as opaque label text
-  (`@sec:intro`, `@fig:ctpa`). Treating any prefix as a "page reference" kind
-  today would change current diagnostics and bake a convention into the
-  language before the feature exists.
-- The natural design space (e.g., a separate sigil, a kind-aware modifier such
-  as `@page:label`, or a function-style `#pageref(label)`) is not constrained
-  by any MVP 1 commitment. Picking one now would be guesswork; picking one
-  later costs nothing because no existing source uses it.
-- The resolver's reference node already carries the raw label string and a
-  `NodeKind::Reference`. Adding a future "kind" attribute (`section`,
-  `figure`, `page`, ...) does not require a new parser token.
+- A future kind-discriminating prefix syntax such as `@page:label` would
+  silently change the meaning of any document that already uses `page:` as
+  part of a label name. That is a breaking change, not a free extension.
+- Therefore the future page-reference issue must either pick syntax that is
+  not a currently-legal label (a separate sigil, e.g. `@@label`,
+  `@!label`, or a function form like `#pageref(label)`), or pay an explicit
+  migration cost for any chosen prefix and gate the change behind a version
+  bump.
+- Picking the syntax now, before the fixpoint contract is concrete, would
+  forfeit the cleaner sigil options without buying anything. Picking it later
+  costs nothing as long as we do not bake `page:` (or any other plausible
+  prefix) into existing examples in the meantime.
 
-A follow-up issue should decide the surface syntax at the same time as the
-fixpoint implementation, so the choice can be evaluated against the actual
-data contract above instead of in isolation.
+The resolver's reference node already carries the raw label string and a
+`NodeKind::Reference`. Adding a future `kind` attribute (`section`, `figure`,
+`page`, ...) does not require a new parser token, but it does require the
+parser to recognize a syntactic form that today is indistinguishable from a
+labelled reference.
+
+A follow-up issue decides the surface syntax at the same time as the fixpoint
+implementation, with the prefix-collision constraint listed above as a hard
+input.
 
 ## Tracker interpretation
 
@@ -136,8 +160,11 @@ Small, scoped issues only — no umbrella epics:
 1. When kind-aware reference text lands (figures/equations/tables/theorems),
    reuse the existing one-pass resolver. Do not introduce layout coupling.
 2. When page references are picked up, open a single issue that (a) picks
-   syntax, (b) introduces the `NodeId → PageNumber` map and `LayoutSignature`
-   types in `mos-core`, and (c) moves the iteration driver out of
-   `resolve::resolve`. Land syntax, contract, and driver together; do not
-   merge a partial scaffold.
+   syntax under the prefix-collision constraint above, (b) introduces the
+   `NodeId → PageNumber` map and `LayoutSignature` types in `mos-core`, and
+   (c) places the iteration driver in `mos` (or a new orchestration crate) —
+   not in `mos-eval` or `mos-layout`. The existing single-pass loop in
+   `resolve::resolve` is removed in the same change; it does not survive as a
+   second driver. Land syntax, contract, and driver together; do not merge a
+   partial scaffold.
 3. Non-convergence diagnostics are part of (2), not a separate prerequisite.
