@@ -1,12 +1,15 @@
 # Mosaic Manifest Tracker
 
-This tracks implementation work against `manifest.md`.
+This is the public roadmap/status artifact for implementation work against `manifest.md`. GitHub
+Project 5 is the planning cockpit: milestones define roadmap phases, issues track concrete work, and
+this file stays readable for people who do not live in the project board.
 
 Truth order:
 
 1. Code and tests.
 2. `README.md` Status.
-3. `manifest.md` design intent.
+3. GitHub Project 5 for active planning state.
+4. `manifest.md` design intent.
 
 Do not mark a manifesto idea complete unless it is implemented, tested or clearly exercised by an
 example.
