@@ -834,7 +834,11 @@ name = "mos-lsp"
 version = "0.0.0"
 dependencies = [
  "mos-core",
+ "mos-eval",
  "mos-parse",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

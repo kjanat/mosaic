@@ -16,8 +16,12 @@ name = "mos-lsp"
 path = "src/main.rs"
 
 [dependencies]
-mos-core.workspace  = true
-mos-parse.workspace = true
+mos-core.workspace   = true
+mos-eval.workspace   = true
+mos-parse.workspace  = true
+serde.workspace      = true
+serde_json.workspace = true
+thiserror.workspace  = true
 
 [lints]
 workspace = true

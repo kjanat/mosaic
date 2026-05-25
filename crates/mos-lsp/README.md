@@ -2,37 +2,60 @@
 
 Language-server crate for Mosaic `.mos` files.
 
-This crate is present as the editor/LSP entry point, but current behavior is intentionally a stub.
-Do not treat it as a working language server yet.
+The current slice publishes the same parse / lower / resolve diagnostics that `mos check` renders,
+but over the Language Server Protocol so editors can show them inline. Everything else listed under
+non-goals stays unbuilt.
 
 ## Current Behavior
 
-- Library API: `mos_lsp::run() -> mos_core::Result<()>`.
-- `run()` always returns `CoreError::Unimplemented("mos-lsp::run")`.
+- Library API: `mos_lsp::run() -> mos_lsp::Result<()>`.
+- `run()` drives a stdio LSP server over JSON-RPC 2.0 framed with `Content-Length` headers.
+- Implemented requests/notifications: `initialize`, `initialized`, `shutdown`, `exit`,
+  `textDocument/didOpen`, `textDocument/didChange` (full sync), `textDocument/didClose`.
+- After every open/change the server sends `textDocument/publishDiagnostics` with the compiler
+  diagnostics for that document; close clears them.
+- Unknown requests get a JSON-RPC `MethodNotFound` (-32601); unknown notifications are dropped.
 - Binary: `mos-lsp`, defined in `Cargo.toml`, calls `mos_lsp::run()`.
-- On error, the binary prints `mos-lsp: {err}` to stderr and exits with failure.
+
+### Manual smoke test
+
+```sh
+cargo run -p mos-lsp <<'EOF'
+Content-Length: 51
+
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+Content-Length: 174
+
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/main.mos","languageId":"mosaic","version":1,"text":"see @no:such\n"}}}
+Content-Length: 38
+
+{"jsonrpc":"2.0","method":"exit"}
+EOF
+```
+
+The server replies with an `initialize` response and one `publishDiagnostics` notification carrying
+an `E042` diagnostic for the unknown `@no:such` reference. Byte counts above are exact.
 
 ## Boundary
 
-`mos-lsp` should stay a thin language-server boundary around compiler services. It currently depends
-only on `mos-core` and `mos-parse`; keep it close to source parsing and diagnostics until real
-editor features require more.
+`mos-lsp` is the thin protocol boundary around compiler services. Diagnostic messages, codes, and
+spans come from `mos-core` / `mos-parse` / `mos-eval`; this crate only re-shapes them into LSP
+positions and dispatches JSON-RPC.
 
 Compiler phase ownership stays elsewhere:
 
 - `mos-core`: document IDs, spans, diagnostics, shared errors.
 - `mos-parse`: `.mos` source to syntax tree.
-- `mos-eval`: syntax to semantic `Document`.
+- `mos-eval`: syntax to semantic `Document`, including resolver diagnostics.
 - `mos-layout` / `mos-pdf` / `mos-html`: layout and backend output.
 - `mos`: user CLI orchestration.
 
 ## Known Non-Goals Today
 
-- No LSP protocol loop.
-- No editor diagnostics beyond the unimplemented error.
 - No completion, hover, go-to-definition, formatting, code actions, or rename.
+- No incremental document sync — `didChange` replaces the buffer wholesale.
 - No source-to-PDF sync or live preview.
 - No incremental cache or workspace indexing.
+- No multi-file projects: diagnostics are produced from the opened document in isolation.
 
-The root README and AGENTS files are the source of truth: `mos check` and `mos build` are real; LSP
-behavior is not shipped yet. Booga mark cave wall so future hunter no chase ghost mammoth.
+The root README and AGENTS files remain the source of truth for what is and isn't shipped overall.
