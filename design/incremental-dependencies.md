@@ -91,10 +91,16 @@ schema break.
 
 ### 3.4 `Node`
 
-Identity: a `NodeId` allocated by the lowerer. Today these are monotonic; the migration target
-(manifest §5.1) derives them from `hash(file_path, syntactic_position, explicit_label,
-local_structure)`. The `DepId::Node` variant survives that migration unchanged — only the
-allocator behind `NodeId` changes.
+Identity: a `NodeId` allocated through the document arena in `mos-core` but _derived_ by the
+lowerer in `mos-eval`. Today `Document::alloc` hands out a monotonic counter; the migration target
+(manifest §5.1) computes the stable ID from `hash(source_id, syntactic_position, explicit_label,
+local_structure)` inside the lowerer — which is the only stage that has the parse tree — and
+passes the precomputed ID into the arena.
+
+This split matters for crate boundaries. `mos-core` must not learn about syntax trees, so a
+future `Document::alloc_with_id(id, node)` (or equivalent) keeps the derivation in `mos-eval`
+without dragging parser types into core. The public `NodeId(u64)` newtype is unchanged either
+way; only the producer rule shifts. The `DepId::Node` variant survives that migration unchanged.
 
 `Node` IDs cover semantic structure (paragraphs, headings, figures, list items, references). They
 do _not_ cover layout output; that is `LayoutOutput`.
@@ -146,12 +152,20 @@ deferred. Whatever is picked, it MUST be portable and version-stamped.
 SourceHash = H(
     engine_version,
     source_kind,                  // .mos / .toml / .bib / ...
-    file_bytes_after_nfc          // NFC-normalized UTF-8
+    file_bytes                    // raw bytes as read, no normalization
 )
 ```
 
-Out of inputs (must not affect the hash): mtime, inode, absolute path, byte order mark variations
-that NFC collapses, trailing newline that the parser normalizes.
+Source hashing is intentionally byte-for-byte. The parser does _not_ NFC-normalize source today,
+and the source hash must match what the parser actually consumed — otherwise the cache would
+"forget" cosmetic edits the parser is sensitive to. NFC handling enters the pipeline later at the
+layout-input boundary (§4.4), where two paragraphs whose authored text is NFC-equivalent should
+hit the same `ParagraphInputHash`.
+
+Out of inputs (must not affect the hash): mtime, inode, absolute path, owning user, line-ending
+auto-conversion by the OS or the user's editor. If a future parser normalizes line endings or
+strips a BOM before lowering, that normalization must happen _before_ the bytes are hashed and be
+stamped into `engine_version`.
 
 ### 4.2 Semantic node hash
 
@@ -159,20 +173,47 @@ that NFC collapses, trailing newline that the parser normalizes.
 NodeHash(node) = H(
     engine_version,
     node.kind,
-    canonical_attrs(node.attributes),
+    canonical_attrs(authored_attrs(node)),
+    asset_refs(node),             // AssetHash(...) per referenced asset
     [NodeHash(child) for child in node.children],
     span_kind_only(node.span)     // file role, not byte offsets
 )
 ```
 
-Notes:
+`NodeHash` covers _authored_ semantic state, not resolution residue. The lowerer in `mos-eval`
+currently stashes filesystem- and decoder-derived data directly onto node attributes — see
+`crates/mos-eval/src/image_lower.rs`, which writes `resolved_path` (an absolute path), `pixels`
+(decoded RGB8 bytes), `pixel_width`, `pixel_height`, `colorspace`, and `bits_per_component` onto
+an `Image` node. These must _not_ feed `NodeHash`:
+
+- `resolved_path` leaks the building user's filesystem layout into the cache and would force a
+  miss on every machine.
+- `pixels` and decoded dimensions duplicate the asset's bytes into the "semantic" hash and would
+  bind a paragraph's `NodeHash` to a transcoder version it should not care about.
+
+The carve-out: `authored_attrs(node)` is the subset of attributes that the parser produced — `src`
+(the source-relative path token written by the author), `alt`, `width`, `height`, `label`, `role`,
+`text`, list `ordered`-style flags, and so on. Anything the lowerer added during resolution is
+addressed indirectly through `asset_refs(node)` (each referenced asset's `AssetHash` per §4.3) or
+omitted entirely because it is rederivable.
+
+Concretely for `NodeKind::Image`: `NodeHash` consumes `src`, `alt`, requested `width`/`height`,
+`label`, and `AssetHash(resolved asset)`. It does not consume `resolved_path`, `pixels`,
+`pixel_width`, `pixel_height`, `colorspace`, or `bits_per_component`. The decoded pixel buffer is
+addressed through the asset's content hash; the resolved path is a build-machine detail.
+
+Other notes:
 
 - Span byte offsets are _excluded_. A paragraph that shifts down because an earlier paragraph grew
   must hash identically — that is the whole point of the boundary.
-- `canonical_attrs` sorts by key (already a `BTreeMap`), normalizes float NaNs, and hashes
-  `AttrValue::Bytes` by their content digest, not their `Arc` identity.
+- `canonical_attrs` sorts by key (already a `BTreeMap`), normalizes float NaNs, quantizes
+  authored layout dimensions per §6, and rejects `AttrValue::Bytes` entries (which today only
+  appear as derived pixel buffers and therefore fail the carve-out above).
 - Child hashes feed in as a flat list, not a Merkle root, so adding/removing a sibling re-hashes
   the parent but does not re-hash unaffected siblings.
+- The carve-out implies an `mos-eval` follow-up: tag each attribute as authored vs. derived, or
+  move derived attributes off the `Node` and onto a side-table the lowerer owns. The design here
+  treats that as a precondition for ever computing a meaningful `NodeHash`.
 
 ### 4.3 Asset hash
 
@@ -230,17 +271,36 @@ ReferenceInputHash = H(
 
 ### 4.5 Layout / page output hash
 
+Pages need two hashes, not one. The lookup key and the result digest are different objects and
+cannot be the same value, because the result is not known at lookup time.
+
 ```text
-PageOutputHash = H(
+PageInputHash = H(                // cache lookup key — known before layout
+    engine_version,
+    StyleHash(page_style),
+    page_boundary_signature_in,   // manifest §33 input boundary
+    [LayoutInputHash(box) for box queued on this page]
+)
+
+PageOutputHash = H(               // result digest — known after layout
     engine_version,
     [LayoutOutputHash(box) for box on page],
-    page_boundary_signature       // manifest §33 input boundary
+    page_boundary_signature_out   // manifest §33 output boundary
 )
 ```
 
-The page boundary signature is the small struct that manifest §33's reflow algorithm reads to
-decide whether downstream pages are reusable. It is hashed, not stored verbatim, so cache lookups
-stay cheap.
+Usage:
+
+- The cache is indexed by `PageInputHash`. Looking up a `PageInputHash` returns the laid-out page
+  bytes plus its `PageOutputHash` and output boundary.
+- Reflow (manifest §33) compares the cached `page_boundary_signature_out` of page _n_ with the
+  fresh `page_boundary_signature_in` of page _n+1_. When they match, downstream pages stay
+  cached; when they diverge, layout continues until the boundaries reconverge.
+- `PageOutputHash` is the convergence digest, not a lookup key. It lets the engine answer
+  "did the laid-out page actually change?" without re-comparing the full output box list.
+
+Boundary signatures are hashed rather than stored verbatim so equality checks stay cheap and so
+the same boundary state from a different build path collides correctly.
 
 ## 5. Determinism expectations
 
@@ -253,8 +313,12 @@ These are the rules a future implementation must follow for the boundaries above
    - hash-map iteration order, pointer addresses, or `Arc` identity,
    - parse-order-assigned `NodeId`s once `NodeId` is hash-derived (manifest §5.1).
 2. Hashes MUST depend on a stamped `engine_version`. Bumping the engine invalidates everything.
-3. Text inputs MUST be NFC-normalized before hashing; the layout engine already normalizes its
-   text inputs to NFC (`manifest-tracker.md` → Layout), and the source hash matches that.
+3. NFC normalization is a property of the _layout-input_ hash (§4.4), not the source hash. The
+   layout engine already normalizes its text inputs to NFC (`manifest-tracker.md` → Layout), so
+   paragraphs whose authored text is NFC-equivalent must converge on the same
+   `ParagraphInputHash`. The source hash deliberately hashes raw bytes (§4.1) because the parser
+   does not currently NFC-normalize and the cache must reflect what the parser actually
+   consumed.
 4. Floating-point inputs (widths, leading, sizes) MUST be quantized to the same fixed-point
    resolution used by layout before hashing. See §6.
 5. `Node.content_hash` is _not_ identity. Two nodes with the same `content_hash` are
@@ -291,8 +355,9 @@ describes under _Layout_ and _Page Reflow And Fixpoints_:
   `ParagraphInputHash`. A change confined to that paragraph changes only its `NodeHash`, hence its
   `ParagraphInputHash`, hence its line set. Surrounding paragraphs hit the cache.
 - **Reflow only affected pages.** Page reflow consumes page-boundary signatures (manifest §33).
-  `PageOutputHash` is the cache key; downstream pages whose input boundary matches an old
-  `PageOutputHash` are reused wholesale.
+  `PageInputHash` (§4.5) is the cache lookup key; `PageOutputHash` is the convergence digest the
+  reflow loop compares against the next page's incoming boundary. Downstream pages whose incoming
+  boundary matches an old outgoing boundary are reused wholesale.
 - **Update only affected references.** A reference's `ReferenceInputHash` changes iff its target
   node, target number, or target page changes. Re-resolution stays a local edit on the dependency
   graph.
@@ -324,24 +389,32 @@ Explicitly _not_ designed here:
 These are scope-sized, one-PR work items, not umbrella epics. Each can become its own GitHub
 issue when it is ready to start:
 
-1. _Stable `NodeId` derivation._ Replace `Document::alloc`'s monotonic counter with a hash of
-   `(source_id, syntactic_position, explicit_label, local_structure)`. Land behind a feature
-   flag if needed; the public `NodeId(u64)` type stays.
-2. _Populate `Node.content_hash` in the lowerer._ Compute `NodeHash` per §4.2 during
-   `mos-eval`'s lowering pass. Cache stays untouched.
-3. _Source and asset hashing helpers in `mos-core`._ Provide functions that produce `SourceHash`
+1. _Stable `NodeId` derivation in `mos-eval`._ Compute the stable ID — `hash(source_id,
+   syntactic_position, explicit_label, local_structure)` — inside the lowerer, which is the only
+   stage with the parse tree. Add a `Document::alloc_with_id` (or equivalent) on `mos-core` so
+   the lowerer can hand precomputed IDs to the arena without `mos-core` learning about syntax.
+   Public `NodeId(u64)` stays.
+2. _Separate authored vs. derived node attributes._ Precondition for any meaningful `NodeHash`.
+   Either tag each entry in `AttrMap` as authored/derived or move derived attributes (today:
+   `resolved_path`, `pixels`, `pixel_width`, `pixel_height`, `colorspace`, `bits_per_component`
+   on `Image` nodes) off `Node` and onto a side-table the lowerer owns.
+3. _Populate `Node.content_hash` in the lowerer._ Compute `NodeHash` per §4.2 during
+   `mos-eval`'s lowering pass, drawing only from authored attributes plus `AssetHash` for any
+   referenced asset. Cache stays untouched.
+4. _Source and asset hashing helpers in `mos-core`._ Provide functions that produce `SourceHash`
    / `AssetHash` per §4.1 and §4.3 with the agreed engine-version stamping. No public `DepId`
    yet.
-4. _Layout-dimension quantization helper._ A small `i32`-of-1/64-pt newtype used wherever layout
+5. _Layout-dimension quantization helper._ A small `i32`-of-1/64-pt newtype used wherever layout
    currently passes `f32` widths into anything hash-bound. Lives in `mos-layout`.
-5. _`DepNode` graph in `mos-cache` (in-memory only)._ Introduce the `DepId`/`DepKind`/`DepNode`
+6. _`DepNode` graph in `mos-cache` (in-memory only)._ Introduce the `DepId`/`DepKind`/`DepNode`
    types from §3 and wire them into the in-memory cache key. No persistence.
-6. _Paragraph layout cache (in-memory)._ Add `ParagraphCacheKey` and store one `LayoutOutput` per
+7. _Paragraph layout cache (in-memory)._ Add `ParagraphCacheKey` and store one `LayoutOutput` per
    key in `InMemoryCache`. Measure reuse on the existing examples.
-7. _Page boundary signature._ Introduce the small struct that manifest §33 reflow consumes, hash
-   it, and start emitting `PageOutputHash`.
-8. _Persistent `.mos-cache/`._ Only after items 1–7 land. Schema and disk layout get their own
+8. _Page boundary signature plus `PageInputHash` / `PageOutputHash`._ Introduce the small struct
+   that manifest §33 reflow consumes, hash it as the lookup key, and emit the output-side
+   convergence digest separately (§4.5).
+9. _Persistent `.mos-cache/`._ Only after items 1–8 land. Schema and disk layout get their own
    design note.
 
-Items 1–4 are pure refactors with no behavior change; items 5–7 add an opt-in cache layer; item 8
-is a separate, larger slice.
+Items 1–5 are pure refactors with no behavior change; items 6–8 add an opt-in cache layer;
+item 9 is a separate, larger slice.
