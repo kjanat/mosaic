@@ -258,7 +258,8 @@ mod tests {
 
     #[test]
     fn duplicate_label_emits_e041_and_keeps_first() {
-        let (doc, diags) = lower("= A <dup>\n\n= B <dup>\n\nsee @dup\n");
+        let src = "= A <dup>\n\n= B <dup>\n\nsee @dup\n";
+        let (doc, diags) = lower(src);
         let e041: Vec<&Diagnostic> = diags.iter().filter(|d| d.code.0 == "E041").collect();
         assert_eq!(
             e041.len(),
@@ -278,13 +279,68 @@ mod tests {
         // rely on both spans to render the redeclaration jump.
         let span = d.span.as_ref().expect("E041 carries a span");
         assert_eq!(
-            &"= A <dup>\n\n= B <dup>\n\nsee @dup\n"[span.start..span.end].chars().next(),
-            &Some('='),
-            "E041 span should cover the duplicate's node, got {span:?}"
+            &src[span.start..span.end],
+            "= B <dup>",
+            "E041 span should cover the second heading exactly"
         );
         assert_eq!(d.notes.len(), 1, "E041 should reference the first decl");
-        assert!(d.notes[0].span.is_some(), "first-decl note must carry a span");
+        let note_span = d.notes[0]
+            .span
+            .as_ref()
+            .expect("first-decl note must carry a span");
+        assert_eq!(
+            &src[note_span.start..note_span.end],
+            "= A <dup>",
+            "E041 note should point at the original declaration exactly"
+        );
+        assert!(
+            d.notes[0].message.contains("`dup`"),
+            "first-decl note should name the label, got {:?}",
+            d.notes[0].message
+        );
         // Reference still resolves to the first declaration's number.
+        let r = doc
+            .nodes()
+            .find(|n| n.kind == NodeKind::Reference)
+            .expect("reference");
+        assert_eq!(
+            r.attributes.get("text"),
+            Some(&AttrValue::Str("1".to_owned()))
+        );
+    }
+
+    #[test]
+    fn triple_duplicate_label_emits_one_e041_per_redeclaration() {
+        // Three sections share `dup`. The first wins; the second and
+        // third each get their own E041 pointing back at the first.
+        // The reference still resolves to section number `1`.
+        let src = "= A <dup>\n\n= B <dup>\n\n= C <dup>\n\nsee @dup\n";
+        let (doc, diags) = lower(src);
+        let e041: Vec<&Diagnostic> = diags.iter().filter(|d| d.code.0 == "E041").collect();
+        assert_eq!(
+            e041.len(),
+            2,
+            "expected two E041 (one per redeclaration), got {diags:?}"
+        );
+        let spans: Vec<&str> = e041
+            .iter()
+            .map(|d| {
+                let s = d.span.as_ref().expect("E041 span");
+                &src[s.start..s.end]
+            })
+            .collect();
+        assert!(spans.contains(&"= B <dup>"), "missing span for second decl, got {spans:?}");
+        assert!(spans.contains(&"= C <dup>"), "missing span for third decl, got {spans:?}");
+        // Every duplicate diagnostic must reference the same first decl.
+        for d in &e041 {
+            let note = d.notes.first().expect("E041 note");
+            let ns = note.span.as_ref().expect("note span");
+            assert_eq!(
+                &src[ns.start..ns.end],
+                "= A <dup>",
+                "every redeclaration must link back to the first decl"
+            );
+        }
         let r = doc
             .nodes()
             .find(|n| n.kind == NodeKind::Reference)
@@ -325,6 +381,37 @@ mod tests {
         assert_eq!(
             r.attributes.get("text"),
             Some(&AttrValue::Str("?no:such?".to_owned()))
+        );
+    }
+
+    #[test]
+    fn multiple_unknown_references_each_emit_one_e042() {
+        // Three distinct unknown labels in a single paragraph. The
+        // fixpoint loop runs more than once (each iteration sees the
+        // unresolved placeholders again), but every bad reference must
+        // produce exactly one diagnostic — not one per iteration.
+        let src = "see @alpha and @beta and @gamma\n";
+        let (_doc, diags) = lower(src);
+        let e042: Vec<&Diagnostic> = diags.iter().filter(|d| d.code.0 == "E042").collect();
+        assert_eq!(
+            e042.len(),
+            3,
+            "expected one E042 per unknown label, got {diags:?}"
+        );
+        let labels: std::collections::BTreeSet<&str> = e042
+            .iter()
+            .filter_map(|d| {
+                // Each E042's message is `unknown label `<name>` in `@` reference`.
+                let msg = &d.message;
+                let start = msg.find('`')? + 1;
+                let end = start + msg[start..].find('`')?;
+                Some(&msg[start..end])
+            })
+            .collect();
+        assert_eq!(
+            labels,
+            ["alpha", "beta", "gamma"].into_iter().collect(),
+            "each unknown label should appear exactly once"
         );
     }
 

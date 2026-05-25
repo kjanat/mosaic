@@ -30,27 +30,27 @@ so the catalog stays scannable.
 
 ## Errors
 
-| Code   | Owner crate / module                             | Triggered by                                                                                                                                           |
-| ------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `E010` | `mos-parse` `directive.rs`                       | `#set` not followed by an identifier (`expected an identifier after #set`).                                                                            |
-| `E011` | `mos-parse` `directive.rs`                       | Missing `(` after `#set NAME`, `#image`, or `#figure`; raw `#…` form not using long brackets.                                                          |
-| `E012` | `mos-parse` `directive.rs`                       | Unterminated `#NAME(...)` or `#NAME[[...]]` block.                                                                                                     |
-| `E013` | `mos-parse` `directive.rs`                       | Unexpected trailing content after a `#NAME(...)` or raw `#NAME[[...]]` block on the same line.                                                         |
-| `E014` | `mos-parse` `directive.rs`                       | Malformed directive argument value: bad escape, unknown unit, unterminated string, lone `-`, malformed number/length.                                  |
-| `E015` | `mos-parse` `directive.rs`, `mos-eval` `set.rs`  | Argument list shape: missing `:`, missing `,`/`)`, positional arg where named expected, or `#set` rejecting positional.                                |
-| `E020` | `mos-eval` `set.rs`                              | Unknown `#set` target (`#set` allows only `page`, `text`, `document`, `image`).                                                                        |
-| `E021` | `mos-eval` `set.rs`, `mos-eval` `image_lower.rs` | Unknown keyword argument for `#set TARGET`, `#image`, or `#figure`.                                                                                    |
-| `E022` | `mos-eval` `set.rs`, `mos-eval` `image_lower.rs` | Argument type mismatch (e.g. length expected, string given) or non-positive length.                                                                    |
-| `E023` | `mos-layout` `style.rs`                          | Unknown paper size in `#set page(paper: ...)`.                                                                                                         |
-| `E025` | `mos-layout` `style.rs`                          | `#set` value is well-typed but breaks page geometry (e.g. text size larger than vertical space); previous value retained.                              |
-| `E041` | `mos-eval` `resolve.rs`                          | Label declared more than once. First declaration wins and is kept in the index; duplicate carries a note pointing back at the original.                |
-| `E042` | `mos-eval` `resolve.rs`                          | `@label` reference to a label that does not exist. Reference text stays at the lowered `?label?` placeholder so it remains visible in rendered output. |
-| `E050` | `mos-eval` `image_lower.rs`                      | `#image(...)` missing a path argument or path is empty.                                                                                                |
-| `E051` | `mos-eval` `image.rs`                            | Image file cannot be read from disk (resolver I/O failure).                                                                                            |
-| `E052` | `mos-eval` `image.rs`                            | Image file cannot be decoded (unsupported or corrupt PNG/JPEG).                                                                                        |
-| `E090` | `mos-pdf` `lib.rs`                               | PDF backend I/O failure (cannot create output directory or write PDF bytes).                                                                           |
-| `E091` | `mos-pdf` `embedded.rs`                          | Font subsetting failure for an embedded face.                                                                                                          |
-| `E092` | `mos-pdf` `content.rs`                           | Internal: missing embedded font plan for a shaped run. Indicates an upstream layout/font-plan bug, not author input.                                   |
+| Code   | Owner crate / module                             | Triggered by                                                                                                                                                                              |
+| ------ | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E010` | `mos-parse` `directive.rs`                       | `#set` not followed by an identifier (`expected an identifier after #set`).                                                                                                               |
+| `E011` | `mos-parse` `directive.rs`                       | Missing `(` after `#set NAME`, `#image`, or `#figure`; raw `#…` form not using long brackets.                                                                                             |
+| `E012` | `mos-parse` `directive.rs`                       | Unterminated `#NAME(...)` or `#NAME[[...]]` block.                                                                                                                                        |
+| `E013` | `mos-parse` `directive.rs`                       | Unexpected trailing content after a `#NAME(...)` or raw `#NAME[[...]]` block on the same line.                                                                                            |
+| `E014` | `mos-parse` `directive.rs`                       | Malformed directive argument value: bad escape, unknown unit, unterminated string, lone `-`, malformed number/length.                                                                     |
+| `E015` | `mos-parse` `directive.rs`, `mos-eval` `set.rs`  | Argument list shape: missing `:`, missing `,`/`)`, positional arg where named expected, or `#set` rejecting positional.                                                                   |
+| `E020` | `mos-eval` `set.rs`                              | Unknown `#set` target (`#set` allows only `page`, `text`, `document`, `image`).                                                                                                           |
+| `E021` | `mos-eval` `set.rs`, `mos-eval` `image_lower.rs` | Unknown keyword argument for `#set TARGET`, `#image`, or `#figure`.                                                                                                                       |
+| `E022` | `mos-eval` `set.rs`, `mos-eval` `image_lower.rs` | Argument type mismatch (e.g. length expected, string given) or non-positive length.                                                                                                       |
+| `E023` | `mos-layout` `style.rs`                          | Unknown paper size in `#set page(paper: ...)`.                                                                                                                                            |
+| `E025` | `mos-layout` `style.rs`                          | `#set` value is well-typed but breaks page geometry (e.g. text size larger than vertical space); previous value retained.                                                                 |
+| `E041` | `mos-eval` `resolve.rs`                          | Label declared more than once. First declaration wins and is kept in the index; duplicate carries a note pointing back at the original.                                                   |
+| `E042` | `mos-eval` `resolve.rs`                          | `@label` reference to a label that does not exist. Reference text stays at the lowered `?label?` placeholder so it remains visible in rendered output.                                    |
+| `E050` | `mos-eval` `image_lower.rs`                      | `#image(...)` or `#figure(...)` missing a path argument (or path is an empty/whitespace string). Both surfaces share `build_image_attributes`; the rendered message is `#image`-flavored. |
+| `E051` | `mos-eval` `image.rs`                            | Image file cannot be read from disk (resolver I/O failure).                                                                                                                               |
+| `E052` | `mos-eval` `image.rs`                            | Image file cannot be decoded (unsupported or corrupt PNG/JPEG).                                                                                                                           |
+| `E090` | `mos-pdf` `lib.rs`                               | PDF backend I/O failure (cannot create output directory or write PDF bytes).                                                                                                              |
+| `E091` | `mos-pdf` `embedded.rs`                          | Font subsetting failure for an embedded face.                                                                                                                                             |
+| `E092` | `mos-pdf` `content.rs`                           | Internal: missing embedded font plan for a shaped run. Indicates an upstream layout/font-plan bug, not author input.                                                                      |
 
 ## Warnings
 
@@ -62,7 +62,7 @@ so the catalog stays scannable.
 | `W024` | `mos-eval` `set.rs`     | `#set` value passes typing but trips a sanity floor (e.g. a margin below the renderable minimum); value is still applied.      |
 | `W025` | `mos-parse` `inline.rs` | Lone trailing `\` at end of input; treated as literal text.                                                                    |
 | `W041` | `mos-pdf` `encoding.rs` | Base-14 `/Differences` glyph budget exhausted; some characters could not be encoded in the 256-slot extended table for a face. |
-| `W045` | `mos-fonts` `family.rs` | Unknown font family in `#set text(family: ...)`; falling back to bundled Noto Sans.                                            |
+| `W045` | `mos-fonts` `family.rs` | Unknown font family in `#set text(font: ...)`; falling back to bundled Noto Sans.                                              |
 | `W050` | `mos-layout` `image.rs` | Image node reached layout without decoded pixel data; image is skipped on the page.                                            |
 
 ## Reserved / retired
