@@ -14,6 +14,18 @@ Truth order:
 Do not mark a manifesto idea complete unless it is implemented, tested or clearly exercised by an
 example.
 
+## Planning Workflow
+
+- GitHub Project 5 is the active planning board.
+- Milestones are roadmap phases, not giant issues.
+- Issues are concrete work records with testable acceptance criteria.
+- Deeply slice only the current milestone; keep one milestone ahead lightly sliced.
+- Do not convert every tracker checkbox into an issue.
+- Split any issue that cannot fit in roughly 3-5 focused work days.
+- A Ready issue needs clear scope, likely area/crates, dependencies, estimate, and test expectation.
+- A Done issue means code is merged or intentionally closed, verification is recorded, and
+  docs/tracker changed if behavior changed.
+
 ## Shipped Baseline
 
 - [x] Rust 2024 workspace with strict workspace lints.

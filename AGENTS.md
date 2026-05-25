@@ -27,6 +27,16 @@ features because manifest dreams loudly.
 - If `CLAUDE.md` exists as a symlink to this file, edit `AGENTS.md`. Do not replace or separately
   maintain `CLAUDE.md`.
 
+## PROJECT 5 WORKFLOW
+
+- Milestones are roadmap phases; do not create umbrella epics as phase substitutes.
+- Issues are concrete work records with acceptance criteria, likely area/crates, dependencies, size,
+  estimate, and test expectation.
+- Keep only the current milestone deeply sliced; keep one milestone ahead lightly sliced.
+- Do not convert every `manifest-tracker.md` checkbox into an issue.
+- `Ready` means scope and verification are clear enough to start; `Done` means merged/closed and
+  docs or tracker were updated if shipped behavior changed.
+
 ## CURRENT STATUS
 
 Implemented now:
