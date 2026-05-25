@@ -145,16 +145,16 @@ fn handle_message<W: Write>(
 }
 
 fn initialize_result() -> Value {
+    // Pull diagnostics (`textDocument/diagnostic`) are a separate
+    // slice; advertising `diagnosticProvider` without handling the
+    // request would make pull-capable clients hang waiting for a
+    // reply. We only push via `publishDiagnostics` for now.
     json!({
         "capabilities": {
             // Full sync keeps the implementation small; incremental
             // sync lands when more than diagnostics is on the table.
             "textDocumentSync": 1,
             "positionEncoding": "utf-16",
-            "diagnosticProvider": {
-                "interFileDependencies": false,
-                "workspaceDiagnostics": false,
-            },
         },
         "serverInfo": {
             "name": "mos-lsp",
@@ -394,6 +394,37 @@ mod tests {
             dirty.iter().any(|d| d.get("code").and_then(Value::as_str) == Some("E042")),
             "expected E042 after didChange, got {dirty:?}"
         );
+    }
+
+    #[test]
+    fn initialize_capabilities_omit_pull_diagnostics() {
+        // We only push diagnostics over `publishDiagnostics`. The
+        // `diagnosticProvider` capability advertises pull support
+        // (`textDocument/diagnostic`), which we don't implement —
+        // declaring it would deadlock pull-capable clients.
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {},
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        let capabilities = messages
+            .first()
+            .and_then(|m| m.pointer("/result/capabilities"))
+            .expect("initialize response with capabilities");
+        assert!(
+            capabilities.get("diagnosticProvider").is_none(),
+            "must not advertise pull diagnostics, got {capabilities:?}"
+        );
+        assert_eq!(capabilities.get("textDocumentSync"), Some(&json!(1)));
     }
 
     #[test]

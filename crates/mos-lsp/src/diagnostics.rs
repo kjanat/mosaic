@@ -92,39 +92,55 @@ const fn lsp_severity(severity: Severity) -> u8 {
     }
 }
 
-/// Parse a `file://` URI into a filesystem path. Falls back to
-/// treating the URI as a literal path so editors that send bare paths
-/// (or non-`file` schemes) still light up diagnostics targeted at the
-/// same string.
+/// Parse a `file://` URI into a filesystem path. Percent-escapes are
+/// decoded as raw bytes and reassembled into UTF-8 so multibyte
+/// sequences like `%C3%A9` (`é`) survive round-tripping. Falls back
+/// to treating the URI as a literal path so editors that send bare
+/// or non-`file` URIs still match against the same string downstream.
 #[must_use]
 pub fn path_from_uri(uri: &str) -> PathBuf {
-    if let Some(rest) = uri.strip_prefix("file://") {
-        // Drop the (typically empty) authority segment before the path.
-        let path_part = rest.split_once('/').map_or(rest, |(_, p)| p);
-        let mut decoded = String::with_capacity(path_part.len());
-        let bytes = path_part.as_bytes();
-        let mut i = 0;
-        while i < bytes.len() {
-            if bytes[i] == b'%' && i + 2 < bytes.len() {
-                let hi = (bytes[i + 1] as char).to_digit(16);
-                let lo = (bytes[i + 2] as char).to_digit(16);
-                if let (Some(hi), Some(lo)) = (hi, lo) {
-                    let byte = u8::try_from((hi << 4) | lo).unwrap_or(b'?');
-                    decoded.push(byte as char);
-                    i += 3;
-                    continue;
-                }
-            }
-            decoded.push(bytes[i] as char);
-            i += 1;
+    let Some(rest) = uri.strip_prefix("file://") else {
+        return PathBuf::from(uri);
+    };
+    // Drop the (typically empty) authority segment before the path.
+    let path_part = rest.split_once('/').map_or(rest, |(_, p)| p);
+    let bytes = path_part.as_bytes();
+    let mut decoded: Vec<u8> = Vec::with_capacity(bytes.len() + 1);
+    decoded.push(b'/');
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(hi), Some(lo)) = (
+                (bytes[i + 1] as char).to_digit(16),
+                (bytes[i + 2] as char).to_digit(16),
+            )
+        {
+            let byte = u8::try_from((hi << 4) | lo).unwrap_or(b'?');
+            decoded.push(byte);
+            i += 3;
+            continue;
         }
-        let mut path = String::with_capacity(decoded.len() + 1);
-        path.push('/');
-        path.push_str(&decoded);
-        PathBuf::from(path)
-    } else {
-        PathBuf::from(uri)
+        decoded.push(bytes[i]);
+        i += 1;
     }
+    bytes_to_path(decoded)
+}
+
+#[cfg(unix)]
+fn bytes_to_path(bytes: Vec<u8>) -> PathBuf {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+    // Preserve non-UTF-8 byte sequences verbatim; unix paths are
+    // arbitrary bytes, not text.
+    PathBuf::from(OsString::from_vec(bytes))
+}
+
+#[cfg(not(unix))]
+fn bytes_to_path(bytes: Vec<u8>) -> PathBuf {
+    // Non-unix targets only round-trip UTF-8 paths cleanly. Lossy
+    // decode keeps things deterministic for stray bytes.
+    PathBuf::from(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// Lower `src` against `file` and project the resulting compiler
@@ -197,6 +213,20 @@ mod tests {
     }
 
     #[test]
+    fn byte_to_position_counts_surrogate_pairs_as_two_units() {
+        // 𝕏 (U+1D54F) is outside the BMP — one Unicode scalar value
+        // but two UTF-16 code units. LSP's default position encoding
+        // is UTF-16, so the character right after 𝕏 must report
+        // column 2.
+        let src = "𝕏!";
+        let bang = src.find('!').expect("test setup: `!` must exist");
+        assert_eq!(
+            byte_to_position(src, bang),
+            LspPosition { line: 0, character: 2 }
+        );
+    }
+
+    #[test]
     fn path_from_uri_decodes_percent_escapes() {
         assert_eq!(
             path_from_uri("file:///tmp/with%20space.mos"),
@@ -205,8 +235,33 @@ mod tests {
     }
 
     #[test]
+    fn path_from_uri_reassembles_utf8_byte_sequences() {
+        // `café.mos` percent-encodes to `caf%C3%A9.mos`; decoding
+        // byte-wise and then reinterpreting as UTF-8 must round-trip
+        // to the original character rather than two Latin-1 bytes.
+        assert_eq!(
+            path_from_uri("file:///tmp/caf%C3%A9.mos"),
+            PathBuf::from("/tmp/café.mos")
+        );
+    }
+
+    #[test]
+    fn path_from_uri_passes_relative_uris_through_literally() {
+        // Bare relative paths (no scheme) come through editors that
+        // open files outside a workspace. Treat them as opaque keys
+        // so the file matcher can still compare URI ↔ span paths.
+        assert_eq!(
+            path_from_uri("relative/sub/main.mos"),
+            PathBuf::from("relative/sub/main.mos")
+        );
+    }
+
+    #[test]
     fn path_from_uri_falls_back_to_literal() {
-        assert_eq!(path_from_uri("untitled:Untitled-1"), PathBuf::from("untitled:Untitled-1"));
+        assert_eq!(
+            path_from_uri("untitled:Untitled-1"),
+            PathBuf::from("untitled:Untitled-1")
+        );
     }
 
     #[test]
