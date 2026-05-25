@@ -441,6 +441,16 @@ mod tests {
             "E010 message should mention `#set`, got {:?}",
             e010[0].message
         );
+        // Recovery: the next line must parse as its own paragraph,
+        // not get eaten as the directive body.
+        assert!(
+            r.tree.items.iter().any(|i| {
+                i.as_paragraph()
+                    .is_some_and(|(inlines, _)| inlines.iter().any(|x| x.text.contains("body")))
+            }),
+            "expected a recovered `body` paragraph, got items {:?}",
+            r.tree.items
+        );
     }
 
     #[test]

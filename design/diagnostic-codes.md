@@ -14,14 +14,17 @@ shortcut. Update this file in the same change that adds, renames, or retires a c
 ## Number ranges
 
 Ranges are conventions, not enforced. Keep new codes inside the band for the layer that emits them
-so the catalog stays scannable.
+so the catalog stays scannable. The `E` / `W` prefix is independent of the number, so the same
+numeric band can host both severities — for example the `020–029` band carries `E020–E029`
+(`mos-eval` `#set` and `mos-layout` errors) *and* `W020–W029` (`mos-parse` inline + `mos-eval` set
+warnings). Always disambiguate by the full code (`E023` vs `W023`), never by number alone.
 
 | Range       | Layer / crate                       | Notes                                              |
 | ----------- | ----------------------------------- | -------------------------------------------------- |
 | `E001`      | reserved / example                  | Used only in `mos-core` doctests, not emitted.     |
 | `E010–E019` | `mos-parse` directive surface       | `#set` / `#image` / `#figure` shape errors.        |
-| `W020–W029` | `mos-parse` inline + `mos-eval` set | Recoverable inline + semantic sanity warnings.     |
 | `E020–E029` | `mos-eval` `#set` + `mos-layout`    | Semantic `#set` errors, layout-level value errors. |
+| `W020–W029` | `mos-parse` inline + `mos-eval` set | Recoverable inline + semantic sanity warnings.     |
 | `E041–E049` | `mos-eval` resolver                 | Label / reference resolution.                      |
 | `W040–W049` | `mos-pdf` encoding / fonts          | Encoding budget + font fallback warnings.          |
 | `E050–E059` | `mos-eval` image lowering + I/O     | Image directive validity and on-disk loading.      |
