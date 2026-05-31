@@ -1022,10 +1022,10 @@ Diagnostics need to be first-class.
 Example error:
 
 ```text
-error[MOS0033]: unresolved reference `fig:scan`
+error[MOS0033]: unresolved reference `fig:ctpa`
   main.mos:42:18
    |
-42 | As shown in @fig:scan, ...
+42 | As shown in @fig:ctpa, ...
    |                  ^^^^ no figure, table, equation, or section has this label
 
 help:
@@ -1037,20 +1037,20 @@ help:
 Layout warning:
 
 ```text
-warning[W203]: figure placed far from anchor
+warning[MOS0039] (hypothetical): figure placed far from anchor
   main.mos:88:1
    |
 88 | #figure(...)
    | ^^^^^^^^^^^
 
-Figure <fig:ctpa> was placed 3 pages after its reference.
+Figure <fig:ctpa-scan> was placed 3 pages after its reference.
 Reason: it is 132mm tall and no legal top/bottom placement existed earlier.
 ```
 
 Performance diagnostic:
 
 ```text
-note[perf]: table layout is expensive
+notice[MOS0040] (hypothetical): table layout is expensive
   main.mos:120:1
 
 This table caused 71% of layout time.
@@ -1897,7 +1897,7 @@ Fallback:
 Diagnostic:
 
 ```text
-error[E301]: layout did not converge after 12 iterations
+error[MOS0041] (hypothetical): layout did not converge after 12 iterations
 
 The page number width of TOC entries caused oscillation.
 Suggestion:
