@@ -1,7 +1,7 @@
-# Scope `bun test` discovery to the bun workspace member that actually has
-# JS tests. Without this, `bun test` (run by the project `runner`) recurses
-# the whole tree and picks up `crates/zed-mosaic/grammars/…` — a gitignored
-# copy of the grammar that Zed repopulates on dev-install — which errors
-# because `tree-sitter` isn't resolvable from that vendored tree.
+# `bun test` ignores .gitignore, so it would otherwise recurse into
+# `crates/zed-mosaic/grammars/` — a copy of the grammar that Zed repopulates
+# on dev-install — and error there because `tree-sitter` isn't resolvable from
+# that vendored tree. Ignore any such `grammars/` copy and leave all other test
+# discovery global, so future workspace members stay covered.
 [test]
-root = "crates/tree-sitter-mosaic"
+pathIgnorePatterns = ["**/grammars/**"]
