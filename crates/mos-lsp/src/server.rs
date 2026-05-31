@@ -234,7 +234,9 @@ fn read_message<R: BufRead>(reader: &mut R) -> Result<Option<Value>> {
         if trimmed.is_empty() {
             break;
         }
-        if let Some(value) = trimmed.strip_prefix("Content-Length:") {
+        if let Some((name, value)) = trimmed.split_once(':')
+            && name.eq_ignore_ascii_case("Content-Length")
+        {
             content_length = Some(
                 value
                     .trim()
@@ -266,8 +268,12 @@ mod tests {
     use super::*;
 
     fn frame(value: &Value) -> Vec<u8> {
+        frame_with_header(value, "Content-Length")
+    }
+
+    fn frame_with_header(value: &Value, header_name: &str) -> Vec<u8> {
         let body = serde_json::to_vec(value).expect("encode");
-        let mut buf = format!("Content-Length: {}\r\n\r\n", body.len()).into_bytes();
+        let mut buf = format!("{header_name}: {}\r\n\r\n", body.len()).into_bytes();
         buf.extend_from_slice(&body);
         buf
     }
@@ -286,6 +292,18 @@ mod tests {
         let mut reader = BufReader::new(Cursor::new(Vec::<u8>::new()));
         let mut writer: Vec<u8> = Vec::new();
         serve(&mut reader, &mut writer).expect("clean EOF should be Ok");
+        assert!(writer.is_empty());
+    }
+
+    #[test]
+    fn content_length_header_is_case_insensitive() {
+        let input = frame_with_header(
+            &json!({ "jsonrpc": "2.0", "method": "exit" }),
+            "content-length",
+        );
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("lowercase Content-Length should parse");
         assert!(writer.is_empty());
     }
 
