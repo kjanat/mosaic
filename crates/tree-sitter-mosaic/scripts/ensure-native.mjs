@@ -30,7 +30,13 @@ const platformDir = `${process.platform}-${process.arch}`;
 // it from `process.execPath` avoids depending on `node-gyp` being on PATH.
 const bundledNodeGyp = join(
 	dirname(dirname(process.execPath)),
-	'lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js',
+	'lib',
+	'node_modules',
+	'npm',
+	'node_modules',
+	'node-gyp',
+	'bin',
+	'node-gyp.js',
 );
 
 function runNodeGyp(cwd) {
