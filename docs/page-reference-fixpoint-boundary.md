@@ -4,8 +4,9 @@ Status: decided 2026-05-25. Tracks GitHub issue #54.
 
 ## Why this exists
 
-`manifest-tracker.md` lists both "Add page-reference support" (under Semantic Model And Resolver)
-and the entire "Page Reflow And Fixpoints" section as unchecked. The resolver in
+`manifest.md` sketches an "internal fixpoint loop" in MVP 1, but current code and
+`manifest-tracker.md` are the planning truth here: page references, layout-dependent values, and the
+entire "Page Reflow And Fixpoints" section are still unchecked. The resolver in
 `crates/mos-eval/src/resolve.rs` already wraps its single rewrite pass in a
 `MAX_FIXPOINT_ITERATIONS` loop. That scaffold makes it easy to accidentally treat MVP 1 reference
 work as the seed of a real pagination fixpoint. This note draws the line so MVP 1 stays a single,
