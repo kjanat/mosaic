@@ -11,6 +11,9 @@ All notable changes to this project will be documented here. The format is based
 - Minimal single-key `[@key]` citation syntax (https://github.com/kjanat/mosaic/issues/47):
   citations parse and lower into semantic placeholder nodes rendered as `[?key?]` until bibliography
   resolution lands. Malformed citation groups recover as literal text with diagnostic `MOS0039`.
+- User-facing label/reference documentation (https://github.com/kjanat/mosaic/issues/53):
+  [`docs/labels-and-references.md`][docs:labels-and-references] records the shipped declaration
+  forms, reference rendering, diagnostics, greedy reference parsing, and page-reference boundary.
 - Minimal stdio LSP server (https://github.com/kjanat/mosaic/issues/49): [`mos-lsp`][mos-lsp]
   replaces its stub with a server that publishes compiler parse/lower/resolve diagnostics via
   `textDocument/publishDiagnostics` on open and full change. Source `SourceSpan`s are projected to
@@ -102,6 +105,7 @@ workflow.
 [EBNF]: EBNF.md
 [crates]: crates/
 [docs:diagnostic-codes]: docs/diagnostic-codes.md
+[docs:labels-and-references]: docs/labels-and-references.md
 [ex:linebreaks]: examples/linebreaks/
 [mos-cache]: crates/mos-cache/
 [mos-eval:resolve.rs]: crates/mos-eval/src/resolve.rs

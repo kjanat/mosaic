@@ -37,9 +37,14 @@ Write the label in angle brackets, `<id>`:
   ]] <ex:code>
   ```
 
-There is no trailing-`<id>` form on directives — figures and images use the `label:` argument below.
+There is no trailing-`<id>` form on [call-style directives](#call-style-directives) like
+`#image(...)` and `#figure(...)` — those use a [`label:` argument](#label-arguments) instead.
 
-### Directive labels: `#image` and `#figure`
+### Call-style directives
+
+`#image(...)` and `#figure(...)` are directive calls with structured arguments.
+
+#### `label:` arguments
 
 `#image` and `#figure` take the label as a `label:` string argument, alongside their other
 arguments:
@@ -73,7 +78,7 @@ label `intro.` (with the period), not `intro`:
 See @intro.
 ```
 
-```text
+```console
 error[MOS0033]: unknown label `intro.` in `@` reference
   --> main.mos:3:5
    |
@@ -89,7 +94,7 @@ rephrase so the reference is not flush against a `.`, `-`, or `:`.
 A label may be declared once. If the same label is declared again, the **first** declaration wins
 and each later one is an error, [`MOS0030`](./diagnostic-codes.md), pointing back at the first:
 
-```text
+```console
 error[MOS0030]: label `intro` is declared more than once
   --> main.mos:3:1
    |
@@ -124,7 +129,7 @@ Figure references render as the bare label for now; numbered "Figure 3"-style te
 If a reference names a label that does not exist, it is an error,
 [`MOS0033`](./diagnostic-codes.md):
 
-```text
+```console
 error[MOS0033]: unknown label `missing` in `@` reference
   --> main.mos:1:5
    |
@@ -140,7 +145,7 @@ fail on `MOS0033`; the build will not emit a PDF.
 A `@` that is **not** followed by a label character is not a reference. It is kept as literal text
 and reported as a warning, [`MOS0036`](./diagnostic-codes.md); the build continues:
 
-```text
+```console
 warning[MOS0036]: stray `@` is not followed by a label identifier; treated as text
   --> main.mos:1:10
    |
