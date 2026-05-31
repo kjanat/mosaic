@@ -16,11 +16,14 @@ impl LayoutState {
             return;
         };
         let Some(handle) = self.intern_image(image) else {
-            self.diagnostics.push(Diagnostic::simple(
-                &codes::MOS0033,
-                Some(image.span.clone()),
-                format!("image node {node_id:?} missing decoded pixel data; skipping"),
-            ));
+            self.diagnostics.push(
+                Diagnostic::simple(
+                    &codes::MOS0033,
+                    None,
+                    format!("image node {node_id:?} missing decoded pixel data; skipping"),
+                )
+                .with_span(image.span.clone()),
+            );
             return;
         };
 

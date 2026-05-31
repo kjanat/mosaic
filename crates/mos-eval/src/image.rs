@@ -45,19 +45,23 @@ pub(crate) fn load(
 ) -> Result<(PathBuf, DecodedImage), Box<Diagnostic>> {
     let resolved = resolve_path(src_path, source_file);
     let bytes = std::fs::read(&resolved).map_err(|err| {
-        Box::new(Diagnostic::simple(
-            &codes::MOS0029,
-            Some(call_span.clone()),
-            format!("cannot read image `{}`: {err}", resolved.display()),
-        ))
+        Box::new(
+            Diagnostic::simple(
+                &codes::MOS0029,
+                None,
+                format!("cannot read image `{}`: {err}", resolved.display()),
+            )
+            .with_span(call_span.clone()),
+        )
     })?;
     let decoded = decode(&bytes).map_err(|err| {
         Box::new(
             Diagnostic::simple(
                 &codes::MOS0030,
-                Some(call_span.clone()),
+                None,
                 format!("cannot decode `{}`: {err}", resolved.display()),
             )
+            .with_span(call_span.clone())
             .with_annotation(DiagnosticAnnotation::Note(
                 "supported formats are PNG and JPEG".to_owned(),
             )),

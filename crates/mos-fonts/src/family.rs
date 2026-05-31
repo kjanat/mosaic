@@ -168,7 +168,7 @@ impl FontFamily {
     /// Matching is case-insensitive on the family component. Known
     /// names: `Helvetica`, `Times`/`Times-Roman`/`Times Roman`,
     /// `Courier`, `Noto Sans`. Anything else falls back to Noto Sans
-    /// and pushes a `MOS0034` warning so users don't silently get the
+    /// and pushes a `MOS0034` notice so users don't silently get the
     /// wrong typeface.
     ///
     /// # Examples

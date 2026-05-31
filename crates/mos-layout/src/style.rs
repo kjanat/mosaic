@@ -52,13 +52,16 @@ fn apply_page_set(
             next.width_pt = w;
             next.height_pt = h;
         } else {
-            diagnostics.push(Diagnostic::simple(
-                &codes::MOS0031,
-                Some(node.span.clone()),
-                format!(
-                    "unknown paper size `{name}` (expected an ISO A/B size or `Letter`/`Legal`)"
-                ),
-            ));
+            diagnostics.push(
+                Diagnostic::simple(
+                    &codes::MOS0031,
+                    None,
+                    format!(
+                        "unknown paper size `{name}` (expected an ISO A/B size or `Letter`/`Legal`)"
+                    ),
+                )
+                .with_span(node.span.clone()),
+            );
         }
     }
     if let Some(AttrValue::Length(pt)) = node.attributes.get("set.arg.margin") {
@@ -151,7 +154,7 @@ fn apply_text_set(
 /// well-typed, would produce broken page geometry. The value is *not*
 /// applied; the previous (or default) value is retained.
 fn reject(node: &Node, message: String) -> Diagnostic {
-    Diagnostic::simple(&codes::MOS0032, Some(node.span.clone()), message)
+    Diagnostic::simple(&codes::MOS0032, None, message).with_span(node.span.clone())
 }
 
 /// Narrow an `f64` measurement (always a small positive page-pt or

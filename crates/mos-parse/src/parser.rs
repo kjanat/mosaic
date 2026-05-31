@@ -133,7 +133,7 @@ impl<'a> Parser<'a> {
         start: usize,
         end: usize,
     ) -> Diagnostic {
-        Diagnostic::simple(def, Some(self.span(start, end)), message)
+        Diagnostic::simple(def, None, message).with_span(self.span(start, end))
     }
 }
 

@@ -133,11 +133,8 @@ fn lower_set_arg(
         return;
     };
     if let Some(msg) = sanity_floor_warning(target, key, &value) {
-        diagnostics.push(Diagnostic::simple(
-            &codes::MOS0025,
-            Some(value_span.clone()),
-            msg,
-        ));
+        diagnostics
+            .push(Diagnostic::simple(&codes::MOS0025, None, msg).with_span(value_span.clone()));
     }
     if matches!(target, set_schema::Target::Text)
         && key == "size"

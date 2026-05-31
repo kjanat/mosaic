@@ -125,9 +125,10 @@ fn build_label_index(
             diagnostics.push(
                 Diagnostic::simple(
                     &codes::MOS0026,
-                    Some(node.span.clone()),
+                    None,
                     format!("label `{label}` is declared more than once"),
                 )
+                .with_span(node.span.clone())
                 .with_annotation(DiagnosticAnnotation::Related {
                     span: existing_span,
                     message: format!("first declaration of `{label}` is here"),
@@ -176,11 +177,14 @@ fn rewrite_references(
                 .iter()
                 .any(|d| d.def().code() == codes::MOS0027.code() && d.span() == Some(&node.span));
             if !already_diagnosed {
-                diagnostics.push(Diagnostic::simple(
-                    &codes::MOS0027,
-                    Some(node.span.clone()),
-                    format!("unknown label `{label}` in `@` reference"),
-                ));
+                diagnostics.push(
+                    Diagnostic::simple(
+                        &codes::MOS0027,
+                        None,
+                        format!("unknown label `{label}` in `@` reference"),
+                    )
+                    .with_span(node.span.clone()),
+                );
             }
             continue;
         };
