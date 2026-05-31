@@ -82,6 +82,11 @@ fn every_registered_code_has_a_catalog_row() {
             .expect("table row has a first cell")
             .to_owned();
         if let Some(section) = &current_section {
+            if let Some(previous) = placement.get(&code) {
+                panic!(
+                    "docs/diagnostic-codes.md duplicates `{code}` under sections `{previous}` and `{section}`"
+                );
+            }
             placement.insert(code, section.clone());
         }
     }
