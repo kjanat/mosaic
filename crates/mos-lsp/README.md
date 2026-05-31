@@ -51,6 +51,10 @@ PY
 The server replies with an `initialize` response and one `publishDiagnostics` notification carrying
 a `MOS0033` diagnostic for the unknown `@no:such` reference.
 
+Automated coverage for the same path lives in
+`server::tests::initialize_did_open_publishes_diagnostics_and_exits`; run it with
+`cargo test -p mos-lsp initialize_did_open_publishes_diagnostics_and_exits`.
+
 ## Boundary
 
 `mos-lsp` is the thin protocol boundary around compiler services. Diagnostic messages, codes, and
