@@ -70,11 +70,16 @@ pub struct DocumentMetadata {
 /// use mos_eval::{Evaluator, LowerResult};
 ///
 /// let mut sink = CollectingSink::new();
-/// let tree = mos_parse::parse("= Hello\n", Path::new("main.mos"), &mut sink)
-///     .expect("parse never structurally aborts");
-/// let result: LowerResult = Evaluator::new().evaluate(&tree);
+/// let parse_result = mos_parse::parse("= Hello\n", Path::new("main.mos"), &mut sink);
+/// assert!(
+///     parse_result.is_ok(),
+///     "parse structurally aborted: {parse_result:?}"
+/// );
+/// if let Ok(tree) = parse_result {
+///     let result: LowerResult = Evaluator::new().evaluate(&tree);
 ///
-/// assert!(!result.has_errors());
+///     assert!(!result.has_errors());
+/// }
 /// ```
 #[derive(Debug)]
 pub struct LowerResult {
@@ -145,11 +150,16 @@ impl Evaluator {
     /// use mos_eval::Evaluator;
     ///
     /// let mut sink = CollectingSink::new();
-    /// let tree = mos_parse::parse("= Hello\n", Path::new("main.mos"), &mut sink)
-    ///     .expect("parse never structurally aborts");
-    /// let result = Evaluator::new().evaluate(&tree);
+    /// let parse_result = mos_parse::parse("= Hello\n", Path::new("main.mos"), &mut sink);
+    /// assert!(
+    ///     parse_result.is_ok(),
+    ///     "parse structurally aborted: {parse_result:?}"
+    /// );
+    /// if let Ok(tree) = parse_result {
+    ///     let result = Evaluator::new().evaluate(&tree);
     ///
-    /// assert_eq!(result.document.len(), 3);
+    ///     assert_eq!(result.document.len(), 3);
+    /// }
     /// ```
     pub fn evaluate(&self, tree: &SyntaxTree) -> LowerResult {
         let mut document = Document::new(tree.file.clone());

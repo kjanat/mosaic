@@ -13,13 +13,6 @@
 //!    row in the doc whose code is absent from the registry fails CI —
 //!    so a stale row can't linger after a code is retired.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    reason = "a drift test should fail loudly with a precise message"
-)]
-
 use mos_core::codes;
 
 const CATALOG: &str = include_str!(concat!(
@@ -31,6 +24,16 @@ const CATALOG: &str = include_str!(concat!(
 /// comparison is immune to `dprint`'s table-column padding.
 fn normalize(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn code_cell(trimmed: &str) -> &str {
+    let row = trimmed.trim_start_matches('|');
+    let delimiter = row.find('|');
+    assert!(
+        delimiter.is_some(),
+        "docs/diagnostic-codes.md has a malformed code row without a closing first cell: {trimmed}"
+    );
+    row[..delimiter.unwrap_or(row.len())].trim()
 }
 
 #[test]
@@ -74,19 +77,14 @@ fn every_registered_code_has_a_catalog_row() {
         if !trimmed.starts_with("| MOS") {
             continue;
         }
-        let code = trimmed
-            .trim_start_matches('|')
-            .split('|')
-            .next()
-            .map(str::trim)
-            .expect("table row has a first cell")
-            .to_owned();
+        let code = code_cell(trimmed).to_owned();
         if let Some(section) = &current_section {
-            if let Some(previous) = placement.get(&code) {
-                panic!(
-                    "docs/diagnostic-codes.md duplicates `{code}` under sections `{previous}` and `{section}`"
-                );
-            }
+            let previous = placement.get(&code);
+            assert!(
+                previous.is_none(),
+                "docs/diagnostic-codes.md duplicates `{code}` under sections `{}` and `{section}`",
+                previous.map_or("", String::as_str),
+            );
             placement.insert(code, section.clone());
         }
     }
@@ -113,12 +111,7 @@ fn every_catalog_code_is_registered() {
         if !trimmed.starts_with("| MOS") {
             continue;
         }
-        let code = trimmed
-            .trim_start_matches('|')
-            .split('|')
-            .next()
-            .map(str::trim)
-            .expect("table row has a first cell");
+        let code = code_cell(trimmed);
         assert!(
             known.contains(code),
             "docs/diagnostic-codes.md documents `{code}`, which is not in mos_core::codes::ALL"

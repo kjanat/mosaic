@@ -59,10 +59,16 @@ pub trait DiagnosticSink {
 /// use mos_core::{CollectingSink, Diagnostic, DiagnosticSink, Severity, codes};
 ///
 /// let mut sink = CollectingSink::new();
-/// sink.emit(Diagnostic::simple(&codes::MOS0016, None, "unterminated"))
-///     .expect("collecting sink never aborts");
-/// sink.emit(Diagnostic::simple(&codes::MOS0010, None, "missing ident"))
-///     .expect("collecting sink never aborts");
+/// assert!(
+///     sink.emit(Diagnostic::simple(&codes::MOS0016, None, "unterminated"))
+///         .is_ok(),
+///     "collecting sink must not abort"
+/// );
+/// assert!(
+///     sink.emit(Diagnostic::simple(&codes::MOS0010, None, "missing ident"))
+///         .is_ok(),
+///     "collecting sink must not abort"
+/// );
 ///
 /// assert!(sink.had_error()); // MOS0010 is an error
 /// assert_eq!(sink.into_diagnostics().len(), 2);
@@ -127,16 +133,25 @@ mod tests {
         let mut sink = CollectingSink::new();
         assert!(!sink.had_error());
 
-        sink.emit(Diagnostic::simple(&codes::MOS0034, None, "notice"))
-            .expect("never aborts");
+        assert!(
+            sink.emit(Diagnostic::simple(&codes::MOS0034, None, "notice"))
+                .is_ok(),
+            "collecting sink must not abort"
+        );
         assert!(!sink.had_error(), "a notice must not flip had_error");
 
-        sink.emit(Diagnostic::simple(&codes::MOS0016, None, "warning"))
-            .expect("never aborts");
+        assert!(
+            sink.emit(Diagnostic::simple(&codes::MOS0016, None, "warning"))
+                .is_ok(),
+            "collecting sink must not abort"
+        );
         assert!(!sink.had_error(), "a warning must not flip had_error");
 
-        sink.emit(Diagnostic::simple(&codes::MOS0010, None, "error"))
-            .expect("never aborts");
+        assert!(
+            sink.emit(Diagnostic::simple(&codes::MOS0010, None, "error"))
+                .is_ok(),
+            "collecting sink must not abort"
+        );
         assert!(sink.had_error(), "an error must flip had_error");
 
         let diags = sink.into_diagnostics();

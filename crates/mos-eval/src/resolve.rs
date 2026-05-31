@@ -273,12 +273,6 @@ fn rewrite_references(
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        reason = "tests panic loudly on setup failure"
-    )]
-
     use std::path::PathBuf;
 
     use mos_core::Severity;
@@ -350,10 +344,9 @@ mod tests {
         // The duplicate diagnostic must point at the *second* occurrence
         // and carry a Related annotation back to the first declaration.
         // Editor UIs rely on both spans to render the redeclaration jump.
-        let span = d.span().expect("MOS0026 carries a span");
         assert_eq!(
-            &src[span.start..span.end],
-            "= B <dup>",
+            d.span().map(|span| &src[span.start..span.end]),
+            Some("= B <dup>"),
             "MOS0026 span should cover the second heading exactly"
         );
         assert_eq!(
@@ -361,32 +354,28 @@ mod tests {
             1,
             "MOS0026 should reference the first decl"
         );
-        let (note_span, note_message) = d
-            .annotations()
-            .iter()
-            .find_map(|a| match a {
-                DiagnosticAnnotation::Related { span, message } => Some((span, message)),
-                _ => None,
-            })
-            .expect("MOS0026 carries a Related annotation");
-        assert_eq!(
-            &src[note_span.start..note_span.end],
-            "= A <dup>",
-            "MOS0026 note should point at the original declaration exactly"
-        );
-        assert!(
-            note_message.contains("`dup`"),
-            "first-decl note should name the label, got {note_message:?}"
-        );
+        let related = d.annotations().iter().find_map(|a| match a {
+            DiagnosticAnnotation::Related { span, message } => Some((span, message)),
+            _ => None,
+        });
+        assert!(related.is_some(), "MOS0026 carries a Related annotation");
+        if let Some((note_span, note_message)) = related {
+            assert_eq!(
+                &src[note_span.start..note_span.end],
+                "= A <dup>",
+                "MOS0026 note should point at the original declaration exactly"
+            );
+            assert!(
+                note_message.contains("`dup`"),
+                "first-decl note should name the label, got {note_message:?}"
+            );
+        }
         // Reference still resolves to the first declaration's number.
-        let r = doc
+        let reference_text = doc
             .nodes()
             .find(|n| n.kind == NodeKind::Reference)
-            .expect("reference");
-        assert_eq!(
-            r.attributes.get("text"),
-            Some(&AttrValue::Str("1".to_owned()))
-        );
+            .and_then(|n| n.attributes.get("text"));
+        assert_eq!(reference_text, Some(&AttrValue::Str("1".to_owned())));
     }
 
     #[test]
@@ -407,11 +396,13 @@ mod tests {
         );
         let spans: Vec<&str> = e041
             .iter()
-            .map(|d| {
-                let s = d.span().expect("MOS0026 span");
-                &src[s.start..s.end]
-            })
+            .filter_map(|d| d.span().map(|s| &src[s.start..s.end]))
             .collect();
+        assert_eq!(
+            spans.len(),
+            e041.len(),
+            "every MOS0026 must carry a primary span"
+        );
         assert!(
             spans.contains(&"= B <dup>"),
             "missing span for second decl, got {spans:?}"
@@ -422,28 +413,24 @@ mod tests {
         );
         // Every duplicate diagnostic must reference the same first decl.
         for d in &e041 {
-            let (ns, _) = d
-                .annotations()
-                .iter()
-                .find_map(|a| match a {
-                    DiagnosticAnnotation::Related { span, message } => Some((span, message)),
-                    _ => None,
-                })
-                .expect("MOS0026 carries a Related annotation");
-            assert_eq!(
-                &src[ns.start..ns.end],
-                "= A <dup>",
-                "every redeclaration must link back to the first decl"
-            );
+            let related = d.annotations().iter().find_map(|a| match a {
+                DiagnosticAnnotation::Related { span, message } => Some((span, message)),
+                _ => None,
+            });
+            assert!(related.is_some(), "MOS0026 carries a Related annotation");
+            if let Some((ns, _)) = related {
+                assert_eq!(
+                    &src[ns.start..ns.end],
+                    "= A <dup>",
+                    "every redeclaration must link back to the first decl"
+                );
+            }
         }
-        let r = doc
+        let reference_text = doc
             .nodes()
             .find(|n| n.kind == NodeKind::Reference)
-            .expect("reference");
-        assert_eq!(
-            r.attributes.get("text"),
-            Some(&AttrValue::Str("1".to_owned()))
-        );
+            .and_then(|n| n.attributes.get("text"));
+        assert_eq!(reference_text, Some(&AttrValue::Str("1".to_owned())));
     }
 
     #[test]
@@ -470,14 +457,14 @@ mod tests {
             d.span().is_some(),
             "MOS0027 must carry a span so editors can jump to the bad reference"
         );
-        let r = doc
+        let reference_text = doc
             .nodes()
             .find(|n| n.kind == NodeKind::Reference)
-            .expect("reference");
+            .and_then(|n| n.attributes.get("text"));
         // Placeholder text is preserved so the diagnostic location is
         // visible in the rendered output.
         assert_eq!(
-            r.attributes.get("text"),
+            reference_text,
             Some(&AttrValue::Str("?no:such?".to_owned()))
         );
     }
@@ -539,11 +526,11 @@ mod tests {
         // text. No MOS0027 is emitted because the target exists.
         let (doc, diags) = lower("<note> a side note here\n\nsee @note\n");
         assert!(diags.is_empty(), "{diags:?}");
-        let r = doc.nodes().find(|n| n.kind == NodeKind::Reference).unwrap();
-        assert_eq!(
-            r.attributes.get("text"),
-            Some(&AttrValue::Str("note".to_owned()))
-        );
+        let reference_text = doc
+            .nodes()
+            .find(|n| n.kind == NodeKind::Reference)
+            .and_then(|n| n.attributes.get("text"));
+        assert_eq!(reference_text, Some(&AttrValue::Str("note".to_owned())));
     }
 
     /// Build a synthetic node with `kind`, `label`, and (optionally) a
@@ -583,19 +570,22 @@ mod tests {
         let figure_id = make_node(&mut doc, NodeKind::Figure, Some("fig"), None);
         let paragraph_id = make_node(&mut doc, NodeKind::Paragraph, Some("p"), None);
 
-        let section = doc.get(section_id).unwrap();
         assert_eq!(
-            classify_target(section),
-            LabelTargetKind::Section {
+            doc.get(section_id).map(classify_target),
+            Some(LabelTargetKind::Section {
                 number: "1.2".to_owned()
-            }
+            })
         );
 
-        let figure = doc.get(figure_id).unwrap();
-        assert_eq!(classify_target(figure), LabelTargetKind::Figure);
+        assert_eq!(
+            doc.get(figure_id).map(classify_target),
+            Some(LabelTargetKind::Figure)
+        );
 
-        let paragraph = doc.get(paragraph_id).unwrap();
-        assert_eq!(classify_target(paragraph), LabelTargetKind::Generic);
+        assert_eq!(
+            doc.get(paragraph_id).map(classify_target),
+            Some(LabelTargetKind::Generic)
+        );
     }
 
     #[test]
@@ -634,12 +624,13 @@ mod tests {
         let mut sink: Vec<Diagnostic> = Vec::new();
         let index = build_label_index(&doc, &mut sink);
         assert!(sink.is_empty(), "{sink:?}");
-        let target = index.get("fig:one").expect("figure target indexed");
-        assert_eq!(target.kind, LabelTargetKind::Figure);
-
-        let r = doc.get(ref_id).unwrap();
         assert_eq!(
-            r.attributes.get("text"),
+            index.get("fig:one").map(|target| &target.kind),
+            Some(&LabelTargetKind::Figure)
+        );
+
+        assert_eq!(
+            doc.get(ref_id).and_then(|r| r.attributes.get("text")),
             Some(&AttrValue::Str("fig:one".to_owned())),
             "figure references render as the bare label until figure numbering lands (#46)"
         );

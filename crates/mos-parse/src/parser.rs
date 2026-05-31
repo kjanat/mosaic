@@ -147,8 +147,16 @@ mod tests {
 
     fn parse_str(src: &str) -> ParseResult {
         let mut sink = CollectingSink::new();
-        let tree = parse(src, &PathBuf::from("test.mos"), &mut sink)
-            .expect("parse never structurally aborts");
+        let file = PathBuf::from("test.mos");
+        let result = parse(src, &file, &mut sink);
+        assert!(result.is_ok(), "parse structurally aborted: {result:?}");
+        let tree = match result {
+            Ok(tree) => tree,
+            Err(_) => SyntaxTree {
+                file,
+                items: Vec::new(),
+            },
+        };
         ParseResult {
             tree,
             diagnostics: sink.into_diagnostics(),

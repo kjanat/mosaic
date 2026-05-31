@@ -59,15 +59,16 @@ use parser::Parser;
 /// use mos_parse::{InlineKind, Item, parse};
 ///
 /// let mut sink = CollectingSink::new();
-/// let tree = parse("= Hello\n", Path::new("main.mos"), &mut sink)
-///     .expect("parse never structurally aborts");
+/// let result = parse("= Hello\n", Path::new("main.mos"), &mut sink);
+/// assert!(result.is_ok(), "parse structurally aborted: {result:?}");
+/// if let Ok(tree) = result {
 ///
-/// assert!(!sink.had_error());
-/// assert!(matches!(tree.items[0], Item::Heading { .. }));
-/// let Item::Heading { inlines, .. } = &tree.items[0] else {
-///     unreachable!();
-/// };
-/// assert_eq!(inlines[0].kind, InlineKind::Text);
+///     assert!(!sink.had_error());
+///     assert!(matches!(tree.items[0], Item::Heading { .. }));
+///     if let Item::Heading { inlines, .. } = &tree.items[0] {
+///         assert_eq!(inlines[0].kind, InlineKind::Text);
+///     }
+/// }
 /// ```
 ///
 /// # Errors
