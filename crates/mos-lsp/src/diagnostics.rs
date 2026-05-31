@@ -87,8 +87,7 @@ const fn lsp_severity(severity: Severity) -> u8 {
     match severity {
         Severity::Error => 1,
         Severity::Warning => 2,
-        Severity::Note => 3,
-        Severity::Help => 4,
+        Severity::Notice => 3,
     }
 }
 
@@ -157,37 +156,32 @@ pub fn diagnostics_for_document(file: &Path, src: &str) -> Vec<LspDiagnostic> {
         .collect()
 }
 
-fn project_diagnostic(
-    file: &Path,
-    src: &str,
-    diag: &CoreDiagnostic,
-) -> Option<LspDiagnostic> {
-    let range = match &diag.span {
+fn project_diagnostic(file: &Path, src: &str, diag: &CoreDiagnostic) -> Option<LspDiagnostic> {
+    let range = match diag.span() {
         Some(span) if span.file == file => span_to_range(src, span),
         Some(_) => return None,
         None => LspRange {
-            start: LspPosition { line: 0, character: 0 },
-            end: LspPosition { line: 0, character: 0 },
+            start: LspPosition {
+                line: 0,
+                character: 0,
+            },
+            end: LspPosition {
+                line: 0,
+                character: 0,
+            },
         },
     };
     Some(LspDiagnostic {
         range,
-        severity: lsp_severity(diag.severity),
-        code: diag.code.0.to_owned(),
+        severity: lsp_severity(diag.severity()),
+        code: diag.def().code().to_string(),
         source: "mosaic".to_owned(),
-        message: diag.message.clone(),
+        message: diag.message().to_owned(),
     })
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
-    )]
-
     use std::path::PathBuf;
 
     use super::*;
@@ -196,20 +190,50 @@ mod tests {
     fn byte_to_position_handles_multibyte_lines() {
         let src = "µx\n字y";
         // Start of file.
-        assert_eq!(byte_to_position(src, 0), LspPosition { line: 0, character: 0 });
+        assert_eq!(
+            byte_to_position(src, 0),
+            LspPosition {
+                line: 0,
+                character: 0
+            }
+        );
         // After `µ` — one UTF-16 code unit consumed.
-        assert_eq!(byte_to_position(src, 2), LspPosition { line: 0, character: 1 });
+        assert_eq!(
+            byte_to_position(src, 2),
+            LspPosition {
+                line: 0,
+                character: 1
+            }
+        );
         // Start of line 2.
-        assert_eq!(byte_to_position(src, 4), LspPosition { line: 1, character: 0 });
+        assert_eq!(
+            byte_to_position(src, 4),
+            LspPosition {
+                line: 1,
+                character: 0
+            }
+        );
         // Past the end clamps to the final boundary.
-        assert_eq!(byte_to_position(src, 9999), LspPosition { line: 1, character: 2 });
+        assert_eq!(
+            byte_to_position(src, 9999),
+            LspPosition {
+                line: 1,
+                character: 2
+            }
+        );
     }
 
     #[test]
     fn byte_to_position_rounds_inside_codepoint() {
         // Pointing at the second byte of `µ` rounds down to its start.
         let src = "µ";
-        assert_eq!(byte_to_position(src, 1), LspPosition { line: 0, character: 0 });
+        assert_eq!(
+            byte_to_position(src, 1),
+            LspPosition {
+                line: 0,
+                character: 0
+            }
+        );
     }
 
     #[test]
@@ -219,10 +243,14 @@ mod tests {
         // is UTF-16, so the character right after 𝕏 must report
         // column 2.
         let src = "𝕏!";
-        let bang = src.find('!').expect("test setup: `!` must exist");
+        assert!(src.contains('!'), "test setup: `!` must exist");
+        let bang = src.find('!').unwrap_or(0);
         assert_eq!(
             byte_to_position(src, bang),
-            LspPosition { line: 0, character: 2 }
+            LspPosition {
+                line: 0,
+                character: 2
+            }
         );
     }
 
@@ -265,29 +293,33 @@ mod tests {
     }
 
     #[test]
-    fn unknown_reference_publishes_e042_diagnostic() {
-        // Mirrors `mos-eval`'s `unknown_label_emits_e042` test: an
+    fn unknown_reference_publishes_mos0033_diagnostic() {
+        // Mirrors `mos-eval`'s `unknown_label_emits_mos0033` test: an
         // `@no:such` reference with no matching label should surface
-        // an E042 diagnostic, here projected into the LSP shape with
+        // a MOS0033 diagnostic, here projected into the LSP shape with
         // a non-empty range covering the reference span.
         let file = PathBuf::from("/virtual/main.mos");
         let src = "see @no:such\n";
         let diagnostics = diagnostics_for_document(&file, src);
-        let e042 = diagnostics
-            .iter()
-            .find(|d| d.code == "E042")
-            .expect("E042 diagnostic must be present");
-        assert_eq!(e042.severity, 1);
-        assert_eq!(e042.source, "mosaic");
+        let maybe_mos0033 = diagnostics.iter().find(|d| d.code == "MOS0033");
         assert!(
-            e042.message.contains("no:such"),
+            maybe_mos0033.is_some(),
+            "MOS0033 diagnostic must be present; got {diagnostics:?}"
+        );
+        let Some(mos0033) = maybe_mos0033 else {
+            return;
+        };
+        assert_eq!(mos0033.severity, 1);
+        assert_eq!(mos0033.source, "mosaic");
+        assert!(
+            mos0033.message.contains("no:such"),
             "expected message to mention the unknown label, got {:?}",
-            e042.message
+            mos0033.message
         );
         // The reference starts at byte 4 (`@`); the range must be
         // non-empty so the editor can highlight it.
-        assert_eq!(e042.range.start.line, 0);
-        assert!(e042.range.end.character > e042.range.start.character);
+        assert_eq!(mos0033.range.start.line, 0);
+        assert!(mos0033.range.end.character > mos0033.range.start.character);
     }
 
     #[test]
@@ -303,7 +335,7 @@ mod tests {
             lowered
                 .diagnostics
                 .iter()
-                .any(|d| d.span.as_ref().is_some_and(|s| s.file == file)),
+                .any(|d| d.span().is_some_and(|s| s.file == file)),
             "test setup: expected at least one diagnostic for {file:?}"
         );
         assert!(

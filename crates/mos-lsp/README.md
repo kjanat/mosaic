@@ -20,21 +20,36 @@ non-goals stays unbuilt.
 ### Manual smoke test
 
 ```sh
-cargo run -p mos-lsp <<'EOF'
-Content-Length: 51
+python3 - <<'PY' | cargo run -p mos-lsp
+import json
+import sys
 
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
-Content-Length: 174
+messages = [
+    {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+    {
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": "file:///tmp/main.mos",
+                "languageId": "mosaic",
+                "version": 1,
+                "text": "see @no:such\n",
+            }
+        },
+    },
+    {"jsonrpc": "2.0", "method": "exit"},
+]
 
-{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/main.mos","languageId":"mosaic","version":1,"text":"see @no:such\n"}}}
-Content-Length: 38
-
-{"jsonrpc":"2.0","method":"exit"}
-EOF
+for message in messages:
+    body = json.dumps(message, separators=(",", ":")).encode()
+    sys.stdout.buffer.write(f"Content-Length: {len(body)}\r\n\r\n".encode())
+    sys.stdout.buffer.write(body)
+PY
 ```
 
 The server replies with an `initialize` response and one `publishDiagnostics` notification carrying
-an `E042` diagnostic for the unknown `@no:such` reference. Byte counts above are exact.
+a `MOS0033` diagnostic for the unknown `@no:such` reference.
 
 ## Boundary
 

@@ -173,11 +173,7 @@ fn clear_diagnostics<W: Write>(writer: &mut W, uri: &str) -> Result<()> {
     send_publish(writer, uri, &[])
 }
 
-fn send_publish<W: Write>(
-    writer: &mut W,
-    uri: &str,
-    diagnostics: &[LspDiagnostic],
-) -> Result<()> {
+fn send_publish<W: Write>(writer: &mut W, uri: &str, diagnostics: &[LspDiagnostic]) -> Result<()> {
     let notification = json!({
         "jsonrpc": "2.0",
         "method": "textDocument/publishDiagnostics",
@@ -226,7 +222,9 @@ fn read_message<R: BufRead>(reader: &mut R) -> Result<Option<Value>> {
         let bytes = reader.read_line(&mut line)?;
         if bytes == 0 {
             return if saw_any_header {
-                Err(LspError::Protocol("unexpected EOF in header block".to_owned()))
+                Err(LspError::Protocol(
+                    "unexpected EOF in header block".to_owned(),
+                ))
             } else {
                 Ok(None)
             };
@@ -327,7 +325,11 @@ mod tests {
         serve(&mut reader, &mut writer).expect("server loop");
 
         let messages = decode_messages(&writer);
-        assert_eq!(messages.len(), 2, "expected initialize response + publish, got {messages:?}");
+        assert_eq!(
+            messages.len(),
+            2,
+            "expected initialize response + publish, got {messages:?}"
+        );
 
         let init = &messages[0];
         assert_eq!(init.get("id"), Some(&json!(1)));
@@ -343,8 +345,10 @@ mod tests {
             .and_then(Value::as_array)
             .expect("diagnostics array");
         assert!(
-            diagnostics.iter().any(|d| d.get("code").and_then(Value::as_str) == Some("E042")),
-            "expected an E042 diagnostic, got {diagnostics:?}"
+            diagnostics
+                .iter()
+                .any(|d| d.get("code").and_then(Value::as_str) == Some("MOS0033")),
+            "expected a MOS0033 diagnostic, got {diagnostics:?}"
         );
     }
 
@@ -384,15 +388,20 @@ mod tests {
             .pointer("/params/diagnostics")
             .and_then(Value::as_array)
             .expect("clean diagnostics");
-        assert!(clean.is_empty(), "clean document should publish empty list, got {clean:?}");
-        // Second publish: the changed document re-triggers E042.
+        assert!(
+            clean.is_empty(),
+            "clean document should publish empty list, got {clean:?}"
+        );
+        // Second publish: the changed document re-triggers MOS0033.
         let dirty = messages[1]
             .pointer("/params/diagnostics")
             .and_then(Value::as_array)
             .expect("dirty diagnostics");
         assert!(
-            dirty.iter().any(|d| d.get("code").and_then(Value::as_str) == Some("E042")),
-            "expected E042 after didChange, got {dirty:?}"
+            dirty
+                .iter()
+                .any(|d| d.get("code").and_then(Value::as_str) == Some("MOS0033")),
+            "expected MOS0033 after didChange, got {dirty:?}"
         );
     }
 
