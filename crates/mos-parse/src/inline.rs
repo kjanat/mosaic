@@ -318,7 +318,7 @@ impl Parser<'_> {
                 // prefix/suffix). Warn once and *consume* the
                 // citation-candidate extent so the trailing `@key`
                 // bytes don't fall back through to the `@`-reference
-                // branch — that would surface a bogus E042 in the
+                // branch — that would surface a bogus MOS0033 in the
                 // resolver for what was syntactically a malformed
                 // citation, not an unknown label.
                 //
@@ -335,7 +335,7 @@ impl Parser<'_> {
                     key_start
                 };
                 self.diagnostics.push(self.warn(
-                    "W026",
+                    &codes::MOS0039,
                     "malformed citation `[@…]`; expected `[@key]`; treated as text",
                     base + i,
                     base + recovery_end,

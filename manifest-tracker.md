@@ -142,7 +142,7 @@ example.
 - [ ] Preserve comments in the CST if formatter or tooling needs them.
 - [ ] Preserve useful formatting trivia for formatter support.
 - [ ] Add imports/includes.
-- [ ] Add citations.
+- [x] Parse minimal single-key citations (`[@key]`).
 - [ ] Add inline math.
 - [ ] Add display math.
 - [ ] Add equations.
@@ -274,8 +274,8 @@ example.
 
 ## Bibliography
 
-- [ ] Define citation syntax.
-- [ ] Parse citations.
+- [x] Define minimal single-key citation syntax (`[@key]`).
+- [x] Parse minimal single-key citations.
 - [ ] Resolve citation keys.
 - [ ] Load bibliography databases.
 - [ ] Import BibTeX.

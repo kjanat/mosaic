@@ -11,7 +11,7 @@ Implemented:
 
 - Headings: `=`, `==`, `===`.
 - Paragraphs.
-- Inline: `*emphasis*`, `**strong**`, backtick code, `@label` references.
+- Inline: `*emphasis*`, `**strong**`, backtick code, `@label` references, `[@key]` citations.
 - Inline line-break controls: `\\` hard break (emits `InlineKind::HardBreak`), `\-` soft-hyphen
   shorthand (expands to literal U+00AD in the text payload), literal U+00A0 NBSP (preserved verbatim
   through to layout).
@@ -23,8 +23,8 @@ Implemented:
 
 Not implemented despite manifest examples:
 
-- General function calls, `#let`, `if`, custom scripting, math `$...$`, equations, tables,
-  citations, includes, comments-preserving formatter CST.
+- General function calls, `#let`, `if`, custom scripting, math `$...$`, equations, tables, citation
+  clusters/resolution, includes, comments-preserving formatter CST.
 
 ## WHERE TO LOOK
 

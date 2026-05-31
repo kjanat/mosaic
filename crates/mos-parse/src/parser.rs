@@ -1266,7 +1266,7 @@ mod tests {
     // `[@a; @b]` and prefix/suffix bodies (`[see @key, p. 33]`) are
     // deferred to a later bibliography slice and parse here as
     // literal text. Malformed citations (`[@`, `[@key`, `[@]`) emit a
-    // recoverable `W026` warning and fall through to literal text;
+    // recoverable `MOS0039` warning and fall through to literal text;
     // the parser does not panic on any input.
     // -----------------------------------------------------------------
 
@@ -1322,19 +1322,20 @@ mod tests {
     #[test]
     fn citation_unterminated_warns_and_recovers_as_text() {
         // `[@key` with no closing `]` before end-of-paragraph must
-        // emit `W026` and leave the source bytes as literal text.
+        // emit `MOS0039` and leave the source bytes as literal text.
         // Critically, recovery must NOT let the `@key` chars fall
         // through to the `@`-reference branch — that would inject a
         // phantom `Reference` inline and trip the resolver's
-        // unknown-label diagnostic (`E042`) on what was a citation
+        // unknown-label diagnostic (`MOS0033`) on what was a citation
         // mistake, not a label mistake.
         let r = parse_str("see [@smith2024 missing close\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.code.0 == "W026" && d.severity == Severity::Warning),
-            "expected W026, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0039.code()
+                    && d.severity() == Severity::Warning),
+            "expected MOS0039, got {:?}",
             r.diagnostics,
         );
         let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
@@ -1354,8 +1355,10 @@ mod tests {
         let r = parse_str("look [@] here\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "W026"),
-            "expected W026, got {:?}",
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0039.code()),
+            "expected MOS0039, got {:?}",
             r.diagnostics,
         );
         let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
@@ -1367,10 +1370,10 @@ mod tests {
         // `[@a; @b]` is the pandoc multi-key form. This slice does
         // NOT support it — recognising it as one citation list is a
         // future bibliography slice (MVP 4 follow-up). Until then it
-        // must surface as a single `W026` warning and consume the
+        // must surface as a single `MOS0039` warning and consume the
         // whole `[@…]` extent so neither `@a` nor `@b` slips out as
         // a `Reference` inline. Without aggressive recovery the
-        // resolver would later raise `E042` on `@a`/`@b` because
+        // resolver would later raise `MOS0033` on `@a`/`@b` because
         // they're not labelled blocks; that would be doubly wrong:
         // the diagnostic would point at the wrong feature and would
         // promote a parser warning into a resolver error.
@@ -1379,9 +1382,9 @@ mod tests {
         let w026: Vec<_> = r
             .diagnostics
             .iter()
-            .filter(|d| d.code.0 == "W026")
+            .filter(|d| d.def().code() == codes::MOS0039.code())
             .collect();
-        assert_eq!(w026.len(), 1, "expected exactly one W026, got {w026:?}");
+        assert_eq!(w026.len(), 1, "expected exactly one MOS0039, got {w026:?}");
         let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
         assert!(
             inlines.iter().all(|i| i.kind != InlineKind::Citation),

@@ -24,7 +24,8 @@ Pre-alpha (`0.0.0`). The 14-crate workspace skeleton is in place. MVP 0 from `ma
 substantially landed:
 
 - [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline `*emphasis*` / `**strong**` /
-      `` `code` ``, `-` / `N.` lists with hanging indents, and `#set name(...)` blocks;
+      `` `code` `` / `[@key]` citations, `-` / `N.` lists with hanging indents, and `#set name(...)`
+      blocks;
 - [x] author-facing line-break controls (issue #26 pieces 1/2/3): a literal U+00A0 NBSP that the
       greedy breaker never splits, a `\\` hard line break for forced mid-paragraph breaks, and a
       `\-` (or literal U+00AD) soft hyphen that stays invisible when the word fits and otherwise
