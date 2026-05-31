@@ -87,7 +87,7 @@ error[MOS0033]: unknown label `intro.` in `@` reference
 ```
 
 Keep a space (or another non-label character) between a reference and any following punctuation, or
-rephrase so the reference is not flush against a `.`, `-`, or `:`.
+rephrase so that the reference is not flush against a `.`, `-`, or `:`.
 
 ### Duplicate labels (`MOS0030`)
 
