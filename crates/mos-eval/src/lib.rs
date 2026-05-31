@@ -371,6 +371,15 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
 /// §6 stage-3 resolver. The CLI calls this *after* `mos_parse::parse`
 /// so a phase barrier can sit between parsing and lowering; [`lower`]
 /// is the parse-and-lower convenience used by tests and embedders.
+///
+/// # Examples
+///
+/// ```
+/// let parsed = mos_parse::parse("= Intro <intro>\n\nSee @intro.\n", "main.mos");
+/// let lowered = mos_eval::lower_tree(&parsed.tree);
+///
+/// assert!(!lowered.has_errors());
+/// ```
 #[must_use]
 pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
     let mut lowered = Evaluator::new().evaluate(tree);

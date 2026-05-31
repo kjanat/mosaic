@@ -405,6 +405,20 @@ impl Diagnostic {
     }
 
     /// Attach a span, builder-style.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::{Diagnostic, SourceSpan, codes};
+    ///
+    /// let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 10);
+    /// let diagnostic = Diagnostic::simple(&codes::MOS0033, None, "unknown label")
+    ///     .with_span(span.clone());
+    ///
+    /// assert_eq!(diagnostic.span(), Some(&span));
+    /// ```
     #[must_use]
     pub fn with_span(mut self, span: SourceSpan) -> Self {
         self.span = Some(span);
@@ -412,30 +426,81 @@ impl Diagnostic {
     }
 
     /// The registry definition behind this diagnostic.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::{Diagnostic, codes};
+    ///
+    /// let diagnostic = Diagnostic::simple(&codes::MOS0033, None, "unknown label");
+    ///
+    /// assert_eq!(diagnostic.def().code(), codes::MOS0033.code());
+    /// ```
     #[must_use]
     pub fn def(&self) -> &'static DiagnosticDef {
         self.def
     }
 
     /// The resolved severity carried by this instance.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::{Diagnostic, Severity, codes};
+    ///
+    /// let diagnostic = Diagnostic::simple(&codes::MOS0033, None, "unknown label");
+    ///
+    /// assert_eq!(diagnostic.severity(), Severity::Error);
+    /// ```
     #[must_use]
     pub fn severity(&self) -> Severity {
         self.severity
     }
 
     /// The primary span, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::{Diagnostic, codes};
+    ///
+    /// let diagnostic = Diagnostic::simple(&codes::MOS0033, None, "unknown label");
+    ///
+    /// assert!(diagnostic.span().is_none());
+    /// ```
     #[must_use]
     pub fn span(&self) -> Option<&SourceSpan> {
         self.span.as_ref()
     }
 
     /// The primary message.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::{Diagnostic, codes};
+    ///
+    /// let diagnostic = Diagnostic::simple(&codes::MOS0033, None, "unknown label");
+    ///
+    /// assert_eq!(diagnostic.message(), "unknown label");
+    /// ```
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
     }
 
     /// The attached sub-message annotations, in attach order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::{Diagnostic, DiagnosticAnnotation, codes};
+    ///
+    /// let diagnostic = Diagnostic::simple(&codes::MOS0033, None, "unknown label")
+    ///     .with_annotation(DiagnosticAnnotation::Help("declare `<intro>` first".to_owned()));
+    ///
+    /// assert_eq!(diagnostic.annotations().len(), 1);
+    /// ```
     #[must_use]
     pub fn annotations(&self) -> &[DiagnosticAnnotation] {
         &self.annotations

@@ -46,12 +46,28 @@ pub struct DiagnosticCode {
 
 impl DiagnosticCode {
     /// The namespace segment (always `"MOS"` for compiler-native codes).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::codes;
+    ///
+    /// assert_eq!(codes::MOS0033.code().namespace(), "MOS");
+    /// ```
     #[must_use]
     pub const fn namespace(self) -> &'static str {
         self.namespace
     }
 
     /// The numeric portion, without zero-padding.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::codes;
+    ///
+    /// assert_eq!(codes::MOS0033.code().number(), 33);
+    /// ```
     #[must_use]
     pub const fn number(self) -> u32 {
         self.number
@@ -73,6 +89,14 @@ impl std::fmt::Display for DiagnosticCode {
 /// Category is metadata, never identity. The catalog groups by this so a
 /// rule can change phase (parser → evaluator, fonts → text shaping)
 /// without breaking its stable [`DiagnosticCode`].
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::{DiagnosticCategory, codes};
+///
+/// assert_eq!(codes::MOS0033.category(), DiagnosticCategory::Semantic);
+/// ```
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum DiagnosticCategory {
     /// Surface syntax: tokenisation, directive shape, inline grammar.
@@ -134,18 +158,42 @@ pub struct DiagnosticDef {
 
 impl DiagnosticDef {
     /// The stable identifier.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::codes;
+    ///
+    /// assert_eq!(codes::MOS0033.code().to_string(), "MOS0033");
+    /// ```
     #[must_use]
     pub const fn code(&self) -> DiagnosticCode {
         self.code
     }
 
     /// The machine-readable kebab-case handle (e.g. `"label-duplicate"`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::codes;
+    ///
+    /// assert_eq!(codes::MOS0033.slug(), "label-missing");
+    /// ```
     #[must_use]
     pub const fn slug(&self) -> &'static str {
         self.slug
     }
 
     /// The severity this code carries unless overridden by future config.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::{Severity, codes};
+    ///
+    /// assert_eq!(codes::MOS0033.default_severity(), Severity::Error);
+    /// ```
     #[must_use]
     pub const fn default_severity(&self) -> Severity {
         self.default_severity
@@ -153,18 +201,42 @@ impl DiagnosticDef {
 
     /// What kind of thing this code describes. Used by the catalog to
     /// group rules; never folded into identity.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::{DiagnosticCategory, codes};
+    ///
+    /// assert_eq!(codes::MOS0033.category(), DiagnosticCategory::Semantic);
+    /// ```
     #[must_use]
     pub const fn category(&self) -> DiagnosticCategory {
         self.category
     }
 
     /// The crate that owns the emit site(s).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::codes;
+    ///
+    /// assert_eq!(codes::MOS0033.owner(), "mos-eval");
+    /// ```
     #[must_use]
     pub const fn owner(&self) -> &'static str {
         self.owner
     }
 
     /// One-line human summary, mirrored verbatim into the catalog.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::codes;
+    ///
+    /// assert!(codes::MOS0033.summary().contains("@reference"));
+    /// ```
     #[must_use]
     pub const fn summary(&self) -> &'static str {
         self.summary
