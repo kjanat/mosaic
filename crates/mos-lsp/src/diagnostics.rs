@@ -101,11 +101,18 @@ pub fn path_from_uri(uri: &str) -> PathBuf {
     let Some(rest) = uri.strip_prefix("file://") else {
         return PathBuf::from(uri);
     };
-    // Drop the (typically empty) authority segment before the path.
-    let path_part = rest.split_once('/').map_or(rest, |(_, p)| p);
+    // Preserve non-local authorities as UNC-style paths. Localhost is
+    // equivalent to an empty authority for `file://` URIs.
+    let (authority, path_part) = rest.split_once('/').map_or((rest, ""), |(a, p)| (a, p));
     let bytes = path_part.as_bytes();
-    let mut decoded: Vec<u8> = Vec::with_capacity(bytes.len() + 1);
-    decoded.push(b'/');
+    let mut decoded: Vec<u8> = Vec::with_capacity(bytes.len() + authority.len() + 3);
+    if !authority.is_empty() && authority != "localhost" {
+        decoded.extend_from_slice(b"//");
+        decoded.extend_from_slice(authority.as_bytes());
+        decoded.push(b'/');
+    } else {
+        decoded.push(b'/');
+    }
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%'
@@ -270,6 +277,22 @@ mod tests {
         assert_eq!(
             path_from_uri("file:///tmp/caf%C3%A9.mos"),
             PathBuf::from("/tmp/café.mos")
+        );
+    }
+
+    #[test]
+    fn path_from_uri_preserves_non_local_authority() {
+        assert_eq!(
+            path_from_uri("file://server/share/main.mos"),
+            PathBuf::from("//server/share/main.mos")
+        );
+    }
+
+    #[test]
+    fn path_from_uri_treats_localhost_as_local_path() {
+        assert_eq!(
+            path_from_uri("file://localhost/tmp/main.mos"),
+            PathBuf::from("/tmp/main.mos")
         );
     }
 
