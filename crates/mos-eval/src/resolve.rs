@@ -19,10 +19,10 @@
 //!
 //! Diagnostics:
 //!
-//! - `MOS0026`: a label is declared more than once. The first occurrence
+//! - `MOS0030`: a label is declared more than once. The first occurrence
 //!   wins; later occurrences keep their numbering but are not added to
 //!   the index.
-//! - `MOS0027`: a `@label` reference targets a label that doesn't exist.
+//! - `MOS0033`: a `@label` reference targets a label that doesn't exist.
 //!   The reference's text is left at its lowered placeholder
 //!   (`?label?`) so it remains visible in the rendered output.
 //!
@@ -179,7 +179,7 @@ fn build_label_index(
         if let Some(existing) = index.get(label) {
             diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0026,
+                    &codes::MOS0030,
                     None,
                     format!("label `{label}` is declared more than once"),
                 )
@@ -246,11 +246,11 @@ fn rewrite_references(
         } else {
             let already_diagnosed = diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0027.code() && d.span() == Some(&node.span));
+                .any(|d| d.def().code() == codes::MOS0033.code() && d.span() == Some(&node.span));
             if !already_diagnosed {
                 diagnostics.push(
                     Diagnostic::simple(
-                        &codes::MOS0027,
+                        &codes::MOS0033,
                         None,
                         format!("unknown label `{label}` in `@` reference"),
                     )
@@ -325,20 +325,24 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_label_emits_e041_and_keeps_first() {
+    fn duplicate_label_emits_mos0030_and_keeps_first() {
         let src = "= A <dup>\n\n= B <dup>\n\nsee @dup\n";
         let (doc, diags) = lower(src);
-        let e041: Vec<&Diagnostic> = diags
+        let mos0030: Vec<&Diagnostic> = diags
             .iter()
-            .filter(|d| d.def().code() == codes::MOS0026.code())
+            .filter(|d| d.def().code() == codes::MOS0030.code())
             .collect();
-        assert_eq!(e041.len(), 1, "expected exactly one MOS0026, got {diags:?}");
-        let d = e041[0];
-        assert_eq!(d.def().code(), codes::MOS0026.code());
+        assert_eq!(
+            mos0030.len(),
+            1,
+            "expected exactly one MOS0030, got {diags:?}"
+        );
+        let d = mos0030[0];
+        assert_eq!(d.def().code(), codes::MOS0030.code());
         assert_eq!(d.severity(), Severity::Error);
         assert!(
             d.message().contains("`dup`"),
-            "MOS0026 message should name the duplicated label, got {:?}",
+            "MOS0030 message should name the duplicated label, got {:?}",
             d.message()
         );
         // The duplicate diagnostic must point at the *second* occurrence
@@ -347,23 +351,23 @@ mod tests {
         assert_eq!(
             d.span().map(|span| &src[span.start..span.end]),
             Some("= B <dup>"),
-            "MOS0026 span should cover the second heading exactly"
+            "MOS0030 span should cover the second heading exactly"
         );
         assert_eq!(
             d.annotations().len(),
             1,
-            "MOS0026 should reference the first decl"
+            "MOS0030 should reference the first decl"
         );
         let related = d.annotations().iter().find_map(|a| match a {
             DiagnosticAnnotation::Related { span, message } => Some((span, message)),
             _ => None,
         });
-        assert!(related.is_some(), "MOS0026 carries a Related annotation");
+        assert!(related.is_some(), "MOS0030 carries a Related annotation");
         if let Some((note_span, note_message)) = related {
             assert_eq!(
                 &src[note_span.start..note_span.end],
                 "= A <dup>",
-                "MOS0026 note should point at the original declaration exactly"
+                "MOS0030 note should point at the original declaration exactly"
             );
             assert!(
                 note_message.contains("`dup`"),
@@ -379,29 +383,29 @@ mod tests {
     }
 
     #[test]
-    fn triple_duplicate_label_emits_one_e041_per_redeclaration() {
+    fn triple_duplicate_label_emits_one_mos0030_per_redeclaration() {
         // Three sections share `dup`. The first wins; the second and
-        // third each get their own MOS0026 pointing back at the first.
+        // third each get their own MOS0030 pointing back at the first.
         // The reference still resolves to section number `1`.
         let src = "= A <dup>\n\n= B <dup>\n\n= C <dup>\n\nsee @dup\n";
         let (doc, diags) = lower(src);
-        let e041: Vec<&Diagnostic> = diags
+        let mos0030: Vec<&Diagnostic> = diags
             .iter()
-            .filter(|d| d.def().code() == codes::MOS0026.code())
+            .filter(|d| d.def().code() == codes::MOS0030.code())
             .collect();
         assert_eq!(
-            e041.len(),
+            mos0030.len(),
             2,
-            "expected two MOS0026 (one per redeclaration), got {diags:?}"
+            "expected two MOS0030 (one per redeclaration), got {diags:?}"
         );
-        let spans: Vec<&str> = e041
+        let spans: Vec<&str> = mos0030
             .iter()
             .filter_map(|d| d.span().map(|s| &src[s.start..s.end]))
             .collect();
         assert_eq!(
             spans.len(),
-            e041.len(),
-            "every MOS0026 must carry a primary span"
+            mos0030.len(),
+            "every MOS0030 must carry a primary span"
         );
         assert!(
             spans.contains(&"= B <dup>"),
@@ -412,12 +416,12 @@ mod tests {
             "missing span for third decl, got {spans:?}"
         );
         // Every duplicate diagnostic must reference the same first decl.
-        for d in &e041 {
+        for d in &mos0030 {
             let related = d.annotations().iter().find_map(|a| match a {
                 DiagnosticAnnotation::Related { span, message } => Some((span, message)),
                 _ => None,
             });
-            assert!(related.is_some(), "MOS0026 carries a Related annotation");
+            assert!(related.is_some(), "MOS0030 carries a Related annotation");
             if let Some((ns, _)) = related {
                 assert_eq!(
                     &src[ns.start..ns.end],
@@ -434,28 +438,28 @@ mod tests {
     }
 
     #[test]
-    fn unknown_label_emits_e042() {
+    fn unknown_label_emits_mos0033() {
         let (doc, diags) = lower("see @no:such\n");
-        let e042: Vec<&Diagnostic> = diags
+        let mos0033: Vec<&Diagnostic> = diags
             .iter()
-            .filter(|d| d.def().code() == codes::MOS0027.code())
+            .filter(|d| d.def().code() == codes::MOS0033.code())
             .collect();
         assert_eq!(
-            e042.len(),
+            mos0033.len(),
             1,
-            "expected exactly one MOS0027 even with the fixpoint loop, got {diags:?}"
+            "expected exactly one MOS0033 even with the fixpoint loop, got {diags:?}"
         );
-        let d = e042[0];
-        assert_eq!(d.def().code(), codes::MOS0027.code());
+        let d = mos0033[0];
+        assert_eq!(d.def().code(), codes::MOS0033.code());
         assert_eq!(d.severity(), Severity::Error);
         assert!(
             d.message().contains("`no:such`"),
-            "MOS0027 message should name the missing label, got {:?}",
+            "MOS0033 message should name the missing label, got {:?}",
             d.message()
         );
         assert!(
             d.span().is_some(),
-            "MOS0027 must carry a span so editors can jump to the bad reference"
+            "MOS0033 must carry a span so editors can jump to the bad reference"
         );
         let reference_text = doc
             .nodes()
@@ -470,26 +474,26 @@ mod tests {
     }
 
     #[test]
-    fn multiple_unknown_references_each_emit_one_e042() {
+    fn multiple_unknown_references_each_emit_one_mos0033() {
         // Three distinct unknown labels in a single paragraph. The
         // fixpoint loop runs more than once (each iteration sees the
         // unresolved placeholders again), but every bad reference must
         // produce exactly one diagnostic — not one per iteration.
         let src = "see @alpha and @beta and @gamma\n";
         let (_doc, diags) = lower(src);
-        let e042: Vec<&Diagnostic> = diags
+        let mos0033: Vec<&Diagnostic> = diags
             .iter()
-            .filter(|d| d.def().code() == codes::MOS0027.code())
+            .filter(|d| d.def().code() == codes::MOS0033.code())
             .collect();
         assert_eq!(
-            e042.len(),
+            mos0033.len(),
             3,
-            "expected one MOS0027 per unknown label, got {diags:?}"
+            "expected one MOS0033 per unknown label, got {diags:?}"
         );
-        let labels: std::collections::BTreeSet<&str> = e042
+        let labels: std::collections::BTreeSet<&str> = mos0033
             .iter()
             .filter_map(|d| {
-                // Each MOS0027's message is `unknown label `<name>` in `@` reference`.
+                // Each MOS0033's message is `unknown label `<name>` in `@` reference`.
                 let msg = &d.message();
                 let start = msg.find('`')? + 1;
                 let end = start + msg[start..].find('`')?;
@@ -523,7 +527,7 @@ mod tests {
     fn paragraph_label_indexes_paragraph() {
         // A paragraph-attached label has no section number, so the
         // resolver falls back to using the bare label as the rewritten
-        // text. No MOS0027 is emitted because the target exists.
+        // text. No MOS0033 is emitted because the target exists.
         let (doc, diags) = lower("<note> a side note here\n\nsee @note\n");
         assert!(diags.is_empty(), "{diags:?}");
         let reference_text = doc
@@ -592,7 +596,7 @@ mod tests {
     fn figure_label_is_recognised_as_figure_target() {
         // Constructs a Figure node with a label and a Reference to it,
         // then runs the resolver directly. Verifies:
-        //   - the figure label is found (no E042),
+        //   - the figure label is found (no MOS0033),
         //   - the reference's rewritten text falls back to the bare
         //     label name, matching the "figure numbering is pending
         //     #46" contract,

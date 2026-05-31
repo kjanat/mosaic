@@ -1022,7 +1022,7 @@ Diagnostics need to be first-class.
 Example error:
 
 ```text
-error[E041]: unresolved reference `fig:scan`
+error[MOS0033]: unresolved reference `fig:scan`
   main.mos:42:18
    |
 42 | As shown in @fig:scan, ...

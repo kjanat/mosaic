@@ -31,7 +31,7 @@ impl Parser<'_> {
             let Some(args_end) = self.scan_balanced_parens(i) else {
                 self.diagnostics.push(
                     Diagnostic::simple(
-                        &codes::MOS0012,
+                        &codes::MOS0016,
                         None,
                         format!("unterminated `#{kw}(...)` block"),
                     )
@@ -49,7 +49,7 @@ impl Parser<'_> {
         if i >= bytes.len() || bytes[i] != b'[' {
             self.diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0011,
+                    &codes::MOS0013,
                     None,
                     format!(
                         "expected long-bracket raw body after `#{kw}` (for example `#{kw}[[...]]`)"
@@ -63,7 +63,7 @@ impl Parser<'_> {
         let Some((body_start, eq_count)) = self.scan_long_raw_open(i) else {
             self.diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0011,
+                    &codes::MOS0013,
                     None,
                     format!("raw `#{kw}` blocks require long brackets like `#{kw}[[...]]`"),
                 )
@@ -100,7 +100,7 @@ impl Parser<'_> {
             } else {
                 self.diagnostics.push(
                     Diagnostic::simple(
-                        &codes::MOS0013,
+                        &codes::MOS0019,
                         None,
                         format!("unexpected trailing content after raw `#{kw}` block"),
                     )
@@ -110,7 +110,7 @@ impl Parser<'_> {
         } else {
             self.diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0012,
+                    &codes::MOS0016,
                     None,
                     format!("unterminated raw `#{kw}` long-bracket block"),
                 )
@@ -147,7 +147,7 @@ impl Parser<'_> {
         if i >= bytes.len() || bytes[i] != b'(' {
             self.diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0011,
+                    &codes::MOS0013,
                     None,
                     format!("expected `(` after `#set {name}`"),
                 )
@@ -169,7 +169,7 @@ impl Parser<'_> {
         }
         if i >= bytes.len() || bytes[i] != b'(' {
             self.diagnostics.push(
-                Diagnostic::simple(&codes::MOS0011, None, format!("expected `(` after `#{kw}`"))
+                Diagnostic::simple(&codes::MOS0013, None, format!("expected `(` after `#{kw}`"))
                     .with_span(self.span(line_start, i)),
             );
             self.skip_line();
@@ -217,7 +217,7 @@ impl Parser<'_> {
                 let (_, content_end, _) = self.current_line_bounds();
                 self.diagnostics.push(
                     Diagnostic::simple(
-                        &codes::MOS0013,
+                        &codes::MOS0019,
                         None,
                         format!("unexpected trailing content after `#{display_kw} ... )`"),
                     )
@@ -227,7 +227,7 @@ impl Parser<'_> {
         } else {
             self.diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0012,
+                    &codes::MOS0016,
                     None,
                     format!("unterminated `#{display_kw}(...)` block"),
                 )
@@ -333,7 +333,7 @@ impl Parser<'_> {
             if i == key_start {
                 self.diagnostics.push(
                     Diagnostic::simple(
-                        &codes::MOS0015,
+                        &codes::MOS0025,
                         None,
                         "expected `key: value` in directive arguments",
                     )
@@ -351,7 +351,7 @@ impl Parser<'_> {
             if i >= end || bytes[i] != b':' {
                 self.diagnostics.push(
                     Diagnostic::simple(
-                        &codes::MOS0015,
+                        &codes::MOS0025,
                         None,
                         format!("expected `:` after `{key}` in directive arguments"),
                     )
@@ -389,7 +389,7 @@ impl Parser<'_> {
             } else {
                 self.diagnostics.push(
                     Diagnostic::simple(
-                        &codes::MOS0015,
+                        &codes::MOS0025,
                         None,
                         "expected `,` or `)` between directive arguments",
                     )
@@ -409,7 +409,7 @@ impl Parser<'_> {
         if *i >= end {
             self.diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0014,
+                    &codes::MOS0022,
                     None,
                     "expected a value in directive arguments",
                 )
@@ -435,7 +435,7 @@ impl Parser<'_> {
         }
         self.diagnostics.push(
             Diagnostic::simple(
-                &codes::MOS0014,
+                &codes::MOS0022,
                 None,
                 format!("unexpected character `{}` in directive value", b as char),
             )
@@ -465,7 +465,7 @@ impl Parser<'_> {
                         let esc_end = next_char_boundary(self.src, esc_start);
                         self.diagnostics.push(
                             Diagnostic::simple(
-                                &codes::MOS0014,
+                                &codes::MOS0022,
                                 None,
                                 format!(
                                     "unknown escape sequence `\\{}` in string",
@@ -492,7 +492,7 @@ impl Parser<'_> {
             *i = ch_end;
         }
         self.diagnostics.push(
-            Diagnostic::simple(&codes::MOS0014, None, "unterminated string literal")
+            Diagnostic::simple(&codes::MOS0022, None, "unterminated string literal")
                 .with_span(self.span(start, end)),
         );
         None
@@ -519,7 +519,7 @@ impl Parser<'_> {
         if *i == int_start {
             self.diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0014,
+                    &codes::MOS0022,
                     None,
                     "expected a number after `-` in directive value",
                 )
@@ -539,7 +539,7 @@ impl Parser<'_> {
                 return text.parse::<f64>().ok().map(SetValue::Float).or_else(|| {
                     self.diagnostics.push(
                         Diagnostic::simple(
-                            &codes::MOS0014,
+                            &codes::MOS0022,
                             None,
                             format!("malformed number `{text}`"),
                         )
@@ -551,7 +551,7 @@ impl Parser<'_> {
             return text.parse::<i64>().ok().map(SetValue::Int).or_else(|| {
                 self.diagnostics.push(
                     Diagnostic::simple(
-                        &codes::MOS0014,
+                        &codes::MOS0022,
                         None,
                         format!("malformed integer `{text}`"),
                     )
@@ -567,7 +567,7 @@ impl Parser<'_> {
             _ => {
                 self.diagnostics.push(
                     Diagnostic::simple(
-                        &codes::MOS0014,
+                        &codes::MOS0022,
                         None,
                         format!("unknown length unit `{unit}` (expected mm, pt, or em)"),
                     )
@@ -580,7 +580,7 @@ impl Parser<'_> {
         value.map(|v| SetValue::Length(v, length_unit)).or_else(|| {
             self.diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0014,
+                    &codes::MOS0022,
                     None,
                     format!("malformed length value `{}`", &self.src[num_start..num_end]),
                 )

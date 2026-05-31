@@ -35,7 +35,7 @@ Noto Sans Math is currently a fallback face for math codepoints missing from Not
   `Mono`, `Math`.
 - `FontFamily`: four styled slots, one monospace slot, and an embedded fallback chain.
 - `FontFamily::resolve`: resolves `Helvetica`, `Times`/`Times-Roman`, `Courier`, and `Noto Sans`;
-  unknown names warn with `W045` and fall back to Noto Sans.
+  unknown names emit `MOS0018` notices and fall back to Noto Sans.
 - `text_width`, `glyph_width`, `ascent`, `descent`: layout metrics in points.
 - `shape_text`: shapes one run; Base-14 returns width only and no glyph stream.
 - `shape_with_fallback`: shapes embedded text cluster-by-cluster and retries `.notdef` clusters

@@ -60,7 +60,7 @@ pub trait DiagnosticSink {
 ///
 /// let mut sink = CollectingSink::new();
 /// assert!(
-///     sink.emit(Diagnostic::simple(&codes::MOS0016, None, "unterminated"))
+///     sink.emit(Diagnostic::simple(&codes::MOS0028, None, "unterminated"))
 ///         .is_ok(),
 ///     "collecting sink must not abort"
 /// );
@@ -134,14 +134,14 @@ mod tests {
         assert!(!sink.had_error());
 
         assert!(
-            sink.emit(Diagnostic::simple(&codes::MOS0034, None, "notice"))
+            sink.emit(Diagnostic::simple(&codes::MOS0018, None, "notice"))
                 .is_ok(),
             "collecting sink must not abort"
         );
         assert!(!sink.had_error(), "a notice must not flip had_error");
 
         assert!(
-            sink.emit(Diagnostic::simple(&codes::MOS0016, None, "warning"))
+            sink.emit(Diagnostic::simple(&codes::MOS0028, None, "warning"))
                 .is_ok(),
             "collecting sink must not abort"
         );
@@ -156,7 +156,7 @@ mod tests {
 
         let diags = sink.into_diagnostics();
         assert_eq!(diags.len(), 3);
-        assert_eq!(diags[0].def().code(), codes::MOS0034.code());
+        assert_eq!(diags[0].def().code(), codes::MOS0018.code());
         assert_eq!(diags[2].severity(), Severity::Error);
     }
 }

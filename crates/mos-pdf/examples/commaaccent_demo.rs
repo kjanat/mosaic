@@ -107,7 +107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let diags = mos_pdf::emit(&graph, &PdfMetadata::default(), &out)?;
     // Mirror the CLI's severity gate (see
     // `crates/mos/src/main.rs` — exits non-zero only on
-    // `Severity::Error`). Warnings (e.g. a future W041 overflow)
+    // `Severity::Error`). Warnings (e.g. `MOS0032` glyph-budget exhaustion)
     // are non-fatal and pass through silently; the workspace's
     // `-D warnings` clippy rule blocks `println!`/`eprintln!` on
     // examples, so per-diagnostic logging isn't an option without

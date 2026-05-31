@@ -28,7 +28,7 @@ pub(super) fn lower_set_directive(
     attributes.insert("set".to_owned(), AttrValue::Str(name.to_owned()));
     let Some(target) = set_schema::lookup_target(name) else {
         diagnostics.push(
-            Diagnostic::simple(&codes::MOS0021, None,
+            Diagnostic::simple(&codes::MOS0011, None,
                 format!(
                     "unknown `#set` target `{name}` (expected `page`, `text`, `document`, or `image`)"
                 ),
@@ -79,7 +79,7 @@ fn set_node(span: &SourceSpan, attributes: AttrMap) -> Node {
 
 /// Convert one parser-level `SetArg` into an attribute on the Raw node
 /// representing this `#set` directive. Emits semantic diagnostics
-/// (`MOS0022` unknown key, `MOS0023` type mismatch, `MOS0025` sanity floor) and
+/// (`MOS0015` unknown key, `MOS0020` type mismatch, `MOS0027` sanity floor) and
 /// updates `metadata` / `current_text_size_pt` as a side effect.
 fn lower_set_arg(
     target: set_schema::Target,
@@ -104,7 +104,7 @@ fn lower_set_arg(
     let Some(slot) = target.slot(key) else {
         diagnostics.push(
             Diagnostic::simple(
-                &codes::MOS0022,
+                &codes::MOS0015,
                 None,
                 format!(
                     "unknown argument `{key}` for `#set {}` (valid: {})",
@@ -119,7 +119,7 @@ fn lower_set_arg(
     let Some(value) = coerce_value(slot, raw_value, *current_text_size_pt) else {
         diagnostics.push(
             Diagnostic::simple(
-                &codes::MOS0023,
+                &codes::MOS0020,
                 None,
                 format!(
                     "`#set {} ({key}: …)` expects {}, got {}",
@@ -134,7 +134,7 @@ fn lower_set_arg(
     };
     if let Some(msg) = sanity_floor_warning(target, key, &value) {
         diagnostics
-            .push(Diagnostic::simple(&codes::MOS0025, None, msg).with_span(value_span.clone()));
+            .push(Diagnostic::simple(&codes::MOS0027, None, msg).with_span(value_span.clone()));
     }
     if matches!(target, set_schema::Target::Text)
         && key == "size"
@@ -192,7 +192,7 @@ pub(super) fn coerce_positive_length(
         _ => {
             diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0023,
+                    &codes::MOS0020,
                     None,
                     format!("`#image({key}: ...)` expects a length"),
                 )
@@ -204,7 +204,7 @@ pub(super) fn coerce_positive_length(
     if pt <= 0.0 {
         diagnostics.push(
             Diagnostic::simple(
-                &codes::MOS0023,
+                &codes::MOS0020,
                 None,
                 format!("`#image({key}: ...)` expects a positive length"),
             )
@@ -322,46 +322,46 @@ mod tests {
     }
 
     #[test]
-    fn unknown_set_target_emits_e020() {
+    fn unknown_set_target_emits_mos0011() {
         let r = lower("#set widget(x: 1)\n", &PathBuf::from("test.mos"));
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0021.code())
+                .any(|d| d.def().code() == codes::MOS0011.code())
         );
     }
 
     #[test]
-    fn unknown_set_arg_emits_e021() {
+    fn unknown_set_arg_emits_mos0015() {
         let r = lower("#set page(weirdkey: 1)\n", &PathBuf::from("test.mos"));
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0022.code()),
+                .any(|d| d.def().code() == codes::MOS0015.code()),
             "got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn type_mismatch_emits_e022() {
+    fn type_mismatch_emits_mos0020() {
         let r = lower("#set page(margin: \"wide\")\n", &PathBuf::from("test.mos"));
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0023.code()),
+                .any(|d| d.def().code() == codes::MOS0020.code()),
             "got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn sanity_floor_emits_w024() {
+    fn sanity_floor_emits_mos0027() {
         let r = lower("#set page(margin: 0.5mm)\n", &PathBuf::from("test.mos"));
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0025.code()),
+                .any(|d| d.def().code() == codes::MOS0027.code()),
             "got {:?}",
             r.diagnostics
         );

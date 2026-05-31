@@ -54,7 +54,7 @@ fn apply_page_set(
         } else {
             diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0031,
+                    &codes::MOS0017,
                     None,
                     format!(
                         "unknown paper size `{name}` (expected an ISO A/B size or `Letter`/`Legal`)"
@@ -150,11 +150,11 @@ fn apply_text_set(
     *text = next;
 }
 
-/// Build an `MOS0032` diagnostic for a `#set` argument whose value, while
+/// Build an `MOS0023` diagnostic for a `#set` argument whose value, while
 /// well-typed, would produce broken page geometry. The value is *not*
 /// applied; the previous (or default) value is retained.
 fn reject(node: &Node, message: String) -> Diagnostic {
-    Diagnostic::simple(&codes::MOS0032, None, message).with_span(node.span.clone())
+    Diagnostic::simple(&codes::MOS0023, None, message).with_span(node.span.clone())
 }
 
 /// Narrow an `f64` measurement (always a small positive page-pt or
@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn negative_margin_is_rejected_with_e025() {
+    fn negative_margin_is_rejected_with_mos0023() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         alloc_set_block(&mut doc, "page", &[("margin", AttrValue::Length(-10.0))]);
 
@@ -318,13 +318,13 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0032.code())
+                .any(|d| d.def().code() == codes::MOS0023.code())
         );
         assert!((page.margin_pt - MARGIN_PT).abs() < 0.5);
     }
 
     #[test]
-    fn oversized_margin_is_rejected_with_e025() {
+    fn oversized_margin_is_rejected_with_mos0023() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         alloc_set_block(&mut doc, "page", &[("margin", AttrValue::Length(400.0))]);
 
@@ -333,7 +333,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0032.code())
+                .any(|d| d.def().code() == codes::MOS0023.code())
         );
     }
 
@@ -359,8 +359,8 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0032.code()),
-            "expected MOS0032 from paper shrink, got {diagnostics:?}"
+                .any(|d| d.def().code() == codes::MOS0023.code()),
+            "expected MOS0023 from paper shrink, got {diagnostics:?}"
         );
         assert!(
             (page.width_pt - 2383.94).abs() < 1.0,
@@ -380,7 +380,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0032.code())
+                .any(|d| d.def().code() == codes::MOS0023.code())
         );
         assert!((text.size_pt - 50.0).abs() < 0.01);
     }
@@ -400,16 +400,16 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0032.code()
+                .any(|d| d.def().code() == codes::MOS0023.code()
                     && d.message().contains("page change")),
-            "expected MOS0032 about page change, got {diagnostics:?}"
+            "expected MOS0023 about page change, got {diagnostics:?}"
         );
         assert!((page.width_pt - A4_WIDTH_PT).abs() < 0.5);
         assert!((text.size_pt - 100.0).abs() < 0.01);
     }
 
     #[test]
-    fn oversized_text_size_is_rejected_with_e025() {
+    fn oversized_text_size_is_rejected_with_mos0023() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         alloc_set_block(&mut doc, "text", &[("size", AttrValue::Length(1000.0))]);
 
@@ -418,9 +418,9 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0032.code()
+                .any(|d| d.def().code() == codes::MOS0023.code()
                     && d.message().contains("vertical space")),
-            "expected MOS0032 about vertical space, got {diagnostics:?}"
+            "expected MOS0023 about vertical space, got {diagnostics:?}"
         );
         assert_eq!(text.size_pt, crate::types::BODY_SIZE_PT);
     }
@@ -435,8 +435,8 @@ mod tests {
 
         let msg = diagnostics
             .iter()
-            .find(|d| d.def().code() == codes::MOS0032.code())
-            .expect("MOS0032 emitted")
+            .find(|d| d.def().code() == codes::MOS0023.code())
+            .expect("MOS0023 emitted")
             .message();
         assert!(
             msg.contains("previous value retained"),
@@ -445,7 +445,7 @@ mod tests {
     }
 
     #[test]
-    fn nonpositive_leading_is_rejected_with_e025() {
+    fn nonpositive_leading_is_rejected_with_mos0023() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         alloc_set_block(&mut doc, "text", &[("leading", AttrValue::Float(0.0))]);
 
@@ -454,12 +454,12 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0032.code())
+                .any(|d| d.def().code() == codes::MOS0023.code())
         );
     }
 
     #[test]
-    fn unknown_paper_emits_e023() {
+    fn unknown_paper_emits_mos0017() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         alloc_set_block(
             &mut doc,
@@ -472,7 +472,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0031.code())
+                .any(|d| d.def().code() == codes::MOS0017.code())
         );
         assert!((page.width_pt - A4_WIDTH_PT).abs() < 0.5);
     }

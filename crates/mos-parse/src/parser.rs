@@ -305,7 +305,7 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0017.code()
+                .any(|d| d.def().code() == codes::MOS0031.code()
                     && d.severity() == Severity::Warning)
         );
     }
@@ -317,7 +317,7 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0016.code()
+                .any(|d| d.def().code() == codes::MOS0028.code()
                     && d.severity() == Severity::Warning)
         );
     }
@@ -402,63 +402,63 @@ mod tests {
         // multibyte UTF-8 scalar (here `é` = 0xC3 0xA9). Advancing by 2
         // would leave the cursor mid-codepoint and the next slice
         // would panic. The parser must walk to a char boundary and
-        // emit MOS0014 instead.
+        // emit MOS0022 instead.
         let r = parse_str("#set foo(s: \"\\é\")\n");
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0014.code()),
-            "expected MOS0014, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0022.code()),
+            "expected MOS0022, got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn set_unknown_unit_emits_e014() {
+    fn set_unknown_unit_emits_mos0022() {
         let r = parse_str("#set page(margin: 24xx)\n");
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0014.code()),
-            "expected MOS0014, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0022.code()),
+            "expected MOS0022, got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn set_lone_minus_emits_e014() {
+    fn set_lone_minus_emits_mos0022() {
         // `-` not followed by a digit is a malformed number literal.
         let r = parse_str("#set foo(x: -)\n");
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0014.code()),
-            "expected MOS0014, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0022.code()),
+            "expected MOS0022, got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn set_without_identifier_emits_e010() {
+    fn set_without_identifier_emits_mos0010() {
         // `#set` followed only by whitespace before the newline has no
         // target identifier. The parser must diagnose with MOS0010 and
         // skip the line rather than treat the next line as the body.
         let r = parse_str("#set\nbody\n");
-        let e010: Vec<_> = r
+        let mos0010: Vec<_> = r
             .diagnostics
             .iter()
             .filter(|d| d.def().code() == codes::MOS0010.code())
             .collect();
         assert_eq!(
-            e010.len(),
+            mos0010.len(),
             1,
             "expected exactly one MOS0010, got {:?}",
             r.diagnostics
         );
         assert!(
-            e010[0].message().contains("#set"),
+            mos0010[0].message().contains("#set"),
             "MOS0010 message should mention `#set`, got {:?}",
-            e010[0].message()
+            mos0010[0].message()
         );
         // Recovery: the next line must parse as its own paragraph,
         // not get eaten as the directive body.
@@ -473,24 +473,24 @@ mod tests {
     }
 
     #[test]
-    fn set_missing_colon_emits_e015() {
+    fn set_missing_colon_emits_mos0025() {
         let r = parse_str("#set page(paper \"A4\")\n");
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0015.code()),
-            "expected MOS0015, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0025.code()),
+            "expected MOS0025, got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn set_positional_arg_emits_e015() {
+    fn set_positional_arg_emits_mos0025() {
         let r = parse_str("#set page(\"A4\")\n");
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0015.code())
+                .any(|d| d.def().code() == codes::MOS0025.code())
         );
     }
 
@@ -503,14 +503,14 @@ mod tests {
     #[test]
     fn trailing_content_after_set_block_diagnoses_and_recovers() {
         // Prior behaviour swallowed everything between `)` and the
-        // next `\n`. The parser now emits MOS0013 and leaves the
+        // next `\n`. The parser now emits MOS0019 and leaves the
         // trailing bytes in place so they parse as a paragraph.
         let r = parse_str("#set page(paper: \"A4\") leftover\n");
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0013.code()),
-            "expected MOS0013 diagnostic, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0019.code()),
+            "expected MOS0019 diagnostic, got {:?}",
             r.diagnostics
         );
         assert!(r.tree.items.iter().any(|i| i.as_set().is_some()));
@@ -643,7 +643,7 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0019.code())
+                .any(|d| d.def().code() == codes::MOS0036.code())
         );
         let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
         assert!(!inlines.iter().any(|i| i.kind == InlineKind::Reference));
@@ -862,13 +862,13 @@ mod tests {
     }
 
     #[test]
-    fn unterminated_image_directive_errors_with_e012() {
+    fn unterminated_image_directive_errors_with_mos0016() {
         let r = parse_str("#image(\n  alt: \"x\"\n");
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0012.code() && d.message().contains("#image")),
-            "expected MOS0012 mentioning #image, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0016.code() && d.message().contains("#image")),
+            "expected MOS0016 mentioning #image, got {:?}",
             r.diagnostics
         );
     }
@@ -1155,15 +1155,15 @@ mod tests {
     }
 
     #[test]
-    fn lone_trailing_backslash_warns_with_w025() {
+    fn lone_trailing_backslash_warns_with_mos0038() {
         let r = parse_str("foo\\\n");
         assert!(!r.has_errors());
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0020.code()
+                .any(|d| d.def().code() == codes::MOS0038.code()
                     && d.severity() == Severity::Warning),
-            "expected MOS0020 warning, got {:?}",
+            "expected MOS0038 warning, got {:?}",
             r.diagnostics
         );
     }
@@ -1175,7 +1175,7 @@ mod tests {
         // diagnostic -- the prior contract was "backslash is literal",
         // and only the trailing-`\` case crosses the bar where a
         // warning helps the author. Three samples cover the cases that
-        // previously fired spurious W025s.
+        // previously fired spurious MOS0038s.
         for src in [
             "foo \\* bar\n",
             "see C:\\Temp\\file\n",
@@ -1186,8 +1186,8 @@ mod tests {
             assert!(
                 !r.diagnostics
                     .iter()
-                    .any(|d| d.def().code() == codes::MOS0020.code()),
-                "src {src:?} produced unexpected MOS0020: {:?}",
+                    .any(|d| d.def().code() == codes::MOS0038.code()),
+                "src {src:?} produced unexpected MOS0038: {:?}",
                 r.diagnostics
             );
         }

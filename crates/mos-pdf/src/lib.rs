@@ -69,7 +69,7 @@ pub struct PdfMetadata {
 /// directory if it doesn't already exist.
 ///
 /// Returns any diagnostics raised during PDF emission — currently
-/// only `MOS0035` (per-font extended-glyph budget exhausted). Layout
+/// only `MOS0032` (per-font extended-glyph budget exhausted). Layout
 /// diagnostics flow through [`mos_layout::LayoutResult::diagnostics`]
 /// separately; callers (the CLI) typically render both.
 ///
@@ -112,12 +112,12 @@ pub fn emit(graph: &PageGraph, metadata: &PdfMetadata, out: &Path) -> Result<Vec
 }
 
 fn io_diagnostic(message: String) -> CoreError {
-    CoreError::Diagnostic(Box::new(Diagnostic::simple(&codes::MOS0036, None, message)))
+    CoreError::Diagnostic(Box::new(Diagnostic::simple(&codes::MOS0014, None, message)))
 }
 
 /// Build the PDF bytes from `graph`. Pulled out of [`emit`] so tests
 /// can round-trip without touching the filesystem. Returns the bytes
-/// plus any encoding diagnostics (currently `MOS0035` for Base14
+/// plus any encoding diagnostics (currently `MOS0032` for Base14
 /// `/Differences` overflow). Kept `pub(crate)` — the public surface
 /// is [`emit`].
 ///
@@ -408,7 +408,7 @@ fn emit_to_unicode_cmap(pdf: &mut Pdf, id: Ref, enc: &DocEncoding) {
 #[cfg(test)]
 mod tests {
     // No `#![allow]` here. The two filesystem-touching tests
-    // (`emit_writes_file`, `emit_fails_with_e090_when_target_is_a_directory`)
+    // (`emit_writes_file`, `emit_fails_with_mos0014_when_target_is_a_directory`)
     // return `TestResult` and surface failures via `?` / `ensure!`
     // instead of `unwrap`/`expect`/`panic!`. The rest return `()`
     // and use plain `assert!`, which is not covered by
@@ -913,9 +913,9 @@ mod tests {
     }
 
     #[test]
-    fn emit_fails_with_e090_when_target_is_a_directory() -> TestResult {
+    fn emit_fails_with_mos0014_when_target_is_a_directory() -> TestResult {
         // Writing a file whose path collides with an existing
-        // directory must surface as an `MOS0036` diagnostic, not a
+        // directory must surface as an `MOS0014` diagnostic, not a
         // panic or an `Unimplemented` error.
         let dir = unique_temp_path("conflict");
         std::fs::create_dir_all(&dir)?;
@@ -930,7 +930,7 @@ mod tests {
             return Err("expected Diagnostic, got Unimplemented".into());
         };
         ensure!(
-            d.def().code() == codes::MOS0036.code(),
+            d.def().code() == codes::MOS0014.code(),
             "wrong code: {:?}",
             d.def().code()
         );

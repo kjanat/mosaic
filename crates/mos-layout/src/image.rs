@@ -18,7 +18,7 @@ impl LayoutState {
         let Some(handle) = self.intern_image(image) else {
             self.diagnostics.push(
                 Diagnostic::simple(
-                    &codes::MOS0033,
+                    &codes::MOS0035,
                     None,
                     format!("image node {node_id:?} missing decoded pixel data; skipping"),
                 )

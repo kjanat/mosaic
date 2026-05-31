@@ -118,9 +118,9 @@ impl std::fmt::Display for DiagnosticCategory {
 /// ```
 /// use mos_core::{DiagnosticCategory, Severity, codes};
 ///
-/// assert_eq!(codes::MOS0034.default_severity(), Severity::Notice);
-/// assert_eq!(codes::MOS0034.category(), DiagnosticCategory::Text);
-/// assert_eq!(codes::MOS0034.owner(), "mos-fonts");
+/// assert_eq!(codes::MOS0018.default_severity(), Severity::Notice);
+/// assert_eq!(codes::MOS0018.category(), DiagnosticCategory::Text);
+/// assert_eq!(codes::MOS0018.owner(), "mos-fonts");
 /// ```
 #[derive(Debug)]
 pub struct DiagnosticDef {
@@ -281,110 +281,111 @@ macro_rules! define_codes {
 }
 
 // Numbers are opaque. They do not encode category, severity, owner, or
-// phase. Declaration order groups by category here for source-reading
-// convenience only — the catalog (and any consumer) groups by
-// `category()`, not by numeric range.
+// phase. Current assignments intentionally interleave categories to avoid
+// accidental range semantics. Declaration order groups by category here
+// for source-reading convenience only — the catalog (and any consumer)
+// groups by `category()`, not by numeric range.
 define_codes! {
     // ── syntax (mos-parse) ────────────────────────────────────────────
     /// `#set` not followed by an identifier.
     MOS0010 = 10, Error, Syntax, "set-missing-identifier", "mos-parse",
         "syntax: #set not followed by an identifier";
     /// Missing `(` after `#set NAME`, `#image`, or `#figure`.
-    MOS0011 = 11, Error, Syntax, "directive-missing-paren", "mos-parse",
+    MOS0013 = 13, Error, Syntax, "directive-missing-paren", "mos-parse",
         "syntax: directive missing opening parenthesis";
     /// Unterminated `#NAME(...)` or `#NAME[[...]]` block.
-    MOS0012 = 12, Error, Syntax, "directive-unterminated", "mos-parse",
+    MOS0016 = 16, Error, Syntax, "directive-unterminated", "mos-parse",
         "syntax: unterminated directive block";
     /// Unexpected trailing content after a directive on the same line.
-    MOS0013 = 13, Error, Syntax, "directive-trailing-content", "mos-parse",
+    MOS0019 = 19, Error, Syntax, "directive-trailing-content", "mos-parse",
         "syntax: unexpected trailing content after directive";
     /// Malformed directive argument value (bad escape, unknown unit,
     /// unterminated string, lone `-`, malformed number/length).
-    MOS0014 = 14, Error, Syntax, "directive-malformed-arg", "mos-parse",
+    MOS0022 = 22, Error, Syntax, "directive-malformed-arg", "mos-parse",
         "syntax: malformed directive argument value";
     /// Argument-list shape error (missing `:`, missing `,`/`)`,
     /// positional where named expected).
-    MOS0015 = 15, Error, Syntax, "arglist-shape", "mos-parse",
+    MOS0025 = 25, Error, Syntax, "arglist-shape", "mos-parse",
         "syntax: malformed argument list";
     /// Unterminated `**strong**` run; treated as literal text.
-    MOS0016 = 16, Warning, Syntax, "unterminated-strong", "mos-parse",
+    MOS0028 = 28, Warning, Syntax, "unterminated-strong", "mos-parse",
         "syntax: unterminated **strong** run; treated as text";
     /// Unterminated `*emphasis*` run; treated as literal text.
-    MOS0017 = 17, Warning, Syntax, "unterminated-emphasis", "mos-parse",
+    MOS0031 = 31, Warning, Syntax, "unterminated-emphasis", "mos-parse",
         "syntax: unterminated *emphasis* run; treated as text";
     /// Unterminated `` `code` `` run; treated as literal text.
-    MOS0018 = 18, Warning, Syntax, "unterminated-code", "mos-parse",
+    MOS0034 = 34, Warning, Syntax, "unterminated-code", "mos-parse",
         "syntax: unterminated `code` run; treated as text";
     /// Stray `@` not followed by a label identifier; treated as text.
-    MOS0019 = 19, Warning, Syntax, "stray-at-sign", "mos-parse",
+    MOS0036 = 36, Warning, Syntax, "stray-at-sign", "mos-parse",
         "syntax: stray @ not followed by a label; treated as text";
     /// Lone trailing `\` at end of input; treated as literal text.
-    MOS0020 = 20, Warning, Syntax, "lone-trailing-backslash", "mos-parse",
+    MOS0038 = 38, Warning, Syntax, "lone-trailing-backslash", "mos-parse",
         "syntax: lone trailing backslash at end of input; treated as text";
 
     // ── semantic (mos-eval) ───────────────────────────────────────────
     /// Unknown `#set` target (only `page`, `text`, `document`, `image`).
-    MOS0021 = 21, Error, Semantic, "set-unknown-target", "mos-eval",
+    MOS0011 = 11, Error, Semantic, "set-unknown-target", "mos-eval",
         "semantic: unknown #set target";
     /// Unknown keyword argument for `#set TARGET`, `#image`, or `#figure`.
-    MOS0022 = 22, Error, Semantic, "unknown-kwarg", "mos-eval",
+    MOS0015 = 15, Error, Semantic, "unknown-kwarg", "mos-eval",
         "semantic: unknown keyword argument";
     /// Argument type mismatch or non-positive length.
-    MOS0023 = 23, Error, Semantic, "arg-type-mismatch", "mos-eval",
+    MOS0020 = 20, Error, Semantic, "arg-type-mismatch", "mos-eval",
         "semantic: argument type mismatch or non-positive length";
     /// `#set` rejecting a positional argument where named is required.
     MOS0024 = 24, Error, Semantic, "set-positional-rejected", "mos-eval",
         "semantic: #set rejects positional argument";
     /// `#set` value passes typing but trips a sanity floor; still applied.
-    MOS0025 = 25, Warning, Semantic, "set-sanity-floor", "mos-eval",
+    MOS0027 = 27, Warning, Semantic, "set-sanity-floor", "mos-eval",
         "semantic: #set value trips a sanity floor; value still applied";
     /// Label declared more than once; first declaration wins.
-    MOS0026 = 26, Error, Semantic, "label-duplicate", "mos-eval",
+    MOS0030 = 30, Error, Semantic, "label-duplicate", "mos-eval",
         "semantic: label declared more than once";
     /// `@label` reference to a label that does not exist.
-    MOS0027 = 27, Error, Semantic, "label-missing", "mos-eval",
+    MOS0033 = 33, Error, Semantic, "label-missing", "mos-eval",
         "semantic: @reference to a label that does not exist";
     /// `#image(...)`/`#figure(...)` missing a path argument.
-    MOS0028 = 28, Error, Semantic, "image-missing-path", "mos-eval",
+    MOS0037 = 37, Error, Semantic, "image-missing-path", "mos-eval",
         "semantic: #image/#figure missing a path argument";
 
     // ── filesystem / asset I/O ────────────────────────────────────────
     /// Image file cannot be read from disk.
-    MOS0029 = 29, Error, Io, "image-read-failed", "mos-eval",
+    MOS0012 = 12, Error, Io, "image-read-failed", "mos-eval",
         "io: image file cannot be read from disk";
     /// Image file cannot be decoded (unsupported or corrupt).
-    MOS0030 = 30, Error, Io, "image-decode-failed", "mos-eval",
+    MOS0029 = 29, Error, Io, "image-decode-failed", "mos-eval",
         "io: image file cannot be decoded";
 
     // ── layout (mos-layout) ───────────────────────────────────────────
     /// Unknown paper size in `#set page(paper: ...)`.
-    MOS0031 = 31, Error, Layout, "paper-size-unknown", "mos-layout",
+    MOS0017 = 17, Error, Layout, "paper-size-unknown", "mos-layout",
         "layout: unknown paper size";
     /// Well-typed `#set` value breaks page geometry; previous value kept.
-    MOS0032 = 32, Error, Layout, "geometry-breaks-page", "mos-layout",
+    MOS0023 = 23, Error, Layout, "geometry-breaks-page", "mos-layout",
         "layout: value breaks page geometry; previous value retained";
     /// Image reached layout without decoded pixels; skipped on the page.
-    MOS0033 = 33, Warning, Layout, "image-skipped-no-pixels", "mos-layout",
+    MOS0035 = 35, Warning, Layout, "image-skipped-no-pixels", "mos-layout",
         "layout: image reached layout without decoded pixels; skipped";
 
     // ── text / fonts / shaping ────────────────────────────────────────
     /// Unknown font family; falling back to bundled Noto Sans.
-    MOS0034 = 34, Notice, Text, "font-family-substituted", "mos-fonts",
+    MOS0018 = 18, Notice, Text, "font-family-substituted", "mos-fonts",
         "text: substituted bundled Noto Sans for unknown font family";
     /// Base-14 `/Differences` glyph budget exhausted for a face.
-    MOS0035 = 35, Warning, Text, "glyph-budget-exhausted", "mos-pdf",
+    MOS0032 = 32, Warning, Text, "glyph-budget-exhausted", "mos-pdf",
         "text: Base-14 /Differences glyph budget exhausted";
 
     // ── PDF emission (mos-pdf) ────────────────────────────────────────
     /// PDF backend I/O failure (cannot create dir or write bytes).
-    MOS0036 = 36, Error, Pdf, "pdf-io-failed", "mos-pdf",
+    MOS0014 = 14, Error, Pdf, "pdf-io-failed", "mos-pdf",
         "pdf: backend I/O failure";
     /// Font subsetting failure for an embedded face.
-    MOS0037 = 37, Error, Pdf, "font-subset-failed", "mos-pdf",
+    MOS0026 = 26, Error, Pdf, "font-subset-failed", "mos-pdf",
         "pdf: font subsetting failure for an embedded face";
 
     // ── compiler-internal invariants ──────────────────────────────────
     /// Internal: missing embedded font plan for a shaped run.
-    MOS0038 = 38, Error, Internal, "internal-missing-font-plan", "mos-pdf",
+    MOS0021 = 21, Error, Internal, "internal-missing-font-plan", "mos-pdf",
         "internal: missing embedded font plan for a shaped run";
 }

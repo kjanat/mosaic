@@ -102,7 +102,7 @@ pub(crate) fn plan_embedded(runs: &[TextRun]) -> Result<Vec<EmbeddedFontPlan>> {
         let font = id.data();
         let subset_bytes = mos_fonts::subset(font, &gids).map_err(|err| {
             CoreError::Diagnostic(Box::new(Diagnostic::simple(
-                &codes::MOS0037,
+                &codes::MOS0026,
                 None,
                 format!("font subsetting failed for {id:?}: {err}"),
             )))

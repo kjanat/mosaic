@@ -351,7 +351,7 @@ impl Diagnostic {
     /// use mos_core::{Diagnostic, Severity, codes};
     ///
     /// // Promote a warning-by-default code to an error.
-    /// let d = Diagnostic::new(&codes::MOS0016, Severity::Error, None, "promoted");
+    /// let d = Diagnostic::new(&codes::MOS0028, Severity::Error, None, "promoted");
     /// assert_eq!(d.severity(), Severity::Error);
     /// ```
     pub fn new(
@@ -376,7 +376,7 @@ impl Diagnostic {
     /// ```
     /// use mos_core::{Diagnostic, Severity, codes};
     ///
-    /// let d = Diagnostic::simple(&codes::MOS0034, None, "substituted Noto Sans");
+    /// let d = Diagnostic::simple(&codes::MOS0018, None, "substituted Noto Sans");
     /// assert_eq!(d.severity(), Severity::Notice);
     /// ```
     pub fn simple(
@@ -394,7 +394,7 @@ impl Diagnostic {
     /// ```
     /// use mos_core::{Diagnostic, DiagnosticAnnotation, codes};
     ///
-    /// let d = Diagnostic::simple(&codes::MOS0027, None, "unknown label")
+    /// let d = Diagnostic::simple(&codes::MOS0033, None, "unknown label")
     ///     .with_annotation(DiagnosticAnnotation::Help("did you mean `@intro`?".to_owned()));
     /// assert_eq!(d.annotations().len(), 1);
     /// ```

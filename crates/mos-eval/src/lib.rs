@@ -248,7 +248,7 @@ impl Evaluator {
                     // and `#image(...)` are both parsed with `name ==
                     // "image"`, and dispatching on the string would
                     // route `#set image(width: 200pt)` into the image
-                    // loader and incorrectly raise MOS0028 "missing path".
+                    // loader and incorrectly raise MOS0037 "missing path".
                     DirectiveKind::Image => {
                         lower_image_directive(
                             &mut document,
@@ -586,19 +586,19 @@ mod tests {
     }
 
     #[test]
-    fn missing_image_path_emits_e050() {
+    fn missing_image_path_emits_mos0037() {
         let r = lower("#image()\n", &PathBuf::from("/tmp/no-such.mos"));
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0028.code()),
-            "expected MOS0028, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0037.code()),
+            "expected MOS0037, got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn unreadable_image_emits_e051() {
+    fn unreadable_image_emits_mos0012() {
         let r = lower(
             "#image(\"does-not-exist.png\")\n",
             &PathBuf::from("/tmp/no-such-dir/main.mos"),
@@ -606,30 +606,30 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0029.code()),
-            "expected MOS0029, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0012.code()),
+            "expected MOS0012, got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn empty_image_path_emits_e050_not_io_error() {
+    fn empty_image_path_emits_mos0037_not_io_error() {
         // `#image("")` is a missing-path mistake, not an I/O failure.
         // The diagnostic surface treats it the same as omitting the
         // path entirely so the user sees a clear "needs a path"
-        // message instead of `MOS0029`/`MOS0030` noise.
+        // message instead of `MOS0012`/`MOS0029` noise.
         let r = lower("#image(\"\")\n", &PathBuf::from("/tmp/whatever/main.mos"));
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0028.code()),
-            "expected MOS0028, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0037.code()),
+            "expected MOS0037, got {:?}",
             r.diagnostics
         );
-        // No MOS0029/MOS0030 should leak through.
+        // No MOS0012/MOS0029 should leak through.
         assert!(
             !r.diagnostics.iter().any(|d| {
-                d.def().code() == codes::MOS0029.code() || d.def().code() == codes::MOS0030.code()
+                d.def().code() == codes::MOS0012.code() || d.def().code() == codes::MOS0029.code()
             }),
             "unexpected I/O diagnostic: {:?}",
             r.diagnostics
@@ -637,10 +637,10 @@ mod tests {
     }
 
     #[test]
-    fn non_positive_image_width_emits_e022() {
+    fn non_positive_image_width_emits_mos0020() {
         // `width: 0pt` and `width: -10pt` would otherwise produce a
         // zero/negative image box that sails into layout and PDF
-        // emit. Reject at lower time with MOS0023.
+        // emit. Reject at lower time with MOS0020.
         for src in [
             "#image(\"x.png\", width: 0pt)\n",
             "#image(\"x.png\", width: -10pt)\n",
@@ -651,15 +651,15 @@ mod tests {
             assert!(
                 r.diagnostics
                     .iter()
-                    .any(|d| d.def().code() == codes::MOS0023.code()),
-                "expected MOS0023 for `{src}`, got {:?}",
+                    .any(|d| d.def().code() == codes::MOS0020.code()),
+                "expected MOS0020 for `{src}`, got {:?}",
                 r.diagnostics
             );
         }
     }
 
     #[test]
-    fn non_positive_image_height_emits_e022() {
+    fn non_positive_image_height_emits_mos0020() {
         for src in [
             "#image(\"x.png\", height: 0pt)\n",
             "#image(\"x.png\", height: -1mm)\n",
@@ -668,15 +668,15 @@ mod tests {
             assert!(
                 r.diagnostics
                     .iter()
-                    .any(|d| d.def().code() == codes::MOS0023.code()),
-                "expected MOS0023 for `{src}`, got {:?}",
+                    .any(|d| d.def().code() == codes::MOS0020.code()),
+                "expected MOS0020 for `{src}`, got {:?}",
                 r.diagnostics
             );
         }
     }
 
     #[test]
-    fn undecodable_image_emits_e052() {
+    fn undecodable_image_emits_mos0029() {
         let dir = std::env::temp_dir().join(format!(
             "mos-eval-bad-{}",
             std::time::SystemTime::now()
@@ -692,8 +692,8 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0030.code()),
-            "expected MOS0030, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0029.code()),
+            "expected MOS0029, got {:?}",
             r.diagnostics
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -735,7 +735,7 @@ mod tests {
     #[test]
     fn figure_with_missing_image_does_not_leak_empty_node() {
         // If `#figure(image: "broken.png", caption: "...")` fails to
-        // load the image, the caller still emits MOS0029; the lowerer
+        // load the image, the caller still emits MOS0012; the lowerer
         // must NOT leave a Figure (or its caption paragraph) hanging
         // on the document root. A caption-only figure renders next
         // to whatever the user thought they were captioning, which
@@ -747,7 +747,7 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0029.code())
+                .any(|d| d.def().code() == codes::MOS0012.code())
         );
         assert!(
             !r.document.nodes().any(|n| n.kind == NodeKind::Figure),
