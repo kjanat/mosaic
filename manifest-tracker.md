@@ -58,6 +58,7 @@ example.
   - [x] inline line-break controls: `\\` hard break, `\-` soft hyphen, U+00A0 NBSP
   - [x] labels
   - [x] references
+  - [x] minimal single-key citations (`[@key]`)
   - [x] unordered lists
   - [x] ordered lists
   - [x] `#set`
@@ -70,8 +71,10 @@ example.
   - [x] duplicate label diagnostics
   - [x] unknown label diagnostics
   - [x] generic reference text
+  - [x] citation placeholder nodes
   - [x] raster image directives
   - [x] simple figure directives
+- [x] `mos-lsp` publishes parse/lower/resolve diagnostics for opened and changed documents.
 - [x] Layout supports:
   - [x] greedy text flow
   - [x] headings
@@ -163,6 +166,7 @@ example.
 - [x] Diagnose duplicate labels.
 - [x] Diagnose unknown references.
 - [x] Resolve document metadata.
+- [x] Lower citation placeholders.
 - [ ] Make reference text kind-aware:
   - [ ] section references
   - [ ] figure references
@@ -174,6 +178,7 @@ example.
 - [ ] Resolve table numbering.
 - [ ] Resolve theorem numbering.
 - [ ] Resolve citation keys.
+- [x] Document the page-reference and layout-fixpoint boundary.
 - [ ] Add page-reference support.
 - [ ] Add internal fixpoint loop for layout-dependent values.
 - [ ] Add stable node IDs derived from durable inputs.
@@ -184,8 +189,8 @@ example.
 - [x] Render source diagnostics with file, line, column, and carets.
 - [x] Report parse/lower/resolve errors without panicking.
 - [x] Report duplicate and unknown labels.
+- [x] Add diagnostic codes.
 - [ ] Add similar-label suggestions.
-- [ ] Add diagnostic codes.
 - [ ] Add structured suggestions.
 - [ ] Add layout warnings.
 - [ ] Add float placement diagnostics.
@@ -291,7 +296,8 @@ example.
 
 ## Incremental Builds And Cache
 
-- [ ] Define dependency IDs and dependency kinds.
+- [x] Document dependency ID categories and hash boundaries.
+- [ ] Introduce dependency ID and dependency kind Rust types.
 - [ ] Track every computed artifact dependency.
 - [ ] Track paragraph layout dependencies:
   - [ ] paragraph text
@@ -379,11 +385,12 @@ example.
 - [x] Mirror shared Zed highlight queries from `tree-sitter-mosaic` and pin the Zed grammar
       revision.
 - [ ] Build `mos fmt`.
+- [x] Document formatter trivia preservation requirements.
 - [ ] Define formatting rules for current syntax.
 - [ ] Format multiline function calls.
 - [ ] Preserve comments and meaningful trivia.
 - [ ] Complete `mos-lsp` beyond the current entry point.
-- [ ] Publish diagnostics over LSP.
+- [x] Publish diagnostics over LSP.
 - [ ] Add go-to-definition for labels.
 - [ ] Add rename label.
 - [ ] Add citation autocomplete.
