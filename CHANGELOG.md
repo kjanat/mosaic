@@ -8,6 +8,14 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Minimal single-key `[@key]` citation syntax (issue #47): citations parse and lower into semantic
+  placeholder nodes rendered as `[?key?]` until bibliography resolution lands. Malformed citation
+  groups recover as literal text with diagnostic `MOS0039`.
+- Minimal stdio LSP server (issue #49): `mos-lsp` replaces its stub with a server that publishes
+  compiler parse/lower/resolve diagnostics via `textDocument/publishDiagnostics` on open and full
+  change. Source `SourceSpan`s are projected to UTF-16 LSP ranges and stable `MOS####` codes are
+  preserved. Pull diagnostics, completion, hover, formatting, and workspace indexing are explicitly
+  out of this slice.
 - Author-facing inline line-break controls (issue #26):
   - `\\` hard line break (`InlineKind::HardBreak` / `NodeKind::HardBreak`), flushes the current line
     without paragraph spacing; two in a row produce a blank line; collapses silently at paragraph
@@ -26,6 +34,10 @@ All notable changes to this project will be documented here. The format is based
 
 ### Changed
 
+- Diagnostics gained a registry-backed `MOS####` code system (issue #57): diagnostic identity is
+  split from severity, codes are minted only in `mos-core::codes`, and a human-readable catalog
+  (`docs/diagnostic-codes.md`) is drift-tested against the registry. Reporting moves to a sink-based
+  model and parser/eval diagnostic coverage is tightened.
 - Resolver (`crates/mos-eval/src/resolve.rs`) now models label targets explicitly (issue #44): the
   label index is a typed `label → LabelTarget` map distinguishing `Section { number }`, `Figure`,
   and `Generic` targets instead of an untyped `label → NodeId` lookup. Section references still
@@ -41,3 +53,40 @@ All notable changes to this project will be documented here. The format is based
   treatment. `escaped_char` continues to cover `\#`, `\*`, `\[`, `\]`, `\<`, etc. Mirrored into
   `crates/zed-mosaic` via `just sync-zed-queries`, and the Zed extension grammar `rev` is bumped to
   pick up the new node types. `mosaic.ebnf` and `EBNF.md` refreshed to match.
+
+## [0.0.0] - 2026-05-22
+
+First tagged pre-alpha. The full crate stack under `crates/` (everything except the `zed-mosaic`
+editor extension) is published to crates.io via a resumable release workflow.
+
+### Added
+
+- `mos check`: parse, lower, and resolve a `.mos` file or project directory, emitting
+  source-anchored diagnostics with stable `MOS####` codes, carets, UTF-8-accurate columns, and
+  CRLF-aware spans. The CLI applies phase-barrier fail-fast (each phase runs to completion, then
+  exits if any error was collected) and gates PDF emission on diagnostic severity.
+- `mos build`: render a document to PDF under `build/<entry-stem>.pdf`, or to a project-declared
+  `[output].pdf` path. Built PDFs open automatically after a successful build.
+- CLI accepts both single `.mos` files and project directories.
+- Markup parser: headings, paragraphs, inline emphasis / strong / nested bold-italic, inline and
+  multiline code spans, raw code blocks (including long-bracket form with literal bodies and
+  preserved tabs and escapes), unordered (`-`) and ordered (`N.`) lists with hanging indent, `#set`,
+  `#image`, `#figure`, and cross-reference labels / references.
+- Semantic lowering and resolution: a `Document` model with metadata, automatic hierarchical section
+  numbering, a cross-reference resolver, and duplicate / unknown-label diagnostics.
+- Layout engine: greedy text flow; headings, paragraphs, and lists (with adaptive gutters and
+  per-marker shaping for ordered lists); raster images and simple figures with captions; pages,
+  paper sizes, and margins; `#set` page / text / document properties wired into layout and PDF
+  metadata; NFC text normalization; and oversized-word breaking on shaped glyph clusters.
+- Fonts: a zero-dependency Adobe Font Metrics (AFM v4.x) parser; Base-14 metrics; per-glyph font
+  fallback; and bundled, subsetted Noto Sans, Noto Sans Mono, and Noto Sans Math for broad Unicode
+  coverage beyond the Base-14 cliff.
+- PDF backend: WinAnsi plus Latin-Extended text via per-document `/Differences` and `/ToUnicode`,
+  Type 0 CID emission for embedded fonts, GPOS-positioned glyph output, PNG and JPEG image XObjects,
+  title / author Info metadata, and deterministic object / font / image emission order.
+- Editor tooling: a Tree-sitter grammar and corpus (`tree-sitter-mosaic`) and a Zed extension
+  (`zed-mosaic`) providing highlighting, outline, document runnables, and semantic-token defaults.
+- An in-memory cache foundation (`mos-cache`) backed by a `HashMap`.
+
+[Unreleased]: https://github.com/kjanat/mosaic/compare/v0.0.0...HEAD
+[0.0.0]: https://github.com/kjanat/mosaic/releases/tag/v0.0.0
