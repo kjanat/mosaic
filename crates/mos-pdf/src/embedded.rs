@@ -21,7 +21,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use mos_core::{CoreError, Diagnostic, DiagnosticCode, Result, Severity};
+use mos_core::{CoreError, Diagnostic, Result, codes};
 use mos_fonts::{EmbeddedFontId, ShapedGlyph};
 use mos_layout::TextRun;
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
@@ -101,14 +101,11 @@ pub(crate) fn plan_embedded(runs: &[TextRun]) -> Result<Vec<EmbeddedFontPlan>> {
         let gids: Vec<u16> = gids.into_iter().filter(|g| seen.insert(*g)).collect();
         let font = id.data();
         let subset_bytes = mos_fonts::subset(font, &gids).map_err(|err| {
-            CoreError::Diagnostic(Box::new(Diagnostic {
-                severity: Severity::Error,
-                code: DiagnosticCode("E091"),
-                message: format!("font subsetting failed for {id:?}: {err}"),
-                span: None,
-                notes: Vec::new(),
-                suggestions: Vec::new(),
-            }))
+            CoreError::Diagnostic(Box::new(Diagnostic::simple(
+                &codes::MOS0401,
+                None,
+                format!("font subsetting failed for {id:?}: {err}"),
+            )))
         })?;
         let mut all = Vec::with_capacity(gids.len() + 1);
         all.push(0_u16);

@@ -13,6 +13,12 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub mod codes;
+mod sink;
+
+pub use codes::{DiagnosticCode, DiagnosticDef};
+pub use sink::{CollectingSink, DiagnosticAbort, DiagnosticResult, DiagnosticSink};
+
 /// Stable identifier for a document node.
 ///
 /// Per manifest §5.1, IDs should ideally be derived from
@@ -252,147 +258,193 @@ impl SourceSpan {
 
 /// Diagnostic severity (manifest §31).
 ///
+/// Three runtime severities. `Error` marks a *failing* diagnostic (the CLI
+/// exits non-zero at the next phase barrier) — it does **not** mean "abort
+/// the phase right now". `Notice` is informational and non-failing
+/// (substitutions, auto-decisions). Sub-message kinds (`note`/`help`/
+/// `hint`) live on [`DiagnosticAnnotation`], never here.
+///
 /// # Examples
 ///
 /// ```
 /// use mos_core::Severity;
 ///
-/// let severity = Severity::Error;
-///
-/// assert_eq!(severity, Severity::Error);
+/// assert_ne!(Severity::Error, Severity::Notice);
 /// ```
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Severity {
+    /// Failing diagnostic; non-zero exit at the next phase barrier.
     Error,
+    /// Surfaced, but the build continues.
     Warning,
-    Note,
-    Help,
+    /// Informational only; the build continues.
+    Notice,
 }
 
-/// Stable diagnostic code (e.g. `E041`, `W203`, manifest §16).
+/// A sub-message attached to a [`Diagnostic`].
+///
+/// The diagnostic's *primary* span lives on [`Diagnostic::span`]; these are
+/// only secondary spans (`Related`) and textual rows. There is intentionally
+/// no `Primary` variant — that would be a second home for the primary span.
 ///
 /// # Examples
 ///
 /// ```
-/// use mos_core::DiagnosticCode;
+/// use mos_core::DiagnosticAnnotation;
 ///
-/// let code = DiagnosticCode("E001");
-///
-/// assert_eq!(code.0, "E001");
-/// ```
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub struct DiagnosticCode(pub &'static str);
-
-/// Extra diagnostic context.
-///
-/// # Examples
-///
-/// ```
-/// use mos_core::DiagnosticNote;
-///
-/// let note = DiagnosticNote {
-///     message: "while parsing heading".to_owned(),
-///     span: None,
-/// };
-///
-/// assert!(note.span.is_none());
+/// let help = DiagnosticAnnotation::Help("try `#set text(...)`".to_owned());
+/// assert!(matches!(help, DiagnosticAnnotation::Help(_)));
 /// ```
 #[derive(Clone, Debug)]
-pub struct DiagnosticNote {
-    pub message: String,
-    pub span: Option<SourceSpan>,
-}
-
-/// Suggested source edit for a diagnostic.
-///
-/// # Examples
-///
-/// ```
-/// use mos_core::Suggestion;
-///
-/// let suggestion = Suggestion {
-///     message: "insert closing marker".to_owned(),
-///     replacement: Some("]".to_owned()),
-///     span: None,
-/// };
-///
-/// assert_eq!(suggestion.replacement.as_deref(), Some("]"));
-/// ```
-#[derive(Clone, Debug)]
-pub struct Suggestion {
-    pub message: String,
-    pub replacement: Option<String>,
-    pub span: Option<SourceSpan>,
+pub enum DiagnosticAnnotation {
+    /// Another source location that helps explain the primary cause
+    /// (e.g. the first declaration of a duplicated label).
+    Related {
+        /// Where the related span points.
+        span: SourceSpan,
+        /// What that location contributes.
+        message: String,
+    },
+    /// Attached explanation, rendered as `note:`.
+    Note(String),
+    /// Attached suggestion, rendered as `help:`.
+    Help(String),
+    /// Attached hint, rendered as `hint:`.
+    Hint(String),
 }
 
 /// A user-facing diagnostic (manifest §16, §31).
 ///
+/// Identity and default severity come from a `'static` [`DiagnosticDef`] in
+/// [`codes`]; the instance carries the *resolved* severity (today always the
+/// def's default, later a config override) so rendering never has to consult
+/// the def. Fields are private — construct via [`Diagnostic::simple`] or
+/// [`Diagnostic::new`].
+///
 /// # Examples
 ///
 /// ```
-/// use mos_core::{Diagnostic, DiagnosticCode, Severity};
+/// use mos_core::{Diagnostic, Severity, codes};
 ///
-/// let diagnostic = Diagnostic::error(DiagnosticCode("E001"), "boom");
+/// let diagnostic = Diagnostic::simple(&codes::MOS0010, None, "boom");
 ///
-/// assert_eq!(diagnostic.severity, Severity::Error);
+/// assert_eq!(diagnostic.severity(), Severity::Error);
+/// assert_eq!(diagnostic.def().code().to_string(), "MOS0010");
 /// ```
 #[derive(Clone, Debug)]
 pub struct Diagnostic {
-    pub severity: Severity,
-    pub code: DiagnosticCode,
-    pub message: String,
-    pub span: Option<SourceSpan>,
-    pub notes: Vec<DiagnosticNote>,
-    pub suggestions: Vec<Suggestion>,
+    def: &'static DiagnosticDef,
+    severity: Severity,
+    span: Option<SourceSpan>,
+    message: String,
+    annotations: Vec<DiagnosticAnnotation>,
 }
 
 impl Diagnostic {
-    /// Construct an error diagnostic without a span.
+    /// Full constructor: the caller supplies the resolved severity. The
+    /// future config resolver uses this; nothing has to crack open the
+    /// struct.
     ///
     /// # Examples
     ///
     /// ```
-    /// use mos_core::{Diagnostic, DiagnosticCode, Severity};
+    /// use mos_core::{Diagnostic, Severity, codes};
     ///
-    /// let diagnostic = Diagnostic::error(DiagnosticCode("E001"), "boom");
-    ///
-    /// assert_eq!(diagnostic.severity, Severity::Error);
+    /// // Promote a warning-by-default code to an error.
+    /// let d = Diagnostic::new(&codes::MOS0020, Severity::Error, None, "promoted");
+    /// assert_eq!(d.severity(), Severity::Error);
     /// ```
-    pub fn error(code: DiagnosticCode, message: impl Into<String>) -> Self {
+    pub fn new(
+        def: &'static DiagnosticDef,
+        severity: Severity,
+        span: Option<SourceSpan>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
-            severity: Severity::Error,
-            code,
+            def,
+            severity,
+            span,
             message: message.into(),
-            span: None,
-            notes: Vec::new(),
-            suggestions: Vec::new(),
+            annotations: Vec::new(),
         }
     }
 
-    /// Attach a span to a diagnostic.
+    /// Convenience: severity defaults to `def.default_severity()`.
     ///
     /// # Examples
     ///
     /// ```
-    /// use std::path::PathBuf;
+    /// use mos_core::{Diagnostic, Severity, codes};
     ///
-    /// use mos_core::{Diagnostic, DiagnosticCode, SourceSpan};
-    ///
-    /// let diagnostic = Diagnostic::error(DiagnosticCode("E001"), "boom")
-    ///     .with_span(SourceSpan::placeholder(PathBuf::from("main.mos")));
-    ///
-    /// assert!(diagnostic.span.is_some());
+    /// let d = Diagnostic::simple(&codes::MOS0300, None, "substituted Noto Sans");
+    /// assert_eq!(d.severity(), Severity::Notice);
     /// ```
+    pub fn simple(
+        def: &'static DiagnosticDef,
+        span: Option<SourceSpan>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::new(def, def.default_severity(), span, message)
+    }
+
+    /// Attach a sub-message annotation, builder-style.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_core::{Diagnostic, DiagnosticAnnotation, codes};
+    ///
+    /// let d = Diagnostic::simple(&codes::MOS0141, None, "unknown label")
+    ///     .with_annotation(DiagnosticAnnotation::Help("did you mean `@intro`?".to_owned()));
+    /// assert_eq!(d.annotations().len(), 1);
+    /// ```
+    #[must_use]
+    pub fn with_annotation(mut self, annotation: DiagnosticAnnotation) -> Self {
+        self.annotations.push(annotation);
+        self
+    }
+
+    /// Attach a span, builder-style.
     #[must_use]
     pub fn with_span(mut self, span: SourceSpan) -> Self {
         self.span = Some(span);
         self
     }
+
+    /// The registry definition behind this diagnostic.
+    #[must_use]
+    pub fn def(&self) -> &'static DiagnosticDef {
+        self.def
+    }
+
+    /// The resolved severity carried by this instance.
+    #[must_use]
+    pub fn severity(&self) -> Severity {
+        self.severity
+    }
+
+    /// The primary span, if any.
+    #[must_use]
+    pub fn span(&self) -> Option<&SourceSpan> {
+        self.span.as_ref()
+    }
+
+    /// The primary message.
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// The attached sub-message annotations, in attach order.
+    #[must_use]
+    pub fn annotations(&self) -> &[DiagnosticAnnotation] {
+        &self.annotations
+    }
 }
 
 impl std::fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}] {}", self.code.0, self.message)
+        write!(f, "[{}] {}", self.def.code(), self.message)
     }
 }
 

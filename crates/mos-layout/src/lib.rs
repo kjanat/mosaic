@@ -896,7 +896,7 @@ mod tests {
     fn cyrillic_flows_through_embedded_default_without_substitution() {
         // The default text family is bundled Noto Sans, which covers
         // Cyrillic. The run carries the original UTF-8 text verbatim
-        // and a non-empty shaped glyph stream; no W040 (the diagnostic
+        // and a non-empty shaped glyph stream; no substitution diagnostic (the warning
         // is retired) and no `?` substitution.
         let mut doc = Document::new(PathBuf::from("test.mos"));
         make_paragraph(&mut doc, "Привет");
@@ -934,7 +934,7 @@ mod tests {
         // Polish + Czech: every char is either a WinAnsi native
         // (`ó`, `r`, `i`, …) or an extended glyph reachable via
         // `extended_glyph_name` (`ł`, `Ł`, `ě`, `ř`; `ž` is WinAnsi at 0x9E).
-        // No substitution, no W040.
+        // No substitution, no diagnostic.
         let mut doc = Document::new(PathBuf::from("test.mos"));
         make_paragraph(&mut doc, "Łódź — Příliš");
         let result = LayoutEngine::new().layout(&doc);
@@ -955,7 +955,7 @@ mod tests {
 
     #[test]
     fn cjk_and_emoji_flow_through_without_diagnostics() {
-        // W040 is retired. CJK and emoji are not covered by bundled
+        // The substitution warning is retired. CJK and emoji are not covered by bundled
         // Noto Sans Regular either, but the layout engine no longer
         // filters them — they pass through to the shaped glyph stream
         // (rustybuzz emits `.notdef` glyphs for missing coverage,
@@ -964,8 +964,8 @@ mod tests {
         make_paragraph(&mut doc, "日本語 🦀");
         let result = LayoutEngine::new().layout(&doc);
         assert!(
-            !result.diagnostics.iter().any(|d| d.code.0 == "W040"),
-            "W040 should be retired, got {:?}",
+            result.diagnostics.is_empty(),
+            "uncovered glyphs should flow through without a diagnostic, got {:?}",
             result.diagnostics
         );
     }
@@ -973,7 +973,7 @@ mod tests {
     #[test]
     fn winansi_chars_pass_through_without_warning() {
         // café / §1 / Straße all live in WinAnsi (Latin-1 + section
-        // sign + germandbls). No substitution, no W040.
+        // sign + germandbls). No substitution, no diagnostic.
         let mut doc = Document::new(PathBuf::from("test.mos"));
         make_paragraph(&mut doc, "café §1 Straße");
         let result = LayoutEngine::new().layout(&doc);

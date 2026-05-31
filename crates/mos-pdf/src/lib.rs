@@ -30,7 +30,7 @@ mod images;
 use std::collections::HashMap;
 use std::path::Path;
 
-use mos_core::{CoreError, Diagnostic, DiagnosticCode, Result, Severity};
+use mos_core::{CoreError, Diagnostic, Result, codes};
 use mos_fonts::EmbeddedFontId;
 use mos_layout::{Base14Font, Font, PageGraph, TextRun};
 use pdf_writer::types::{SystemInfo, UnicodeCmap};
@@ -69,7 +69,7 @@ pub struct PdfMetadata {
 /// directory if it doesn't already exist.
 ///
 /// Returns any diagnostics raised during PDF emission — currently
-/// only `W041` (per-font extended-glyph budget exhausted). Layout
+/// only `MOS0310` (per-font extended-glyph budget exhausted). Layout
 /// diagnostics flow through [`mos_layout::LayoutResult::diagnostics`]
 /// separately; callers (the CLI) typically render both.
 ///
@@ -112,19 +112,12 @@ pub fn emit(graph: &PageGraph, metadata: &PdfMetadata, out: &Path) -> Result<Vec
 }
 
 fn io_diagnostic(message: String) -> CoreError {
-    CoreError::Diagnostic(Box::new(Diagnostic {
-        severity: Severity::Error,
-        code: DiagnosticCode("E090"),
-        message,
-        span: None,
-        notes: Vec::new(),
-        suggestions: Vec::new(),
-    }))
+    CoreError::Diagnostic(Box::new(Diagnostic::simple(&codes::MOS0400, None, message)))
 }
 
 /// Build the PDF bytes from `graph`. Pulled out of [`emit`] so tests
 /// can round-trip without touching the filesystem. Returns the bytes
-/// plus any encoding diagnostics (currently `W041` for Base14
+/// plus any encoding diagnostics (currently `MOS0310` for Base14
 /// `/Differences` overflow). Kept `pub(crate)` — the public surface
 /// is [`emit`].
 ///
@@ -922,7 +915,7 @@ mod tests {
     #[test]
     fn emit_fails_with_e090_when_target_is_a_directory() -> TestResult {
         // Writing a file whose path collides with an existing
-        // directory must surface as an `E090` diagnostic, not a
+        // directory must surface as an `MOS0400` diagnostic, not a
         // panic or an `Unimplemented` error.
         let dir = unique_temp_path("conflict");
         std::fs::create_dir_all(&dir)?;
@@ -936,11 +929,15 @@ mod tests {
         let CoreError::Diagnostic(d) = err else {
             return Err("expected Diagnostic, got Unimplemented".into());
         };
-        ensure!(d.code.0 == "E090", "wrong code: {:?}", d.code.0);
         ensure!(
-            d.message.contains("could not write PDF"),
+            d.def().code() == codes::MOS0400.code(),
+            "wrong code: {:?}",
+            d.def().code()
+        );
+        ensure!(
+            d.message().contains("could not write PDF"),
             "message={:?}",
-            d.message
+            d.message()
         );
         Ok(())
     }

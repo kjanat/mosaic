@@ -11,7 +11,10 @@ use std::path::{Component, Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
 
 use clap::{Parser, Subcommand};
-use mos_core::{Diagnostic, Severity, SourceSpan, linecol};
+use mos_core::{
+    Diagnostic, DiagnosticAnnotation, DiagnosticResult, DiagnosticSink, Severity, SourceSpan,
+    linecol,
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -177,31 +180,36 @@ fn run_check(entry: &Path) -> ExitCode {
         }
     };
 
-    let result = mos_eval::lower(&src, &entry);
-    let errors = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .count();
-    let warnings = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Warning)
-        .count();
+    let mut sink = RenderingSink::new(&src);
 
-    for diag in &result.diagnostics {
-        render_diagnostic(diag, &src);
+    // Parse phase. A parse error stops the pipeline before lowering, so
+    // the evaluator never runs on a structurally broken tree and the
+    // user sees every recoverable syntax diagnostic in one pass.
+    let Ok(tree) = mos_parse::parse(&src, &entry, &mut sink) else {
+        return ExitCode::FAILURE;
+    };
+    if sink.had_error() {
+        eprintln!(
+            "mos check: {} error(s), {} warning(s)",
+            sink.errors, sink.warnings
+        );
+        return ExitCode::FAILURE;
     }
 
-    if errors == 0 {
-        println!(
-            "ok: {} node(s), {warnings} warning(s)",
-            result.document.len()
+    // Lower + resolve phase.
+    let result = mos_eval::lower_tree(&tree);
+    let node_count = result.document.len();
+    sink.render_all(result.diagnostics);
+
+    if sink.had_error() {
+        eprintln!(
+            "mos check: {} error(s), {} warning(s)",
+            sink.errors, sink.warnings
         );
-        ExitCode::SUCCESS
-    } else {
-        eprintln!("mos check: {errors} error(s), {warnings} warning(s)");
         ExitCode::FAILURE
+    } else {
+        println!("ok: {node_count} node(s), {} warning(s)", sink.warnings);
+        ExitCode::SUCCESS
     }
 }
 
@@ -223,26 +231,30 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
     };
 
     let started = std::time::Instant::now();
-    let result = mos_eval::lower(&src, &entry);
-    for diag in &result.diagnostics {
-        render_diagnostic(diag, &src);
-    }
-    if result.has_errors() {
+    let mut sink = RenderingSink::new(&src);
+
+    // Each phase runs to completion, then the barrier below stops the
+    // build before the next phase if any error was collected — so a
+    // broken document never reaches PDF emission and writes garbage.
+    let Ok(tree) = mos_parse::parse(&src, &entry, &mut sink) else {
+        return ExitCode::FAILURE;
+    };
+    if sink.had_error() {
         return ExitCode::FAILURE;
     }
 
-    let layout = mos_layout::LayoutEngine::new().layout(&result.document);
-    for diag in &layout.diagnostics {
-        render_diagnostic(diag, &src);
+    let result = mos_eval::lower_tree(&tree);
+    sink.render_all(result.diagnostics);
+    if sink.had_error() {
+        return ExitCode::FAILURE;
     }
-    // Layout can now produce real errors (E023 unknown paper, E025
+
+    // Layout can produce real errors (MOS0200 unknown paper, MOS0201
     // geometrically invalid margin/leading). Don't ship a PDF with
     // broken config under a success exit code.
-    if layout
-        .diagnostics
-        .iter()
-        .any(|d| d.severity == Severity::Error)
-    {
+    let layout = mos_layout::LayoutEngine::new().layout(&result.document);
+    sink.render_all(layout.diagnostics);
+    if sink.had_error() {
         return ExitCode::FAILURE;
     }
 
@@ -263,19 +275,16 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
     };
     match mos_pdf::emit(&layout.graph, &metadata, &out) {
         Ok(pdf_diagnostics) => {
-            for diag in &pdf_diagnostics {
-                render_diagnostic(diag, &src);
-            }
-            if pdf_diagnostics
-                .iter()
-                .any(|d| d.severity == Severity::Error)
-            {
+            sink.render_all(pdf_diagnostics);
+            if sink.had_error() {
                 return ExitCode::FAILURE;
             }
         }
         Err(err) => {
             match err {
-                mos_core::CoreError::Diagnostic(d) => render_diagnostic(&d, &src),
+                mos_core::CoreError::Diagnostic(d) => {
+                    let _ = sink.emit(*d);
+                }
                 mos_core::CoreError::Unimplemented(msg) => {
                     eprintln!("mos build: {msg}");
                 }
@@ -412,38 +421,85 @@ fn open_pdf(path: &Path, request: PdfOpen<'_>) -> Result<(), String> {
     }
 }
 
+/// A [`DiagnosticSink`] that renders each diagnostic to stderr as it
+/// arrives and tracks error/warning counts. The CLI drives one of these
+/// across every phase and checks [`Self::had_error`] at each phase
+/// barrier — that, not `Severity::Error` itself, is what stops the build.
+struct RenderingSink<'a> {
+    src: &'a str,
+    errors: usize,
+    warnings: usize,
+}
+
+impl<'a> RenderingSink<'a> {
+    fn new(src: &'a str) -> Self {
+        Self {
+            src,
+            errors: 0,
+            warnings: 0,
+        }
+    }
+
+    fn had_error(&self) -> bool {
+        self.errors > 0
+    }
+
+    /// Render every diagnostic in `diags`. Bridges phases that still
+    /// return a `Vec<Diagnostic>` (layout, PDF emit) into the sink.
+    fn render_all(&mut self, diags: impl IntoIterator<Item = Diagnostic>) {
+        for diag in diags {
+            let _ = self.emit(diag);
+        }
+    }
+}
+
+impl DiagnosticSink for RenderingSink<'_> {
+    fn emit(&mut self, diagnostic: Diagnostic) -> DiagnosticResult<()> {
+        match diagnostic.severity() {
+            Severity::Error => self.errors += 1,
+            Severity::Warning => self.warnings += 1,
+            Severity::Notice => {}
+        }
+        render_diagnostic(&diagnostic, self.src);
+        Ok(())
+    }
+}
+
 fn severity_label(s: Severity) -> &'static str {
     match s {
         Severity::Error => "error",
         Severity::Warning => "warning",
-        Severity::Note => "note",
-        Severity::Help => "help",
+        Severity::Notice => "notice",
     }
 }
 
 fn render_diagnostic(diag: &Diagnostic, src: &str) {
-    let label = severity_label(diag.severity);
-    if let Some(span) = &diag.span {
+    let label = severity_label(diag.severity());
+    let code = diag.def().code();
+    if let Some(span) = diag.span() {
         let (line, col) = linecol(src, span.start);
         eprintln!(
             "{label}[{code}]: {msg}\n  --> {file}:{line}:{col}",
-            code = diag.code.0,
-            msg = diag.message,
+            msg = diag.message(),
             file = span.file.display(),
         );
         render_span_caret(src, span);
     } else {
-        eprintln!(
-            "{label}[{code}]: {msg}",
-            code = diag.code.0,
-            msg = diag.message
-        );
+        eprintln!("{label}[{code}]: {msg}", msg = diag.message());
     }
-    for note in &diag.notes {
-        eprintln!("  note: {}", note.message);
-    }
-    for sug in &diag.suggestions {
-        eprintln!("  help: {}", sug.message);
+    for annotation in diag.annotations() {
+        match annotation {
+            DiagnosticAnnotation::Related { span, message } => {
+                let (line, col) = linecol(src, span.start);
+                eprintln!(
+                    "  note: {message} ({file}:{line}:{col})",
+                    file = span.file.display(),
+                );
+            }
+            DiagnosticAnnotation::Note(message) => eprintln!("  note: {message}"),
+            DiagnosticAnnotation::Help(message) => eprintln!("  help: {message}"),
+            DiagnosticAnnotation::Hint(message) => eprintln!("  hint: {message}"),
+        }
     }
 }
 

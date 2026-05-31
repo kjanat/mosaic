@@ -28,6 +28,8 @@
 
 use std::path::Path;
 
+use mos_core::{DiagnosticResult, DiagnosticSink};
+
 pub use syntax::{
     DirectiveKind, Inline, InlineKind, Item, LengthUnit, ListItem, ParseResult, RawBlockKind,
     RawBlockView, SetArg, SetValue, SyntaxTree,
@@ -43,26 +45,43 @@ mod syntax;
 
 use parser::Parser;
 
-/// Parse a Mosaic source string. Always returns a [`ParseResult`]; the
-/// parser is recoverable per manifest §6 stage 1.
+/// Parse a Mosaic source string, emitting recoverable diagnostics to
+/// `sink` (manifest §6 stage 1). Returns the [`SyntaxTree`]; the parser
+/// never structurally aborts, so the `Err` arm only fires if the sink
+/// itself asks to stop.
 ///
 /// # Examples
 ///
 /// ```
 /// use std::path::Path;
 ///
+/// use mos_core::CollectingSink;
 /// use mos_parse::{InlineKind, Item, parse};
 ///
-/// let result = parse("= Hello\n", Path::new("main.mos"));
+/// let mut sink = CollectingSink::new();
+/// let tree = parse("= Hello\n", Path::new("main.mos"), &mut sink)
+///     .expect("parse never structurally aborts");
 ///
-/// assert!(!result.has_errors());
-/// assert!(matches!(result.tree.items[0], Item::Heading { .. }));
-/// let Item::Heading { inlines, .. } = &result.tree.items[0] else {
+/// assert!(!sink.had_error());
+/// assert!(matches!(tree.items[0], Item::Heading { .. }));
+/// let Item::Heading { inlines, .. } = &tree.items[0] else {
 ///     unreachable!();
 /// };
 /// assert_eq!(inlines[0].kind, InlineKind::Text);
 /// ```
-#[must_use]
-pub fn parse(src: &str, file: &Path) -> ParseResult {
-    Parser::new(src, file).run()
+///
+/// # Errors
+///
+/// Returns [`DiagnosticAbort`](mos_core::DiagnosticAbort) only if `sink`
+/// asks the parse to stop; the in-tree sinks never do.
+pub fn parse(
+    src: &str,
+    file: &Path,
+    sink: &mut dyn DiagnosticSink,
+) -> DiagnosticResult<SyntaxTree> {
+    let ParseResult { tree, diagnostics } = Parser::new(src, file).run();
+    for diagnostic in diagnostics {
+        sink.emit(diagnostic)?;
+    }
+    Ok(tree)
 }

@@ -22,7 +22,8 @@ mod set_schema;
 use std::collections::BTreeMap;
 
 use mos_core::{
-    AttrMap, AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, Severity, SourceSpan, StyleId,
+    AttrMap, AttrValue, CollectingSink, Diagnostic, Document, Node, NodeId, NodeKind, Severity,
+    SourceSpan, StyleId,
 };
 use mos_parse::{DirectiveKind, Item, RawBlockKind, SyntaxTree};
 
@@ -65,10 +66,13 @@ pub struct DocumentMetadata {
 /// ```
 /// use std::path::Path;
 ///
+/// use mos_core::CollectingSink;
 /// use mos_eval::{Evaluator, LowerResult};
 ///
-/// let parsed = mos_parse::parse("= Hello\n", Path::new("main.mos"));
-/// let result: LowerResult = Evaluator::new().evaluate(&parsed.tree);
+/// let mut sink = CollectingSink::new();
+/// let tree = mos_parse::parse("= Hello\n", Path::new("main.mos"), &mut sink)
+///     .expect("parse never structurally aborts");
+/// let result: LowerResult = Evaluator::new().evaluate(&tree);
 ///
 /// assert!(!result.has_errors());
 /// ```
@@ -95,7 +99,7 @@ impl LowerResult {
     pub fn has_errors(&self) -> bool {
         self.diagnostics
             .iter()
-            .any(|d| d.severity == Severity::Error)
+            .any(|d| d.severity() == Severity::Error)
     }
 }
 
@@ -137,10 +141,13 @@ impl Evaluator {
     /// ```
     /// use std::path::Path;
     ///
+    /// use mos_core::CollectingSink;
     /// use mos_eval::Evaluator;
     ///
-    /// let parsed = mos_parse::parse("= Hello\n", Path::new("main.mos"));
-    /// let result = Evaluator::new().evaluate(&parsed.tree);
+    /// let mut sink = CollectingSink::new();
+    /// let tree = mos_parse::parse("= Hello\n", Path::new("main.mos"), &mut sink)
+    ///     .expect("parse never structurally aborts");
+    /// let result = Evaluator::new().evaluate(&tree);
     ///
     /// assert_eq!(result.document.len(), 3);
     /// ```
@@ -231,7 +238,7 @@ impl Evaluator {
                     // and `#image(...)` are both parsed with `name ==
                     // "image"`, and dispatching on the string would
                     // route `#set image(width: 200pt)` into the image
-                    // loader and incorrectly raise E050 "missing path".
+                    // loader and incorrectly raise MOS0160 "missing path".
                     DirectiveKind::Image => {
                         lower_image_directive(
                             &mut document,
@@ -327,15 +334,42 @@ fn lower_raw_block(
 /// assert_eq!(result.document.len(), 3);
 /// ```
 pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
-    let parse_result = mos_parse::parse(src, file);
-    let mut diagnostics = parse_result.diagnostics;
-    let mut lower = Evaluator::new().evaluate(&parse_result.tree);
-    diagnostics.append(&mut lower.diagnostics);
-    diagnostics.extend(resolve(&mut lower.document));
+    let mut sink = CollectingSink::new();
+    let tree = match mos_parse::parse(src, file, &mut sink) {
+        Ok(tree) => tree,
+        // `CollectingSink` never asks the parser to abort; this arm is
+        // unreachable in practice but keeps the pipeline total.
+        Err(mos_core::DiagnosticAbort) => {
+            return LowerResult {
+                document: Document::new(file.to_path_buf()),
+                diagnostics: sink.into_diagnostics(),
+                metadata: DocumentMetadata::default(),
+            };
+        }
+    };
+    let mut diagnostics = sink.into_diagnostics();
+    let mut lowered = lower_tree(&tree);
+    diagnostics.append(&mut lowered.diagnostics);
     LowerResult {
-        document: lower.document,
+        document: lowered.document,
         diagnostics,
-        metadata: lower.metadata,
+        metadata: lowered.metadata,
+    }
+}
+
+/// Lower an already-parsed [`SyntaxTree`]: evaluate it, then run the
+/// §6 stage-3 resolver. The CLI calls this *after* `mos_parse::parse`
+/// so a phase barrier can sit between parsing and lowering; [`lower`]
+/// is the parse-and-lower convenience used by tests and embedders.
+#[must_use]
+pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
+    let mut lowered = Evaluator::new().evaluate(tree);
+    let mut diagnostics = std::mem::take(&mut lowered.diagnostics);
+    diagnostics.extend(resolve(&mut lowered.document));
+    LowerResult {
+        document: lowered.document,
+        diagnostics,
+        metadata: lowered.metadata,
     }
 }
 
@@ -349,7 +383,7 @@ mod tests {
     )]
     use std::path::PathBuf;
 
-    use mos_core::NodeKind;
+    use mos_core::{NodeKind, codes};
 
     use super::*;
 
@@ -545,8 +579,10 @@ mod tests {
     fn missing_image_path_emits_e050() {
         let r = lower("#image()\n", &PathBuf::from("/tmp/no-such.mos"));
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "E050"),
-            "expected E050, got {:?}",
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0160.code()),
+            "expected MOS0160, got {:?}",
             r.diagnostics
         );
     }
@@ -558,8 +594,10 @@ mod tests {
             &PathBuf::from("/tmp/no-such-dir/main.mos"),
         );
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "E051"),
-            "expected E051, got {:?}",
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0161.code()),
+            "expected MOS0161, got {:?}",
             r.diagnostics
         );
     }
@@ -569,18 +607,20 @@ mod tests {
         // `#image("")` is a missing-path mistake, not an I/O failure.
         // The diagnostic surface treats it the same as omitting the
         // path entirely so the user sees a clear "needs a path"
-        // message instead of `E051`/`E052` noise.
+        // message instead of `MOS0161`/`MOS0162` noise.
         let r = lower("#image(\"\")\n", &PathBuf::from("/tmp/whatever/main.mos"));
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "E050"),
-            "expected E050, got {:?}",
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0160.code()),
+            "expected MOS0160, got {:?}",
             r.diagnostics
         );
-        // No E051/E052 should leak through.
+        // No MOS0161/MOS0162 should leak through.
         assert!(
-            !r.diagnostics
-                .iter()
-                .any(|d| matches!(d.code.0, "E051" | "E052")),
+            !r.diagnostics.iter().any(|d| {
+                d.def().code() == codes::MOS0161.code() || d.def().code() == codes::MOS0162.code()
+            }),
             "unexpected I/O diagnostic: {:?}",
             r.diagnostics
         );
@@ -590,7 +630,7 @@ mod tests {
     fn non_positive_image_width_emits_e022() {
         // `width: 0pt` and `width: -10pt` would otherwise produce a
         // zero/negative image box that sails into layout and PDF
-        // emit. Reject at lower time with E022.
+        // emit. Reject at lower time with MOS0102.
         for src in [
             "#image(\"x.png\", width: 0pt)\n",
             "#image(\"x.png\", width: -10pt)\n",
@@ -599,8 +639,10 @@ mod tests {
         ] {
             let r = lower(src, &PathBuf::from("/tmp/whatever/main.mos"));
             assert!(
-                r.diagnostics.iter().any(|d| d.code.0 == "E022"),
-                "expected E022 for `{src}`, got {:?}",
+                r.diagnostics
+                    .iter()
+                    .any(|d| d.def().code() == codes::MOS0102.code()),
+                "expected MOS0102 for `{src}`, got {:?}",
                 r.diagnostics
             );
         }
@@ -614,8 +656,10 @@ mod tests {
         ] {
             let r = lower(src, &PathBuf::from("/tmp/whatever/main.mos"));
             assert!(
-                r.diagnostics.iter().any(|d| d.code.0 == "E022"),
-                "expected E022 for `{src}`, got {:?}",
+                r.diagnostics
+                    .iter()
+                    .any(|d| d.def().code() == codes::MOS0102.code()),
+                "expected MOS0102 for `{src}`, got {:?}",
                 r.diagnostics
             );
         }
@@ -636,8 +680,10 @@ mod tests {
         std::fs::write(&source, "#image(\"bad.png\")\n").unwrap();
         let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "E052"),
-            "expected E052, got {:?}",
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0162.code()),
+            "expected MOS0162, got {:?}",
             r.diagnostics
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -679,7 +725,7 @@ mod tests {
     #[test]
     fn figure_with_missing_image_does_not_leak_empty_node() {
         // If `#figure(image: "broken.png", caption: "...")` fails to
-        // load the image, the caller still emits E051; the lowerer
+        // load the image, the caller still emits MOS0161; the lowerer
         // must NOT leave a Figure (or its caption paragraph) hanging
         // on the document root. A caption-only figure renders next
         // to whatever the user thought they were captioning, which
@@ -688,7 +734,11 @@ mod tests {
             "#figure(image: \"does-not-exist.png\", caption: \"missing\")\n",
             &PathBuf::from("/tmp/no-such-dir/main.mos"),
         );
-        assert!(r.diagnostics.iter().any(|d| d.code.0 == "E051"));
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0161.code())
+        );
         assert!(
             !r.document.nodes().any(|n| n.kind == NodeKind::Figure),
             "Figure node leaked after image load failure",
@@ -698,7 +748,7 @@ mod tests {
     #[test]
     fn figure_directive_accepts_positional_path() {
         // `#figure("path.png")` is the captionless short form. The
-        // parser accepts it; the lowerer used to reject it with E015,
+        // parser accepts it; the lowerer used to reject it with MOS0103,
         // which broke the spelling end-to-end.
         let png_path = write_tiny_png("fig_pos.png");
         let source = png_path.parent().unwrap().join("main.mos");

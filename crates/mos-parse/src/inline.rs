@@ -1,5 +1,7 @@
 use crate::parser::Parser;
 use crate::support::{find_byte, scan_label_chars};
+use mos_core::codes;
+
 use crate::{Inline, InlineKind};
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -151,7 +153,7 @@ impl Parser<'_> {
                 // `C:\Temp` / `\*foo*` / etc. would be noisy.
                 if i + 1 >= bytes.len() {
                     self.diagnostics.push(self.warn(
-                        "W025",
+                        &codes::MOS0024,
                         "lone trailing `\\` is not a recognized escape; treated as literal text",
                         base + i,
                         base + i + 1,
@@ -245,7 +247,7 @@ impl Parser<'_> {
                     continue;
                 }
                 self.diagnostics.push(self.warn(
-                    "W022",
+                    &codes::MOS0022,
                     "unterminated `` `code` `` run; treated as text",
                     base + i,
                     base + i + 1,
@@ -276,7 +278,7 @@ impl Parser<'_> {
                     continue;
                 }
                 self.diagnostics.push(self.warn(
-                    "W023",
+                    &codes::MOS0023,
                     "stray `@` is not followed by a label identifier; treated as text",
                     base + i,
                     base + i + 1,
@@ -367,13 +369,13 @@ impl Parser<'_> {
     fn warn_unterminated_delimiter(&mut self, base: usize, i: usize, delimiter: Delimiter) {
         match delimiter {
             Delimiter::Strong => self.diagnostics.push(self.warn(
-                "W020",
+                &codes::MOS0020,
                 "unterminated `**strong**` run; treated as text",
                 base + i,
                 base + i + 2,
             )),
             Delimiter::Emphasis => self.diagnostics.push(self.warn(
-                "W021",
+                &codes::MOS0021,
                 "unterminated `*emphasis*` run; treated as text",
                 base + i,
                 base + i + 1,

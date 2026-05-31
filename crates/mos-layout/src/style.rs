@@ -1,4 +1,4 @@
-use mos_core::{AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeKind, Severity};
+use mos_core::{AttrValue, Diagnostic, Document, Node, NodeKind, codes};
 use mos_fonts::FontFamily;
 
 use crate::{PageStyle, TextStyle};
@@ -52,16 +52,13 @@ fn apply_page_set(
             next.width_pt = w;
             next.height_pt = h;
         } else {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                code: DiagnosticCode("E023"),
-                message: format!(
+            diagnostics.push(Diagnostic::simple(
+                &codes::MOS0200,
+                Some(node.span.clone()),
+                format!(
                     "unknown paper size `{name}` (expected an ISO A/B size or `Letter`/`Legal`)"
                 ),
-                span: Some(node.span.clone()),
-                notes: Vec::new(),
-                suggestions: Vec::new(),
-            });
+            ));
         }
     }
     if let Some(AttrValue::Length(pt)) = node.attributes.get("set.arg.margin") {
@@ -150,18 +147,11 @@ fn apply_text_set(
     *text = next;
 }
 
-/// Build an `E025` diagnostic for a `#set` argument whose value, while
+/// Build an `MOS0201` diagnostic for a `#set` argument whose value, while
 /// well-typed, would produce broken page geometry. The value is *not*
 /// applied; the previous (or default) value is retained.
 fn reject(node: &Node, message: String) -> Diagnostic {
-    Diagnostic {
-        severity: Severity::Error,
-        code: DiagnosticCode("E025"),
-        message,
-        span: Some(node.span.clone()),
-        notes: Vec::new(),
-        suggestions: Vec::new(),
-    }
+    Diagnostic::simple(&codes::MOS0201, Some(node.span.clone()), message)
 }
 
 /// Narrow an `f64` measurement (always a small positive page-pt or
@@ -235,6 +225,7 @@ mod tests {
 
     use mos_core::{
         AttrMap, AttrValue, ContentHash, Document, Node, NodeId, NodeKind, SourceSpan, StyleId,
+        codes,
     };
 
     use crate::{A4_WIDTH_PT, MARGIN_PT};
@@ -321,7 +312,11 @@ mod tests {
 
         let (page, _, diagnostics) = resolve_styles(&doc);
 
-        assert!(diagnostics.iter().any(|d| d.code.0 == "E025"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0201.code())
+        );
         assert!((page.margin_pt - MARGIN_PT).abs() < 0.5);
     }
 
@@ -332,7 +327,11 @@ mod tests {
 
         let (_, _, diagnostics) = resolve_styles(&doc);
 
-        assert!(diagnostics.iter().any(|d| d.code.0 == "E025"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0201.code())
+        );
     }
 
     #[test]
@@ -355,8 +354,10 @@ mod tests {
         let (page, _, diagnostics) = resolve_styles(&doc);
 
         assert!(
-            diagnostics.iter().any(|d| d.code.0 == "E025"),
-            "expected E025 from paper shrink, got {diagnostics:?}"
+            diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0201.code()),
+            "expected MOS0201 from paper shrink, got {diagnostics:?}"
         );
         assert!(
             (page.width_pt - 2383.94).abs() < 1.0,
@@ -373,7 +374,11 @@ mod tests {
 
         let (_, text, diagnostics) = resolve_styles(&doc);
 
-        assert!(diagnostics.iter().any(|d| d.code.0 == "E025"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0201.code())
+        );
         assert!((text.size_pt - 50.0).abs() < 0.01);
     }
 
@@ -392,8 +397,9 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.code.0 == "E025" && d.message.contains("page change")),
-            "expected E025 about page change, got {diagnostics:?}"
+                .any(|d| d.def().code() == codes::MOS0201.code()
+                    && d.message().contains("page change")),
+            "expected MOS0201 about page change, got {diagnostics:?}"
         );
         assert!((page.width_pt - A4_WIDTH_PT).abs() < 0.5);
         assert!((text.size_pt - 100.0).abs() < 0.01);
@@ -409,8 +415,9 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.code.0 == "E025" && d.message.contains("vertical space")),
-            "expected E025 about vertical space, got {diagnostics:?}"
+                .any(|d| d.def().code() == codes::MOS0201.code()
+                    && d.message().contains("vertical space")),
+            "expected MOS0201 about vertical space, got {diagnostics:?}"
         );
         assert_eq!(text.size_pt, crate::types::BODY_SIZE_PT);
     }
@@ -425,10 +432,9 @@ mod tests {
 
         let msg = diagnostics
             .iter()
-            .find(|d| d.code.0 == "E025")
-            .expect("E025 emitted")
-            .message
-            .as_str();
+            .find(|d| d.def().code() == codes::MOS0201.code())
+            .expect("MOS0201 emitted")
+            .message();
         assert!(
             msg.contains("previous value retained"),
             "message does not say `previous value retained`: {msg}"
@@ -442,7 +448,11 @@ mod tests {
 
         let (_, _, diagnostics) = resolve_styles(&doc);
 
-        assert!(diagnostics.iter().any(|d| d.code.0 == "E025"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0201.code())
+        );
     }
 
     #[test]
@@ -456,7 +466,11 @@ mod tests {
 
         let (page, _, diagnostics) = resolve_styles(&doc);
 
-        assert!(diagnostics.iter().any(|d| d.code.0 == "E023"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0200.code())
+        );
         assert!((page.width_pt - A4_WIDTH_PT).abs() < 0.5);
     }
 

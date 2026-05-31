@@ -114,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // a lint-suppression annotation we're not allowed to add.
     let errors: Vec<_> = diags
         .iter()
-        .filter(|d| d.severity == Severity::Error)
+        .filter(|d| d.severity() == Severity::Error)
         .collect();
     if !errors.is_empty() {
         return Err(format!("emit produced error diagnostics: {errors:?}").into());

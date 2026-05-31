@@ -2,8 +2,8 @@
 //!
 //! Each [`Target`] (e.g. `page`, `text`, `document`) advertises a fixed
 //! list of `(key, slot type)` pairs. Unknown targets and unknown keys
-//! produce diagnostics in the lowerer (`E020`/`E021`). Slot types drive
-//! the `coerce_value` step and `E022` type-mismatch messages.
+//! produce diagnostics in the lowerer (`MOS0100`/`MOS0101`). Slot types drive
+//! the `coerce_value` step and `MOS0102` type-mismatch messages.
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub(crate) enum Target {
@@ -14,7 +14,7 @@ pub(crate) enum Target {
     /// and `height` are recognised. The MVP 1.5 emit path doesn't yet
     /// pick these defaults up on bare images (only explicit per-call
     /// width/height apply), but accepting them in the schema keeps
-    /// `#set image(width: ...)` from emitting E020 today.
+    /// `#set image(width: ...)` from emitting MOS0100 today.
     Image,
 }
 

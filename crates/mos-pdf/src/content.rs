@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use mos_core::{CoreError, Diagnostic, DiagnosticCode, DiagnosticNote, Result, Severity};
+use mos_core::{CoreError, Diagnostic, DiagnosticAnnotation, Result, codes};
 use mos_fonts::EmbeddedFontId;
 use mos_layout::{Font, TextRun};
 use pdf_writer::{Content, Name, Str, TextStr};
@@ -85,19 +85,17 @@ fn emit_text_run(
         }
         Font::Embedded(id) => {
             let plan = embedded_by_id.get(&id).ok_or_else(|| {
-                CoreError::Diagnostic(Box::new(Diagnostic {
-                    severity: Severity::Error,
-                    code: DiagnosticCode("E092"),
-                    message: format!("missing embedded font plan for {:?} (id {id:?})", run.font),
-                    span: None,
-                    notes: vec![DiagnosticNote {
-                        message:
-                            "PDF emission expected an embedded plan for every embedded text run"
-                                .to_owned(),
-                        span: None,
-                    }],
-                    suggestions: Vec::new(),
-                }))
+                CoreError::Diagnostic(Box::new(
+                    Diagnostic::simple(
+                        &codes::MOS0402,
+                        None,
+                        format!("missing embedded font plan for {:?} (id {id:?})", run.font),
+                    )
+                    .with_annotation(DiagnosticAnnotation::Note(
+                        "PDF emission expected an embedded plan for every embedded text run"
+                            .to_owned(),
+                    )),
+                ))
             })?;
             emit_embedded_glyph_run(content, plan, run, y_from_bottom);
         }
@@ -246,15 +244,15 @@ mod tests {
             other => return Err(format!("expected diagnostic error, got {other:?}").into()),
         };
         ensure!(
-            diagnostic.code.0 == "E092",
+            diagnostic.def().code() == codes::MOS0402.code(),
             "wrong code: {:?}",
-            diagnostic.code.0
+            diagnostic.def().code()
         );
         ensure!(
-            diagnostic.message.contains("Embedded(Regular)")
-                && diagnostic.message.contains("Regular"),
+            diagnostic.message().contains("Embedded(Regular)")
+                && diagnostic.message().contains("Regular"),
             "missing context in message: {:?}",
-            diagnostic.message
+            diagnostic.message()
         );
         Ok(())
     }
