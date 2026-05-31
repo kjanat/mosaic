@@ -26,10 +26,12 @@ cross-references currently supported by `mos check` / `mos build`.
 
 - Headings become `NodeKind::Section` with `level`, optional `label`, and inline children.
 - Paragraphs become `NodeKind::Paragraph` with optional `label` and inline children.
-- Inline text/emphasis/strong/code/reference become `Text`, `Emphasis`, `Strong`, `Raw`, and
-  `Reference` nodes.
+- Inline text/emphasis/strong/code/reference/citation become `Text`, `Emphasis`, `Strong`, `Raw`,
+  `Reference`, and `Citation` nodes.
 - References start with visible placeholder text like `?intro?`; resolution overwrites it when the
   label exists.
+- Citations start with visible placeholder text like `[?smith2024?]`; bibliography loading and
+  citation resolution are later work.
 - Lists become `List` nodes with an `ordered` boolean and nested `ListItem` children.
 - Raw pre/code blocks become `Raw` nodes with `text`, optional `label`, and `raw.kind` attributes.
 - `#set` directives become `Raw` nodes tagged with `set` and `set.arg.*` attributes.
@@ -108,7 +110,8 @@ See @intro.
 ## Known Non-Goals
 
 - No user functions, `#let`, templates, or scripting runtime.
-- No bibliography, citations, math/equation semantics, theorem/footnote/index/glossary handling.
+- No bibliography resolution/rendering, citation clusters, math/equation semantics,
+  theorem/footnote/index/glossary handling.
 - No figure/equation numbering beyond generic label lookup.
 - No page references, TOC resolution, or layout-dependent fixpoint.
 - No package resolution, registry access, persistent cache, or project-output semantics.

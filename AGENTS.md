@@ -44,10 +44,11 @@ Implemented now:
 - `mos check`: parse, lower, resolve, source diagnostics; accepts `.mos` files or project dirs.
 - `mos build`: parse, lower, layout, emit PDF under `build/<entry-stem>.pdf` for direct files or
   project-declared `[output].pdf` paths.
-- Parser: headings, paragraphs, inline emphasis/strong/nested bold-italic/code, labels/references,
-  lists, `#set`, `#image`, `#figure`, `\\` hard break, `\-` soft hyphen, U+00A0 NBSP.
+- Parser: headings, paragraphs, inline emphasis/strong/nested bold-italic/code,
+  labels/references/citations, lists, `#set`, `#image`, `#figure`, `\\` hard break, `\-` soft
+  hyphen, U+00A0 NBSP.
 - Lowerer/resolver: semantic `Document`, metadata, section numbering, duplicate/unknown label
-  diagnostics, generic reference text, hard-break semantic nodes.
+  diagnostics, generic reference text, citation placeholder nodes, hard-break semantic nodes.
 - Layout: greedy text flow, headings, paragraphs, lists, images, simple figures/captions, pages,
   paper sizes, margins, text styles, NBSP/hard-break/greedy soft-hyphen controls, NFC-normalized
   text, embedded glyph fallback sub-runs.

@@ -53,6 +53,7 @@ codes use the next free integer.
 | MOS0034 | unterminated-code          | Warning          | mos-parse   | syntax: unterminated `code` run; treated as text                 |
 | MOS0036 | stray-at-sign              | Warning          | mos-parse   | syntax: stray @ not followed by a label; treated as text         |
 | MOS0038 | lone-trailing-backslash    | Warning          | mos-parse   | syntax: lone trailing backslash at end of input; treated as text |
+| MOS0039 | malformed-citation         | Warning          | mos-parse   | syntax: malformed citation group; treated as text                |
 
 ### Semantic
 

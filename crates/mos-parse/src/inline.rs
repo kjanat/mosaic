@@ -286,6 +286,63 @@ impl Parser<'_> {
                 i += 1;
                 continue;
             }
+            if c == b'[' && i + 1 < bytes.len() && bytes[i + 1] == b'@' {
+                // `[@key]` — citation. Only enter the citation branch
+                // once we have seen `[@`, so a bare `[` keeps its
+                // current literal-text behaviour and never warns.
+                let key_start = i + 2;
+                let key_end = scan_label_chars(bytes, key_start);
+                if key_end > key_start && key_end < bytes.len() && bytes[key_end] == b']' {
+                    self.flush_styled_text_with_pending(
+                        &mut out,
+                        slice,
+                        base,
+                        text_start,
+                        i,
+                        style,
+                        &mut pending,
+                        &mut pending_source_start,
+                    );
+                    let end = key_end + 1;
+                    out.push(Inline {
+                        kind: InlineKind::Citation,
+                        text: slice[key_start..key_end].to_owned(),
+                        span: self.span(base + i, base + end),
+                    });
+                    i = end;
+                    text_start = i;
+                    continue;
+                }
+                // Either the key was empty, the `]` was missing, or
+                // the body uses a not-yet-supported form (`[@a; @b]`,
+                // prefix/suffix). Warn once and *consume* the
+                // citation-candidate extent so the trailing `@key`
+                // bytes don't fall back through to the `@`-reference
+                // branch — that would surface a bogus MOS0033 in the
+                // resolver for what was syntactically a malformed
+                // citation, not an unknown label.
+                //
+                // Recovery extent:
+                // * if a `]` exists later in this inline slice,
+                //   consume up to and including it (covers
+                //   `[@a; @b]`, `[@see @key, p. 33]`, `[@]`);
+                // * otherwise skip past `[@` only (covers truly
+                //   unterminated `[@key…` at end of paragraph) and
+                //   let the bare key chars settle as literal text.
+                let recovery_end = if let Some(close) = find_byte(bytes, b']', key_start) {
+                    close + 1
+                } else {
+                    key_start
+                };
+                self.diagnostics.push(self.warn(
+                    &codes::MOS0039,
+                    "malformed citation `[@…]`; expected `[@key]`; treated as text",
+                    base + i,
+                    base + recovery_end,
+                ));
+                i = recovery_end;
+                continue;
+            }
             i += 1;
         }
         self.flush_styled_text_with_pending(

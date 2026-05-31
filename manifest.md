@@ -1037,7 +1037,7 @@ help:
 Layout warning:
 
 ```text
-warning[MOS0039] (hypothetical): figure placed far from anchor
+warning[MOS####] (hypothetical): figure placed far from anchor
   main.mos:88:1
    |
 88 | #figure(...)

@@ -35,6 +35,7 @@ Inline runs:
 - `**strong**`.
 - `` `code` ``.
 - `@label` references.
+- `[@key]` citations.
 
 Labels:
 
@@ -99,7 +100,8 @@ Not implemented here:
 - Semantic lowering, section numbering, duplicate/unknown-label checks, image validation, or figure
   behavior.
 - General function calls, `#let`, `if`, custom scripting, templates, imports, or includes.
-- Math, equations, tables, citations, footnotes, indexes, glossaries, or bibliography syntax.
+- Math, equations, tables, citation clusters/resolution, footnotes, indexes, glossaries, or
+  bibliography syntax.
 - Comments-preserving formatter CST.
 - Nested inline markup. Current inline parsing treats emphasis/strong/code contents as plain text.
 - File IO. The parser only receives source text and a path for spans.

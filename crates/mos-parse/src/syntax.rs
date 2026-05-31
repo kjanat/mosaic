@@ -210,6 +210,14 @@ pub enum InlineKind {
     /// [`Inline::text`] payload is the bare label name (no leading
     /// `@`); the resolver rewrites it to the target's resolved text.
     Reference,
+    /// `[@key]` — a citation to a bibliography entry. The
+    /// [`Inline::text`] payload is the bare citation key (no leading
+    /// `[@` or trailing `]`); bibliography loading and rendering are
+    /// future work tracked under MVP 4. The key alphabet matches the
+    /// label alphabet (`[A-Za-z0-9_:.-]`); a single key per
+    /// `[@…]` group is the only form recognised in this slice — list
+    /// forms like `[@a; @b]` and prefix/suffix bodies are deferred.
+    Citation,
     /// `\\` — a forced line break inside a paragraph. The line
     /// breaks here without the extra leading a blank-line paragraph
     /// break would give. Carries no text payload. The shorthand for

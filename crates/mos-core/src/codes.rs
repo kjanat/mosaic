@@ -322,6 +322,9 @@ define_codes! {
     /// Lone trailing `\` at end of input; treated as literal text.
     MOS0038 = 38, Warning, Syntax, "lone-trailing-backslash", "mos-parse",
         "syntax: lone trailing backslash at end of input; treated as text";
+    /// Malformed citation group; treated as literal text.
+    MOS0039 = 39, Warning, Syntax, "malformed-citation", "mos-parse",
+        "syntax: malformed citation group; treated as text";
 
     // ── semantic (mos-eval) ───────────────────────────────────────────
     /// Unknown `#set` target (only `page`, `text`, `document`, `image`).

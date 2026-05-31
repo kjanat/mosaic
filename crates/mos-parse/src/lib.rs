@@ -15,7 +15,10 @@
 //! - `<label>` attached to the preceding block (trailing on a heading or
 //!   leading on a paragraph), and `@label` cross-references as inline
 //!   [`InlineKind::Reference`] runs (manifest §3.3 and the MVP 1
-//!   resolver).
+//!   resolver),
+//! - `[@key]` citations as inline [`InlineKind::Citation`] runs. Only
+//!   the single-key form is recognised in this slice; bibliography
+//!   loading and rendering are deferred to MVP 4.
 //!
 //! Anything outside that subset is preserved as text and a recoverable
 //! diagnostic is emitted; the parser never panics on user input
