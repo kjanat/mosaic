@@ -111,7 +111,7 @@ as opaque label text — colons included. That means `@page:foo`, `@p:foo`, `@pg
 
 The resolver's reference node already carries the raw label string and a `NodeKind::Reference`.
 Adding a future `kind` attribute (`section`, `figure`, `page`, ...) does not require a new parser
-token, but it does require the parser to recognize a syntactic form that today is indistinguishable
+token, but it does require the parser to recognise a syntactic form that today is indistinguishable
 from a labelled reference.
 
 A follow-up issue decides the surface syntax at the same time as the fixpoint implementation, with
