@@ -355,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn budget_exhaustion_emits_w041() {
+    fn budget_exhaustion_emits_mos0035() {
         // Force overflow: claim every ASCII printable + every Latin-1
         // codepoint as a WinAnsi native, then ask for 62 extended
         // chars. ASCII (95) + Latin-1 0xA0..=0xFF (96) = 191 slots

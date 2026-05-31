@@ -273,7 +273,7 @@ fn build_image_attributes(
                 _ => diagnostics.push(
                     Diagnostic::simple(&codes::MOS0022, None,
                         format!(
-                            "unknown argument `{key}` for `#image` (valid: src, alt, width, height, label)"
+                            "unknown argument `{key}` for `#image` (valid: src/path, alt, width, height, label)"
                         ),
                     )
                     .with_span(key_span.clone()),
