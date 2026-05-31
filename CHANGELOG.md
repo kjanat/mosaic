@@ -8,15 +8,15 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
-- Minimal single-key `[@key]` citation syntax (issue #47): citations parse and lower into semantic
-  placeholder nodes rendered as `[?key?]` until bibliography resolution lands. Malformed citation
-  groups recover as literal text with diagnostic `MOS0039`.
-- Minimal stdio LSP server (issue #49): `mos-lsp` replaces its stub with a server that publishes
-  compiler parse/lower/resolve diagnostics via `textDocument/publishDiagnostics` on open and full
-  change. Source `SourceSpan`s are projected to UTF-16 LSP ranges and stable `MOS####` codes are
-  preserved. Pull diagnostics, completion, hover, formatting, and workspace indexing are explicitly
-  out of this slice.
-- Author-facing inline line-break controls (issue #26):
+- Minimal single-key `[@key]` citation syntax (issue https://github.com/kjanat/mosaic/issues/47):
+  citations parse and lower into semantic placeholder nodes rendered as `[?key?]` until bibliography
+  resolution lands. Malformed citation groups recover as literal text with diagnostic `MOS0039`.
+- Minimal stdio LSP server (issue https://github.com/kjanat/mosaic/issues/49): `mos-lsp` replaces
+  its stub with a server that publishes compiler parse/lower/resolve diagnostics via
+  `textDocument/publishDiagnostics` on open and full change. Source `SourceSpan`s are projected to
+  UTF-16 LSP ranges and stable `MOS####` codes are preserved. Pull diagnostics, completion, hover,
+  formatting, and workspace indexing are explicitly out of this slice.
+- Author-facing inline line-break controls (issue https://github.com/kjanat/mosaic/issues/26):
   - `\\` hard line break (`InlineKind::HardBreak` / `NodeKind::HardBreak`), flushes the current line
     without paragraph spacing; two in a row produce a blank line; collapses silently at paragraph
     start (block-boundary semantics, regardless of whether prior blocks have painted on the page); a
@@ -34,25 +34,28 @@ All notable changes to this project will be documented here. The format is based
 
 ### Changed
 
-- Diagnostics gained a registry-backed `MOS####` code system (issue #57): diagnostic identity is
-  split from severity, codes are minted only in `mos-core::codes`, and a human-readable catalog
-  (`docs/diagnostic-codes.md`) is drift-tested against the registry. Reporting moves to a sink-based
-  model and parser/eval diagnostic coverage is tightened.
-- Resolver (`crates/mos-eval/src/resolve.rs`) now models label targets explicitly (issue #44): the
-  label index is a typed `label → LabelTarget` map distinguishing `Section { number }`, `Figure`,
-  and `Generic` targets instead of an untyped `label → NodeId` lookup. Section references still
-  render from the captured hierarchical counter; figure labels are recognised as a distinct kind but
-  still render as the bare label name until figure numbering lands (issue #46). Duplicate-label
+- Diagnostics gained a registry-backed `MOS####` code system (issue
+  https://github.com/kjanat/mosaic/issues/57): diagnostic identity is split from severity, codes are
+  minted only in `mos-core::codes`, and a human-readable catalog (`docs/diagnostic-codes.md`) is
+  drift-tested against the registry. Reporting moves to a sink-based model and parser/eval
+  diagnostic coverage is tightened.
+- Resolver (`crates/mos-eval/src/resolve.rs`) now models label targets explicitly (issue
+  https://github.com/kjanat/mosaic/issues/44): the label index is a typed `label → LabelTarget` map
+  distinguishing `Section { number }`, `Figure`, and `Generic` targets instead of an untyped
+  `label → NodeId` lookup. Section references still render from the captured hierarchical counter;
+  figure labels are recognised as a distinct kind but still render as the bare label name until
+  figure numbering lands (issue https://github.com/kjanat/mosaic/issues/46). Duplicate-label
   (`MOS0030`) and unknown-reference (`MOS0033`) diagnostics are unchanged.
 - Tree-sitter grammar (`crates/tree-sitter-mosaic`) realigned with the compiler's inline parser for
-  the author-facing line-break controls (issue #26): `\\` now parses as a dedicated `hard_break`
-  node and `\-` as `soft_hyphen_escape`, both highlighted under `@string.escape`. The external
-  `linebreak_escape` token is removed; a bare `\` that does not form one of the recognised escape
-  tokens (typically a trailing `\` before a newline, which the compiler also warns as `MOS0038`)
-  parses as `loose_backslash` rather than a structural ERROR, matching the compiler's "literal text"
-  treatment. `escaped_char` continues to cover `\#`, `\*`, `\[`, `\]`, `\<`, etc. Mirrored into
-  `crates/zed-mosaic` via `just sync-zed-queries`, and the Zed extension grammar `rev` is bumped to
-  pick up the new node types. `mosaic.ebnf` and `EBNF.md` refreshed to match.
+  the author-facing line-break controls (issue https://github.com/kjanat/mosaic/issues/26): `\\` now
+  parses as a dedicated `hard_break` node and `\-` as `soft_hyphen_escape`, both highlighted under
+  `@string.escape`. The external `linebreak_escape` token is removed; a bare `\` that does not form
+  one of the recognised escape tokens (typically a trailing `\` before a newline, which the compiler
+  also warns as `MOS0038`) parses as `loose_backslash` rather than a structural ERROR, matching the
+  compiler's "literal text" treatment. `escaped_char` continues to cover `\#`, `\*`, `\[`, `\]`,
+  `\<`, etc. Mirrored into `crates/zed-mosaic` via `just sync-zed-queries`, and the Zed extension
+  grammar `rev` is bumped to pick up the new node types. `mosaic.ebnf` and `EBNF.md` refreshed to
+  match.
 
 ## [0.0.0] - 2026-05-22
 
