@@ -1,4 +1,5 @@
 target/
+/doc/
 **/*.rs.bk
 
 # Mosaic build artefacts (manifest §15.2)

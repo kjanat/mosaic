@@ -5,9 +5,17 @@
 //! 1. Assigns hierarchical `number` attributes to every [`NodeKind::Section`]
 //!    (`"1"`, `"1.1"`, `"1.2"`, `"2"`), keyed off the existing `level`
 //!    attribute.
-//! 2. Builds a `label → NodeId` index from every block carrying a
+//! 2. Builds a `label → LabelTarget` index from every block carrying a
 //!    `label` attribute, then rewrites each [`NodeKind::Reference`]'s
 //!    `text` attribute to its target's resolved string.
+//!
+//! The label index is *typed*: each entry records what kind of thing
+//! the label points at (section, figure, or generic block). Section
+//! references render from the section's captured counter; figure
+//! targets are recognised distinctly so future figure-numbering work
+//! (issue #46) has a hook, but figure display text still falls back to
+//! the bare label name for now. Generic targets (paragraphs, raw
+//! blocks, …) also render as the bare label, matching prior behavior.
 //!
 //! Diagnostics:
 //!
@@ -28,13 +36,47 @@
 use std::collections::BTreeMap;
 
 use mos_core::{
-    AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeId, NodeKind, SourceSpan, codes,
+    AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeKind, SourceSpan, codes,
 };
 
 /// Cap on resolver fixpoint iterations. MVP 1 always converges in one
 /// pass; the cap is a safety net against forward-reference loops once
 /// page numbering lands in MVP 3+.
 const MAX_FIXPOINT_ITERATIONS: u32 = 8;
+
+/// What a label points at, captured at index-build time.
+///
+/// Each variant carries only the data needed to render the reference's
+/// display text — references never re-traverse the document via the
+/// target [`mos_core::NodeId`] once the index is built, so the resolver can stay
+/// kind-aware without exposing a node-typed handle to callers.
+///
+/// Figure targets carry no extra data yet: figure numbering is pending
+/// on issue #46. The variant exists so the resolver can plumb figure
+/// labels through as a distinct kind today and the renderer can light
+/// up once counters arrive.
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum LabelTargetKind {
+    /// Heading target with its resolved hierarchical number (e.g.
+    /// `"1.2"`).
+    Section { number: String },
+    /// Captioned figure. Numbering is deferred to issue #46; until
+    /// then references render as the bare label name.
+    Figure,
+    /// Anything else carrying a label (paragraph, raw block, image, …).
+    Generic,
+}
+
+/// An entry in the label → target index.
+///
+/// `span` is the declaration site, retained so duplicate-label
+/// diagnostics can still point a "first declared here" note at the
+/// original occurrence without re-looking-up the node by id.
+#[derive(Clone, Debug)]
+struct LabelTarget {
+    kind: LabelTargetKind,
+    span: SourceSpan,
+}
 
 /// Run the resolver pass over `document` in place. Returns any
 /// diagnostics produced; the document is modified regardless of whether
@@ -80,7 +122,7 @@ fn number_sections(document: &mut Document) {
     }
 }
 
-fn section_order(document: &Document) -> Vec<(NodeId, u8)> {
+fn section_order(document: &Document) -> Vec<(mos_core::NodeId, u8)> {
     // MVP 1 only sees flat `Section` siblings under the document root,
     // but iterating via the children vector keeps this resilient if the
     // lowerer starts nesting sections later.
@@ -102,11 +144,28 @@ fn section_order(document: &Document) -> Vec<(NodeId, u8)> {
     out
 }
 
+/// Classify a labelled node into a [`LabelTargetKind`]. Only nodes
+/// that actually declare a label reach this function — references are
+/// filtered out by the caller.
+fn classify_target(node: &mos_core::Node) -> LabelTargetKind {
+    match node.kind {
+        NodeKind::Section => {
+            let number = match node.attributes.get("number") {
+                Some(AttrValue::Str(s)) => s.clone(),
+                _ => String::new(),
+            };
+            LabelTargetKind::Section { number }
+        }
+        NodeKind::Figure => LabelTargetKind::Figure,
+        _ => LabelTargetKind::Generic,
+    }
+}
+
 fn build_label_index(
     document: &Document,
     diagnostics: &mut Vec<Diagnostic>,
-) -> BTreeMap<String, NodeId> {
-    let mut index: BTreeMap<String, NodeId> = BTreeMap::new();
+) -> BTreeMap<String, LabelTarget> {
+    let mut index: BTreeMap<String, LabelTarget> = BTreeMap::new();
     for node in document.nodes() {
         // References *consume* labels; only blocks declare them.
         // Treating a `@ref`'s `label` attribute as a declaration would
@@ -117,11 +176,7 @@ fn build_label_index(
         let Some(AttrValue::Str(label)) = node.attributes.get("label") else {
             continue;
         };
-        if let Some(&existing) = index.get(label) {
-            let existing_span = document.get(existing).map_or_else(
-                || SourceSpan::placeholder(document.file.clone()),
-                |n| n.span.clone(),
-            );
+        if let Some(existing) = index.get(label) {
             diagnostics.push(
                 Diagnostic::simple(
                     &codes::MOS0026,
@@ -130,15 +185,38 @@ fn build_label_index(
                 )
                 .with_span(node.span.clone())
                 .with_annotation(DiagnosticAnnotation::Related {
-                    span: existing_span,
+                    span: existing.span.clone(),
                     message: format!("first declaration of `{label}` is here"),
                 }),
             );
             continue;
         }
-        index.insert(label.clone(), node.id);
+        index.insert(
+            label.clone(),
+            LabelTarget {
+                kind: classify_target(node),
+                span: node.span.clone(),
+            },
+        );
     }
     index
+}
+
+/// Compute the display string for a reference to `target`.
+///
+/// Section targets render as their captured counter (e.g. `"1.2"`).
+/// Figure targets are recognised but have no counter yet (#46) and
+/// fall back to the bare label name, matching the generic fallback
+/// used for paragraphs and other unnumbered blocks.
+fn render_target(target: &LabelTarget, label: &str) -> String {
+    match &target.kind {
+        LabelTargetKind::Section { number } if !number.is_empty() => number.clone(),
+        // Section without a number is a lowerer bug, but fall back to
+        // the label name so the rendered output stays readable.
+        LabelTargetKind::Section { .. } | LabelTargetKind::Figure | LabelTargetKind::Generic => {
+            label.to_owned()
+        }
+    }
 }
 
 /// Rewrite each `Reference` node's `text` attribute to point at its
@@ -146,10 +224,10 @@ fn build_label_index(
 /// callers use that signal to drive the §6 stage 3 fixpoint loop.
 fn rewrite_references(
     document: &mut Document,
-    labels: &BTreeMap<String, NodeId>,
+    labels: &BTreeMap<String, LabelTarget>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> bool {
-    let references: Vec<NodeId> = document
+    let references: Vec<mos_core::NodeId> = document
         .nodes()
         .filter(|n| n.kind == NodeKind::Reference)
         .map(|n| n.id)
@@ -163,15 +241,8 @@ fn rewrite_references(
         let Some(AttrValue::Str(label)) = node.attributes.get("label").cloned() else {
             continue;
         };
-        let resolved_text = if let Some(target_id) = labels.get(&label) {
-            let target_number = document.get(*target_id).and_then(|t| {
-                if let Some(AttrValue::Str(n)) = t.attributes.get("number") {
-                    Some(n.clone())
-                } else {
-                    None
-                }
-            });
-            target_number.unwrap_or_else(|| label.clone())
+        let resolved_text = if let Some(target) = labels.get(&label) {
+            render_target(target, &label)
         } else {
             let already_diagnosed = diagnostics
                 .iter()
@@ -472,6 +543,128 @@ mod tests {
         assert_eq!(
             r.attributes.get("text"),
             Some(&AttrValue::Str("note".to_owned()))
+        );
+    }
+
+    /// Build a synthetic node with `kind`, `label`, and (optionally) a
+    /// section `number`. Used by classifier tests to exercise typed
+    /// targets without dragging in image/file I/O.
+    fn make_node(
+        doc: &mut Document,
+        kind: NodeKind,
+        label: Option<&str>,
+        number: Option<&str>,
+    ) -> mos_core::NodeId {
+        let mut attrs = mos_core::AttrMap::new();
+        if let Some(l) = label {
+            attrs.insert("label".to_owned(), AttrValue::Str(l.to_owned()));
+        }
+        if let Some(n) = number {
+            attrs.insert("number".to_owned(), AttrValue::Str(n.to_owned()));
+        }
+        doc.alloc_child(
+            doc.root,
+            mos_core::Node {
+                id: mos_core::NodeId::default(),
+                kind,
+                span: SourceSpan::placeholder(doc.file.clone()),
+                content_hash: mos_core::ContentHash::default(),
+                style_id: mos_core::StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        )
+    }
+
+    #[test]
+    fn classify_target_distinguishes_kinds() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let section_id = make_node(&mut doc, NodeKind::Section, Some("sec"), Some("1.2"));
+        let figure_id = make_node(&mut doc, NodeKind::Figure, Some("fig"), None);
+        let paragraph_id = make_node(&mut doc, NodeKind::Paragraph, Some("p"), None);
+
+        let section = doc.get(section_id).unwrap();
+        assert_eq!(
+            classify_target(section),
+            LabelTargetKind::Section {
+                number: "1.2".to_owned()
+            }
+        );
+
+        let figure = doc.get(figure_id).unwrap();
+        assert_eq!(classify_target(figure), LabelTargetKind::Figure);
+
+        let paragraph = doc.get(paragraph_id).unwrap();
+        assert_eq!(classify_target(paragraph), LabelTargetKind::Generic);
+    }
+
+    #[test]
+    fn figure_label_is_recognised_as_figure_target() {
+        // Constructs a Figure node with a label and a Reference to it,
+        // then runs the resolver directly. Verifies:
+        //   - the figure label is found (no E042),
+        //   - the reference's rewritten text falls back to the bare
+        //     label name, matching the "figure numbering is pending
+        //     #46" contract,
+        //   - the label index records the target as `Figure`, not
+        //     `Generic`.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let _figure = make_node(&mut doc, NodeKind::Figure, Some("fig:one"), None);
+        let ref_id = doc.alloc_child(
+            doc.root,
+            mos_core::Node {
+                id: mos_core::NodeId::default(),
+                kind: NodeKind::Reference,
+                span: SourceSpan::placeholder(doc.file.clone()),
+                content_hash: mos_core::ContentHash::default(),
+                style_id: mos_core::StyleId::default(),
+                children: Vec::new(),
+                attributes: {
+                    let mut a = mos_core::AttrMap::new();
+                    a.insert("label".to_owned(), AttrValue::Str("fig:one".to_owned()));
+                    a.insert("text".to_owned(), AttrValue::Str("?fig:one?".to_owned()));
+                    a
+                },
+            },
+        );
+
+        let diags = resolve(&mut doc);
+        assert!(diags.is_empty(), "{diags:?}");
+
+        let mut sink: Vec<Diagnostic> = Vec::new();
+        let index = build_label_index(&doc, &mut sink);
+        assert!(sink.is_empty(), "{sink:?}");
+        let target = index.get("fig:one").expect("figure target indexed");
+        assert_eq!(target.kind, LabelTargetKind::Figure);
+
+        let r = doc.get(ref_id).unwrap();
+        assert_eq!(
+            r.attributes.get("text"),
+            Some(&AttrValue::Str("fig:one".to_owned())),
+            "figure references render as the bare label until figure numbering lands (#46)"
+        );
+    }
+
+    #[test]
+    fn section_target_index_carries_resolved_number() {
+        let (doc, diags) = lower("= Intro <intro>\n\n== Methods <methods>\n");
+        assert!(diags.is_empty(), "{diags:?}");
+
+        let mut sink: Vec<Diagnostic> = Vec::new();
+        let index = build_label_index(&doc, &mut sink);
+        assert!(sink.is_empty(), "{sink:?}");
+
+        assert_eq!(
+            index.get("intro").map(|t| &t.kind),
+            Some(&LabelTargetKind::Section {
+                number: "1".to_owned()
+            })
+        );
+        assert_eq!(
+            index.get("methods").map(|t| &t.kind),
+            Some(&LabelTargetKind::Section {
+                number: "1.1".to_owned()
+            })
         );
     }
 

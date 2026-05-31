@@ -26,6 +26,12 @@ All notable changes to this project will be documented here. The format is based
 
 ### Changed
 
+- Resolver (`crates/mos-eval/src/resolve.rs`) now models label targets explicitly (issue #44): the
+  label index is a typed `label → LabelTarget` map distinguishing `Section { number }`, `Figure`,
+  and `Generic` targets instead of an untyped `label → NodeId` lookup. Section references still
+  render from the captured hierarchical counter; figure labels are recognised as a distinct kind but
+  still render as the bare label name until figure numbering lands (issue #46). Duplicate-label
+  (`E041`) and unknown-reference (`E042`) diagnostics are unchanged.
 - Tree-sitter grammar (`crates/tree-sitter-mosaic`) realigned with the compiler's inline parser for
   the author-facing line-break controls (issue #26): `\\` now parses as a dedicated `hard_break`
   node and `\-` as `soft_hyphen_escape`, both highlighted under `@string.escape`. The external
