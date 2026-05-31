@@ -1,6 +1,7 @@
 // @ts-check
 /// <reference path="./node-gyp-build.d.ts" />
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 /** @typedef {import('tree-sitter').BaseNode} BaseNode */
@@ -43,8 +44,12 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
 const bindingModule = process.versions.bun
-	// Support `bun build --compile` by being statically analyzable enough to find the .node file at build-time
-	? await import(`${root}/prebuilds/${process.platform}-${process.arch}/tree-sitter-mosaic.node`)
+	// Bun rejects `import` of a Node-API `.node`; load it through
+	// `require` (as the `tree-sitter` runtime itself does) from the
+	// `prebuilds/<platform>-<arch>/` path bun expects.
+	? createRequire(import.meta.url)(
+		`${root}/prebuilds/${process.platform}-${process.arch}/tree-sitter-mosaic.node`,
+	)
 	: (await import('node-gyp-build')).default(root);
 
 const binding = /** @type {Binding} */ (bindingModule?.default ?? bindingModule);
