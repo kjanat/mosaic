@@ -47,6 +47,10 @@
 //! (`APAFML`) — see `LICENSE-APAFML` in the crate root. The combined
 //! SPDX expression is `MIT AND APAFML`.
 
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+)]
 #![deny(missing_docs)]
 
 pub use adobe_font_metrics::{BBox, CharacterMetric, FontMetrics, KerningPair};

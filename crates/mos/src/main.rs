@@ -5,7 +5,15 @@
 //! subcommands stay stubbed until layout (MVP 2) and the PDF backend
 //! (MVP 0 §6 stage 9) land.
 
-#![allow(clippy::print_stderr, clippy::print_stdout)]
+#![doc(
+    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+)]
+#![allow(
+    clippy::print_stderr,
+    clippy::print_stdout,
+    reason = "CLI boundary intentionally writes user output directly"
+)]
 
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
