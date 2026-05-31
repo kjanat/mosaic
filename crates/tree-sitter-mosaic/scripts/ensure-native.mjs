@@ -1,45 +1,77 @@
 #!/usr/bin/env node
 /**
- * This script ensures that the native bindings for tree-sitter are built
- * and available.
- * It first runs the build process using node-gyp-build, and then checks
- * if the tree-sitter module is present in node_modules.
+ * Build the native addons this grammar needs and place them where bun's
+ * loader expects them.
  *
- * If it is, it attempts to require it, and if that fails
- * (indicating that the native bindings are missing),
- * it triggers a rebuild of the tree-sitter module.
+ * Two addons are involved, and each `bindings/node/index.js` loads them
+ * from `prebuilds/<platform>-<arch>/<name>.node` when running under bun —
+ * whereas node-gyp emits to `build/Release/<target>.node`, and bun does
+ * not run a dependency's own install script, so the `tree-sitter` runtime
+ * addon is never compiled by `bun install` either. This script bridges
+ * both gaps for a fresh `bun install`:
+ *
+ *   1. this grammar's addon            -> prebuilds/<p-a>/tree-sitter-mosaic.node
+ *   2. the `tree-sitter` runtime addon -> prebuilds/<p-a>/tree-sitter.node
+ *
+ * Under plain Node both index.js files resolve through `node-gyp-build`
+ * (which reads `build/Release`), so this is bun-shaped but harmless there.
  */
-import { execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-execSync('node-gyp-build', { stdio: 'inherit' });
+const require = createRequire(import.meta.url);
+const platformDir = `${process.platform}-${process.arch}`;
 
-const isModuleNotFound = err =>
-	err?.code === 'MODULE_NOT_FOUND'
-	|| String(err?.message ?? err).includes('Cannot find module');
+// node-gyp ships bundled inside npm, which lives next to the running node
+// binary (`<prefix>/bin/node` -> `<prefix>/lib/node_modules/npm`). Deriving
+// it from `process.execPath` avoids depending on `node-gyp` being on PATH.
+const bundledNodeGyp = join(
+	dirname(dirname(process.execPath)),
+	'lib',
+	'node_modules',
+	'npm',
+	'node_modules',
+	'node-gyp',
+	'bin',
+	'node-gyp.js',
+);
 
-if (existsSync('node_modules/tree-sitter')) {
-	const require = createRequire(import.meta.url);
-	try {
-		require('tree-sitter');
-	} catch (err) {
-		if (!isModuleNotFound(err)) {
-			throw err;
-		}
-		console.warn(
-			`tree-sitter native binding unavailable (${err?.message ?? err}); rebuilding...`,
-		);
-		execSync('npm rebuild tree-sitter', { stdio: 'inherit' });
-		// Re-verify: if the rebuild didn't fix it, surface the failure
-		// instead of letting downstream `import 'tree-sitter'` crash.
-		try {
-			require('tree-sitter');
-		} catch (verifyErr) {
-			console.error(
-				`tree-sitter native binding still unavailable after rebuild: ${verifyErr?.message ?? verifyErr}`,
-			);
-			throw verifyErr;
-		}
+function runNodeGyp(cwd) {
+	if (existsSync(bundledNodeGyp)) {
+		execFileSync(process.execPath, [bundledNodeGyp, 'rebuild'], { cwd, stdio: 'inherit' });
+	} else {
+		// Fall back to a PATH-resolved node-gyp if the bundled copy moved.
+		execFileSync('node-gyp', ['rebuild'], { cwd, stdio: 'inherit' });
 	}
 }
+
+/**
+ * Ensure `pkgDir`'s gyp addon is compiled and copied to the
+ * `prebuilds/<platform>-<arch>/<prebuildName>.node` path bun loads from.
+ * Idempotent: skips the compile when `build/Release/<builtName>` already
+ * exists, and always refreshes the prebuild copy.
+ */
+function ensureAddon(pkgDir, builtName, prebuildName) {
+	const built = join(pkgDir, 'build', 'Release', builtName);
+	if (!existsSync(built)) {
+		runNodeGyp(pkgDir);
+	}
+	if (!existsSync(built)) {
+		throw new Error(`node-gyp did not produce ${built}`);
+	}
+	const prebuild = join(pkgDir, 'prebuilds', platformDir, `${prebuildName}.node`);
+	mkdirSync(dirname(prebuild), { recursive: true });
+	copyFileSync(built, prebuild);
+}
+
+// 1. This grammar. The script lives in `<pkg>/scripts/`, so the package
+//    root is one directory up.
+const grammarRoot = fileURLToPath(new URL('..', import.meta.url));
+ensureAddon(grammarRoot, 'tree_sitter_mosaic_binding.node', 'tree-sitter-mosaic');
+
+// 2. The `tree-sitter` runtime addon — a dependency bun won't build itself.
+const treeSitterRoot = dirname(require.resolve('tree-sitter/package.json'));
+ensureAddon(treeSitterRoot, 'tree_sitter_runtime_binding.node', 'tree-sitter');

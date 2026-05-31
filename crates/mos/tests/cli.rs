@@ -102,7 +102,7 @@ fn check_many_entries_fails_if_any_entry_fails() {
 
     assert_eq!(code, 1, "stdout={stdout} stderr={stderr}");
     assert!(stdout.contains("ok:"), "stdout={stdout:?}");
-    assert!(stderr.contains("error[E012]"), "stderr={stderr:?}");
+    assert!(stderr.contains("error[MOS0016]"), "stderr={stderr:?}");
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn check_unterminated_set_fails() {
     write_file(dir.path(), "main.mos", "#set page(\nunclosed\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[E012]"), "stderr={stderr:?}");
+    assert!(stderr.contains("error[MOS0016]"), "stderr={stderr:?}");
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn check_warns_on_unterminated_emphasis_but_succeeds() {
     write_file(dir.path(), "main.mos", "= Title\n\n*unclosed\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 0);
-    assert!(stderr.contains("warning[W021]"), "stderr={stderr:?}");
+    assert!(stderr.contains("warning[MOS0031]"), "stderr={stderr:?}");
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn check_crlf_source_does_not_leak_carriage_return() {
     write_file(dir.path(), "main.mos", "= Title\r\n*unclosed\r\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 0);
-    assert!(stderr.contains("warning[W021]"), "stderr={stderr:?}");
+    assert!(stderr.contains("warning[MOS0031]"), "stderr={stderr:?}");
     // The line above the caret should be the bare paragraph text,
     // with no CR character anywhere in the diagnostic frame.
     assert!(
@@ -248,22 +248,22 @@ fn build_renders_section_numbers_and_resolves_references() {
 
 #[test]
 fn check_reports_unknown_label() {
-    // E042 surfaces through `mos check` so editor integration sees
+    // MOS0033 surfaces through `mos check` so editor integration sees
     // unresolved references without having to drive the build.
-    let dir = temp_dir("mos-check-e042");
+    let dir = temp_dir("mos-check-mos0033");
     write_file(dir.path(), "main.mos", "see @no:such\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[E042]"), "stderr={stderr:?}");
+    assert!(stderr.contains("error[MOS0033]"), "stderr={stderr:?}");
 }
 
 #[test]
 fn check_reports_duplicate_label() {
-    let dir = temp_dir("mos-check-e041");
+    let dir = temp_dir("mos-check-mos0030");
     write_file(dir.path(), "main.mos", "= A <dup>\n\n= B <dup>\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[E041]"), "stderr={stderr:?}");
+    assert!(stderr.contains("error[MOS0030]"), "stderr={stderr:?}");
 }
 
 #[test]
@@ -348,7 +348,7 @@ fn read_mediabox_dim(value: &lopdf::Object) -> f32 {
 
 #[test]
 fn build_fails_on_layout_error_does_not_emit_pdf() {
-    // E023 (unknown paper) is a layout-level Error. The CLI must
+    // MOS0017 (unknown paper) is a layout-level Error. The CLI must
     // surface it and exit non-zero rather than writing a "successful"
     // PDF with broken config.
     let dir = temp_dir("mos-build-layout-error");
@@ -359,7 +359,7 @@ fn build_fails_on_layout_error_does_not_emit_pdf() {
     );
     let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
     assert_eq!(code, 1, "stderr={stderr:?}");
-    assert!(stderr.contains("error[E023]"), "stderr={stderr:?}");
+    assert!(stderr.contains("error[MOS0017]"), "stderr={stderr:?}");
     assert!(
         !dir.path().join("build").join("main.pdf").exists(),
         "PDF should not be written on layout error"
@@ -641,12 +641,48 @@ fn build_emits_pdf_with_image_xobject() {
 
 #[test]
 fn build_fails_when_image_path_is_missing() {
-    // E051 from the resolver: missing image file => non-zero exit.
+    // MOS0012 from the resolver: missing image file => non-zero exit.
     let dir = temp_dir("mos-build-missing-img");
     write_file(dir.path(), "main.mos", "#image(\"does-not-exist.png\")\n");
     let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
     assert_ne!(code, 0);
-    assert!(stderr.contains("E051"), "stderr={stderr:?}");
+    assert!(stderr.contains("MOS0012"), "stderr={stderr:?}");
+}
+
+#[test]
+fn check_collects_multiple_errors_in_one_pass() {
+    // Phase-barrier fail-fast collects every diagnostic in a phase before
+    // stopping — it does not bail on the first error. Two malformed `#set`
+    // directives must both surface as MOS0022, not just the first.
+    let dir = temp_dir("mos-check-multi-err");
+    write_file(dir.path(), "main.mos", "#set a(x: -)\n#set b(y: -)\n");
+    let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
+    assert_ne!(code, 0, "stderr={stderr:?}");
+    assert_eq!(
+        stderr.matches("error[MOS0022]").count(),
+        2,
+        "both malformed directives should be reported in one pass: {stderr:?}"
+    );
+}
+
+#[test]
+fn build_substituted_font_emits_notice_and_succeeds() {
+    // An unknown font family is a Notice (MOS0018), not a failure: the
+    // build substitutes bundled Noto Sans, prints `notice[MOS0018]`, and
+    // still exits 0 with a PDF written.
+    let dir = temp_dir("mos-build-notice-font");
+    write_file(
+        dir.path(),
+        "main.mos",
+        "#set text(font: \"Nonesuch\")\n= Title\n\nbody\n",
+    );
+    let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 0, "notice must not fail the build; stderr={stderr:?}");
+    assert!(
+        stderr.contains("notice[MOS0018]"),
+        "expected a notice for the substituted font, got {stderr:?}"
+    );
+    assert!(stdout.starts_with("wrote "), "stdout={stdout:?}");
 }
 
 mod tempdir {

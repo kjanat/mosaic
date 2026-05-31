@@ -43,8 +43,8 @@ sizes, or leading values produce warnings, not hard errors.
 
 - Sections receive hierarchical `number` attributes such as `1`, `1.1`, and `2`.
 - Any non-reference node with a `label` attribute can be a reference target.
-- Duplicate labels emit `E041`; the first declaration wins.
-- Unknown references emit `E042`; placeholder text remains visible in output.
+- Duplicate labels emit `MOS0030`; the first declaration wins.
+- Unknown references emit `MOS0033`; placeholder text remains visible in output.
 - The resolver has a small fixpoint-shaped loop, but current numbering does not depend on layout or
   page positions.
 
@@ -60,7 +60,7 @@ sizes, or leading values produce warnings, not hard errors.
 - Decoded pixels are stored on the image node as RGB8 bytes with `pixel_width`, `pixel_height`,
   `color_space = "DeviceRGB"`, and `bits_per_component = 8`.
 - Alpha is composited onto white; no soft-mask data is stored here.
-- Missing path emits `E050`; unreadable files emit `E051`; undecodable files emit `E052`.
+- Missing path emits `MOS0037`; unreadable files emit `MOS0012`; undecodable files emit `MOS0029`.
 - Failed image loads do not allocate phantom `Image` or caption-only `Figure` nodes.
 
 ## Module Layout

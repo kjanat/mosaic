@@ -59,13 +59,13 @@ assert_eq!(doc.get(doc.root).map(|node| node.children.as_slice()), Some(&[para][
 
 `Diagnostic` is the user-facing reporting type. It stores:
 
-- `Severity`: error, warning, note, or help.
-- `DiagnosticCode`: stable static code such as `E001`.
-- message, optional `SourceSpan`, notes, and source-edit suggestions.
+- `Severity`: error, warning, or notice.
+- `DiagnosticCode`: stable opaque code such as `MOS0033`.
+- message, optional `SourceSpan`, and `DiagnosticAnnotation` submessages.
 
-`Diagnostic::error(code, message)` builds an unspanned error; `with_span` attaches source location.
-`linecol(src, byte_offset)` converts byte offsets to 1-based line/column pairs, counting Unicode
-scalar values and clamping invalid or out-of-range offsets safely.
+`Diagnostic::simple(def, None, message)` builds from a registered diagnostic definition; `with_span`
+attaches source location. `linecol(src, byte_offset)` converts byte offsets to 1-based line/column
+pairs, counting Unicode scalar values and clamping invalid or out-of-range offsets safely.
 
 `CoreError` is intentionally small:
 

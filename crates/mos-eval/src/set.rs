@@ -3,8 +3,7 @@
 use std::collections::BTreeMap;
 
 use mos_core::{
-    AttrMap, AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeId, NodeKind, Severity,
-    SourceSpan, StyleId,
+    AttrMap, AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, SourceSpan, StyleId, codes,
 };
 use mos_parse::{SetArg, SetValue};
 
@@ -29,8 +28,7 @@ pub(super) fn lower_set_directive(
     attributes.insert("set".to_owned(), AttrValue::Str(name.to_owned()));
     let Some(target) = set_schema::lookup_target(name) else {
         diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode("E020"),
+            Diagnostic::simple(&codes::MOS0011, None,
                 format!(
                     "unknown `#set` target `{name}` (expected `page`, `text`, `document`, or `image`)"
                 ),
@@ -46,8 +44,9 @@ pub(super) fn lower_set_directive(
         // forgot the `allow_positional=false` flag. Diagnose loudly.
         if matches!(arg, SetArg::Positional { .. }) {
             diagnostics.push(
-                Diagnostic::error(
-                    DiagnosticCode("E015"),
+                Diagnostic::simple(
+                    &codes::MOS0024,
+                    None,
                     format!("`#set {name}` does not accept positional arguments"),
                 )
                 .with_span(arg.value_span().clone()),
@@ -80,7 +79,7 @@ fn set_node(span: &SourceSpan, attributes: AttrMap) -> Node {
 
 /// Convert one parser-level `SetArg` into an attribute on the Raw node
 /// representing this `#set` directive. Emits semantic diagnostics
-/// (`E021` unknown key, `E022` type mismatch, `W024` sanity floor) and
+/// (`MOS0015` unknown key, `MOS0020` type mismatch, `MOS0027` sanity floor) and
 /// updates `metadata` / `current_text_size_pt` as a side effect.
 fn lower_set_arg(
     target: set_schema::Target,
@@ -104,8 +103,9 @@ fn lower_set_arg(
     };
     let Some(slot) = target.slot(key) else {
         diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode("E021"),
+            Diagnostic::simple(
+                &codes::MOS0015,
+                None,
                 format!(
                     "unknown argument `{key}` for `#set {}` (valid: {})",
                     target.name(),
@@ -118,8 +118,9 @@ fn lower_set_arg(
     };
     let Some(value) = coerce_value(slot, raw_value, *current_text_size_pt) else {
         diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode("E022"),
+            Diagnostic::simple(
+                &codes::MOS0020,
+                None,
                 format!(
                     "`#set {} ({key}: …)` expects {}, got {}",
                     target.name(),
@@ -132,14 +133,8 @@ fn lower_set_arg(
         return;
     };
     if let Some(msg) = sanity_floor_warning(target, key, &value) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            code: DiagnosticCode("W024"),
-            message: msg,
-            span: Some(value_span.clone()),
-            notes: Vec::new(),
-            suggestions: Vec::new(),
-        });
+        diagnostics
+            .push(Diagnostic::simple(&codes::MOS0027, None, msg).with_span(value_span.clone()));
     }
     if matches!(target, set_schema::Target::Text)
         && key == "size"
@@ -196,8 +191,9 @@ pub(super) fn coerce_positive_length(
         SetValue::Int(v) => int_to_f64(*v),
         _ => {
             diagnostics.push(
-                Diagnostic::error(
-                    DiagnosticCode("E022"),
+                Diagnostic::simple(
+                    &codes::MOS0020,
+                    None,
                     format!("`#image({key}: ...)` expects a length"),
                 )
                 .with_span(value_span.clone()),
@@ -207,8 +203,9 @@ pub(super) fn coerce_positive_length(
     };
     if pt <= 0.0 {
         diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode("E022"),
+            Diagnostic::simple(
+                &codes::MOS0020,
+                None,
                 format!("`#image({key}: ...)` expects a positive length"),
             )
             .with_span(value_span.clone()),
@@ -293,7 +290,7 @@ mod tests {
 
     use std::path::PathBuf;
 
-    use mos_core::{AttrValue, Node, NodeKind};
+    use mos_core::{AttrValue, Node, NodeKind, codes};
 
     use crate::lower;
 
@@ -325,36 +322,46 @@ mod tests {
     }
 
     #[test]
-    fn unknown_set_target_emits_e020() {
+    fn unknown_set_target_emits_mos0011() {
         let r = lower("#set widget(x: 1)\n", &PathBuf::from("test.mos"));
-        assert!(r.diagnostics.iter().any(|d| d.code.0 == "E020"));
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0011.code())
+        );
     }
 
     #[test]
-    fn unknown_set_arg_emits_e021() {
+    fn unknown_set_arg_emits_mos0015() {
         let r = lower("#set page(weirdkey: 1)\n", &PathBuf::from("test.mos"));
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "E021"),
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0015.code()),
             "got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn type_mismatch_emits_e022() {
+    fn type_mismatch_emits_mos0020() {
         let r = lower("#set page(margin: \"wide\")\n", &PathBuf::from("test.mos"));
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "E022"),
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0020.code()),
             "got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn sanity_floor_emits_w024() {
+    fn sanity_floor_emits_mos0027() {
         let r = lower("#set page(margin: 0.5mm)\n", &PathBuf::from("test.mos"));
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "W024"),
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0027.code()),
             "got {:?}",
             r.diagnostics
         );

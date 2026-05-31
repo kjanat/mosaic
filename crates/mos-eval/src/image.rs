@@ -10,13 +10,13 @@
 //!
 //! Diagnostics:
 //!
-//! - `E050`: `#image(...)` called without a path string.
-//! - `E051`: cannot read the file on disk.
-//! - `E052`: cannot decode the bytes as PNG/JPEG.
+//! - `MOS0037`: `#image(...)` called without a path string.
+//! - `MOS0012`: cannot read the file on disk.
+//! - `MOS0029`: cannot decode the bytes as PNG/JPEG.
 
 use std::path::{Path, PathBuf};
 
-use mos_core::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
+use mos_core::{Diagnostic, DiagnosticAnnotation, SourceSpan, codes};
 
 /// One decoded raster image, ready to be lowered onto a
 /// [`mos_core::NodeKind::Image`] node.
@@ -45,27 +45,27 @@ pub(crate) fn load(
 ) -> Result<(PathBuf, DecodedImage), Box<Diagnostic>> {
     let resolved = resolve_path(src_path, source_file);
     let bytes = std::fs::read(&resolved).map_err(|err| {
-        Box::new(Diagnostic {
-            severity: Severity::Error,
-            code: DiagnosticCode("E051"),
-            message: format!("cannot read image `{}`: {err}", resolved.display()),
-            span: Some(call_span.clone()),
-            notes: Vec::new(),
-            suggestions: Vec::new(),
-        })
+        Box::new(
+            Diagnostic::simple(
+                &codes::MOS0012,
+                None,
+                format!("cannot read image `{}`: {err}", resolved.display()),
+            )
+            .with_span(call_span.clone()),
+        )
     })?;
     let decoded = decode(&bytes).map_err(|err| {
-        Box::new(Diagnostic {
-            severity: Severity::Error,
-            code: DiagnosticCode("E052"),
-            message: format!("cannot decode `{}`: {err}", resolved.display()),
-            span: Some(call_span.clone()),
-            notes: vec![mos_core::DiagnosticNote {
-                message: "supported formats are PNG and JPEG".to_owned(),
-                span: None,
-            }],
-            suggestions: Vec::new(),
-        })
+        Box::new(
+            Diagnostic::simple(
+                &codes::MOS0029,
+                None,
+                format!("cannot decode `{}`: {err}", resolved.display()),
+            )
+            .with_span(call_span.clone())
+            .with_annotation(DiagnosticAnnotation::Note(
+                "supported formats are PNG and JPEG".to_owned(),
+            )),
+        )
     })?;
     Ok((resolved, decoded))
 }

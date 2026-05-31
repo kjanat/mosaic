@@ -44,7 +44,7 @@
 //!    still get plenty of room from `0x20..0x7E`.
 //!
 //! 3. If we exhaust the pool before placing every extended char,
-//!    emit `W041` and drop the overflow (those chars render as `?`).
+//!    emit `MOS0032` and drop the overflow (those chars render as `?`).
 //!
 //! ## Output
 //!
@@ -56,7 +56,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use mos_core::{Diagnostic, DiagnosticCode, Severity};
+use mos_core::{Diagnostic, codes};
 use mos_layout::{Base14Font, Font, TextRun};
 
 // `Base14Font` doesn't derive `Ord`. Keying the planner's per-face
@@ -138,7 +138,7 @@ impl EncodingPlanner {
     /// is absent from the returned map; callers should fall back to
     /// the predefined `WinAnsiEncoding` shortcut for those.
     ///
-    /// Pushes a `W041` diagnostic when a face's extended-glyph budget
+    /// Pushes a `MOS0032` diagnostic when a face's extended-glyph budget
     /// overflows the 256-slot single-byte ceiling.
     pub(crate) fn finalize(self, diagnostics: &mut Vec<Diagnostic>) -> HashMap<Font, DocEncoding> {
         let mut out = HashMap::with_capacity(self.used.len());
@@ -227,18 +227,15 @@ fn plan_face(
     }
 
     if overflowed > 0 {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            code: DiagnosticCode("W041"),
-            message: format!(
+        diagnostics.push(Diagnostic::simple(
+            &codes::MOS0032,
+            None,
+            format!(
                 "extended glyph budget exhausted in {face:?}: {overflowed} \
                  character(s) could not be encoded in the 256-slot \
                  /Differences map and rendered as `?`"
             ),
-            span: None,
-            notes: Vec::new(),
-            suggestions: Vec::new(),
-        });
+        ));
     }
 
     differences.sort_unstable_by_key(|&(b, _)| b);
@@ -358,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn budget_exhaustion_emits_w041() {
+    fn budget_exhaustion_emits_mos0032() {
         // Force overflow: claim every ASCII printable + every Latin-1
         // codepoint as a WinAnsi native, then ask for 62 extended
         // chars. ASCII (95) + Latin-1 0xA0..=0xFF (96) = 191 slots
@@ -399,12 +396,12 @@ mod tests {
             "expected overflow, got {} differences",
             enc.differences.len()
         );
-        assert_eq!(diags.len(), 1, "expected exactly one W041");
-        assert_eq!(diags[0].code.0, "W041");
+        assert_eq!(diags.len(), 1, "expected exactly one MOS0032");
+        assert_eq!(diags[0].def().code(), codes::MOS0032.code());
         assert!(
-            diags[0].message.contains("budget exhausted"),
+            diags[0].message().contains("budget exhausted"),
             "msg = {:?}",
-            diags[0].message
+            diags[0].message()
         );
     }
 

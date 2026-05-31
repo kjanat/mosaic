@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use mos_core::{AttrValue, Diagnostic, DiagnosticCode, Document, Node, NodeId, NodeKind, Severity};
+use mos_core::{AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, codes};
 use mos_fonts::{ascent, text_width};
 
 use crate::support::{read_int_attr, read_length_attr};
@@ -16,14 +16,14 @@ impl LayoutState {
             return;
         };
         let Some(handle) = self.intern_image(image) else {
-            self.diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                code: DiagnosticCode("W050"),
-                message: format!("image node {node_id:?} missing decoded pixel data; skipping"),
-                span: Some(image.span.clone()),
-                notes: Vec::new(),
-                suggestions: Vec::new(),
-            });
+            self.diagnostics.push(
+                Diagnostic::simple(
+                    &codes::MOS0035,
+                    None,
+                    format!("image node {node_id:?} missing decoded pixel data; skipping"),
+                )
+                .with_span(image.span.clone()),
+            );
             return;
         };
 

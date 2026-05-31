@@ -1,0 +1,7 @@
+# `bun test` ignores .gitignore, so it would otherwise recurse into
+# `crates/zed-mosaic/grammars/` — a copy of the grammar that Zed repopulates
+# on dev-install — and error there because `tree-sitter` isn't resolvable from
+# that vendored tree. Ignore any such `grammars/` copy and leave all other test
+# discovery global, so future workspace members stay covered.
+[test]
+pathIgnorePatterns = ["**/grammars/**"]

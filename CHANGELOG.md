@@ -12,7 +12,7 @@ All notable changes to this project will be documented here. The format is based
   - `\\` hard line break (`InlineKind::HardBreak` / `NodeKind::HardBreak`), flushes the current line
     without paragraph spacing; two in a row produce a blank line; collapses silently at paragraph
     start (block-boundary semantics, regardless of whether prior blocks have painted on the page); a
-    lone trailing `\` at end of input emits diagnostic `W025`.
+    lone trailing `\` at end of input emits diagnostic `MOS0038`.
   - `\-` soft-hyphen shorthand expanding to U+00AD; SHY codepoints are stripped from the rendered
     text and their byte offsets recorded in `Word.shy_break_offsets`. The greedy line-breaker now
     consumes those offsets: when a word would overflow the line it picks the latest fitting SHY
@@ -31,13 +31,13 @@ All notable changes to this project will be documented here. The format is based
   and `Generic` targets instead of an untyped `label → NodeId` lookup. Section references still
   render from the captured hierarchical counter; figure labels are recognised as a distinct kind but
   still render as the bare label name until figure numbering lands (issue #46). Duplicate-label
-  (`E041`) and unknown-reference (`E042`) diagnostics are unchanged.
+  (`MOS0030`) and unknown-reference (`MOS0033`) diagnostics are unchanged.
 - Tree-sitter grammar (`crates/tree-sitter-mosaic`) realigned with the compiler's inline parser for
   the author-facing line-break controls (issue #26): `\\` now parses as a dedicated `hard_break`
   node and `\-` as `soft_hyphen_escape`, both highlighted under `@string.escape`. The external
   `linebreak_escape` token is removed; a bare `\` that does not form one of the recognised escape
-  tokens (typically a trailing `\` before a newline, which the compiler also warns as `W025`) parses
-  as `loose_backslash` rather than a structural ERROR, matching the compiler's "literal text"
+  tokens (typically a trailing `\` before a newline, which the compiler also warns as `MOS0038`)
+  parses as `loose_backslash` rather than a structural ERROR, matching the compiler's "literal text"
   treatment. `escaped_char` continues to cover `\#`, `\*`, `\[`, `\]`, `\<`, etc. Mirrored into
   `crates/zed-mosaic` via `just sync-zed-queries`, and the Zed extension grammar `rev` is bumped to
   pick up the new node types. `mosaic.ebnf` and `EBNF.md` refreshed to match.

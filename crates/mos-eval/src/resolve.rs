@@ -19,10 +19,10 @@
 //!
 //! Diagnostics:
 //!
-//! - `E041`: a label is declared more than once. The first occurrence
+//! - `MOS0030`: a label is declared more than once. The first occurrence
 //!   wins; later occurrences keep their numbering but are not added to
 //!   the index.
-//! - `E042`: a `@label` reference targets a label that doesn't exist.
+//! - `MOS0033`: a `@label` reference targets a label that doesn't exist.
 //!   The reference's text is left at its lowered placeholder
 //!   (`?label?`) so it remains visible in the rendered output.
 //!
@@ -36,7 +36,7 @@
 use std::collections::BTreeMap;
 
 use mos_core::{
-    AttrValue, Diagnostic, DiagnosticCode, Document, NodeKind, Severity, SourceSpan,
+    AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeKind, SourceSpan, codes,
 };
 
 /// Cap on resolver fixpoint iterations. MVP 1 always converges in one
@@ -48,7 +48,7 @@ const MAX_FIXPOINT_ITERATIONS: u32 = 8;
 ///
 /// Each variant carries only the data needed to render the reference's
 /// display text — references never re-traverse the document via the
-/// target [`NodeId`] once the index is built, so the resolver can stay
+/// target [`mos_core::NodeId`] once the index is built, so the resolver can stay
 /// kind-aware without exposing a node-typed handle to callers.
 ///
 /// Figure targets carry no extra data yet: figure numbering is pending
@@ -177,17 +177,18 @@ fn build_label_index(
             continue;
         };
         if let Some(existing) = index.get(label) {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                code: DiagnosticCode("E041"),
-                message: format!("label `{label}` is declared more than once"),
-                span: Some(node.span.clone()),
-                notes: vec![mos_core::DiagnosticNote {
+            diagnostics.push(
+                Diagnostic::simple(
+                    &codes::MOS0030,
+                    None,
+                    format!("label `{label}` is declared more than once"),
+                )
+                .with_span(node.span.clone())
+                .with_annotation(DiagnosticAnnotation::Related {
+                    span: existing.span.clone(),
                     message: format!("first declaration of `{label}` is here"),
-                    span: Some(existing.span.clone()),
-                }],
-                suggestions: Vec::new(),
-            });
+                }),
+            );
             continue;
         }
         index.insert(
@@ -245,16 +246,16 @@ fn rewrite_references(
         } else {
             let already_diagnosed = diagnostics
                 .iter()
-                .any(|d| d.code.0 == "E042" && d.span.as_ref() == Some(&node.span));
+                .any(|d| d.def().code() == codes::MOS0033.code() && d.span() == Some(&node.span));
             if !already_diagnosed {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    code: DiagnosticCode("E042"),
-                    message: format!("unknown label `{label}` in `@` reference"),
-                    span: Some(node.span.clone()),
-                    notes: Vec::new(),
-                    suggestions: Vec::new(),
-                });
+                diagnostics.push(
+                    Diagnostic::simple(
+                        &codes::MOS0033,
+                        None,
+                        format!("unknown label `{label}` in `@` reference"),
+                    )
+                    .with_span(node.span.clone()),
+                );
             }
             continue;
         };
@@ -272,13 +273,9 @@ fn rewrite_references(
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        reason = "tests panic loudly on setup failure"
-    )]
-
     use std::path::PathBuf;
+
+    use mos_core::Severity;
 
     use super::*;
 
@@ -328,39 +325,185 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_label_emits_e041_and_keeps_first() {
-        let (doc, diags) = lower("= A <dup>\n\n= B <dup>\n\nsee @dup\n");
-        assert!(
-            diags.iter().any(|d| d.code.0 == "E041"),
-            "expected E041, got {diags:?}"
+    fn duplicate_label_emits_mos0030_and_keeps_first() {
+        let src = "= A <dup>\n\n= B <dup>\n\nsee @dup\n";
+        let (doc, diags) = lower(src);
+        let mos0030: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0030.code())
+            .collect();
+        assert_eq!(
+            mos0030.len(),
+            1,
+            "expected exactly one MOS0030, got {diags:?}"
         );
+        let d = mos0030[0];
+        assert_eq!(d.def().code(), codes::MOS0030.code());
+        assert_eq!(d.severity(), Severity::Error);
+        assert!(
+            d.message().contains("`dup`"),
+            "MOS0030 message should name the duplicated label, got {:?}",
+            d.message()
+        );
+        // The duplicate diagnostic must point at the *second* occurrence
+        // and carry a Related annotation back to the first declaration.
+        // Editor UIs rely on both spans to render the redeclaration jump.
+        assert_eq!(
+            d.span().map(|span| &src[span.start..span.end]),
+            Some("= B <dup>"),
+            "MOS0030 span should cover the second heading exactly"
+        );
+        assert_eq!(
+            d.annotations().len(),
+            1,
+            "MOS0030 should reference the first decl"
+        );
+        let related = d.annotations().iter().find_map(|a| match a {
+            DiagnosticAnnotation::Related { span, message } => Some((span, message)),
+            _ => None,
+        });
+        assert!(related.is_some(), "MOS0030 carries a Related annotation");
+        if let Some((note_span, note_message)) = related {
+            assert_eq!(
+                &src[note_span.start..note_span.end],
+                "= A <dup>",
+                "MOS0030 note should point at the original declaration exactly"
+            );
+            assert!(
+                note_message.contains("`dup`"),
+                "first-decl note should name the label, got {note_message:?}"
+            );
+        }
         // Reference still resolves to the first declaration's number.
-        let r = doc
+        let reference_text = doc
             .nodes()
             .find(|n| n.kind == NodeKind::Reference)
-            .expect("reference");
+            .and_then(|n| n.attributes.get("text"));
+        assert_eq!(reference_text, Some(&AttrValue::Str("1".to_owned())));
+    }
+
+    #[test]
+    fn triple_duplicate_label_emits_one_mos0030_per_redeclaration() {
+        // Three sections share `dup`. The first wins; the second and
+        // third each get their own MOS0030 pointing back at the first.
+        // The reference still resolves to section number `1`.
+        let src = "= A <dup>\n\n= B <dup>\n\n= C <dup>\n\nsee @dup\n";
+        let (doc, diags) = lower(src);
+        let mos0030: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0030.code())
+            .collect();
         assert_eq!(
-            r.attributes.get("text"),
-            Some(&AttrValue::Str("1".to_owned()))
+            mos0030.len(),
+            2,
+            "expected two MOS0030 (one per redeclaration), got {diags:?}"
+        );
+        let spans: Vec<&str> = mos0030
+            .iter()
+            .filter_map(|d| d.span().map(|s| &src[s.start..s.end]))
+            .collect();
+        assert_eq!(
+            spans.len(),
+            mos0030.len(),
+            "every MOS0030 must carry a primary span"
+        );
+        assert!(
+            spans.contains(&"= B <dup>"),
+            "missing span for second decl, got {spans:?}"
+        );
+        assert!(
+            spans.contains(&"= C <dup>"),
+            "missing span for third decl, got {spans:?}"
+        );
+        // Every duplicate diagnostic must reference the same first decl.
+        for d in &mos0030 {
+            let related = d.annotations().iter().find_map(|a| match a {
+                DiagnosticAnnotation::Related { span, message } => Some((span, message)),
+                _ => None,
+            });
+            assert!(related.is_some(), "MOS0030 carries a Related annotation");
+            if let Some((ns, _)) = related {
+                assert_eq!(
+                    &src[ns.start..ns.end],
+                    "= A <dup>",
+                    "every redeclaration must link back to the first decl"
+                );
+            }
+        }
+        let reference_text = doc
+            .nodes()
+            .find(|n| n.kind == NodeKind::Reference)
+            .and_then(|n| n.attributes.get("text"));
+        assert_eq!(reference_text, Some(&AttrValue::Str("1".to_owned())));
+    }
+
+    #[test]
+    fn unknown_label_emits_mos0033() {
+        let (doc, diags) = lower("see @no:such\n");
+        let mos0033: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0033.code())
+            .collect();
+        assert_eq!(
+            mos0033.len(),
+            1,
+            "expected exactly one MOS0033 even with the fixpoint loop, got {diags:?}"
+        );
+        let d = mos0033[0];
+        assert_eq!(d.def().code(), codes::MOS0033.code());
+        assert_eq!(d.severity(), Severity::Error);
+        assert!(
+            d.message().contains("`no:such`"),
+            "MOS0033 message should name the missing label, got {:?}",
+            d.message()
+        );
+        assert!(
+            d.span().is_some(),
+            "MOS0033 must carry a span so editors can jump to the bad reference"
+        );
+        let reference_text = doc
+            .nodes()
+            .find(|n| n.kind == NodeKind::Reference)
+            .and_then(|n| n.attributes.get("text"));
+        // Placeholder text is preserved so the diagnostic location is
+        // visible in the rendered output.
+        assert_eq!(
+            reference_text,
+            Some(&AttrValue::Str("?no:such?".to_owned()))
         );
     }
 
     #[test]
-    fn unknown_label_emits_e042() {
-        let (doc, diags) = lower("see @no:such\n");
-        assert!(
-            diags.iter().any(|d| d.code.0 == "E042"),
-            "expected E042, got {diags:?}"
-        );
-        let r = doc
-            .nodes()
-            .find(|n| n.kind == NodeKind::Reference)
-            .expect("reference");
-        // Placeholder text is preserved so the diagnostic location is
-        // visible in the rendered output.
+    fn multiple_unknown_references_each_emit_one_mos0033() {
+        // Three distinct unknown labels in a single paragraph. The
+        // fixpoint loop runs more than once (each iteration sees the
+        // unresolved placeholders again), but every bad reference must
+        // produce exactly one diagnostic — not one per iteration.
+        let src = "see @alpha and @beta and @gamma\n";
+        let (_doc, diags) = lower(src);
+        let mos0033: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0033.code())
+            .collect();
         assert_eq!(
-            r.attributes.get("text"),
-            Some(&AttrValue::Str("?no:such?".to_owned()))
+            mos0033.len(),
+            3,
+            "expected one MOS0033 per unknown label, got {diags:?}"
+        );
+        let labels: std::collections::BTreeSet<&str> = mos0033
+            .iter()
+            .filter_map(|d| {
+                // Each MOS0033's message is `unknown label `<name>` in `@` reference`.
+                let msg = &d.message();
+                let start = msg.find('`')? + 1;
+                let end = start + msg[start..].find('`')?;
+                Some(&msg[start..end])
+            })
+            .collect();
+        assert_eq!(
+            labels,
+            ["alpha", "beta", "gamma"].into_iter().collect(),
+            "each unknown label should appear exactly once"
         );
     }
 
@@ -384,14 +527,14 @@ mod tests {
     fn paragraph_label_indexes_paragraph() {
         // A paragraph-attached label has no section number, so the
         // resolver falls back to using the bare label as the rewritten
-        // text. No E042 is emitted because the target exists.
+        // text. No MOS0033 is emitted because the target exists.
         let (doc, diags) = lower("<note> a side note here\n\nsee @note\n");
         assert!(diags.is_empty(), "{diags:?}");
-        let r = doc.nodes().find(|n| n.kind == NodeKind::Reference).unwrap();
-        assert_eq!(
-            r.attributes.get("text"),
-            Some(&AttrValue::Str("note".to_owned()))
-        );
+        let reference_text = doc
+            .nodes()
+            .find(|n| n.kind == NodeKind::Reference)
+            .and_then(|n| n.attributes.get("text"));
+        assert_eq!(reference_text, Some(&AttrValue::Str("note".to_owned())));
     }
 
     /// Build a synthetic node with `kind`, `label`, and (optionally) a
@@ -431,26 +574,29 @@ mod tests {
         let figure_id = make_node(&mut doc, NodeKind::Figure, Some("fig"), None);
         let paragraph_id = make_node(&mut doc, NodeKind::Paragraph, Some("p"), None);
 
-        let section = doc.get(section_id).unwrap();
         assert_eq!(
-            classify_target(section),
-            LabelTargetKind::Section {
+            doc.get(section_id).map(classify_target),
+            Some(LabelTargetKind::Section {
                 number: "1.2".to_owned()
-            }
+            })
         );
 
-        let figure = doc.get(figure_id).unwrap();
-        assert_eq!(classify_target(figure), LabelTargetKind::Figure);
+        assert_eq!(
+            doc.get(figure_id).map(classify_target),
+            Some(LabelTargetKind::Figure)
+        );
 
-        let paragraph = doc.get(paragraph_id).unwrap();
-        assert_eq!(classify_target(paragraph), LabelTargetKind::Generic);
+        assert_eq!(
+            doc.get(paragraph_id).map(classify_target),
+            Some(LabelTargetKind::Generic)
+        );
     }
 
     #[test]
     fn figure_label_is_recognised_as_figure_target() {
         // Constructs a Figure node with a label and a Reference to it,
         // then runs the resolver directly. Verifies:
-        //   - the figure label is found (no E042),
+        //   - the figure label is found (no MOS0033),
         //   - the reference's rewritten text falls back to the bare
         //     label name, matching the "figure numbering is pending
         //     #46" contract,
@@ -482,12 +628,13 @@ mod tests {
         let mut sink: Vec<Diagnostic> = Vec::new();
         let index = build_label_index(&doc, &mut sink);
         assert!(sink.is_empty(), "{sink:?}");
-        let target = index.get("fig:one").expect("figure target indexed");
-        assert_eq!(target.kind, LabelTargetKind::Figure);
-
-        let r = doc.get(ref_id).unwrap();
         assert_eq!(
-            r.attributes.get("text"),
+            index.get("fig:one").map(|target| &target.kind),
+            Some(&LabelTargetKind::Figure)
+        );
+
+        assert_eq!(
+            doc.get(ref_id).and_then(|r| r.attributes.get("text")),
             Some(&AttrValue::Str("fig:one".to_owned())),
             "figure references render as the bare label until figure numbering lands (#46)"
         );

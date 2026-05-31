@@ -1,4 +1,4 @@
-use mos_core::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
+use mos_core::{Diagnostic, SourceSpan, codes};
 
 use crate::{Base14Font, EmbeddedFontId, Font};
 
@@ -8,7 +8,7 @@ use crate::{Base14Font, EmbeddedFontId, Font};
 ///
 /// Build via [`FontFamily::resolve`], which understands Base14 family
 /// names and the bundled `"Noto Sans"` family. Unknown names fall back
-/// to Noto Sans and emit a `W045` diagnostic.
+/// to Noto Sans and emit a `MOS0018` diagnostic.
 ///
 /// # Examples
 ///
@@ -168,7 +168,7 @@ impl FontFamily {
     /// Matching is case-insensitive on the family component. Known
     /// names: `Helvetica`, `Times`/`Times-Roman`/`Times Roman`,
     /// `Courier`, `Noto Sans`. Anything else falls back to Noto Sans
-    /// and pushes a `W045` warning so users don't silently get the
+    /// and pushes a `MOS0018` notice so users don't silently get the
     /// wrong typeface.
     ///
     /// # Examples
@@ -194,17 +194,14 @@ impl FontFamily {
             "courier" => Self::courier(),
             "noto sans" | "notosans" => Self::noto_sans(),
             _ => {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Warning,
-                    code: DiagnosticCode("W045"),
-                    message: format!(
+                diagnostics.push(Diagnostic::simple(
+                    &codes::MOS0018,
+                    span,
+                    format!(
                         "unknown font family `{name}`; falling back to bundled Noto Sans \
                          (known families: Helvetica, Times, Courier, Noto Sans)"
                     ),
-                    span,
-                    notes: Vec::new(),
-                    suggestions: Vec::new(),
-                });
+                ));
                 Self::noto_sans()
             }
         }
@@ -213,6 +210,8 @@ impl FontFamily {
 
 #[cfg(test)]
 mod tests {
+    use mos_core::Severity;
+
     use super::*;
 
     #[test]
@@ -242,12 +241,12 @@ mod tests {
     }
 
     #[test]
-    fn resolve_unknown_family_emits_w045_and_falls_back_to_noto() {
+    fn resolve_unknown_family_emits_mos0018_and_falls_back_to_noto() {
         let mut diags = Vec::new();
         let fam = FontFamily::resolve("Libertinus Serif", None, &mut diags);
         assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].code.0, "W045");
-        assert_eq!(diags[0].severity, Severity::Warning);
+        assert_eq!(diags[0].def().code(), codes::MOS0018.code());
+        assert_eq!(diags[0].severity(), Severity::Notice);
         assert_eq!(fam.regular, Font::Embedded(EmbeddedFontId::Regular));
     }
 }

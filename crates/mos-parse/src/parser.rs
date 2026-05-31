@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use mos_core::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
+use mos_core::{Diagnostic, DiagnosticDef, SourceSpan};
 
 use crate::support::list_marker_at;
 use crate::{Item, ParseResult, SyntaxTree};
@@ -128,19 +128,12 @@ impl<'a> Parser<'a> {
 
     pub(crate) fn warn(
         &self,
-        code: &'static str,
+        def: &'static DiagnosticDef,
         message: &str,
         start: usize,
         end: usize,
     ) -> Diagnostic {
-        Diagnostic {
-            severity: Severity::Warning,
-            code: DiagnosticCode(code),
-            message: message.to_owned(),
-            span: Some(self.span(start, end)),
-            notes: Vec::new(),
-            suggestions: Vec::new(),
-        }
+        Diagnostic::simple(def, None, message).with_span(self.span(start, end))
     }
 }
 
@@ -148,12 +141,26 @@ impl<'a> Parser<'a> {
 mod tests {
     use std::path::PathBuf;
 
-    use mos_core::Severity;
+    use mos_core::{CollectingSink, Severity, codes};
 
     use crate::*;
 
     fn parse_str(src: &str) -> ParseResult {
-        parse(src, &PathBuf::from("test.mos"))
+        let mut sink = CollectingSink::new();
+        let file = PathBuf::from("test.mos");
+        let result = parse(src, &file, &mut sink);
+        assert!(result.is_ok(), "parse structurally aborted: {result:?}");
+        let tree = match result {
+            Ok(tree) => tree,
+            Err(_) => SyntaxTree {
+                file,
+                items: Vec::new(),
+            },
+        };
+        ParseResult {
+            tree,
+            diagnostics: sink.into_diagnostics(),
+        }
     }
 
     #[test]
@@ -298,7 +305,8 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.code.0 == "W021" && d.severity == Severity::Warning)
+                .any(|d| d.def().code() == codes::MOS0031.code()
+                    && d.severity() == Severity::Warning)
         );
     }
 
@@ -309,7 +317,8 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.code.0 == "W020" && d.severity == Severity::Warning)
+                .any(|d| d.def().code() == codes::MOS0028.code()
+                    && d.severity() == Severity::Warning)
         );
     }
 
@@ -393,50 +402,96 @@ mod tests {
         // multibyte UTF-8 scalar (here `é` = 0xC3 0xA9). Advancing by 2
         // would leave the cursor mid-codepoint and the next slice
         // would panic. The parser must walk to a char boundary and
-        // emit E014 instead.
+        // emit MOS0022 instead.
         let r = parse_str("#set foo(s: \"\\é\")\n");
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "E014"),
-            "expected E014, got {:?}",
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0022.code()),
+            "expected MOS0022, got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn set_unknown_unit_emits_e014() {
+    fn set_unknown_unit_emits_mos0022() {
         let r = parse_str("#set page(margin: 24xx)\n");
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "E014"),
-            "expected E014, got {:?}",
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0022.code()),
+            "expected MOS0022, got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn set_lone_minus_emits_e014() {
+    fn set_lone_minus_emits_mos0022() {
         // `-` not followed by a digit is a malformed number literal.
         let r = parse_str("#set foo(x: -)\n");
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "E014"),
-            "expected E014, got {:?}",
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0022.code()),
+            "expected MOS0022, got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn set_missing_colon_emits_e015() {
+    fn set_without_identifier_emits_mos0010() {
+        // `#set` followed only by whitespace before the newline has no
+        // target identifier. The parser must diagnose with MOS0010 and
+        // skip the line rather than treat the next line as the body.
+        let r = parse_str("#set\nbody\n");
+        let mos0010: Vec<_> = r
+            .diagnostics
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0010.code())
+            .collect();
+        assert_eq!(
+            mos0010.len(),
+            1,
+            "expected exactly one MOS0010, got {:?}",
+            r.diagnostics
+        );
+        assert!(
+            mos0010[0].message().contains("#set"),
+            "MOS0010 message should mention `#set`, got {:?}",
+            mos0010[0].message()
+        );
+        // Recovery: the next line must parse as its own paragraph,
+        // not get eaten as the directive body.
+        assert!(
+            r.tree.items.iter().any(|i| {
+                i.as_paragraph()
+                    .is_some_and(|(inlines, _)| inlines.iter().any(|x| x.text.contains("body")))
+            }),
+            "expected a recovered `body` paragraph, got items {:?}",
+            r.tree.items
+        );
+    }
+
+    #[test]
+    fn set_missing_colon_emits_mos0025() {
         let r = parse_str("#set page(paper \"A4\")\n");
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "E015"),
-            "expected E015, got {:?}",
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0025.code()),
+            "expected MOS0025, got {:?}",
             r.diagnostics
         );
     }
 
     #[test]
-    fn set_positional_arg_emits_e015() {
+    fn set_positional_arg_emits_mos0025() {
         let r = parse_str("#set page(\"A4\")\n");
-        assert!(r.diagnostics.iter().any(|d| d.code.0 == "E015"));
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0025.code())
+        );
     }
 
     #[test]
@@ -448,12 +503,14 @@ mod tests {
     #[test]
     fn trailing_content_after_set_block_diagnoses_and_recovers() {
         // Prior behaviour swallowed everything between `)` and the
-        // next `\n`. The parser now emits E013 and leaves the
+        // next `\n`. The parser now emits MOS0019 and leaves the
         // trailing bytes in place so they parse as a paragraph.
         let r = parse_str("#set page(paper: \"A4\") leftover\n");
         assert!(
-            r.diagnostics.iter().any(|d| d.code.0 == "E013"),
-            "expected E013 diagnostic, got {:?}",
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0019.code()),
+            "expected MOS0019 diagnostic, got {:?}",
             r.diagnostics
         );
         assert!(r.tree.items.iter().any(|i| i.as_set().is_some()));
@@ -513,7 +570,7 @@ mod tests {
         // No whitespace, but `(` is also a valid token boundary.
         let r = parse_str("#set(name: \"x\")\n");
         // Either the parser recognises this as a set block with no
-        // identifier (E010) or it parses as paragraph; what matters
+        // identifier (MOS0010) or it parses as paragraph; what matters
         // is that it does NOT panic and returns a structured result.
         // We document the current behaviour here: `#set` is treated
         // as the keyword and `name` is parsed as the body identifier
@@ -583,7 +640,11 @@ mod tests {
     fn stray_at_warns_and_stays_text() {
         let r = parse_str("an @ symbol\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
-        assert!(r.diagnostics.iter().any(|d| d.code.0 == "W023"));
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0036.code())
+        );
         let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
         assert!(!inlines.iter().any(|i| i.kind == InlineKind::Reference));
     }
@@ -785,7 +846,7 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.message.contains("long brackets")),
+                .any(|d| d.message().contains("long brackets")),
             "{:?}",
             r.diagnostics
         );
@@ -801,13 +862,13 @@ mod tests {
     }
 
     #[test]
-    fn unterminated_image_directive_errors_with_e012() {
+    fn unterminated_image_directive_errors_with_mos0016() {
         let r = parse_str("#image(\n  alt: \"x\"\n");
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.code.0 == "E012" && d.message.contains("#image")),
-            "expected E012 mentioning #image, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0016.code() && d.message().contains("#image")),
+            "expected MOS0016 mentioning #image, got {:?}",
             r.diagnostics
         );
     }
@@ -1094,14 +1155,15 @@ mod tests {
     }
 
     #[test]
-    fn lone_trailing_backslash_warns_with_w025() {
+    fn lone_trailing_backslash_warns_with_mos0038() {
         let r = parse_str("foo\\\n");
         assert!(!r.has_errors());
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.code.0 == "W025" && d.severity == Severity::Warning),
-            "expected W025 warning, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0038.code()
+                    && d.severity() == Severity::Warning),
+            "expected MOS0038 warning, got {:?}",
             r.diagnostics
         );
     }
@@ -1113,7 +1175,7 @@ mod tests {
         // diagnostic -- the prior contract was "backslash is literal",
         // and only the trailing-`\` case crosses the bar where a
         // warning helps the author. Three samples cover the cases that
-        // previously fired spurious W025s.
+        // previously fired spurious MOS0038s.
         for src in [
             "foo \\* bar\n",
             "see C:\\Temp\\file\n",
@@ -1122,8 +1184,10 @@ mod tests {
             let r = parse_str(src);
             assert!(!r.has_errors(), "src {src:?}: {:?}", r.diagnostics);
             assert!(
-                !r.diagnostics.iter().any(|d| d.code.0 == "W025"),
-                "src {src:?} produced unexpected W025: {:?}",
+                !r.diagnostics
+                    .iter()
+                    .any(|d| d.def().code() == codes::MOS0038.code()),
+                "src {src:?} produced unexpected MOS0038: {:?}",
                 r.diagnostics
             );
         }
