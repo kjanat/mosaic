@@ -375,10 +375,18 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
 /// # Examples
 ///
 /// ```
-/// let parsed = mos_parse::parse("= Intro <intro>\n\nSee @intro.\n", "main.mos");
-/// let lowered = mos_eval::lower_tree(&parsed.tree);
+/// use std::path::Path;
+///
+/// let mut sink = mos_core::CollectingSink::new();
+/// let tree = mos_parse::parse(
+///     "= Intro <intro>\n\nSee @intro\n",
+///     Path::new("main.mos"),
+///     &mut sink,
+/// )?;
+/// let lowered = mos_eval::lower_tree(&tree);
 ///
 /// assert!(!lowered.has_errors());
+/// # Ok::<(), mos_core::DiagnosticAbort>(())
 /// ```
 #[must_use]
 pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
