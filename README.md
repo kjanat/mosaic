@@ -20,7 +20,7 @@ building. The actionable implementation checklist lives in
 
 ## Status
 
-Pre-alpha (`0.0.0`). The 14-crate workspace skeleton is in place. MVP 0 from `manifest.md` §30 is
+Pre-alpha (`0.0.0`). The 15-crate workspace skeleton is in place. MVP 0 from `manifest.md` §30 is
 substantially landed:
 
 - [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline `*emphasis*` / `**strong**` /
@@ -37,7 +37,9 @@ substantially landed:
       carets;
 - [x] `mos build` end-to-end — layout + PDF emission for the Base-14 core fonts and bundled Noto
       Sans, with PNG/JPEG raster images and figure captions (manifest §6 stages 5–9, §21.1);
-- [ ] HTML and EPUB backends, incremental cache, LSP, bibliography — see MVP 1–6 in `manifest.md`.
+- [x] `mos-lsp` publishes current compiler diagnostics over stdio LSP on open/change;
+- [ ] HTML and EPUB backends, persistent incremental cache, bibliography resolution, and richer LSP
+      features — see MVP 1–6 in `manifest.md`.
 
 ## Quick start
 
@@ -85,16 +87,19 @@ Defined in [`.cargo/config.toml`](./.cargo/config.toml). Cargo's alias schema fo
 single-letter built-ins (`b` / `c` / `d` / `t` / `r` / `rm`), so the workspace flavours get
 two-letter names instead:
 
-| alias        | expansion                                         | purpose                                         |
-| ------------ | ------------------------------------------------- | ----------------------------------------------- |
-| `cargo bw`   | `build --workspace`                               | build every crate                               |
-| `cargo cw`   | `check --workspace --all-targets`                 | type-check including tests / examples / benches |
-| `cargo tw`   | `test --workspace`                                | run every crate's test suite                    |
-| `cargo dw`   | `doc --workspace --no-deps`                       | rustdoc for our crates only                     |
-| `cargo br`   | `build --release`                                 | release build of the current package            |
-| `cargo rr`   | `run --release`                                   | release run of the current package              |
-| `cargo lint` | `clippy --workspace --all-targets -- -D warnings` | strict clippy; warnings fail the run            |
-| `cargo mos`  | `run -q -p mos --`                                | invoke the `mos` CLI                            |
+| alias          | expansion                                                                       | purpose                                         |
+| -------------- | ------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `cargo bw`     | `build --workspace`                                                             | build every crate                               |
+| `cargo cw`     | `check --workspace --all-targets`                                               | type-check including tests / examples / benches |
+| `cargo tw`     | `test --workspace`                                                              | run every crate's test suite                    |
+| `cargo dw`     | `doc --workspace --no-deps`                                                     | rustdoc for our crates only                     |
+| `cargo br`     | `build --release`                                                               | release build of the current package            |
+| `cargo rr`     | `run --release`                                                                 | release run of the current package              |
+| `cargo lint`   | `clippy --workspace --all-targets --all-features -- -D warnings -D clippy::all` | strict clippy; warnings fail the run            |
+| `cargo mos`    | `run --release -q -p mos --`                                                    | invoke the `mos` CLI                            |
+| `cargo mosls`  | `run --release -q -p mos-lsp --`                                                | invoke the `mos-lsp` server                     |
+| `cargo mosi`   | `install --path=crates/mos --bin=mos --force`                                   | install the `mos` CLI locally                   |
+| `cargo mosils` | `install --path=crates/mos-lsp --bin=mos-lsp --force`                           | install `mos-lsp` locally                       |
 
 `cargo lint` is **not** aliased as `cargo clippy` because that name is already the clippy
 subcommand.

@@ -3,8 +3,8 @@
 Placeholder bibliography and citation types for Mosaic.
 
 This crate exists to reserve the bibliography domain boundary from `manifest.md` §12. It is not a
-bibliography engine yet. Current shipped Mosaic support is `mos check` and `mos build` to PDF;
-bibliography remains aspirational/stubbed.
+bibliography engine yet. Current shipped citation syntax/lowering lives in `mos-parse` / `mos-eval`;
+bibliography loading, resolution, formatting, and rendering remain aspirational/stubbed.
 
 ## Current API
 
@@ -36,6 +36,6 @@ assert_eq!(format!("{bibliography:?}"), "Bibliography { _private: () }");
 
 - No BibTeX, BibLaTeX, or CSL parsing.
 - No citation resolution, ordering, clustering, formatting, or rendering.
-- No `#bibliography()` or `@citation` language support.
-- No integration with `mos check`, `mos build`, layout, PDF, HTML, or LSP.
+- No `#bibliography()` language support and no citation resolution beyond parser/eval placeholders.
+- No `mos-bib` integration with `mos check`, `mos build`, layout, PDF, HTML, or LSP.
 - No claim of manifest §12 completion. Manifest loud; code quiet. Booga trust code.

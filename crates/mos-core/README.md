@@ -104,7 +104,8 @@ mos-parse -> mos-eval -> mos-core::Document -> mos-layout -> mos-pdf
 
 - Hash-derived stable `NodeId`s are not implemented; current IDs are monotonic allocation order.
 - `ContentHash` and `StyleId` are carried but not a persistent incremental cache contract.
-- Presence of node kinds such as math, tables, citations, theorems, footnotes, bibliography, or raw
-  nodes does not mean those language features are shipped.
+- Presence of node kinds such as math, tables, theorems, footnotes, bibliography, or raw nodes does
+  not mean those language features are shipped. Citations currently have only minimal placeholder
+  support; bibliography resolution/rendering is not shipped.
 - No backend-specific attributes should be introduced unless all consumers can tolerate them.
 - No file IO, package registry, watcher, formatter, LSP behavior, or build orchestration lives here.

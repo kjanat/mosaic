@@ -9,7 +9,7 @@ is not a general scripting engine yet.
 
 Implemented:
 
-- Headings, paragraphs, inline text/emphasis/strong/code/reference nodes.
+- Headings, paragraphs, inline text/emphasis/strong/code/reference/citation nodes.
 - `InlineKind::HardBreak` lowered to `NodeKind::HardBreak` with empty attributes (no `text` payload;
   structural marker only).
 - Lists lowered to `List`/`ListItem` nodes.
@@ -17,12 +17,13 @@ Implemented:
 - Document metadata: title, author, language.
 - `#image` and `#figure` with PNG/JPEG decode and image attrs.
 - Label index, duplicate label diagnostics, unknown reference diagnostics.
-- Section numbering and generic reference text rewrite.
+- Section numbering, generic reference text rewrite, and citation placeholder text.
 
 Not implemented yet:
 
-- User functions, `#let`, scripting, templates, bibliography, math/equation semantics,
-  figure/equation numbering, package resolution, full fixpoint over layout/page references.
+- User functions, `#let`, scripting, templates, bibliography resolution/rendering, citation
+  clusters, math/equation semantics, figure/equation numbering, package resolution, full fixpoint
+  over layout/page references.
 
 ## WHERE TO LOOK
 

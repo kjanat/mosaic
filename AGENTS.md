@@ -54,10 +54,13 @@ Implemented now:
   text, embedded glyph fallback sub-runs.
 - PDF: Base-14 metrics, `/Differences`, bundled Noto Sans embedding/subsetting, `/ToUnicode`,
   GPOS-positioned embedded glyph output, PNG/JPEG image XObjects, title/author Info metadata.
+- LSP: `mos-lsp` stdio server publishes current compiler parse/lower/resolve diagnostics for opened
+  and changed documents.
 
 Treat as aspirational/stub unless user asks:
 
-- HTML/EPUB/SVG backends, LSP behavior, bibliography, persistent cache, watch mode.
+- HTML/EPUB/SVG backends, richer LSP behavior, bibliography resolution/rendering, persistent cache,
+  watch mode.
 - Package registry/lockfile resolution, formatter, scripting/functions/templates.
 - Math/equations/tables/theorems/footnotes/index/glossary.
 - Float solver, TOC/page refs, layout fixpoint over pagination, Knuth-Plass, automatic hyphenation,
@@ -111,8 +114,9 @@ mos-core -> mos-parse -> mos-eval -> mos-layout
 mos orchestrates core/eval/layout/pdf
 ```
 
-`mos-html`, `mos-bib`, `mos-cache`, `mos-lsp`, and parts of `mos-packages` are mostly skeletons or
-partial foundations.
+`mos-html`, `mos-bib`, `mos-cache`, and parts of `mos-packages` are mostly skeletons or partial
+foundations. `mos-lsp` has the diagnostic-publish slice only; completion, hover, formatting, rename,
+workspace indexing, and preview sync remain future work.
 
 `crates/tree-sitter-mosaic` is editor syntax infrastructure. `crates/zed-mosaic` is a Zed extension
 under `crates/` but excluded from the Cargo workspace.
@@ -157,6 +161,7 @@ cargo tw
 cargo lint
 cargo mos check examples/hello/main.mos
 cargo mos build examples/hello/main.mos
+cargo mosls
 just fmt
 just examples
 ```
