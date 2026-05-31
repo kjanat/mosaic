@@ -155,6 +155,7 @@ example.
 - [ ] Define and test function-call syntax beyond current directives.
 - [ ] Define explicit grammar for document configuration.
 - [ ] Document supported syntax in user-facing docs.
+  - [x] Document labels and references (`docs/labels-and-references.md`).
 
 ## Semantic Model And Resolver
 
