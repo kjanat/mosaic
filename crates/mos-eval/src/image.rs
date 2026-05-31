@@ -10,9 +10,9 @@
 //!
 //! Diagnostics:
 //!
-//! - `MOS0160`: `#image(...)` called without a path string.
-//! - `MOS0161`: cannot read the file on disk.
-//! - `MOS0162`: cannot decode the bytes as PNG/JPEG.
+//! - `MOS0028`: `#image(...)` called without a path string.
+//! - `MOS0029`: cannot read the file on disk.
+//! - `MOS0030`: cannot decode the bytes as PNG/JPEG.
 
 use std::path::{Path, PathBuf};
 
@@ -46,7 +46,7 @@ pub(crate) fn load(
     let resolved = resolve_path(src_path, source_file);
     let bytes = std::fs::read(&resolved).map_err(|err| {
         Box::new(Diagnostic::simple(
-            &codes::MOS0161,
+            &codes::MOS0029,
             Some(call_span.clone()),
             format!("cannot read image `{}`: {err}", resolved.display()),
         ))
@@ -54,7 +54,7 @@ pub(crate) fn load(
     let decoded = decode(&bytes).map_err(|err| {
         Box::new(
             Diagnostic::simple(
-                &codes::MOS0162,
+                &codes::MOS0030,
                 Some(call_span.clone()),
                 format!("cannot decode `{}`: {err}", resolved.display()),
             )

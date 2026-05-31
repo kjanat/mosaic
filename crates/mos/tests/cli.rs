@@ -120,7 +120,7 @@ fn check_warns_on_unterminated_emphasis_but_succeeds() {
     write_file(dir.path(), "main.mos", "= Title\n\n*unclosed\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 0);
-    assert!(stderr.contains("warning[MOS0021]"), "stderr={stderr:?}");
+    assert!(stderr.contains("warning[MOS0017]"), "stderr={stderr:?}");
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn check_crlf_source_does_not_leak_carriage_return() {
     write_file(dir.path(), "main.mos", "= Title\r\n*unclosed\r\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 0);
-    assert!(stderr.contains("warning[MOS0021]"), "stderr={stderr:?}");
+    assert!(stderr.contains("warning[MOS0017]"), "stderr={stderr:?}");
     // The line above the caret should be the bare paragraph text,
     // with no CR character anywhere in the diagnostic frame.
     assert!(
@@ -248,13 +248,13 @@ fn build_renders_section_numbers_and_resolves_references() {
 
 #[test]
 fn check_reports_unknown_label() {
-    // MOS0141 surfaces through `mos check` so editor integration sees
+    // MOS0027 surfaces through `mos check` so editor integration sees
     // unresolved references without having to drive the build.
     let dir = temp_dir("mos-check-e042");
     write_file(dir.path(), "main.mos", "see @no:such\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[MOS0141]"), "stderr={stderr:?}");
+    assert!(stderr.contains("error[MOS0027]"), "stderr={stderr:?}");
 }
 
 #[test]
@@ -263,7 +263,7 @@ fn check_reports_duplicate_label() {
     write_file(dir.path(), "main.mos", "= A <dup>\n\n= B <dup>\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[MOS0140]"), "stderr={stderr:?}");
+    assert!(stderr.contains("error[MOS0026]"), "stderr={stderr:?}");
 }
 
 #[test]
@@ -348,7 +348,7 @@ fn read_mediabox_dim(value: &lopdf::Object) -> f32 {
 
 #[test]
 fn build_fails_on_layout_error_does_not_emit_pdf() {
-    // MOS0200 (unknown paper) is a layout-level Error. The CLI must
+    // MOS0031 (unknown paper) is a layout-level Error. The CLI must
     // surface it and exit non-zero rather than writing a "successful"
     // PDF with broken config.
     let dir = temp_dir("mos-build-layout-error");
@@ -359,7 +359,7 @@ fn build_fails_on_layout_error_does_not_emit_pdf() {
     );
     let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
     assert_eq!(code, 1, "stderr={stderr:?}");
-    assert!(stderr.contains("error[MOS0200]"), "stderr={stderr:?}");
+    assert!(stderr.contains("error[MOS0031]"), "stderr={stderr:?}");
     assert!(
         !dir.path().join("build").join("main.pdf").exists(),
         "PDF should not be written on layout error"
@@ -641,12 +641,12 @@ fn build_emits_pdf_with_image_xobject() {
 
 #[test]
 fn build_fails_when_image_path_is_missing() {
-    // MOS0161 from the resolver: missing image file => non-zero exit.
+    // MOS0029 from the resolver: missing image file => non-zero exit.
     let dir = temp_dir("mos-build-missing-img");
     write_file(dir.path(), "main.mos", "#image(\"does-not-exist.png\")\n");
     let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
     assert_ne!(code, 0);
-    assert!(stderr.contains("MOS0161"), "stderr={stderr:?}");
+    assert!(stderr.contains("MOS0029"), "stderr={stderr:?}");
 }
 
 #[test]
@@ -667,8 +667,8 @@ fn check_collects_multiple_errors_in_one_pass() {
 
 #[test]
 fn build_substituted_font_emits_notice_and_succeeds() {
-    // An unknown font family is a Notice (MOS0300), not a failure: the
-    // build substitutes bundled Noto Sans, prints `notice[MOS0300]`, and
+    // An unknown font family is a Notice (MOS0034), not a failure: the
+    // build substitutes bundled Noto Sans, prints `notice[MOS0034]`, and
     // still exits 0 with a PDF written.
     let dir = temp_dir("mos-build-notice-font");
     write_file(
@@ -679,7 +679,7 @@ fn build_substituted_font_emits_notice_and_succeeds() {
     let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
     assert_eq!(code, 0, "notice must not fail the build; stderr={stderr:?}");
     assert!(
-        stderr.contains("notice[MOS0300]"),
+        stderr.contains("notice[MOS0034]"),
         "expected a notice for the substituted font, got {stderr:?}"
     );
     assert!(stdout.starts_with("wrote "), "stdout={stdout:?}");

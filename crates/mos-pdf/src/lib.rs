@@ -69,7 +69,7 @@ pub struct PdfMetadata {
 /// directory if it doesn't already exist.
 ///
 /// Returns any diagnostics raised during PDF emission — currently
-/// only `MOS0310` (per-font extended-glyph budget exhausted). Layout
+/// only `MOS0035` (per-font extended-glyph budget exhausted). Layout
 /// diagnostics flow through [`mos_layout::LayoutResult::diagnostics`]
 /// separately; callers (the CLI) typically render both.
 ///
@@ -112,12 +112,12 @@ pub fn emit(graph: &PageGraph, metadata: &PdfMetadata, out: &Path) -> Result<Vec
 }
 
 fn io_diagnostic(message: String) -> CoreError {
-    CoreError::Diagnostic(Box::new(Diagnostic::simple(&codes::MOS0400, None, message)))
+    CoreError::Diagnostic(Box::new(Diagnostic::simple(&codes::MOS0036, None, message)))
 }
 
 /// Build the PDF bytes from `graph`. Pulled out of [`emit`] so tests
 /// can round-trip without touching the filesystem. Returns the bytes
-/// plus any encoding diagnostics (currently `MOS0310` for Base14
+/// plus any encoding diagnostics (currently `MOS0035` for Base14
 /// `/Differences` overflow). Kept `pub(crate)` — the public surface
 /// is [`emit`].
 ///
@@ -915,7 +915,7 @@ mod tests {
     #[test]
     fn emit_fails_with_e090_when_target_is_a_directory() -> TestResult {
         // Writing a file whose path collides with an existing
-        // directory must surface as an `MOS0400` diagnostic, not a
+        // directory must surface as an `MOS0036` diagnostic, not a
         // panic or an `Unimplemented` error.
         let dir = unique_temp_path("conflict");
         std::fs::create_dir_all(&dir)?;
@@ -930,7 +930,7 @@ mod tests {
             return Err("expected Diagnostic, got Unimplemented".into());
         };
         ensure!(
-            d.def().code() == codes::MOS0400.code(),
+            d.def().code() == codes::MOS0036.code(),
             "wrong code: {:?}",
             d.def().code()
         );

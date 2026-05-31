@@ -153,7 +153,7 @@ impl Parser<'_> {
                 // `C:\Temp` / `\*foo*` / etc. would be noisy.
                 if i + 1 >= bytes.len() {
                     self.diagnostics.push(self.warn(
-                        &codes::MOS0024,
+                        &codes::MOS0020,
                         "lone trailing `\\` is not a recognized escape; treated as literal text",
                         base + i,
                         base + i + 1,
@@ -247,7 +247,7 @@ impl Parser<'_> {
                     continue;
                 }
                 self.diagnostics.push(self.warn(
-                    &codes::MOS0022,
+                    &codes::MOS0018,
                     "unterminated `` `code` `` run; treated as text",
                     base + i,
                     base + i + 1,
@@ -278,7 +278,7 @@ impl Parser<'_> {
                     continue;
                 }
                 self.diagnostics.push(self.warn(
-                    &codes::MOS0023,
+                    &codes::MOS0019,
                     "stray `@` is not followed by a label identifier; treated as text",
                     base + i,
                     base + i + 1,
@@ -369,13 +369,13 @@ impl Parser<'_> {
     fn warn_unterminated_delimiter(&mut self, base: usize, i: usize, delimiter: Delimiter) {
         match delimiter {
             Delimiter::Strong => self.diagnostics.push(self.warn(
-                &codes::MOS0020,
+                &codes::MOS0016,
                 "unterminated `**strong**` run; treated as text",
                 base + i,
                 base + i + 2,
             )),
             Delimiter::Emphasis => self.diagnostics.push(self.warn(
-                &codes::MOS0021,
+                &codes::MOS0017,
                 "unterminated `*emphasis*` run; treated as text",
                 base + i,
                 base + i + 1,

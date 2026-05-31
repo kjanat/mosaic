@@ -6,18 +6,20 @@ is the source of truth; a drift test (`crates/mos/tests/catalog.rs`) fails CI if
 
 ## The contract
 
-- **Identity is separate from severity.** A diagnostic code is a stable, namespaced, severity-free
-  identifier rendered as `MOS0010`. It answers *which rule fired*, never *how hard it fails*.
-- **Severity is registry metadata**, carried on the `DiagnosticDef` as `default_severity` and on
-  each emitted `Diagnostic` instance (so a future config layer can remap it without touching call
-  sites). The CLI renders the instance severity: `error[MOS0140]`, `warning[MOS0020]`,
-  `notice[MOS0300]`.
+- **Identity is opaque.** A diagnostic code is a stable, namespaced, severity-free identifier
+  rendered as `MOS0010`. The number is just a number — it does **not** encode severity, owner crate,
+  category, phase, or lint group. Numbers are globally unique and stable; new codes get the next
+  free integer regardless of what they describe.
+- **Severity, category, owner, and summary are metadata** on `DiagnosticDef`. The catalog groups by
+  metadata (this document organises by category for human scanning), never by numeric range — so a
+  rule that moves phase (parser → eval, fonts → text shaping) keeps its stable ID and just updates
+  its `category`.
 - **Codes are minted in one place.** `DiagnosticCode` and `DiagnosticDef` have private fields and
   crate-private constructors; the `define_codes!` macro is the only mint site, so no crate can forge
   a code or disagree with its registered severity.
-- **Numbers are globally unique and organised by category**, never by severity. The same number is
-  never reused across severities; the 100-block says *what kind* of diagnostic it is, the
-  `default_severity` column says *how it fails*.
+- **Severity is rendered, not encoded.** The CLI prints the instance severity as `error[MOS0026]`,
+  `warning[MOS0016]`, `notice[MOS0034]`. A future config layer remaps the instance severity without
+  touching identity.
 
 ## Severities
 
@@ -30,19 +32,12 @@ is the source of truth; a drift test (`crates/mos/tests/catalog.rs`) fails CI if
 `note` / `help` / `hint` are *not* severities — they are `DiagnosticAnnotation` sub-message kinds
 attached to a diagnostic, alongside `Related` (a secondary span).
 
-## Category ranges
+## Codes
 
-| Range       | Category               | Owners                                |
-| ----------- | ---------------------- | ------------------------------------- |
-| `0000–0099` | syntax (parse)         | `mos-parse`                           |
-| `0100–0199` | semantic (lower/eval)  | `mos-eval`                            |
-| `0200–0299` | layout                 | `mos-layout`                          |
-| `0300–0399` | text / fonts / shaping | `mos-fonts`, encoding in `mos-pdf`    |
-| `0400–0499` | PDF emission           | `mos-pdf`                             |
-| `0500–0599` | project / CLI / IO     | `mos`                                 |
-| `0600–9999` | reserved               | HTML/EPUB/LSP backends, plugins, etc. |
+Grouped by `DiagnosticCategory` for human scanning. Numeric order has no meaning — a code's number
+is just an opaque key, allocated as the next free integer when the code was added.
 
-## Syntax (`0000–0099`)
+### Syntax
 
 | Code    | Slug                       | Default severity | Owner crate | Summary                                                          |
 | ------- | -------------------------- | ---------------- | ----------- | ---------------------------------------------------------------- |
@@ -52,61 +47,59 @@ attached to a diagnostic, alongside `Related` (a secondary span).
 | MOS0013 | directive-trailing-content | Error            | mos-parse   | syntax: unexpected trailing content after directive              |
 | MOS0014 | directive-malformed-arg    | Error            | mos-parse   | syntax: malformed directive argument value                       |
 | MOS0015 | arglist-shape              | Error            | mos-parse   | syntax: malformed argument list                                  |
-| MOS0020 | unterminated-strong        | Warning          | mos-parse   | syntax: unterminated **strong** run; treated as text             |
-| MOS0021 | unterminated-emphasis      | Warning          | mos-parse   | syntax: unterminated *emphasis* run; treated as text             |
-| MOS0022 | unterminated-code          | Warning          | mos-parse   | syntax: unterminated `code` run; treated as text                 |
-| MOS0023 | stray-at-sign              | Warning          | mos-parse   | syntax: stray @ not followed by a label; treated as text         |
-| MOS0024 | lone-trailing-backslash    | Warning          | mos-parse   | syntax: lone trailing backslash at end of input; treated as text |
+| MOS0016 | unterminated-strong        | Warning          | mos-parse   | syntax: unterminated **strong** run; treated as text             |
+| MOS0017 | unterminated-emphasis      | Warning          | mos-parse   | syntax: unterminated *emphasis* run; treated as text             |
+| MOS0018 | unterminated-code          | Warning          | mos-parse   | syntax: unterminated `code` run; treated as text                 |
+| MOS0019 | stray-at-sign              | Warning          | mos-parse   | syntax: stray @ not followed by a label; treated as text         |
+| MOS0020 | lone-trailing-backslash    | Warning          | mos-parse   | syntax: lone trailing backslash at end of input; treated as text |
 
-## Semantic (`0100–0199`)
+### Semantic
 
 | Code    | Slug                    | Default severity | Owner crate | Summary                                                        |
 | ------- | ----------------------- | ---------------- | ----------- | -------------------------------------------------------------- |
-| MOS0100 | set-unknown-target      | Error            | mos-eval    | semantic: unknown #set target                                  |
-| MOS0101 | unknown-kwarg           | Error            | mos-eval    | semantic: unknown keyword argument                             |
-| MOS0102 | arg-type-mismatch       | Error            | mos-eval    | semantic: argument type mismatch or non-positive length        |
-| MOS0103 | set-positional-rejected | Error            | mos-eval    | semantic: #set rejects positional argument                     |
-| MOS0120 | set-sanity-floor        | Warning          | mos-eval    | semantic: #set value trips a sanity floor; value still applied |
-| MOS0140 | label-duplicate         | Error            | mos-eval    | semantic: label declared more than once                        |
-| MOS0141 | label-missing           | Error            | mos-eval    | semantic: @reference to a label that does not exist            |
-| MOS0160 | image-missing-path      | Error            | mos-eval    | semantic: #image/#figure missing a path argument               |
-| MOS0161 | image-read-failed       | Error            | mos-eval    | semantic: image file cannot be read from disk                  |
-| MOS0162 | image-decode-failed     | Error            | mos-eval    | semantic: image file cannot be decoded                         |
+| MOS0021 | set-unknown-target      | Error            | mos-eval    | semantic: unknown #set target                                  |
+| MOS0022 | unknown-kwarg           | Error            | mos-eval    | semantic: unknown keyword argument                             |
+| MOS0023 | arg-type-mismatch       | Error            | mos-eval    | semantic: argument type mismatch or non-positive length        |
+| MOS0024 | set-positional-rejected | Error            | mos-eval    | semantic: #set rejects positional argument                     |
+| MOS0025 | set-sanity-floor        | Warning          | mos-eval    | semantic: #set value trips a sanity floor; value still applied |
+| MOS0026 | label-duplicate         | Error            | mos-eval    | semantic: label declared more than once                        |
+| MOS0027 | label-missing           | Error            | mos-eval    | semantic: @reference to a label that does not exist            |
+| MOS0028 | image-missing-path      | Error            | mos-eval    | semantic: #image/#figure missing a path argument               |
 
-## Layout (`0200–0299`)
+### Layout
 
 | Code    | Slug                    | Default severity | Owner crate | Summary                                                      |
 | ------- | ----------------------- | ---------------- | ----------- | ------------------------------------------------------------ |
-| MOS0200 | paper-size-unknown      | Error            | mos-layout  | layout: unknown paper size                                   |
-| MOS0201 | geometry-breaks-page    | Error            | mos-layout  | layout: value breaks page geometry; previous value retained  |
-| MOS0220 | image-skipped-no-pixels | Warning          | mos-layout  | layout: image reached layout without decoded pixels; skipped |
+| MOS0031 | paper-size-unknown      | Error            | mos-layout  | layout: unknown paper size                                   |
+| MOS0032 | geometry-breaks-page    | Error            | mos-layout  | layout: value breaks page geometry; previous value retained  |
+| MOS0033 | image-skipped-no-pixels | Warning          | mos-layout  | layout: image reached layout without decoded pixels; skipped |
 
-## Text / fonts / shaping (`0300–0399`)
+### Text
 
-| Code    | Slug                    | Default severity | Owner crate | Summary                                                |
-| ------- | ----------------------- | ---------------- | ----------- | ------------------------------------------------------ |
-| MOS0300 | font-family-substituted | Notice           | mos-fonts   | font: substituted bundled Noto Sans for unknown family |
-| MOS0310 | glyph-budget-exhausted  | Warning          | mos-pdf     | font: Base-14 /Differences glyph budget exhausted      |
+| Code    | Slug                    | Default severity | Owner crate | Summary                                                     |
+| ------- | ----------------------- | ---------------- | ----------- | ----------------------------------------------------------- |
+| MOS0034 | font-family-substituted | Notice           | mos-fonts   | text: substituted bundled Noto Sans for unknown font family |
+| MOS0035 | glyph-budget-exhausted  | Warning          | mos-pdf     | text: Base-14 /Differences glyph budget exhausted           |
 
-## PDF emission (`0400–0499`)
+### Pdf
 
-| Code    | Slug                       | Default severity | Owner crate | Summary                                                    |
-| ------- | -------------------------- | ---------------- | ----------- | ---------------------------------------------------------- |
-| MOS0400 | pdf-io-failed              | Error            | mos-pdf     | pdf: backend I/O failure                                   |
-| MOS0401 | font-subset-failed         | Error            | mos-pdf     | pdf: font subsetting failure for an embedded face          |
-| MOS0402 | internal-missing-font-plan | Error            | mos-pdf     | pdf: internal: missing embedded font plan for a shaped run |
+| Code    | Slug               | Default severity | Owner crate | Summary                                           |
+| ------- | ------------------ | ---------------- | ----------- | ------------------------------------------------- |
+| MOS0036 | pdf-io-failed      | Error            | mos-pdf     | pdf: backend I/O failure                          |
+| MOS0037 | font-subset-failed | Error            | mos-pdf     | pdf: font subsetting failure for an embedded face |
 
-## Reserved / retired
+### Io
 
-| Code    | Slug    | Default severity | Owner crate | Summary                                       |
-| ------- | ------- | ---------------- | ----------- | --------------------------------------------- |
-| MOS0000 | example | Error            | mos-core    | reserved documentation example; never emitted |
+| Code    | Slug                | Default severity | Owner crate | Summary                                 |
+| ------- | ------------------- | ---------------- | ----------- | --------------------------------------- |
+| MOS0029 | image-read-failed   | Error            | mos-eval    | io: image file cannot be read from disk |
+| MOS0030 | image-decode-failed | Error            | mos-eval    | io: image file cannot be decoded        |
 
-- `MOS0000` is referenced only by doctests where a concrete code is needed; no compiler stage emits
-  it.
-- The pre-`MOS` scheme (`E0xx` / `W0xx`) was retired wholesale when identity was split from
-  severity. The old `W040` substitution warning has no successor — `mos-layout` keeps a regression
-  test asserting uncovered glyphs flow through without a diagnostic.
+### Internal
+
+| Code    | Slug                       | Default severity | Owner crate | Summary                                               |
+| ------- | -------------------------- | ---------------- | ----------- | ----------------------------------------------------- |
+| MOS0038 | internal-missing-font-plan | Error            | mos-pdf     | internal: missing embedded font plan for a shaped run |
 
 ## CLI rendering
 
@@ -114,13 +107,13 @@ attached to a diagnostic, alongside `Related` (a secondary span).
 `crates/mos/src/main.rs::render_diagnostic`:
 
 ```text
-error[MOS0140]: label `intro` is declared more than once
+error[MOS0026]: label `intro` is declared more than once
   --> main.mos:3:1
    |
  3 | = B <intro>
    | ^^^^^^^^^^^
   note: first declaration of `intro` is here (main.mos:1:1)
-notice[MOS0300]: substituted bundled Noto Sans for unknown family `Helvetica`
+notice[MOS0034]: substituted bundled Noto Sans for unknown family `Helvetica`
 ```
 
 The leading word is the instance severity; the bracketed token is `diagnostic.def().code()`.

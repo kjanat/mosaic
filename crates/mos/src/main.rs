@@ -249,7 +249,7 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    // Layout can produce real errors (MOS0200 unknown paper, MOS0201
+    // Layout can produce real errors (MOS0031 unknown paper, MOS0032
     // geometrically invalid margin/leading). Don't ship a PDF with
     // broken config under a success exit code.
     let layout = mos_layout::LayoutEngine::new().layout(&result.document);

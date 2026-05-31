@@ -87,7 +87,7 @@ fn emit_text_run(
             let plan = embedded_by_id.get(&id).ok_or_else(|| {
                 CoreError::Diagnostic(Box::new(
                     Diagnostic::simple(
-                        &codes::MOS0402,
+                        &codes::MOS0038,
                         None,
                         format!("missing embedded font plan for {:?} (id {id:?})", run.font),
                     )
@@ -244,7 +244,7 @@ mod tests {
             other => return Err(format!("expected diagnostic error, got {other:?}").into()),
         };
         ensure!(
-            diagnostic.def().code() == codes::MOS0402.code(),
+            diagnostic.def().code() == codes::MOS0038.code(),
             "wrong code: {:?}",
             diagnostic.def().code()
         );

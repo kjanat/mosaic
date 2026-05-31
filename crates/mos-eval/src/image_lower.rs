@@ -94,7 +94,7 @@ pub(super) fn lower_figure_directive(
                         caption = Some((s.clone(), value_span.clone()));
                     }
                     _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0102, None,
+                        Diagnostic::simple(&codes::MOS0023, None,
                             "`#figure(caption: ...)` expects a string",
                         )
                         .with_span(value_span.clone()),
@@ -103,14 +103,14 @@ pub(super) fn lower_figure_directive(
                 "label" => match value {
                     SetValue::Str(s) => figure_label = Some(s.clone()),
                     _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0102, None,
+                        Diagnostic::simple(&codes::MOS0023, None,
                             "`#figure(label: ...)` expects a string",
                         )
                         .with_span(value_span.clone()),
                     ),
                 },
                 _ => diagnostics.push(
-                    Diagnostic::simple(&codes::MOS0101, None,
+                    Diagnostic::simple(&codes::MOS0022, None,
                         format!(
                             "unknown argument `{key}` for `#figure` (valid: image, caption, alt, width, height, label)"
                         ),
@@ -217,7 +217,7 @@ fn build_image_attributes(
             SetArg::Positional { value, value_span } => match value {
                 SetValue::Str(s) => src_path = Some((s.clone(), value_span.clone())),
                 _ => diagnostics.push(
-                    Diagnostic::simple(&codes::MOS0102, None,
+                    Diagnostic::simple(&codes::MOS0023, None,
                         "`#image(...)` expects a string path",
                     )
                     .with_span(value_span.clone()),
@@ -232,7 +232,7 @@ fn build_image_attributes(
                 "src" | "path" => match value {
                     SetValue::Str(s) => src_path = Some((s.clone(), value_span.clone())),
                     _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0102, None,
+                        Diagnostic::simple(&codes::MOS0023, None,
                             "`#image(...)` expects a string path",
                         )
                         .with_span(value_span.clone()),
@@ -241,7 +241,7 @@ fn build_image_attributes(
                 "alt" => match value {
                     SetValue::Str(s) => alt = Some(s.clone()),
                     _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0102, None,
+                        Diagnostic::simple(&codes::MOS0023, None,
                             "`#image(alt: ...)` expects a string",
                         )
                         .with_span(value_span.clone()),
@@ -264,14 +264,14 @@ fn build_image_attributes(
                 "label" => match value {
                     SetValue::Str(s) => label = Some(s.clone()),
                     _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0102, None,
+                        Diagnostic::simple(&codes::MOS0023, None,
                             "`#image(label: ...)` expects a string",
                         )
                         .with_span(value_span.clone()),
                     ),
                 },
                 _ => diagnostics.push(
-                    Diagnostic::simple(&codes::MOS0101, None,
+                    Diagnostic::simple(&codes::MOS0022, None,
                         format!(
                             "unknown argument `{key}` for `#image` (valid: src, alt, width, height, label)"
                         ),
@@ -284,7 +284,7 @@ fn build_image_attributes(
     let Some((path, _path_span)) = src_path else {
         diagnostics.push(
             Diagnostic::simple(
-                &codes::MOS0160,
+                &codes::MOS0028,
                 None,
                 "`#image(...)` requires a path (e.g. `#image(\"scan.png\")`)",
             )
@@ -298,7 +298,7 @@ fn build_image_attributes(
     if path.trim().is_empty() {
         diagnostics.push(
             Diagnostic::simple(
-                &codes::MOS0160,
+                &codes::MOS0028,
                 None,
                 "`#image(...)` requires a non-empty path (e.g. `#image(\"scan.png\")`)",
             )

@@ -44,7 +44,7 @@
 //!    still get plenty of room from `0x20..0x7E`.
 //!
 //! 3. If we exhaust the pool before placing every extended char,
-//!    emit `MOS0310` and drop the overflow (those chars render as `?`).
+//!    emit `MOS0035` and drop the overflow (those chars render as `?`).
 //!
 //! ## Output
 //!
@@ -138,7 +138,7 @@ impl EncodingPlanner {
     /// is absent from the returned map; callers should fall back to
     /// the predefined `WinAnsiEncoding` shortcut for those.
     ///
-    /// Pushes a `MOS0310` diagnostic when a face's extended-glyph budget
+    /// Pushes a `MOS0035` diagnostic when a face's extended-glyph budget
     /// overflows the 256-slot single-byte ceiling.
     pub(crate) fn finalize(self, diagnostics: &mut Vec<Diagnostic>) -> HashMap<Font, DocEncoding> {
         let mut out = HashMap::with_capacity(self.used.len());
@@ -228,7 +228,7 @@ fn plan_face(
 
     if overflowed > 0 {
         diagnostics.push(Diagnostic::simple(
-            &codes::MOS0310,
+            &codes::MOS0035,
             None,
             format!(
                 "extended glyph budget exhausted in {face:?}: {overflowed} \
@@ -396,8 +396,8 @@ mod tests {
             "expected overflow, got {} differences",
             enc.differences.len()
         );
-        assert_eq!(diags.len(), 1, "expected exactly one MOS0310");
-        assert_eq!(diags[0].def().code(), codes::MOS0310.code());
+        assert_eq!(diags.len(), 1, "expected exactly one MOS0035");
+        assert_eq!(diags[0].def().code(), codes::MOS0035.code());
         assert!(
             diags[0].message().contains("budget exhausted"),
             "msg = {:?}",

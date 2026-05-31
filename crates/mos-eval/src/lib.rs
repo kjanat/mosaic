@@ -238,7 +238,7 @@ impl Evaluator {
                     // and `#image(...)` are both parsed with `name ==
                     // "image"`, and dispatching on the string would
                     // route `#set image(width: 200pt)` into the image
-                    // loader and incorrectly raise MOS0160 "missing path".
+                    // loader and incorrectly raise MOS0028 "missing path".
                     DirectiveKind::Image => {
                         lower_image_directive(
                             &mut document,
@@ -581,8 +581,8 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0160.code()),
-            "expected MOS0160, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0028.code()),
+            "expected MOS0028, got {:?}",
             r.diagnostics
         );
     }
@@ -596,8 +596,8 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0161.code()),
-            "expected MOS0161, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0029.code()),
+            "expected MOS0029, got {:?}",
             r.diagnostics
         );
     }
@@ -607,19 +607,19 @@ mod tests {
         // `#image("")` is a missing-path mistake, not an I/O failure.
         // The diagnostic surface treats it the same as omitting the
         // path entirely so the user sees a clear "needs a path"
-        // message instead of `MOS0161`/`MOS0162` noise.
+        // message instead of `MOS0029`/`MOS0030` noise.
         let r = lower("#image(\"\")\n", &PathBuf::from("/tmp/whatever/main.mos"));
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0160.code()),
-            "expected MOS0160, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0028.code()),
+            "expected MOS0028, got {:?}",
             r.diagnostics
         );
-        // No MOS0161/MOS0162 should leak through.
+        // No MOS0029/MOS0030 should leak through.
         assert!(
             !r.diagnostics.iter().any(|d| {
-                d.def().code() == codes::MOS0161.code() || d.def().code() == codes::MOS0162.code()
+                d.def().code() == codes::MOS0029.code() || d.def().code() == codes::MOS0030.code()
             }),
             "unexpected I/O diagnostic: {:?}",
             r.diagnostics
@@ -630,7 +630,7 @@ mod tests {
     fn non_positive_image_width_emits_e022() {
         // `width: 0pt` and `width: -10pt` would otherwise produce a
         // zero/negative image box that sails into layout and PDF
-        // emit. Reject at lower time with MOS0102.
+        // emit. Reject at lower time with MOS0023.
         for src in [
             "#image(\"x.png\", width: 0pt)\n",
             "#image(\"x.png\", width: -10pt)\n",
@@ -641,8 +641,8 @@ mod tests {
             assert!(
                 r.diagnostics
                     .iter()
-                    .any(|d| d.def().code() == codes::MOS0102.code()),
-                "expected MOS0102 for `{src}`, got {:?}",
+                    .any(|d| d.def().code() == codes::MOS0023.code()),
+                "expected MOS0023 for `{src}`, got {:?}",
                 r.diagnostics
             );
         }
@@ -658,8 +658,8 @@ mod tests {
             assert!(
                 r.diagnostics
                     .iter()
-                    .any(|d| d.def().code() == codes::MOS0102.code()),
-                "expected MOS0102 for `{src}`, got {:?}",
+                    .any(|d| d.def().code() == codes::MOS0023.code()),
+                "expected MOS0023 for `{src}`, got {:?}",
                 r.diagnostics
             );
         }
@@ -682,8 +682,8 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0162.code()),
-            "expected MOS0162, got {:?}",
+                .any(|d| d.def().code() == codes::MOS0030.code()),
+            "expected MOS0030, got {:?}",
             r.diagnostics
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -725,7 +725,7 @@ mod tests {
     #[test]
     fn figure_with_missing_image_does_not_leak_empty_node() {
         // If `#figure(image: "broken.png", caption: "...")` fails to
-        // load the image, the caller still emits MOS0161; the lowerer
+        // load the image, the caller still emits MOS0029; the lowerer
         // must NOT leave a Figure (or its caption paragraph) hanging
         // on the document root. A caption-only figure renders next
         // to whatever the user thought they were captioning, which
@@ -737,7 +737,7 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0161.code())
+                .any(|d| d.def().code() == codes::MOS0029.code())
         );
         assert!(
             !r.document.nodes().any(|n| n.kind == NodeKind::Figure),
@@ -748,7 +748,7 @@ mod tests {
     #[test]
     fn figure_directive_accepts_positional_path() {
         // `#figure("path.png")` is the captionless short form. The
-        // parser accepts it; the lowerer used to reject it with MOS0103,
+        // parser accepts it; the lowerer used to reject it with MOS0024,
         // which broke the spelling end-to-end.
         let png_path = write_tiny_png("fig_pos.png");
         let source = png_path.parent().unwrap().join("main.mos");

@@ -53,7 +53,7 @@ fn apply_page_set(
             next.height_pt = h;
         } else {
             diagnostics.push(Diagnostic::simple(
-                &codes::MOS0200,
+                &codes::MOS0031,
                 Some(node.span.clone()),
                 format!(
                     "unknown paper size `{name}` (expected an ISO A/B size or `Letter`/`Legal`)"
@@ -147,11 +147,11 @@ fn apply_text_set(
     *text = next;
 }
 
-/// Build an `MOS0201` diagnostic for a `#set` argument whose value, while
+/// Build an `MOS0032` diagnostic for a `#set` argument whose value, while
 /// well-typed, would produce broken page geometry. The value is *not*
 /// applied; the previous (or default) value is retained.
 fn reject(node: &Node, message: String) -> Diagnostic {
-    Diagnostic::simple(&codes::MOS0201, Some(node.span.clone()), message)
+    Diagnostic::simple(&codes::MOS0032, Some(node.span.clone()), message)
 }
 
 /// Narrow an `f64` measurement (always a small positive page-pt or
@@ -315,7 +315,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0201.code())
+                .any(|d| d.def().code() == codes::MOS0032.code())
         );
         assert!((page.margin_pt - MARGIN_PT).abs() < 0.5);
     }
@@ -330,7 +330,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0201.code())
+                .any(|d| d.def().code() == codes::MOS0032.code())
         );
     }
 
@@ -356,8 +356,8 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0201.code()),
-            "expected MOS0201 from paper shrink, got {diagnostics:?}"
+                .any(|d| d.def().code() == codes::MOS0032.code()),
+            "expected MOS0032 from paper shrink, got {diagnostics:?}"
         );
         assert!(
             (page.width_pt - 2383.94).abs() < 1.0,
@@ -377,7 +377,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0201.code())
+                .any(|d| d.def().code() == codes::MOS0032.code())
         );
         assert!((text.size_pt - 50.0).abs() < 0.01);
     }
@@ -397,9 +397,9 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0201.code()
+                .any(|d| d.def().code() == codes::MOS0032.code()
                     && d.message().contains("page change")),
-            "expected MOS0201 about page change, got {diagnostics:?}"
+            "expected MOS0032 about page change, got {diagnostics:?}"
         );
         assert!((page.width_pt - A4_WIDTH_PT).abs() < 0.5);
         assert!((text.size_pt - 100.0).abs() < 0.01);
@@ -415,9 +415,9 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0201.code()
+                .any(|d| d.def().code() == codes::MOS0032.code()
                     && d.message().contains("vertical space")),
-            "expected MOS0201 about vertical space, got {diagnostics:?}"
+            "expected MOS0032 about vertical space, got {diagnostics:?}"
         );
         assert_eq!(text.size_pt, crate::types::BODY_SIZE_PT);
     }
@@ -432,8 +432,8 @@ mod tests {
 
         let msg = diagnostics
             .iter()
-            .find(|d| d.def().code() == codes::MOS0201.code())
-            .expect("MOS0201 emitted")
+            .find(|d| d.def().code() == codes::MOS0032.code())
+            .expect("MOS0032 emitted")
             .message();
         assert!(
             msg.contains("previous value retained"),
@@ -451,7 +451,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0201.code())
+                .any(|d| d.def().code() == codes::MOS0032.code())
         );
     }
 
@@ -469,7 +469,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0200.code())
+                .any(|d| d.def().code() == codes::MOS0031.code())
         );
         assert!((page.width_pt - A4_WIDTH_PT).abs() < 0.5);
     }

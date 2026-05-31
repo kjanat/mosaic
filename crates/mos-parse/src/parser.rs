@@ -297,7 +297,7 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0021.code()
+                .any(|d| d.def().code() == codes::MOS0017.code()
                     && d.severity() == Severity::Warning)
         );
     }
@@ -309,7 +309,7 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0020.code()
+                .any(|d| d.def().code() == codes::MOS0016.code()
                     && d.severity() == Severity::Warning)
         );
     }
@@ -635,7 +635,7 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0023.code())
+                .any(|d| d.def().code() == codes::MOS0019.code())
         );
         let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
         assert!(!inlines.iter().any(|i| i.kind == InlineKind::Reference));
@@ -1153,9 +1153,9 @@ mod tests {
         assert!(
             r.diagnostics
                 .iter()
-                .any(|d| d.def().code() == codes::MOS0024.code()
+                .any(|d| d.def().code() == codes::MOS0020.code()
                     && d.severity() == Severity::Warning),
-            "expected MOS0024 warning, got {:?}",
+            "expected MOS0020 warning, got {:?}",
             r.diagnostics
         );
     }
@@ -1178,8 +1178,8 @@ mod tests {
             assert!(
                 !r.diagnostics
                     .iter()
-                    .any(|d| d.def().code() == codes::MOS0024.code()),
-                "src {src:?} produced unexpected MOS0024: {:?}",
+                    .any(|d| d.def().code() == codes::MOS0020.code()),
+                "src {src:?} produced unexpected MOS0020: {:?}",
                 r.diagnostics
             );
         }

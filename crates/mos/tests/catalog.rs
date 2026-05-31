@@ -35,6 +35,13 @@ fn normalize(s: &str) -> String {
 
 #[test]
 fn every_registered_code_has_a_catalog_row() {
+    // The catalog organises codes by category — each section's table omits
+    // the `Category` column because the section header carries it. The
+    // drift check therefore expects the same column shape humans see:
+    // `| code | slug | severity | owner | summary |`. The category itself
+    // is not blind-matched (the `### Syntax` heading would be too easy to
+    // satisfy with a stray substring); instead we re-check below that the
+    // matching row sits under the section heading for its category.
     let haystack = normalize(CATALOG);
     for def in codes::ALL {
         let row = format!(
@@ -49,6 +56,43 @@ fn every_registered_code_has_a_catalog_row() {
             haystack.contains(&normalize(&row)),
             "docs/diagnostic-codes.md is missing (or disagrees on) the row for {}:\n  expected: {row}",
             def.code(),
+        );
+    }
+
+    // Section-membership check: walk the catalog top to bottom tracking
+    // the current `### <Category>` heading, then verify each code row
+    // appears under the heading matching its registered category.
+    let mut current_section: Option<String> = None;
+    let mut placement: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+    for line in CATALOG.lines() {
+        if let Some(rest) = line.trim_start().strip_prefix("### ") {
+            current_section = Some(rest.trim().to_owned());
+            continue;
+        }
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with("| MOS") {
+            continue;
+        }
+        let code = trimmed
+            .trim_start_matches('|')
+            .split('|')
+            .next()
+            .map(str::trim)
+            .expect("table row has a first cell")
+            .to_owned();
+        if let Some(section) = &current_section {
+            placement.insert(code, section.clone());
+        }
+    }
+
+    for def in codes::ALL {
+        let code = def.code().to_string();
+        let want = def.category().to_string();
+        let got = placement.get(&code).cloned().unwrap_or_default();
+        assert_eq!(
+            got, want,
+            "docs/diagnostic-codes.md lists `{code}` under section `{got}` but its registered category is `{want}`"
         );
     }
 }

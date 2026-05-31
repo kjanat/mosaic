@@ -59,7 +59,7 @@ pub trait DiagnosticSink {
 /// use mos_core::{CollectingSink, Diagnostic, DiagnosticSink, Severity, codes};
 ///
 /// let mut sink = CollectingSink::new();
-/// sink.emit(Diagnostic::simple(&codes::MOS0020, None, "unterminated"))
+/// sink.emit(Diagnostic::simple(&codes::MOS0016, None, "unterminated"))
 ///     .expect("collecting sink never aborts");
 /// sink.emit(Diagnostic::simple(&codes::MOS0010, None, "missing ident"))
 ///     .expect("collecting sink never aborts");
@@ -127,11 +127,11 @@ mod tests {
         let mut sink = CollectingSink::new();
         assert!(!sink.had_error());
 
-        sink.emit(Diagnostic::simple(&codes::MOS0300, None, "notice"))
+        sink.emit(Diagnostic::simple(&codes::MOS0034, None, "notice"))
             .expect("never aborts");
         assert!(!sink.had_error(), "a notice must not flip had_error");
 
-        sink.emit(Diagnostic::simple(&codes::MOS0020, None, "warning"))
+        sink.emit(Diagnostic::simple(&codes::MOS0016, None, "warning"))
             .expect("never aborts");
         assert!(!sink.had_error(), "a warning must not flip had_error");
 
@@ -141,7 +141,7 @@ mod tests {
 
         let diags = sink.into_diagnostics();
         assert_eq!(diags.len(), 3);
-        assert_eq!(diags[0].def().code(), codes::MOS0300.code());
+        assert_eq!(diags[0].def().code(), codes::MOS0034.code());
         assert_eq!(diags[2].severity(), Severity::Error);
     }
 }

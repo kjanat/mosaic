@@ -125,11 +125,13 @@ under `crates/` but excluded from the Cargo workspace.
 - Tests must stay clippy-clean. Many tests avoid `unwrap`, `expect`, and raw `panic`.
 - Keep domain direction one-way. CLI glues; parse does not lower; layout does not emit PDF.
 - Use existing `CoreError`/`Diagnostic` paths for user errors. No panics for bad documents.
-- Diagnostics: codes are `MOS####` minted only in `mos-core::codes` (`define_codes!`); identity is
-  severity-free, severity is registry metadata (`Error`/`Warning`/`Notice`). Build via
-  `Diagnostic::simple`/`new`; attach sub-messages with `DiagnosticAnnotation`. Add a code by editing
-  `codes.rs` + `docs/diagnostic-codes.md` together (drift-tested). The CLI applies phase-barrier
-  fail-fast: each phase runs to completion, then exits if any error was collected.
+- Diagnostics: codes are `MOS####` minted only in `mos-core::codes` (`define_codes!`). Numbers are
+  opaque, globally unique, and stable — they encode neither severity, category, owner, nor phase.
+  `default_severity`, `category` (`DiagnosticCategory`), `owner`, and `summary` are metadata on
+  `DiagnosticDef`. Build a diagnostic via `Diagnostic::simple`/`new`; attach sub-messages with
+  `DiagnosticAnnotation`. Add a code by editing `codes.rs` + `docs/diagnostic-codes.md` together
+  (drift-tested). The CLI applies phase-barrier fail-fast: each phase runs to completion, then exits
+  if any error was collected.
 
 ## ANTI-PATTERNS
 

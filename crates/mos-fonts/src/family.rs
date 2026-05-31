@@ -8,7 +8,7 @@ use crate::{Base14Font, EmbeddedFontId, Font};
 ///
 /// Build via [`FontFamily::resolve`], which understands Base14 family
 /// names and the bundled `"Noto Sans"` family. Unknown names fall back
-/// to Noto Sans and emit a `MOS0300` diagnostic.
+/// to Noto Sans and emit a `MOS0034` diagnostic.
 ///
 /// # Examples
 ///
@@ -168,7 +168,7 @@ impl FontFamily {
     /// Matching is case-insensitive on the family component. Known
     /// names: `Helvetica`, `Times`/`Times-Roman`/`Times Roman`,
     /// `Courier`, `Noto Sans`. Anything else falls back to Noto Sans
-    /// and pushes a `MOS0300` warning so users don't silently get the
+    /// and pushes a `MOS0034` warning so users don't silently get the
     /// wrong typeface.
     ///
     /// # Examples
@@ -195,7 +195,7 @@ impl FontFamily {
             "noto sans" | "notosans" => Self::noto_sans(),
             _ => {
                 diagnostics.push(Diagnostic::simple(
-                    &codes::MOS0300,
+                    &codes::MOS0034,
                     span,
                     format!(
                         "unknown font family `{name}`; falling back to bundled Noto Sans \
@@ -245,7 +245,7 @@ mod tests {
         let mut diags = Vec::new();
         let fam = FontFamily::resolve("Libertinus Serif", None, &mut diags);
         assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].def().code(), codes::MOS0300.code());
+        assert_eq!(diags[0].def().code(), codes::MOS0034.code());
         assert_eq!(diags[0].severity(), Severity::Notice);
         assert_eq!(fam.regular, Font::Embedded(EmbeddedFontId::Regular));
     }
