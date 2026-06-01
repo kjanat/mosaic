@@ -251,6 +251,75 @@ function formatIssueTable(items: ReadonlyArray<IssueSummary>): string {
 	].join('\n');
 }
 
+function projectItemContentUrl(item: JsonRecord): string {
+	const content = recordValue(item, 'content');
+	return content === null ? '' : stringField(content, 'url') ?? '';
+}
+
+function projectItemFieldValue(value: JsonRecord): string | null {
+	const type = stringField(value, '__typename');
+	if (type === 'ProjectV2ItemFieldTextValue') {
+		return stringField(value, 'text');
+	}
+	if (type === 'ProjectV2ItemFieldSingleSelectValue') {
+		return stringField(value, 'name');
+	}
+	if (type === 'ProjectV2ItemFieldIterationValue') {
+		return stringField(value, 'title');
+	}
+	if (type === 'ProjectV2ItemFieldNumberValue') {
+		const number = numberField(value, 'number');
+		return number === null ? null : number.toString();
+	}
+	if (type === 'ProjectV2ItemFieldDateValue') {
+		return stringField(value, 'date');
+	}
+	return null;
+}
+
+function projectItemFieldPairs(item: JsonRecord): ReadonlyArray<string> {
+	return nodeList(recordValue(item, 'fieldValues')).flatMap((value) => {
+		const field = recordValue(value, 'field');
+		const name = field === null ? null : stringField(field, 'name');
+		const itemValue = projectItemFieldValue(value);
+		if (name === null || itemValue === null || itemValue === '') {
+			return [];
+		}
+		return [`${name}: ${itemValue}`];
+	});
+}
+
+function formatProjectItems(pr: JsonRecord): string {
+	const items = nodeList(recordValue(pr, 'projectItems'));
+	if (items.length === 0) {
+		return 'No project items found.';
+	}
+
+	const rows = items.map((item) => {
+		const project = recordValue(item, 'project');
+		const projectTitle = project === null ? '' : stringField(project, 'title') ?? '';
+		const projectNumber = project === null ? null : numberField(project, 'number');
+		const projectName = projectNumber === null ? projectTitle : `${projectTitle} #${projectNumber}`;
+		const projectUrl = project === null ? '' : stringField(project, 'url') ?? '';
+		const fields = projectItemFieldPairs(item).join('; ');
+		return [
+			projectName,
+			stringField(item, 'id') ?? '',
+			stringField(item, 'type') ?? '',
+			projectUrl,
+			projectItemContentUrl(item),
+			stringField(item, 'updatedAt') ?? '',
+			fields,
+		].map(markdownCell).join(' | ');
+	});
+
+	return [
+		'| Project | Item ID | Type | Project URL | Content URL | Updated | Fields |',
+		'| --- | --- | --- | --- | --- | --- | --- |',
+		...rows.map((row) => `| ${row} |`),
+	].join('\n');
+}
+
 async function openPullRequests(repo: RepositoryDefaults, limit: number): Promise<ReadonlyArray<JsonRecord>> {
 	const query = `query($owner: String!, $repo: String!, $first: Int!) {
     repository(owner: $owner, name: $repo) {
@@ -278,6 +347,43 @@ async function pullRequest(repo: RepositoryDefaults, number: number): Promise<Js
         labels(first: 20) { nodes { name } }
         statusCheckRollup { state }
         closingIssuesReferences(first: 20) { nodes { number title state url } }
+        projectItems(first: 20) {
+          nodes {
+            id type createdAt updatedAt
+            content {
+              __typename
+              ... on Issue { number title url }
+              ... on PullRequest { number title url }
+              ... on DraftIssue { title }
+            }
+            project { number title url }
+            fieldValues(first: 50) {
+              nodes {
+                __typename
+                ... on ProjectV2ItemFieldTextValue {
+                  text
+                  field { ... on ProjectV2FieldCommon { name } }
+                }
+                ... on ProjectV2ItemFieldSingleSelectValue {
+                  name
+                  field { ... on ProjectV2FieldCommon { name } }
+                }
+                ... on ProjectV2ItemFieldIterationValue {
+                  title
+                  field { ... on ProjectV2FieldCommon { name } }
+                }
+                ... on ProjectV2ItemFieldNumberValue {
+                  number
+                  field { ... on ProjectV2FieldCommon { name } }
+                }
+                ... on ProjectV2ItemFieldDateValue {
+                  date
+                  field { ... on ProjectV2FieldCommon { name } }
+                }
+              }
+            }
+          }
+        }
         files(first: 80) { nodes { path additions deletions changeType } }
       }
     }
@@ -538,7 +644,9 @@ export const view = tool({
 			const repo = defaults(args.owner, args.repository);
 			const pr = await pullRequest(repo, args.pr);
 			const issues = await relatedIssues(repo, pr);
-			return `${formatPrView(pr)}\n\nRelated issues:\n${formatIssueTable(issues)}`;
+			return `${formatPrView(pr)}\n\nProject items:\n${formatProjectItems(pr)}\n\nRelated issues:\n${
+				formatIssueTable(issues)
+			}`;
 		} catch (error) {
 			return `github_pr_view failed: ${errorMessage(error)}`;
 		}
@@ -599,6 +707,9 @@ export const triage = tool({
 				`URL: ${summary.url}`,
 				`State: ${summary.state}${summary.draft ? ' (draft)' : ''}`,
 				`Review/checks: ${summary.reviewDecision || '(none)'} / ${summary.checks || '(none)'}`,
+				'',
+				'Project items:',
+				formatProjectItems(pr),
 				'',
 				'Classification:',
 				formatClassification(classification),
