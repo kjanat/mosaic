@@ -16,17 +16,16 @@ const TYPE_OPTIONS = ['Plan', 'Idea', 'Task', 'Bug', 'Maintenance'] as const;
 const FIELD_TYPE_OPTIONS = ['TEXT', 'NUMBER', 'DATE', 'SINGLE_SELECT', 'ITERATION'] as const;
 const PHASE_OPTIONS = ['MVP 0', 'MVP 1', 'MVP 2', 'MVP 3', 'MVP 4', 'MVP 5', 'MVP 6', 'Later'] as const;
 const SPRINT_FILTER_OPTIONS = [
-	'all',
 	'Sprint 1',
 	'Sprint 2',
 	'Sprint 3',
 	'Sprint 4',
 	'Sprint 5',
+	'all',
 	'none',
 	'unscheduled',
 ] as const;
 const SPRINT_OPTIONAL_OPTIONS = [
-	'none',
 	'Sprint 1',
 	'Sprint 2',
 	'Sprint 3',
@@ -34,63 +33,54 @@ const SPRINT_OPTIONAL_OPTIONS = [
 	'Sprint 5',
 	'current',
 	'next',
-] as const;
-const SPRINT_SET_OPTIONS = [
-	'Sprint 1',
-	'Sprint 2',
-	'Sprint 3',
-	'Sprint 4',
-	'Sprint 5',
-	'current',
-	'next',
-	'clear',
 	'none',
-	'unscheduled',
 ] as const;
+const SPRINT_SET_OPTIONS = [...SPRINT_OPTIONAL_OPTIONS, 'clear', 'unscheduled'] as const;
 const SINGLE_SELECT_FIELD_OPTIONS = ['Status', 'Priority', 'Area', 'Phase', 'Type', 'Size'] as const;
 const AREA_OPTIONS = [
+	'Bibliography',
+	'CI/Release',
 	'CLI',
 	'Core',
-	'Diagnostics',
-	'Parser/Syntax',
-	'Semantic/Resolver',
-	'Layout',
-	'Fonts',
-	'PDF',
-	'Figures/Floats',
-	'Bibliography',
-	'Incremental Cache',
-	'Page Reflow/Fixpoints',
-	'Other Backends',
 	'Determinism',
-	'Editor/LSP',
-	'Tree-sitter',
-	'Zed',
-	'Testing',
-	'Examples',
-	'CI/Release',
+	'Diagnostics',
 	'Docs/Tracker',
+	'Editor/LSP',
+	'Examples',
+	'Figures/Floats',
+	'Fonts',
+	'Incremental Cache',
+	'Layout',
+	'Other Backends',
+	'PDF',
+	'Page Reflow/Fixpoints',
+	'Parser/Syntax',
 	'Project/Packages',
 	'Scripting/Templates',
+	'Semantic/Resolver',
+	'Testing',
+	'Tree-sitter',
+	'Zed',
 ].join(', ');
 const PROJECT_FIELD_CHOICES = [
-	'Status',
-	'Priority',
 	'Area',
+	'Estimate',
 	'Phase',
-	'Type',
+	'Priority',
 	'Size',
 	'Sprint',
-	'Estimate',
+	'Status',
+	'Type',
 	'claude-code',
 ].join(', ');
 const SELECT_OPTION_GUIDE = [
-	`Status: ${STATUS_OPTIONS.join(', ')}`,
+	`Area: ${AREA_OPTIONS}`,
+	`Phase: ${PHASE_OPTIONS.join(', ')}`,
 	`Priority: ${PRIORITY_OPTIONS.join(', ')}`,
 	`Size: ${SIZE_OPTIONS.join(', ')}`,
+	'Estimate: hours (number)',
+	`Status: ${STATUS_OPTIONS.join(', ')}`,
 	`Type: ${TYPE_OPTIONS.join(', ')}`,
-	`Phase: ${PHASE_OPTIONS.join(', ')}`,
-	`Area: ${AREA_OPTIONS}`,
 ].join('; ');
 
 type JsonRecord = Record<string, unknown>;
@@ -298,6 +288,11 @@ function stringField(record: JsonRecord, key: string): string | null {
 
 function numberField(record: JsonRecord, key: string): number | null {
 	return numberValue(record[key]);
+}
+
+function booleanField(record: JsonRecord, key: string): boolean | null {
+	const value = record[key];
+	return typeof value === 'boolean' ? value : null;
 }
 
 function arrayField(record: JsonRecord, key: string): ReadonlyArray<unknown> {
@@ -602,6 +597,12 @@ type ProjectItemTarget = {
 	itemId: string;
 	issue: number;
 	pr: number;
+};
+
+type ProjectFieldUpdate = {
+	field: string;
+	value?: string;
+	clear?: boolean;
 };
 
 function findItemByTarget(
@@ -1085,6 +1086,66 @@ async function setProjectFieldForTarget(
 	return { project, item, field: field.name, value: appliedValue, cleared: false };
 }
 
+function parseFieldUpdates(rawUpdates: string): ReadonlyArray<ProjectFieldUpdate> {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(rawUpdates);
+	} catch (error) {
+		throw new Error(`updates must be a JSON array: ${errorMessage(error)}`);
+	}
+	if (!Array.isArray(parsed)) {
+		throw new Error('updates must be a JSON array');
+	}
+	return parsed.map((item, index) => {
+		if (!isRecord(item)) {
+			throw new Error(`updates[${index}] must be an object`);
+		}
+		const field = stringField(item, 'field');
+		if (field === null || field.trim() === '') {
+			throw new Error(`updates[${index}].field must be a non-empty string`);
+		}
+		const value = stringField(item, 'value');
+		const clear = booleanField(item, 'clear') ?? false;
+		if (value === null && !clear) {
+			throw new Error(`updates[${index}] must include value or clear=true`);
+		}
+		return { field, value: value === null || value === '' ? undefined : value, clear };
+	});
+}
+
+async function setProjectFieldsForTarget(
+	project: ProjectDefaults,
+	target: ProjectItemTarget,
+	updates: ReadonlyArray<ProjectFieldUpdate>,
+): Promise<JsonRecord> {
+	if (updates.length === 0) {
+		throw new Error('updates must include at least one field update');
+	}
+	const [id, item, projectFields] = await Promise.all([
+		projectId(project),
+		rawItems(project).then((items) => findItemByTarget(items, target, project.projectNumber)),
+		rawFields(project),
+	]);
+
+	const results: Array<JsonRecord> = [];
+	for (const update of updates) {
+		const field = findField(projectFields, update.field);
+		if (update.clear === true) {
+			await clearProjectField(id, item.itemId, field.id);
+			results.push({ field: field.name, cleared: true });
+			continue;
+		}
+		if (update.value === undefined) {
+			throw new Error(`Value required for ${field.name}; pass clear=true to clear it`);
+		}
+		const value = await setDiscoveredField(project, id, item.itemId, field, update.value);
+		results.push({ field: field.name, value, cleared: false });
+	}
+
+	const updatedItem = findItemByTarget(await rawItems(project), target, project.projectNumber);
+	return { project, item: updatedItem, updates: results };
+}
+
 function formatFields(fields: ReadonlyArray<ProjectField>, iteration: IterationField | null): string {
 	return success({
 		fields: fields.map((field) => ({
@@ -1259,6 +1320,33 @@ export const set_field = tool({
 	},
 });
 
+export const set_fields = tool({
+	description: 'Set or clear multiple GitHub Project 5 fields on one issue, PR, or item id.',
+	args: {
+		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
+		pr: tool.schema.number().default(0).describe(
+			'Pull request number to update. Use 0 when targeting issue or itemId.',
+		),
+		itemId: tool.schema.string().default('').describe(
+			'Project item id to update. Use empty string when targeting issue or PR.',
+		),
+		updates: tool.schema.string().describe(
+			`JSON array of updates, e.g. [{"field":"Priority","value":"P1"},{"field":"Sprint","value":"Sprint 2"}]. Known fields: ${PROJECT_FIELD_CHOICES}. Select guides: ${SELECT_OPTION_GUIDE}. Use {"field":"Sprint","clear":true} to clear.`,
+		),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
+	},
+	async execute(args) {
+		try {
+			const project = defaults(args.owner, args.projectNumber);
+			const target = requireTarget(args.itemId, args.issue, args.pr);
+			return success(await setProjectFieldsForTarget(project, target, parseFieldUpdates(args.updates)));
+		} catch (error) {
+			return failure('github_project_set_fields', error);
+		}
+	},
+});
+
 export const create_field = tool({
 	description: 'Create a GitHub Project 5 custom field.',
 	args: {
@@ -1358,7 +1446,7 @@ export const set_sprint = tool({
 });
 
 export const set_estimate = tool({
-	description: 'Set the Estimate number field for a Mosaic GitHub Project 5 item.',
+	description: 'Set the Estimate number field, measured in hours, for a Mosaic GitHub Project 5 item.',
 	args: {
 		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
 		pr: tool.schema.number().default(0).describe(
@@ -1367,7 +1455,7 @@ export const set_estimate = tool({
 		itemId: tool.schema.string().default('').describe(
 			'Project item id to update. Use empty string when targeting issue or PR.',
 		),
-		estimate: tool.schema.number().describe('Estimate value to set.'),
+		estimate: tool.schema.number().describe('Estimate value to set, measured in hours.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
 		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
