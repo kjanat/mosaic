@@ -7,34 +7,16 @@ const DEFAULT_PROJECT_NUMBER = 5;
 const ITEM_LIMIT = 200;
 const GRAPHQL_TIMEOUT_MS = 30_000;
 const DEFAULT_REMOTE = 'origin';
-const STATUS_OPTIONS: readonly [string, string, string, string, string] = [
-	'Backlog',
-	'Ready',
-	'In progress',
-	'In review',
-	'Done',
-];
-const PRIORITY_OPTIONS: readonly [string, string, string] = ['P0', 'P1', 'P2'];
-const SIZE_OPTIONS: readonly [string, string, string, string, string] = ['XS', 'S', 'M', 'L', 'XL'];
-const TYPE_OPTIONS: readonly [string, string, string, string, string] = ['Plan', 'Idea', 'Task', 'Bug', 'Maintenance'];
-const FIELD_TYPE_OPTIONS: readonly [string, string, string, string, string] = [
-	'TEXT',
-	'NUMBER',
-	'DATE',
-	'SINGLE_SELECT',
-	'ITERATION',
-];
-const PHASE_OPTIONS: readonly [string, string, string, string, string, string, string, string] = [
-	'MVP 0',
-	'MVP 1',
-	'MVP 2',
-	'MVP 3',
-	'MVP 4',
-	'MVP 5',
-	'MVP 6',
-	'Later',
-];
-const SPRINT_FILTER_OPTIONS: readonly [string, string, string, string, string, string, string] = [
+const STATUS_OPTIONS = ['Backlog', 'Ready', 'In progress', 'In review', 'Done'] as const;
+const STATUS_FILTER_OPTIONS = ['all', ...STATUS_OPTIONS] as const;
+const STATUS_OPTIONAL_OPTIONS = ['none', ...STATUS_OPTIONS] as const;
+const PRIORITY_OPTIONS = ['P0', 'P1', 'P2'] as const;
+const SIZE_OPTIONS = ['XS', 'S', 'M', 'L', 'XL'] as const;
+const TYPE_OPTIONS = ['Plan', 'Idea', 'Task', 'Bug', 'Maintenance'] as const;
+const FIELD_TYPE_OPTIONS = ['TEXT', 'NUMBER', 'DATE', 'SINGLE_SELECT', 'ITERATION'] as const;
+const PHASE_OPTIONS = ['MVP 0', 'MVP 1', 'MVP 2', 'MVP 3', 'MVP 4', 'MVP 5', 'MVP 6', 'Later'] as const;
+const SPRINT_FILTER_OPTIONS = [
+	'all',
 	'Sprint 1',
 	'Sprint 2',
 	'Sprint 3',
@@ -42,8 +24,18 @@ const SPRINT_FILTER_OPTIONS: readonly [string, string, string, string, string, s
 	'Sprint 5',
 	'none',
 	'unscheduled',
-];
-const SPRINT_SET_OPTIONS: readonly [string, string, string, string, string, string, string, string, string, string] = [
+] as const;
+const SPRINT_OPTIONAL_OPTIONS = [
+	'none',
+	'Sprint 1',
+	'Sprint 2',
+	'Sprint 3',
+	'Sprint 4',
+	'Sprint 5',
+	'current',
+	'next',
+] as const;
+const SPRINT_SET_OPTIONS = [
 	'Sprint 1',
 	'Sprint 2',
 	'Sprint 3',
@@ -54,15 +46,8 @@ const SPRINT_SET_OPTIONS: readonly [string, string, string, string, string, stri
 	'clear',
 	'none',
 	'unscheduled',
-];
-const SINGLE_SELECT_FIELD_OPTIONS: readonly [string, string, string, string, string, string] = [
-	'Status',
-	'Priority',
-	'Area',
-	'Phase',
-	'Type',
-	'Size',
-];
+] as const;
+const SINGLE_SELECT_FIELD_OPTIONS = ['Status', 'Priority', 'Area', 'Phase', 'Type', 'Size'] as const;
 const AREA_OPTIONS = [
 	'CLI',
 	'Core',
@@ -613,26 +598,36 @@ function summarizeItem(item: JsonRecord): ProjectItemSummary {
 	};
 }
 
+type ProjectItemTarget = {
+	itemId: string;
+	issue: number;
+	pr: number;
+};
+
 function findItemByTarget(
 	items: ReadonlyArray<JsonRecord>,
-	target: { itemId?: string; issue?: number; pr?: number },
+	target: ProjectItemTarget,
 	projectNumber: number,
 ): ProjectItemSummary {
 	const summaries = items.map(summarizeItem);
 	const found = summaries.find((item) => {
-		if (target.itemId !== undefined) {
+		if (target.itemId !== '') {
 			return item.itemId === target.itemId;
 		}
-		if (target.issue !== undefined) {
+		if (target.issue > 0) {
 			return item.contentType === 'Issue' && item.contentNumber === target.issue;
 		}
-		if (target.pr !== undefined) {
+		if (target.pr > 0) {
 			return item.contentType === 'PullRequest' && item.contentNumber === target.pr;
 		}
 		return false;
 	});
 	if (found === undefined) {
-		const label = target.itemId ?? (target.issue === undefined ? `PR #${target.pr}` : `issue #${target.issue}`);
+		const label = target.itemId !== ''
+			? target.itemId
+			: target.issue > 0
+			? `issue #${target.issue}`
+			: `PR #${target.pr}`;
 		throw new Error(`${label} is not in Project ${projectNumber}`);
 	}
 	if (found.itemId === '') {
@@ -641,16 +636,17 @@ function findItemByTarget(
 	return found;
 }
 
-function requireTarget(itemId: string | undefined, issue: number | undefined, pr: number | undefined): {
-	itemId?: string;
-	issue?: number;
-	pr?: number;
-} {
-	const provided = [itemId !== undefined, issue !== undefined, pr !== undefined].filter(Boolean).length;
+function requireTarget(
+	itemId: string | undefined,
+	issue: number | undefined,
+	pr: number | undefined,
+): ProjectItemTarget {
+	const normalized = { itemId: (itemId ?? '').trim(), issue: issue ?? 0, pr: pr ?? 0 };
+	const provided = [normalized.itemId !== '', normalized.issue > 0, normalized.pr > 0].filter(Boolean).length;
 	if (provided !== 1) {
 		throw new Error('Provide exactly one target: itemId, issue, or pr');
 	}
-	return { itemId, issue, pr };
+	return normalized;
 }
 
 function statusRank(status: string): number {
@@ -736,8 +732,8 @@ function filterItems(
 	sprint: string | undefined,
 	includeDone: boolean | undefined,
 ): ReadonlyArray<ProjectItemSummary> {
-	const statusFilter = status === undefined ? null : normalize(status);
-	const sprintFilter = sprint === undefined ? null : normalize(sprint);
+	const statusFilter = status === undefined || status === 'all' ? null : normalize(status);
+	const sprintFilter = sprint === undefined || sprint === 'all' ? null : normalize(sprint);
 	return items.filter((item) => {
 		if (includeDone !== true && statusFilter !== 'done' && normalize(item.status) === 'done') {
 			return false;
@@ -1067,7 +1063,7 @@ async function createProjectField(
 
 async function setProjectFieldForTarget(
 	project: ProjectDefaults,
-	target: { itemId?: string; issue?: number; pr?: number },
+	target: ProjectItemTarget,
 	fieldName: string,
 	value: string | undefined,
 	clear: boolean | undefined,
@@ -1102,8 +1098,8 @@ function formatFields(fields: ReadonlyArray<ProjectField>, iteration: IterationF
 export const list = tool({
 	description: 'List GitHub Project 5 items for Mosaic, with optional status/sprint filters.',
 	args: {
-		status: tool.schema.enum(STATUS_OPTIONS).optional().describe('Optional status filter.'),
-		sprint: tool.schema.enum(SPRINT_FILTER_OPTIONS).optional().describe('Optional sprint title filter.'),
+		status: tool.schema.enum(STATUS_FILTER_OPTIONS).default('all').describe('Optional status filter.'),
+		sprint: tool.schema.enum(SPRINT_FILTER_OPTIONS).default('all').describe('Optional sprint title filter.'),
 		includeDone: tool.schema.boolean().default(false).describe('Include Done items.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
 		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
@@ -1160,9 +1156,13 @@ export const fields = tool({
 export const view = tool({
 	description: 'View one GitHub Project 5 item by issue, PR, or item id.',
 	args: {
-		issue: tool.schema.number().optional().describe('Issue number to inspect.'),
-		pr: tool.schema.number().optional().describe('Pull request number to inspect.'),
-		itemId: tool.schema.string().optional().describe('Project item id to inspect.'),
+		issue: tool.schema.number().default(0).describe('Issue number to inspect. Use 0 when targeting PR or itemId.'),
+		pr: tool.schema.number().default(0).describe(
+			'Pull request number to inspect. Use 0 when targeting issue or itemId.',
+		),
+		itemId: tool.schema.string().default('').describe(
+			'Project item id to inspect. Use empty string when targeting issue or PR.',
+		),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
 		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
@@ -1182,8 +1182,10 @@ export const add_issue = tool({
 	description: 'Add a Mosaic GitHub issue to Project 5, optionally setting status and sprint.',
 	args: {
 		issue: tool.schema.number().describe('Issue number to add to Project 5.'),
-		status: tool.schema.enum(STATUS_OPTIONS).optional().describe('Optional status to set.'),
-		sprint: tool.schema.enum(SPRINT_SET_OPTIONS).optional().describe('Optional sprint title/id, current, or next.'),
+		status: tool.schema.enum(STATUS_OPTIONAL_OPTIONS).default('none').describe('Optional status to set.'),
+		sprint: tool.schema.enum(SPRINT_OPTIONAL_OPTIONS).default('none').describe(
+			'Optional sprint title/id, current, or next.',
+		),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
 		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
@@ -1195,14 +1197,14 @@ export const add_issue = tool({
 			const itemId = await addIssueItem(id, await issueNodeId(repository, args.issue));
 			const updates: Array<JsonRecord> = [{ field: 'item', value: itemId }];
 
-			if (args.status !== undefined) {
+			if (args.status !== 'none') {
 				const statusField = findField(await rawFields(project), 'Status');
 				const option = findOption(statusField, args.status);
 				await setSingleSelectField(id, itemId, statusField.id, option.id);
 				updates.push({ field: statusField.name, value: option.name });
 			}
 
-			if (args.sprint !== undefined) {
+			if (args.sprint !== 'none') {
 				const field = await iterationField(project);
 				const iteration = resolveIteration(field.iterations, args.sprint);
 				if (iteration === null) {
@@ -1223,12 +1225,16 @@ export const add_issue = tool({
 export const set_field = tool({
 	description: 'Set or clear any supported GitHub Project 5 field by issue, PR, or item id.',
 	args: {
-		issue: tool.schema.number().optional().describe('Issue number to update.'),
-		pr: tool.schema.number().optional().describe('Pull request number to update.'),
-		itemId: tool.schema.string().optional().describe('Project item id to update.'),
+		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
+		pr: tool.schema.number().default(0).describe(
+			'Pull request number to update. Use 0 when targeting issue or itemId.',
+		),
+		itemId: tool.schema.string().default('').describe(
+			'Project item id to update. Use empty string when targeting issue or PR.',
+		),
 		field: tool.schema.string().describe(`Project field name. Known fields: ${PROJECT_FIELD_CHOICES}.`),
-		value: tool.schema.string().optional().describe(
-			`Value to set. Required unless clear is true. Select guides: ${SELECT_OPTION_GUIDE}.`,
+		value: tool.schema.string().default('').describe(
+			`Value to set. Use empty string only when clear is true. Select guides: ${SELECT_OPTION_GUIDE}.`,
 		),
 		clear: tool.schema.boolean().default(false).describe('Clear the field instead of setting a value.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
@@ -1238,7 +1244,15 @@ export const set_field = tool({
 		try {
 			const project = defaults(args.owner, args.projectNumber);
 			const target = requireTarget(args.itemId, args.issue, args.pr);
-			return success(await setProjectFieldForTarget(project, target, args.field, args.value, args.clear));
+			return success(
+				await setProjectFieldForTarget(
+					project,
+					target,
+					args.field,
+					args.value === '' ? undefined : args.value,
+					args.clear,
+				),
+			);
 		} catch (error) {
 			return failure('github_project_set_field', error);
 		}
@@ -1250,7 +1264,7 @@ export const create_field = tool({
 	args: {
 		name: tool.schema.string().describe('New field name.'),
 		dataType: tool.schema.enum(FIELD_TYPE_OPTIONS).describe('Field type.'),
-		options: tool.schema.string().optional().describe('Comma-separated options for SINGLE_SELECT fields.'),
+		options: tool.schema.string().default('').describe('Comma-separated options for SINGLE_SELECT fields.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
 		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
@@ -1268,9 +1282,13 @@ export const create_field = tool({
 export const set_status = tool({
 	description: 'Set the Status field for a Mosaic GitHub Project 5 item.',
 	args: {
-		issue: tool.schema.number().optional().describe('Issue number to update.'),
-		pr: tool.schema.number().optional().describe('Pull request number to update.'),
-		itemId: tool.schema.string().optional().describe('Project item id to update.'),
+		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
+		pr: tool.schema.number().default(0).describe(
+			'Pull request number to update. Use 0 when targeting issue or itemId.',
+		),
+		itemId: tool.schema.string().default('').describe(
+			'Project item id to update. Use empty string when targeting issue or PR.',
+		),
 		status: tool.schema.enum(STATUS_OPTIONS).describe('Status name.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
 		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
@@ -1289,9 +1307,13 @@ export const set_status = tool({
 export const set_select = tool({
 	description: 'Set any single-select field for a Mosaic GitHub Project 5 item.',
 	args: {
-		issue: tool.schema.number().optional().describe('Issue number to update.'),
-		pr: tool.schema.number().optional().describe('Pull request number to update.'),
-		itemId: tool.schema.string().optional().describe('Project item id to update.'),
+		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
+		pr: tool.schema.number().default(0).describe(
+			'Pull request number to update. Use 0 when targeting issue or itemId.',
+		),
+		itemId: tool.schema.string().default('').describe(
+			'Project item id to update. Use empty string when targeting issue or PR.',
+		),
 		field: tool.schema.enum(SINGLE_SELECT_FIELD_OPTIONS).describe('Single-select field name.'),
 		option: tool.schema.string().describe(`Option name to set. Choices by field: ${SELECT_OPTION_GUIDE}.`),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
@@ -1311,9 +1333,13 @@ export const set_select = tool({
 export const set_sprint = tool({
 	description: 'Set or clear the Sprint/Iteration field for a Mosaic GitHub Project 5 item.',
 	args: {
-		issue: tool.schema.number().optional().describe('Issue number to update.'),
-		pr: tool.schema.number().optional().describe('Pull request number to update.'),
-		itemId: tool.schema.string().optional().describe('Project item id to update.'),
+		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
+		pr: tool.schema.number().default(0).describe(
+			'Pull request number to update. Use 0 when targeting issue or itemId.',
+		),
+		itemId: tool.schema.string().default('').describe(
+			'Project item id to update. Use empty string when targeting issue or PR.',
+		),
 		sprint: tool.schema.enum(SPRINT_SET_OPTIONS).describe('Sprint title/id, current, next, or clear/none/unscheduled.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
 		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
@@ -1334,9 +1360,13 @@ export const set_sprint = tool({
 export const set_estimate = tool({
 	description: 'Set the Estimate number field for a Mosaic GitHub Project 5 item.',
 	args: {
-		issue: tool.schema.number().optional().describe('Issue number to update.'),
-		pr: tool.schema.number().optional().describe('Pull request number to update.'),
-		itemId: tool.schema.string().optional().describe('Project item id to update.'),
+		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
+		pr: tool.schema.number().default(0).describe(
+			'Pull request number to update. Use 0 when targeting issue or itemId.',
+		),
+		itemId: tool.schema.string().default('').describe(
+			'Project item id to update. Use empty string when targeting issue or PR.',
+		),
 		estimate: tool.schema.number().describe('Estimate value to set.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
 		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
