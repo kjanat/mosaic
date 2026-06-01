@@ -741,10 +741,14 @@ mod tests {
             caption.attributes.get("role"),
             Some(&AttrValue::Str("caption".to_owned()))
         );
+        // `lower` runs the resolver, which numbers the figure and stamps
+        // the non-breaking `Figure 1: ` supplement label onto the caption.
         let caption_text = r.document.get(caption.children[0]).unwrap();
         assert_eq!(
             caption_text.attributes.get("text"),
-            Some(&AttrValue::Str("A tiny picture.".to_owned()))
+            Some(&AttrValue::Str(
+                "Figure\u{00A0}1: A tiny picture.".to_owned()
+            ))
         );
         std::fs::remove_dir_all(png_path.parent().unwrap()).ok();
     }
@@ -770,6 +774,71 @@ mod tests {
             !r.document.nodes().any(|n| n.kind == NodeKind::Figure),
             "Figure node leaked after image load failure",
         );
+    }
+
+    #[test]
+    fn figure_label_reference_resolves_to_figure_number() {
+        // End-to-end: a real `#figure(label: ...)` lowers with its label
+        // on the Figure node, the resolver numbers the figure, and an
+        // `@label` reference rewrites to kind-aware `Figure 1` text. Note
+        // the space before `here.` — a `.` flush against the reference
+        // would be absorbed into the label (`fig:plot.`) and miss.
+        let png_path = write_tiny_png("ref-fig.png");
+        let dir = png_path.parent().unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(
+            &source,
+            "#figure(image: \"ref-fig.png\", caption: \"A plot.\", label: \"fig:plot\")\n\nSee @fig:plot here.\n",
+        )
+        .unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+
+        let figure = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Figure)
+            .expect("Figure node");
+        assert_eq!(
+            figure.attributes.get("number"),
+            Some(&AttrValue::Str("1".to_owned())),
+            "the lowered figure is numbered in document order"
+        );
+        assert_eq!(
+            figure.attributes.get("label"),
+            Some(&AttrValue::Str("fig:plot".to_owned())),
+            "the `label:` argument lands on the Figure node"
+        );
+
+        // The caption text is stamped with the visible, non-breaking label.
+        let caption_text = figure
+            .children
+            .iter()
+            .filter_map(|c| r.document.get(*c))
+            .find(|c| {
+                matches!(c.attributes.get("role"), Some(AttrValue::Str(role)) if role == "caption")
+            })
+            .and_then(|caption| caption.children.first())
+            .and_then(|text_id| r.document.get(*text_id))
+            .and_then(|text| text.attributes.get("text"));
+        assert_eq!(
+            caption_text,
+            Some(&AttrValue::Str("Figure\u{00A0}1: A plot.".to_owned())),
+            "the caption is prefixed with the `Figure N: ` label"
+        );
+
+        let reference = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Reference)
+            .expect("Reference node");
+        assert_eq!(
+            reference.attributes.get("text"),
+            Some(&AttrValue::Str("Figure\u{00A0}1".to_owned())),
+            "the `@fig:plot` reference resolves to kind-aware figure text"
+        );
+
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]

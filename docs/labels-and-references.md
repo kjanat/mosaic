@@ -2,12 +2,12 @@
 
 This page documents the label and `@`-reference behavior that Mosaic ships **today**. Labels and
 references are resolved by a layout-free semantic pass that runs before layout and PDF emission, so
-a reference can resolve to a section number or label text, but never to a page number. Page
-references are **not** implemented — see [Not yet implemented](#not-yet-implemented). Where this
-page and `manifest.md` disagree, this page (and the compiler) win.
+a reference can resolve to a section number, a figure number, or label text, but never to a page
+number. Page references are **not** implemented — see [Not yet implemented](#not-yet-implemented).
+Where this page and `manifest.md` disagree, this page (and the compiler) win.
 
 A label is an identifier attached to a block; an `@`-reference points back at it and is rewritten to
-the target's section number or to the bare label text.
+the target's section number, a figure's `Figure N` text, or the bare label text.
 
 ## Declaring a label
 
@@ -115,14 +115,16 @@ See @intro and @fig:demo here.
 
 What the reference is rewritten to depends on the target:
 
-| Target                         | Reference renders as                |
-| ------------------------------ | ----------------------------------- |
-| Heading (section)              | the section number, e.g. `1`, `1.2` |
-| `#figure` (label)              | the bare label, e.g. `fig:demo`     |
-| Paragraph, raw block, `#image` | the bare label, e.g. `note`         |
+| Target                         | Reference renders as                   |
+| ------------------------------ | -------------------------------------- |
+| Heading (section)              | the section number, e.g. `1`, `1.2`    |
+| `#figure` (label)              | `Figure` + the number, e.g. `Figure 1` |
+| Paragraph, raw block, `#image` | the bare label, e.g. `note`            |
 
-Figure references render as the bare label for now; numbered "Figure 3"-style text is pending — see
-[Not yet implemented](#not-yet-implemented).
+A figure reference renders kind-aware as `Figure` followed by the figure's document-order number
+(e.g. `Figure 1`), joined with a non-breaking space so the label never wraps off its number. The
+same `Figure N:` label is also prefixed to the figure's caption. Sections render as a bare number;
+only generic targets fall back to the bare label.
 
 ### Unknown references (`MOS0033`)
 
@@ -163,10 +165,13 @@ warning[MOS0036]: stray `@` is not followed by a label identifier; treated as te
   [page-reference-fixpoint-boundary.md](./page-reference-fixpoint-boundary.md). Note that
   `@page:foo` is **not** page-reference syntax — it is just a reference to a label named `page:foo`.
   No `prefix:`-based page-reference form is reserved; do not rely on one.
-- **Figure numbering and kind-aware reference text.** Figure and image labels work today, but figure
-  references render as the bare label rather than a number, and there is no equation/table/theorem
-  reference text yet. Richer, kind-aware rendering is future work (manifest-tracker.md → Semantic
-  Model And Resolver → "Make reference text kind-aware", "Resolve figure numbering").
+- **Kind-aware reference text for equations, tables, and theorems.** Figures resolve to kind-aware
+  `Figure N` text and sections to a bare number, but there is no equation/table/theorem numbering or
+  reference text yet. The remaining kind-aware rendering is future work (manifest-tracker.md →
+  Semantic Model And Resolver → "Make reference text kind-aware").
+- **Localized labels.** The figure supplement is hard-coded English (`Figure`), as is the `:`
+  caption separator; selecting them from the document language (cf. LaTeX babel `\figurename`, Typst
+  `text(lang: …)`) is future work.
 
 ## Related
 
