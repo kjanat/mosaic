@@ -5,6 +5,17 @@ const DEFAULT_OWNER = 'kjanat';
 const DEFAULT_REPOSITORY = 'mosaic';
 const GRAPHQL_TIMEOUT_MS = 30_000;
 const DEFAULT_PR_LIMIT = 20;
+const PHASE_OPTIONS = 'MVP 0, MVP 1, MVP 2, MVP 3, MVP 4, MVP 5, MVP 6, Later';
+const PHASE_GUIDE = [
+	'MVP 0: core compiler skeleton — .mos -> document graph -> simple PDF; parser, sections, paragraphs, basic layout/PDF, diagnostics.',
+	'MVP 1: references and counters — labels, references, section/figure/equation numbering, internal fixpoint loop.',
+	'MVP 2: real text layout — font loading, shaping, line breaking, hyphenation, paragraph layout cache.',
+	'MVP 3: figures and floats — images, captions, float placement constraints, list of figures, debug float diagnostics.',
+	'MVP 4: bibliography — BibTeX import, CSL styles, citation clusters, bibliography rendering.',
+	'MVP 5: incremental builds — dependency graph, stable node IDs, dirty-node invalidation, persistent cache, watch mode.',
+	'MVP 6: editor integration — LSP, live preview, source/PDF sync.',
+	'Later: parked manifest ideas and non-sequenced work; package systems/plugins stay here unless explicitly pulled forward.',
+];
 
 type JsonRecord = Record<string, unknown>;
 
@@ -41,7 +52,6 @@ type Classification = {
 	type: string;
 	size: string;
 	priority: string;
-	phase: string;
 	reason: string;
 };
 
@@ -444,64 +454,6 @@ function choosePriority(title: string, area: string): string {
 	return 'P2';
 }
 
-function chooseDocumentationPhase(title: string): string {
-	const key = title.toLowerCase();
-	if (key.includes('label') || key.includes('reference') || key.includes('counter') || key.includes('diagnostic')) {
-		return 'MVP 1';
-	}
-	if (key.includes('font') || key.includes('pdf') || key.includes('layout') || key.includes('line break')) {
-		return 'MVP 2';
-	}
-	if (key.includes('figure') || key.includes('float')) {
-		return 'MVP 3';
-	}
-	if (key.includes('bibliography') || key.includes('citation') || key.includes('bibtex') || key.includes('csl')) {
-		return 'MVP 4';
-	}
-	if (key.includes('incremental') || key.includes('cache') || key.includes('watch') || key.includes('determin')) {
-		return 'MVP 5';
-	}
-	if (key.includes('lsp') || key.includes('editor') || key.includes('tree-sitter') || key.includes('zed')) {
-		return 'MVP 6';
-	}
-	return 'Later';
-}
-
-function choosePhase(area: string, title: string): string {
-	switch (area) {
-		case 'CLI':
-		case 'Core':
-		case 'Testing':
-		case 'Examples':
-		case 'CI/Release':
-			return 'MVP 0';
-		case 'Diagnostics':
-		case 'Parser/Syntax':
-		case 'Semantic/Resolver':
-			return 'MVP 1';
-		case 'Layout':
-		case 'Fonts':
-		case 'PDF':
-			return 'MVP 2';
-		case 'Figures/Floats':
-			return 'MVP 3';
-		case 'Bibliography':
-			return 'MVP 4';
-		case 'Incremental Cache':
-		case 'Page Reflow/Fixpoints':
-		case 'Determinism':
-			return 'MVP 5';
-		case 'Editor/LSP':
-		case 'Tree-sitter':
-		case 'Zed':
-			return 'MVP 6';
-		case 'Docs/Tracker':
-			return chooseDocumentationPhase(title);
-		default:
-			return 'Later';
-	}
-}
-
 function classifyPullRequest(pr: JsonRecord): Classification {
 	const paths = filePaths(pr);
 	const title = stringField(pr, 'title') ?? '';
@@ -510,11 +462,10 @@ function classifyPullRequest(pr: JsonRecord): Classification {
 	const type = chooseType(title, paths);
 	const size = chooseSize(summary.changedFiles, summary.additions, summary.deletions);
 	const priority = choosePriority(title, area);
-	const phase = choosePhase(area, title);
 	const reason = `${summary.changedFiles} file(s), +${summary.additions}/-${summary.deletions}; primary paths: ${
 		paths.slice(0, 5).join(', ') || 'none'
 	}`;
-	return { area, type, size, priority, phase, reason };
+	return { area, type, size, priority, reason };
 }
 
 function formatClassification(classification: Classification): string {
@@ -523,7 +474,11 @@ function formatClassification(classification: Classification): string {
 		`Type: ${classification.type}`,
 		`Size: ${classification.size}`,
 		`Priority: ${classification.priority}`,
-		`Phase: ${classification.phase}`,
+		'Phase: agent judgment required',
+		`Phase options: ${PHASE_OPTIONS}`,
+		'Phase guide:',
+		...PHASE_GUIDE.map((phase) => `- ${phase}`),
+		'Phase note: choose from related issues, Project 5, manifest-tracker.md, manifest.md, and shipped-code truth; do not derive from area alone. Sequence matters.',
 		`Reason: ${classification.reason}`,
 	].join('\n');
 }
