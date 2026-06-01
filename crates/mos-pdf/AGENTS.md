@@ -14,12 +14,15 @@ Implemented:
 - Base-14 font resources and custom `/Differences` for extended glyphs.
 - Embedded Noto Sans Type0/CID fonts with subsets and `/ToUnicode`.
 - PNG/JPEG image emission after decode/layout prepared image data.
-- Title/author Info metadata.
+- Title/author Info metadata, plus a deterministic `Mosaic <version>` `/Producer` + `/Creator`
+  provenance stamp (the `PRODUCER` const in `src/lib.rs`, sourced from `CARGO_PKG_VERSION`).
 
 Not implemented yet:
 
 - Hyperlinks, bookmarks, tagged PDF, PDF/A, vector graphics, full catalog language metadata, debug
   layout backend, SVG pages.
+- `/CreationDate` + `/ModDate` (deferred: needs a deterministic `SOURCE_DATE_EPOCH`-style input to
+  avoid breaking byte stability) and an XMP metadata packet.
 
 ## WHERE TO LOOK
 

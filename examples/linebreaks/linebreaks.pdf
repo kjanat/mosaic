@@ -2315,6 +2315,8 @@ endobj
 <<
   /Title (Author-Facing Line-Break Controls)
   /Author (Mosaic contributors)
+  /Producer (Mosaic 0.0.0)
+  /Creator (Mosaic 0.0.0)
 >>
 endobj
 
@@ -2369,5 +2371,5 @@ trailer
   /Info 3 0 R
 >>
 startxref
-93848
+93901
 %%EOF

@@ -40,6 +40,20 @@ use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 use crate::embedded::{EmbeddedFontPlan, EmbeddedRefs};
 use crate::encoding::{DocEncoding, EncodingPlanner};
 
+/// Identifies Mosaic as the PDF's producing application, written to the
+/// Info dictionary `/Producer` and `/Creator` so a built PDF traces back
+/// to the compiler that bred it (the way ffmpeg/Word/Adobe stamp theirs).
+/// A compile-time constant, so output stays byte-for-byte deterministic —
+/// no wall-clock, host, path, or user data leaks in. The version tracks
+/// the workspace `CARGO_PKG_VERSION` automatically.
+///
+/// Follow-up (intentionally deferred to keep this stamp deterministic):
+/// - `/CreationDate` + `/ModDate` driven by a `SOURCE_DATE_EPOCH`-style
+///   deterministic input (UTC, stable `D:YYYYMMDDHHmmSS'+00'00'` format).
+/// - An XMP metadata packet (catalog `/Metadata`) for PDF/A / Adobe tooling,
+///   kept in sync with this Info dict.
+const PRODUCER: &str = concat!("Mosaic ", env!("CARGO_PKG_VERSION"));
+
 /// Document-level metadata that gets written to the PDF Info
 /// dictionary. Populated by the lowerer from `#set document(...)`.
 /// The `language` field is captured but not yet emitted (it belongs in
@@ -341,6 +355,11 @@ pub(crate) fn build_pdf(
         if let Some(author) = metadata.author.as_deref() {
             info.author(TextStr(author));
         }
+        // Provenance stamp: mark Mosaic as the producing application. Both
+        // keys carry the same constant string, so this adds no wall-clock
+        // or environment data and the output stays deterministic.
+        info.producer(TextStr(PRODUCER));
+        info.creator(TextStr(PRODUCER));
         info.finish();
     }
 
@@ -415,6 +434,7 @@ mod tests {
     // `clippy::panic`.
     use std::error::Error;
 
+    use lopdf::{Document as LopdfDocument, Object};
     use mos_layout::{Base14Font, Font, Page, PageGraph, TextRun};
 
     use super::*;
@@ -476,6 +496,20 @@ mod tests {
         }
     }
 
+    fn info_string<'info>(
+        info: &'info lopdf::Dictionary,
+        key: &[u8],
+    ) -> std::result::Result<&'info str, Box<dyn Error>> {
+        let Object::String(bytes, _) = info.get(key)? else {
+            return Err(format!(
+                "expected Info key /{} to be a string",
+                String::from_utf8_lossy(key)
+            )
+            .into());
+        };
+        Ok(std::str::from_utf8(bytes)?)
+    }
+
     #[test]
     fn build_pdf_starts_with_pdf_header_and_ends_with_eof() {
         let (bytes, diags) = build_pdf(&sample_graph(), &PdfMetadata::default()).unwrap();
@@ -509,23 +543,30 @@ mod tests {
     }
 
     #[test]
-    fn metadata_appears_in_info_dictionary() {
+    fn metadata_and_provenance_appear_in_info_dictionary() -> TestResult {
         let metadata = PdfMetadata {
             title: Some("My Doc".to_owned()),
             author: Some("A. Person".to_owned()),
             language: None,
         };
         let (bytes, _) = build_pdf(&sample_graph(), &metadata).unwrap();
-        assert!(
-            bytes.windows(b"(My Doc)".len()).any(|w| w == b"(My Doc)"),
-            "title not found in PDF"
+        let doc = LopdfDocument::load_mem(&bytes)?;
+        let Object::Reference(info_id) = doc.trailer.get(b"Info")? else {
+            return Err("expected trailer /Info reference".into());
+        };
+        let info = doc.get_dictionary(*info_id)?;
+
+        ensure!(info_string(info, b"Title")? == "My Doc", "wrong /Title");
+        ensure!(
+            info_string(info, b"Author")? == "A. Person",
+            "wrong /Author"
         );
-        assert!(
-            bytes
-                .windows(b"(A. Person)".len())
-                .any(|w| w == b"(A. Person)"),
-            "author not found in PDF"
+        ensure!(
+            info_string(info, b"Producer")? == PRODUCER,
+            "wrong /Producer"
         );
+        ensure!(info_string(info, b"Creator")? == PRODUCER, "wrong /Creator");
+        Ok(())
     }
 
     #[test]

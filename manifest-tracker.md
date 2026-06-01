@@ -100,6 +100,7 @@ example.
   - [x] positioned embedded glyph output for GPOS advances/offsets
   - [x] title metadata
   - [x] author metadata
+  - [x] deterministic `/Producer` + `/Creator` provenance stamp (`Mosaic <version>`)
 - [x] Example PDF snapshots exist for current examples.
 
 ## Immediate Cleanup
@@ -266,6 +267,7 @@ example.
 - [x] Emit `/ToUnicode` maps.
 - [x] Emit PNG and JPEG images.
 - [x] Emit title and author metadata.
+- [x] Stamp deterministic `/Producer` and `/Creator` provenance (`Mosaic <version>`).
 - [x] Emit embedded shaped glyph runs with GPOS positioning via `TJ`/`Tm` operators.
 - [ ] Add hyperlinks.
 - [ ] Add bookmarks/outlines.
