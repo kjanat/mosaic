@@ -57,16 +57,17 @@ codes use the next free integer.
 
 ### Semantic
 
-| Code    | Slug                    | Default severity | Owner crate | Summary                                                        |
-| ------- | ----------------------- | ---------------- | ----------- | -------------------------------------------------------------- |
-| MOS0011 | set-unknown-target      | Error            | mos-eval    | semantic: unknown #set target                                  |
-| MOS0015 | unknown-kwarg           | Error            | mos-eval    | semantic: unknown keyword argument                             |
-| MOS0020 | arg-type-mismatch       | Error            | mos-eval    | semantic: argument type mismatch or non-positive length        |
-| MOS0024 | set-positional-rejected | Error            | mos-eval    | semantic: #set rejects positional argument                     |
-| MOS0027 | set-sanity-floor        | Warning          | mos-eval    | semantic: #set value trips a sanity floor; value still applied |
-| MOS0030 | label-duplicate         | Error            | mos-eval    | semantic: label declared more than once                        |
-| MOS0033 | label-missing           | Error            | mos-eval    | semantic: @reference to a label that does not exist            |
-| MOS0037 | image-missing-path      | Error            | mos-eval    | semantic: #image/#figure missing a path argument               |
+| Code    | Slug                      | Default severity | Owner crate | Summary                                                        |
+| ------- | ------------------------- | ---------------- | ----------- | -------------------------------------------------------------- |
+| MOS0011 | set-unknown-target        | Error            | mos-eval    | semantic: unknown #set target                                  |
+| MOS0015 | unknown-kwarg             | Error            | mos-eval    | semantic: unknown keyword argument                             |
+| MOS0020 | arg-type-mismatch         | Error            | mos-eval    | semantic: argument type mismatch or non-positive length        |
+| MOS0024 | set-positional-rejected   | Error            | mos-eval    | semantic: #set rejects positional argument                     |
+| MOS0027 | set-sanity-floor          | Warning          | mos-eval    | semantic: #set value trips a sanity floor; value still applied |
+| MOS0030 | label-duplicate           | Error            | mos-eval    | semantic: label declared more than once                        |
+| MOS0033 | label-missing             | Error            | mos-eval    | semantic: @reference to a label that does not exist            |
+| MOS0037 | image-missing-path        | Error            | mos-eval    | semantic: #image/#figure missing a path argument               |
+| MOS0040 | bibliography-missing-path | Error            | mos-eval    | semantic: #bibliography missing a path argument                |
 
 ### Layout
 
@@ -92,10 +93,11 @@ codes use the next free integer.
 
 ### Io
 
-| Code    | Slug                | Default severity | Owner crate | Summary                                 |
-| ------- | ------------------- | ---------------- | ----------- | --------------------------------------- |
-| MOS0012 | image-read-failed   | Error            | mos-eval    | io: image file cannot be read from disk |
-| MOS0029 | image-decode-failed | Error            | mos-eval    | io: image file cannot be decoded        |
+| Code    | Slug                        | Default severity | Owner crate | Summary                                         |
+| ------- | --------------------------- | ---------------- | ----------- | ----------------------------------------------- |
+| MOS0012 | image-read-failed           | Error            | mos-eval    | io: image file cannot be read from disk         |
+| MOS0029 | image-decode-failed         | Error            | mos-eval    | io: image file cannot be decoded                |
+| MOS0041 | bibliography-source-missing | Warning          | mos-eval    | io: declared bibliography source file not found |
 
 ### Internal
 

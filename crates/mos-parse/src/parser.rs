@@ -62,7 +62,7 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn at_directive_keyword(&self) -> Option<&'static str> {
-        const KEYWORDS: &[&str] = &["set", "image", "figure", "pre", "code"];
+        const KEYWORDS: &[&str] = &["set", "image", "figure", "bibliography", "pre", "code"];
         if !self.starts_with("#") {
             return None;
         }
@@ -758,6 +758,43 @@ mod tests {
     }
 
     #[test]
+    fn bibliography_directive_with_positional_path() {
+        // `#bibliography("refs.bib")` is the Typst-compatible spelling
+        // that declares a bibliography source. It parses through the
+        // same call-block grammar as `#image(...)`, so the first
+        // positional string is the database path.
+        let r = parse_str("#bibliography(\"refs.bib\")\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 1);
+        assert_eq!(
+            r.tree.items[0].directive_kind(),
+            Some(DirectiveKind::Bibliography)
+        );
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(name, "bibliography");
+        assert_eq!(args.len(), 1);
+        assert!(matches!(args[0], SetArg::Positional { .. }));
+        assert_eq!(args[0].key(), None);
+        assert_eq!(args[0].value(), &SetValue::Str("refs.bib".to_owned()));
+    }
+
+    #[test]
+    fn bibliography_directive_with_named_path() {
+        // The named `path:` form is accepted alongside the positional
+        // shorthand, mirroring `#image(src:/path:)`.
+        let r = parse_str("#bibliography(path: \"sources/refs.bib\")\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(name, "bibliography");
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].key(), Some("path"));
+        assert_eq!(
+            args[0].value(),
+            &SetValue::Str("sources/refs.bib".to_owned())
+        );
+    }
+
+    #[test]
     fn raw_blocks_preserve_body_text() {
         let r = parse_str("#code[[fn main() {\n    println(\"hi\");\n}]]\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
@@ -908,6 +945,11 @@ mod tests {
                 "body line\n#figure(\"x.png\")\nmore\n",
                 DirectiveKind::Figure,
                 "figure",
+            ),
+            (
+                "body line\n#bibliography(\"refs.bib\")\nmore\n",
+                DirectiveKind::Bibliography,
+                "bibliography",
             ),
         ] {
             let r = parse_str(src);

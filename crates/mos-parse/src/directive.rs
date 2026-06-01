@@ -183,6 +183,7 @@ impl Parser<'_> {
         let kind = match kw {
             "image" => DirectiveKind::Image,
             "figure" => DirectiveKind::Figure,
+            "bibliography" => DirectiveKind::Bibliography,
             other => {
                 debug_assert!(false, "parse_call_block: unexpected keyword `{other}`");
                 DirectiveKind::Set

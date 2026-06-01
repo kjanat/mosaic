@@ -423,6 +423,9 @@ define_codes! {
     /// `#image(...)`/`#figure(...)` missing a path argument.
     MOS0037 = 37, Error, Semantic, "image-missing-path", "mos-eval",
         "semantic: #image/#figure missing a path argument";
+    /// `#bibliography(...)` missing a path argument.
+    MOS0040 = 40, Error, Semantic, "bibliography-missing-path", "mos-eval",
+        "semantic: #bibliography missing a path argument";
 
     // ── filesystem / asset I/O ────────────────────────────────────────
     /// Image file cannot be read from disk.
@@ -431,6 +434,9 @@ define_codes! {
     /// Image file cannot be decoded (unsupported or corrupt).
     MOS0029 = 29, Error, Io, "image-decode-failed", "mos-eval",
         "io: image file cannot be decoded";
+    /// Declared `#bibliography(...)` source file is not on disk.
+    MOS0041 = 41, Warning, Io, "bibliography-source-missing", "mos-eval",
+        "io: declared bibliography source file not found";
 
     // ── layout (mos-layout) ───────────────────────────────────────────
     /// Unknown paper size in `#set page(paper: ...)`.

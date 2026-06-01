@@ -76,11 +76,11 @@ pub struct ListItem {
     pub span: SourceSpan,
 }
 
-/// Tag for the three directive shapes [`Item::Set`] can represent —
-/// the `#set <target>(...)` configuration directive vs the standalone
-/// `#image(...)` and `#figure(...)` calls. The lowerer dispatches on
-/// this rather than the [`Item::Set::name`] string so `#set image(...)`
-/// can never collide with `#image(...)`.
+/// Tag for the directive shapes [`Item::Set`] can represent — the
+/// `#set <target>(...)` configuration directive vs the standalone
+/// `#image(...)`, `#figure(...)`, and `#bibliography(...)` calls. The
+/// lowerer dispatches on this rather than the [`Item::Set::name`] string
+/// so `#set image(...)` can never collide with `#image(...)`.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum DirectiveKind {
     /// `#set <name>(...)` — sets defaults on a style target.
@@ -89,6 +89,11 @@ pub enum DirectiveKind {
     Image,
     /// `#figure(image: ..., caption: ...)` — captioned image container.
     Figure,
+    /// `#bibliography("refs.bib")` — declares a bibliography source
+    /// database. The lowerer records the (source-relative) path so a
+    /// later BibTeX-parsing slice can read it; citation resolution and
+    /// rendering are not part of this directive.
+    Bibliography,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

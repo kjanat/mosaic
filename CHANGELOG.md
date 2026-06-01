@@ -8,6 +8,15 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Bibliography source directive boundary (https://github.com/kjanat/mosaic/issues/68): a
+  `#bibliography("refs.bib")` directive ([`mos-parse`][mos-parse] adds a
+  `DirectiveKind::Bibliography` call-block shape that accepts a positional path or the named
+  `path:`/`src:` forms) lowers in [`mos-eval`][mos-eval] to a `NodeKind::Bibliography` node carrying
+  the literal `src` plus the `resolved_path` resolved against the source file's directory, so a
+  later BibTeX-reading slice can open the database without re-deriving the location. A missing or
+  empty path is a hard error (`MOS0040`); a declared-but-absent file is a non-fatal warning
+  (`MOS0041`) that still emits the node. Parsing `.bib` contents, resolving citation keys, and
+  rendering citations or the bibliography are explicitly out of this slice.
 - Mosaic provenance stamp in PDF metadata (https://github.com/kjanat/mosaic/issues/79):
   [`mos-pdf`][mos-pdf] now writes deterministic `/Producer` and `/Creator` Info-dictionary entries
   set to `Mosaic <version>` (sourced from `CARGO_PKG_VERSION` at compile time via the `PRODUCER`
@@ -147,8 +156,10 @@ workflow.
 [docs:labels-and-references]: docs/labels-and-references.md
 [ex:linebreaks]: examples/linebreaks/
 [mos-cache]: crates/mos-cache/
+[mos-eval]: crates/mos-eval/
 [mos-eval:resolve.rs]: crates/mos-eval/src/resolve.rs
 [mos-lsp]: crates/mos-lsp/
+[mos-parse]: crates/mos-parse/
 [mos-pdf]: crates/mos-pdf/
 [mosaic.ebnf]: mosaic.ebnf
 [tree-sitter-mosaic]: crates/tree-sitter-mosaic/
