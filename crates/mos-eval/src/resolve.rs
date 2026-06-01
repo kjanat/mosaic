@@ -36,6 +36,14 @@
 //! driver shape mirrors the manifest's "internal fixpoint" anyway: the
 //! loop runs until no rewrite changes the document, with a hard cap to
 //! detect pathological cycles.
+//!
+//! Every pass is **idempotent**: `resolve` is public and re-entrant, so
+//! running it twice — inside the fixpoint above, or from a future
+//! page-reference stage — must reproduce the same document rather than
+//! compounding edits. Numbering overwrites attributes with the same
+//! value; caption labelling re-derives from a preserved source instead
+//! of re-reading the already-stamped text (which would nest the label
+//! into `"Figure 1: Figure 1: …"`).
 
 use std::collections::BTreeMap;
 
@@ -152,26 +160,44 @@ fn section_order(document: &Document) -> Vec<(mos_core::NodeId, u8)> {
 /// word comes from [`figure_supplement`] (the single localization seam)
 /// and is joined to the number with a non-breaking space so the label
 /// never wraps away from its number.
+///
+/// The pass is **idempotent**: the pre-label caption is preserved under a
+/// `caption_source` attribute and the visible `text` is always re-derived
+/// from it. Re-running the resolver — as the §6 stage 3 fixpoint and any
+/// future page-reference pass do — therefore re-stamps the same label
+/// instead of nesting `"Figure 1: Figure 1: …"`, and stays correct when a
+/// figure is re-numbered, because the source never carries a stale counter.
 fn number_figures(document: &mut Document) {
     for (index, figure_id) in nodes_of_kind(document, NodeKind::Figure)
         .into_iter()
         .enumerate()
     {
         let number = (index + 1).to_string();
-        // Resolve the caption's text node *before* mutating: `get`
+        // Resolve the caption's *source* text before mutating: `get`
         // borrows the document immutably, but the writes below need
-        // `get_mut`.
-        let caption = figure_caption_text(document, figure_id)
-            .and_then(|text_id| read_str_attr(document, text_id, "text").map(|t| (text_id, t)));
+        // `get_mut`. Prefer the preserved `caption_source`; fall back to
+        // the live `text` only on the first pass, before any label has
+        // been stamped. Re-deriving the label from this stable source —
+        // never from the already-stamped `text` — is what keeps `resolve`
+        // idempotent across reruns.
+        let caption = figure_caption_text(document, figure_id).and_then(|text_id| {
+            read_str_attr(document, text_id, "caption_source")
+                .or_else(|| read_str_attr(document, text_id, "text"))
+                .map(|source| (text_id, source))
+        });
 
         if let Some(node) = document.get_mut(figure_id) {
             node.attributes
                 .insert("number".to_owned(), AttrValue::Str(number.clone()));
         }
 
-        if let Some((text_id, caption_text)) = caption {
-            let labelled = format!("{}\u{00A0}{number}: {caption_text}", figure_supplement());
+        if let Some((text_id, caption_source)) = caption {
+            let labelled = format!("{}\u{00A0}{number}: {caption_source}", figure_supplement());
             if let Some(node) = document.get_mut(text_id) {
+                // Stash the pre-label caption so later passes re-derive the
+                // label from the original instead of the stamped text.
+                node.attributes
+                    .insert("caption_source".to_owned(), AttrValue::Str(caption_source));
                 node.attributes
                     .insert("text".to_owned(), AttrValue::Str(labelled));
             }
@@ -683,6 +709,55 @@ mod tests {
         )
     }
 
+    /// Build a synthetic `Text` node under `parent` carrying `text`,
+    /// returning its id. The lowerer's caption text nodes have exactly
+    /// this shape.
+    fn make_text(doc: &mut Document, parent: mos_core::NodeId, text: &str) -> mos_core::NodeId {
+        let mut attrs = mos_core::AttrMap::new();
+        attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
+        doc.alloc_child(
+            parent,
+            mos_core::Node {
+                id: mos_core::NodeId::default(),
+                kind: NodeKind::Text,
+                span: SourceSpan::placeholder(doc.file.clone()),
+                content_hash: mos_core::ContentHash::default(),
+                style_id: mos_core::StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        )
+    }
+
+    /// Build a `Figure` (optionally labelled) carrying a `role = "caption"`
+    /// paragraph whose single `Text` child holds `caption`. Returns the
+    /// figure id and the caption text-node id so tests can assert on the
+    /// stamped label. Mirrors the shape the lowerer produces for a
+    /// captioned `#figure`.
+    fn make_captioned_figure(
+        doc: &mut Document,
+        label: Option<&str>,
+        caption: &str,
+    ) -> (mos_core::NodeId, mos_core::NodeId) {
+        let figure = make_node(doc, NodeKind::Figure, label, None);
+        let mut caption_attrs = mos_core::AttrMap::new();
+        caption_attrs.insert("role".to_owned(), AttrValue::Str("caption".to_owned()));
+        let caption_para = doc.alloc_child(
+            figure,
+            mos_core::Node {
+                id: mos_core::NodeId::default(),
+                kind: NodeKind::Paragraph,
+                span: SourceSpan::placeholder(doc.file.clone()),
+                content_hash: mos_core::ContentHash::default(),
+                style_id: mos_core::StyleId::default(),
+                children: Vec::new(),
+                attributes: caption_attrs,
+            },
+        );
+        let caption_text = make_text(doc, caption_para, caption);
+        (figure, caption_text)
+    }
+
     /// Read a node's resolved `number` attribute as an owned string, or
     /// the empty string if the node is missing or unnumbered. Test-only
     /// convenience wrapping [`captured_number`] for the numbering
@@ -779,39 +854,7 @@ mod tests {
         // text prefixed with the non-breaking `Figure N: ` label so the
         // number is visible; the figure itself is still numbered "1".
         let mut doc = Document::new(PathBuf::from("test.mos"));
-        let figure = make_node(&mut doc, NodeKind::Figure, Some("fig:a"), None);
-        let caption = doc.alloc_child(
-            figure,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: {
-                    let mut a = mos_core::AttrMap::new();
-                    a.insert("role".to_owned(), AttrValue::Str("caption".to_owned()));
-                    a
-                },
-            },
-        );
-        let caption_text = doc.alloc_child(
-            caption,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Text,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: {
-                    let mut a = mos_core::AttrMap::new();
-                    a.insert("text".to_owned(), AttrValue::Str("A plot.".to_owned()));
-                    a
-                },
-            },
-        );
+        let (figure, caption_text) = make_captioned_figure(&mut doc, Some("fig:a"), "A plot.");
 
         let diags = resolve(&mut doc);
         assert!(diags.is_empty(), "{diags:?}");
@@ -821,6 +864,31 @@ mod tests {
             read_str_attr(&doc, caption_text, "text"),
             Some("Figure\u{00A0}1: A plot.".to_owned()),
             "the caption is prefixed with the non-breaking `Figure N: ` label"
+        );
+    }
+
+    #[test]
+    fn resolve_is_idempotent_for_captioned_figures() {
+        // `resolve` is public and re-entrant: the §6 stage 3 fixpoint and
+        // future page-reference passes rerun it. Stamping the caption
+        // label must therefore be idempotent — the second pass has to
+        // reproduce `"Figure 1: A plot."` byte-for-byte instead of
+        // re-reading the stamped text and nesting the label into
+        // `"Figure 1: Figure 1: A plot."`.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let (_figure, caption_text) = make_captioned_figure(&mut doc, Some("fig:a"), "A plot.");
+
+        let first = resolve(&mut doc);
+        assert!(first.is_empty(), "{first:?}");
+        let after_first = read_str_attr(&doc, caption_text, "text");
+        assert_eq!(after_first, Some("Figure\u{00A0}1: A plot.".to_owned()));
+
+        let second = resolve(&mut doc);
+        assert!(second.is_empty(), "{second:?}");
+        assert_eq!(
+            read_str_attr(&doc, caption_text, "text"),
+            after_first,
+            "a second resolve pass must not re-stamp the figure label"
         );
     }
 
