@@ -49,7 +49,7 @@ Label and reference behavior is documented in
 Toolchain pinned via `rust-toolchain.toml` (stable, edition 2024, resolver 3). Rust 1.95+.
 
 ```sh
-cargo build --workspace            # or: cargo bw
+cargo build --workspace     # or: cargo bw
 cargo run -p mos -- --help  # or: cargo mos --help
 ```
 
@@ -136,3 +136,5 @@ examples/
 ## License
 
 [MIT](./LICENSE) © Kaj Kowalski 2026.
+
+<!-- rumdl-disable-file MD033 MD041 -->

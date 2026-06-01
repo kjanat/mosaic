@@ -1021,7 +1021,7 @@ Diagnostics need to be first-class.
 
 Example error:
 
-```text
+```console
 error[MOS0033]: unresolved reference `fig:ctpa`
   main.mos:42:18
    |
@@ -1036,7 +1036,7 @@ help:
 
 Layout warning:
 
-```text
+```console
 warning[MOS####] (hypothetical): figure placed far from anchor
   main.mos:88:1
    |
@@ -1049,7 +1049,7 @@ Reason: it is 132mm tall and no legal top/bottom placement existed earlier.
 
 Performance diagnostic:
 
-```text
+```console
 notice[MOS0040] (hypothetical): table layout is expensive
   main.mos:120:1
 
@@ -1896,7 +1896,7 @@ Fallback:
 
 Diagnostic:
 
-```text
+```console
 error[MOS0041] (hypothetical): layout did not converge after 12 iterations
 
 The page number width of TOC entries caused oscillation.

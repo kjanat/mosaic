@@ -108,7 +108,7 @@ codes use the next free integer.
 `mos check` and `mos build` render every diagnostic through
 `crates/mos/src/main.rs::render_diagnostic`:
 
-```text
+```console
 error[MOS0030]: label `intro` is declared more than once
   --> main.mos:3:1
    |
