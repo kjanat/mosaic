@@ -426,6 +426,9 @@ define_codes! {
     /// `#bibliography(...)` missing a path argument.
     MOS0040 = 40, Error, Semantic, "bibliography-missing-path", "mos-eval",
         "semantic: #bibliography missing a path argument";
+    /// `#bibliography(...)` path declared more than once; first wins.
+    MOS0042 = 42, Error, Semantic, "bibliography-duplicate-path", "mos-eval",
+        "semantic: #bibliography path argument declared more than once";
 
     // ── filesystem / asset I/O ────────────────────────────────────────
     /// Image file cannot be read from disk.

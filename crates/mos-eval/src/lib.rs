@@ -1216,6 +1216,55 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_bibliography_path_keeps_first_path() {
+        // Duplicate path declarations are an authoring error, but the first
+        // source still wins so later accidental args cannot silently redirect
+        // the bibliography boundary.
+        let dir = unique_temp_dir("duplicate-path");
+        let first = dir.join("first.bib");
+        let second = dir.join("second.bib");
+        std::fs::write(&first, "@book{first}\n").unwrap();
+        std::fs::write(&second, "@book{second}\n").unwrap();
+        let source = dir.join("main.mos");
+        let source_text = "#bibliography(\"first.bib\", path: \"second.bib\")\n";
+        std::fs::write(&source, source_text).unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        let duplicate_path_diagnostics: Vec<&Diagnostic> = r
+            .diagnostics
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0042.code())
+            .collect();
+        assert_eq!(
+            duplicate_path_diagnostics.len(),
+            1,
+            "expected one MOS0042, got {:?}",
+            r.diagnostics
+        );
+        let duplicate = duplicate_path_diagnostics[0];
+        assert_eq!(
+            duplicate
+                .span()
+                .map(|span| &source_text[span.start..span.end]),
+            Some("\"second.bib\""),
+            "duplicate path diagnostic should point at the later path value"
+        );
+        let node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Bibliography)
+            .expect("Bibliography node");
+        assert_eq!(
+            node.attributes.get("src"),
+            Some(&AttrValue::Str("first.bib".to_owned()))
+        );
+        assert_eq!(
+            node.attributes.get("resolved_path"),
+            Some(&AttrValue::Str(first.to_string_lossy().into_owned()))
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn missing_bibliography_source_warns_mos0041_but_keeps_node() {
         // A declared-but-absent database is a non-fatal warning: the build
         // still succeeds and the node is emitted with its resolved path so

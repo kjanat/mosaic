@@ -10,6 +10,7 @@
 //! Diagnostics:
 //!
 //! - `MOS0040`: `#bibliography(...)` called without a (non-empty) path.
+//! - `MOS0042`: `#bibliography(...)` declared more than one path; first wins.
 //! - `MOS0020`: the path argument is present but not a string.
 //! - `MOS0015`: an unknown keyword argument was supplied.
 //! - `MOS0041`: the resolved path does not point to a file on disk
@@ -97,7 +98,18 @@ fn bibliography_path(
             // `#image("path.png")` accepts.
             SetArg::Positional { value, value_span } => {
                 if let SetValue::Str(s) = value {
-                    path = Some(s.clone());
+                    if path.is_some() {
+                        diagnostics.push(
+                            Diagnostic::simple(
+                                &codes::MOS0042,
+                                None,
+                                "duplicate path argument for `#bibliography`",
+                            )
+                            .with_span(value_span.clone()),
+                        );
+                    } else {
+                        path = Some(s.clone());
+                    }
                 } else {
                     invalid_path_arg = true;
                     diagnostics.push(
@@ -118,7 +130,18 @@ fn bibliography_path(
             } => match key.as_str() {
                 "src" | "path" => {
                     if let SetValue::Str(s) = value {
-                        path = Some(s.clone());
+                        if path.is_some() {
+                            diagnostics.push(
+                                Diagnostic::simple(
+                                    &codes::MOS0042,
+                                    None,
+                                    "duplicate path argument for `#bibliography`",
+                                )
+                                .with_span(value_span.clone()),
+                            );
+                        } else {
+                            path = Some(s.clone());
+                        }
                     } else {
                         invalid_path_arg = true;
                         diagnostics.push(
