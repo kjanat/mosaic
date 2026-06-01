@@ -1,15 +1,16 @@
 # Mosaic Manifest Tracker
 
-This is the public roadmap/status artifact for implementation work against `manifest.md`. GitHub
-Project 5 is the planning cockpit: milestones define roadmap phases, issues track concrete work, and
-this file stays readable for people who do not live in the project board.
+This is the public roadmap/status artifact for implementation work against
+[`manifest.md`][manifest]. GitHub Project 5 is the planning cockpit: milestones define roadmap
+phases, issues track concrete work, and this file stays readable for people who do not live in the
+project board.
 
 Truth order:
 
 1. Code and tests.
-2. `README.md` Status.
-3. GitHub Project 5 for active planning state.
-4. `manifest.md` design intent.
+2. [`README.md`][README] Status.
+3. [GitHub Project 5][project:5] for active planning state.
+4. [`manifest.md`][manifest] design intent.
 
 Do not mark a manifesto idea complete unless it is implemented, tested or clearly exercised by an
 example.
@@ -30,22 +31,22 @@ example.
 
 - [x] Rust 2024 workspace with strict workspace lints.
 - [x] Crate split:
-  - [x] `mos`
-  - [x] `mos-core`
-  - [x] `mos-parse`
-  - [x] `mos-eval`
-  - [x] `mos-layout`
-  - [x] `mos-pdf`
-  - [x] `mos-html`
-  - [x] `mos-fonts`
-  - [x] `mos-bib`
-  - [x] `mos-cache`
-  - [x] `mos-lsp`
-  - [x] `mos-packages`
-  - [x] `adobe-font-metrics`
-  - [x] `pdf-base14-metrics`
-  - [x] `tree-sitter-mosaic`
-  - [x] `zed-mosaic`
+  - [x] [`mos`]
+  - [x] [`mos-core`]
+  - [x] [`mos-parse`]
+  - [x] [`mos-eval`]
+  - [x] [`mos-layout`]
+  - [x] [`mos-pdf`]
+  - [x] [`mos-html`]
+  - [x] [`mos-fonts`]
+  - [x] [`mos-bib`]
+  - [x] [`mos-cache`]
+  - [x] [`mos-lsp`]
+  - [x] [`mos-packages`]
+  - [x] [`adobe-font-metrics`]
+  - [x] [`pdf-base14-metrics`]
+  - [x] [`tree-sitter-mosaic`]
+  - [x] [`zed-mosaic`]
 - [x] `mos check <entry.mos|project-dir>` parses, lowers, resolves, and reports source diagnostics.
 - [x] `mos build <entry.mos|project-dir>` parses, lowers, lays out, and writes PDF output:
       `build/<entry-stem>.pdf` for direct source files or project-declared `[output].pdf` paths.
@@ -103,9 +104,9 @@ example.
 
 ## Immediate Cleanup
 
-- [ ] Keep `README.md` Status aligned with shipped features.
-- [ ] Keep `AGENTS.md` aligned with crate layout, commands, and current shipped scope.
-- [ ] Update child `AGENTS.md` files when crate-local behavior changes.
+- [ ] Keep [README] Status aligned with shipped features.
+- [ ] Keep [AGENTS] aligned with crate layout, commands, and current shipped scope.
+- [ ] Update child [AGENTS] files when crate-local behavior changes.
 - [ ] Audit comments that still describe landed work as MVP 0-only stubs.
 - [x] Audit README workspace layout for current examples and crate list.
 - [ ] Add or update tests before marking any item below complete.
@@ -155,6 +156,8 @@ example.
 - [ ] Define and test function-call syntax beyond current directives.
 - [ ] Define explicit grammar for document configuration.
 - [ ] Document supported syntax in user-facing docs.
+  - [x] Document labels and references
+        ([`docs/labels-and-references.md`][docs:labels-and-references]).
 
 ## Semantic Model And Resolver
 
@@ -202,19 +205,21 @@ example.
 - [x] Lay out headings, paragraphs, lists, images, figures, captions, and pages.
 - [x] Support paper sizes and margins from current settings.
 - [x] Support current text styles.
-- [x] Normalize layout/font text inputs to NFC before measuring and shaping (issue #19).
+- [x] Normalize layout/font text inputs to NFC before measuring and shaping
+      (https://github.com/kjanat/mosaic/issues/19).
 - [x] Shape embedded-font text through rustybuzz and preserve GPOS advances/offsets in layout
-      metrics (issue #20).
+      metrics (https://github.com/kjanat/mosaic/issues/20).
 - [x] Carry embedded shaped glyphs and fallback sub-runs through text layout for PDF emission.
-- [x] Author-facing line-break controls (issue #26): U+00A0 NBSP preserved by the greedy breaker,
-      `\\` hard line break threaded through `InlineKind::HardBreak` / `NodeKind::HardBreak` /
-      `WordItem::HardBreak`, and `\-` / U+00AD soft hyphen stripped from shaping with offsets
-      consumed greedily by the line-breaker via `try_shy_break` — overflowing words pick the latest
-      fitting SHY position and emit `prefix-` + suffix across two lines; oversize cluster fallback
-      still applies when no SHY prefix fits.
-- [ ] Replace greedy line breaking with a real paragraph algorithm. (Issue #26 piece 3b-e — Knuth-
-      Plass + UAX #14 + SHY-as-penalty + optimal break selection. The greedy SHY hyphenation slice
-      has landed; optimal whole-paragraph selection remains separate future work.)
+- [x] Author-facing line-break controls (https://github.com/kjanat/mosaic/issues/26): U+00A0 NBSP
+      preserved by the greedy breaker, `\\` hard line break threaded through `InlineKind::HardBreak`
+      / `NodeKind::HardBreak` / `WordItem::HardBreak`, and `\-` / U+00AD soft hyphen stripped from
+      shaping with offsets consumed greedily by the line-breaker via `try_shy_break` — overflowing
+      words pick the latest fitting SHY position and emit `prefix-` + suffix across two lines;
+      oversize cluster fallback still applies when no SHY prefix fits.
+- [ ] Replace greedy line breaking with a real paragraph algorithm.
+      (https://github.com/kjanat/mosaic/issues/26 piece 3b-e — Knuth-Plass + UAX #14 +
+      SHY-as-penalty + optimal break selection. The greedy SHY hyphenation slice has landed; optimal
+      whole-paragraph selection remains separate future work.)
 - [ ] Add Unicode line breaking. (Same MVP 2 slice as Knuth-Plass; `unicode-linebreak` crate as the
       planned dependency.)
 - [ ] Add language-aware hyphenation.
@@ -380,16 +385,16 @@ example.
 
 ## Formatting And Editor Integration
 
-- [x] Keep `tree-sitter-mosaic` aligned with current parser syntax, including nested emphasis and
+- [x] Keep [`tree-sitter-mosaic`] aligned with current parser syntax, including nested emphasis and
       line-break controls.
-- [x] Mirror shared Zed highlight queries from `tree-sitter-mosaic` and pin the Zed grammar
+- [x] Mirror shared Zed highlight queries from [`tree-sitter-mosaic`] and pin the Zed grammar
       revision.
 - [ ] Build `mos fmt`.
 - [x] Document formatter trivia preservation requirements.
 - [ ] Define formatting rules for current syntax.
 - [ ] Format multiline function calls.
 - [ ] Preserve comments and meaningful trivia.
-- [ ] Complete `mos-lsp` beyond the current entry point.
+- [ ] Complete [`mos-lsp`] beyond the current entry point.
 - [x] Publish diagnostics over LSP.
 - [ ] Add go-to-definition for labels.
 - [ ] Add rename label.
@@ -494,3 +499,27 @@ These are design goals, not near-term implementation commitments.
 - [ ] Prefer scoped MVP slices over broad systems.
 - [ ] Keep compiler/domain logic out of the `mos` CLI crate.
 - [ ] Keep parse, lower, layout, and emit boundaries explicit.
+
+[AGENTS]: AGENTS.md
+[README]: README.md
+[`adobe-font-metrics`]: crates/adobe-font-metrics/
+[`mos-bib`]: crates/mos-bib/
+[`mos-cache`]: crates/mos-cache/
+[`mos-core`]: crates/mos-core/
+[`mos-eval`]: crates/mos-eval/
+[`mos-fonts`]: crates/mos-fonts/
+[`mos-html`]: crates/mos-html/
+[`mos-layout`]: crates/mos-layout/
+[`mos-lsp`]: crates/mos-lsp/
+[`mos-packages`]: crates/mos-packages/
+[`mos-parse`]: crates/mos-parse/
+[`mos-pdf`]: crates/mos-pdf/
+[`mos`]: crates/mos/
+[`pdf-base14-metrics`]: crates/pdf-base14-metrics/
+[`tree-sitter-mosaic`]: crates/tree-sitter-mosaic/
+[`zed-mosaic`]: crates/zed-mosaic/
+[docs:labels-and-references]: docs/labels-and-references.md
+[manifest]: manifest.md
+[project:5]: https://github.com/users/kjanat/projects/5 "Private"
+
+<!-- rumdl-disable-file MD034 -->

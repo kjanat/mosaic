@@ -8,59 +8,64 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
-- Minimal single-key `[@key]` citation syntax (issue https://github.com/kjanat/mosaic/issues/47):
+- Minimal single-key `[@key]` citation syntax (https://github.com/kjanat/mosaic/issues/47):
   citations parse and lower into semantic placeholder nodes rendered as `[?key?]` until bibliography
   resolution lands. Malformed citation groups recover as literal text with diagnostic `MOS0039`.
-- Minimal stdio LSP server (issue https://github.com/kjanat/mosaic/issues/49): `mos-lsp` replaces
-  its stub with a server that publishes compiler parse/lower/resolve diagnostics via
+- User-facing label/reference documentation (https://github.com/kjanat/mosaic/issues/53):
+  [`docs/labels-and-references.md`][docs:labels-and-references] records the shipped declaration
+  forms, reference rendering, diagnostics, greedy reference parsing, and page-reference boundary.
+- Minimal stdio LSP server (https://github.com/kjanat/mosaic/issues/49): [`mos-lsp`][mos-lsp]
+  replaces its stub with a server that publishes compiler parse/lower/resolve diagnostics via
   `textDocument/publishDiagnostics` on open and full change. Source `SourceSpan`s are projected to
   UTF-16 LSP ranges and stable `MOS####` codes are preserved. Pull diagnostics, completion, hover,
   formatting, and workspace indexing are explicitly out of this slice.
-- Author-facing inline line-break controls (issue https://github.com/kjanat/mosaic/issues/26):
+- Author-facing inline line-break controls (https://github.com/kjanat/mosaic/issues/26):
   - `\\` hard line break (`InlineKind::HardBreak` / `NodeKind::HardBreak`), flushes the current line
     without paragraph spacing; two in a row produce a blank line; collapses silently at paragraph
     start (block-boundary semantics, regardless of whether prior blocks have painted on the page); a
     lone trailing `\` at end of input emits diagnostic `MOS0038`.
-  - `\-` soft-hyphen shorthand expanding to U+00AD; SHY codepoints are stripped from the rendered
+  - `\-` soft-hyphen shorthand expanding to `U+00AD`; SHY codepoints are stripped from the rendered
     text and their byte offsets recorded in `Word.shy_break_offsets`. The greedy line-breaker now
     consumes those offsets: when a word would overflow the line it picks the latest fitting SHY
     position, emits `prefix-` at end of line, and continues with the suffix as the next word. If no
     SHY prefix fits even an empty line, the existing oversized-word cluster fallback still applies.
     Optimal (non-greedy) selection is left for the Knuth-Plass cutover.
-  - Non-breaking space U+00A0 preserved as a cohesive unit by the greedy line-breaker.
+  - Non-breaking space `U+00A0` preserved as a cohesive unit by the greedy line-breaker.
 - New `WordItem` enum (`Word` / `HardBreak`) replacing the bare `Vec<Word>` stream consumed by
   `flow_words`.
-- `examples/linebreaks/` project demonstrating all three controls.
+- [`examples/linebreaks/`][ex:linebreaks] project demonstrating all three controls.
 
 ### Changed
 
-- Diagnostics gained a registry-backed `MOS####` code system (issue
-  https://github.com/kjanat/mosaic/issues/57): diagnostic identity is split from severity, codes are
-  minted only in `mos-core::codes`, and a human-readable catalog (`docs/diagnostic-codes.md`) is
-  drift-tested against the registry. Reporting moves to a sink-based model and parser/eval
-  diagnostic coverage is tightened.
-- Resolver (`crates/mos-eval/src/resolve.rs`) now models label targets explicitly (issue
-  https://github.com/kjanat/mosaic/issues/44): the label index is a typed `label → LabelTarget` map
-  distinguishing `Section { number }`, `Figure`, and `Generic` targets instead of an untyped
-  `label → NodeId` lookup. Section references still render from the captured hierarchical counter;
-  figure labels are recognised as a distinct kind but still render as the bare label name until
-  figure numbering lands (issue https://github.com/kjanat/mosaic/issues/46). Duplicate-label
-  (`MOS0030`) and unknown-reference (`MOS0033`) diagnostics are unchanged.
-- Tree-sitter grammar (`crates/tree-sitter-mosaic`) realigned with the compiler's inline parser for
-  the author-facing line-break controls (issue https://github.com/kjanat/mosaic/issues/26): `\\` now
-  parses as a dedicated `hard_break` node and `\-` as `soft_hyphen_escape`, both highlighted under
-  `@string.escape`. The external `linebreak_escape` token is removed; a bare `\` that does not form
-  one of the recognised escape tokens (typically a trailing `\` before a newline, which the compiler
-  also warns as `MOS0038`) parses as `loose_backslash` rather than a structural ERROR, matching the
-  compiler's "literal text" treatment. `escaped_char` continues to cover `\#`, `\*`, `\[`, `\]`,
-  `\<`, etc. Mirrored into `crates/zed-mosaic` via `just sync-zed-queries`, and the Zed extension
-  grammar `rev` is bumped to pick up the new node types. `mosaic.ebnf` and `EBNF.md` refreshed to
-  match.
+- Diagnostics gained a registry-backed `MOS####` code system
+  (https://github.com/kjanat/mosaic/issues/57): diagnostic identity is split from severity, codes
+  are minted only in `mos-core::codes`, and a human-readable catalog
+  ([`docs/diagnostic-codes.md`][docs:diagnostic-codes]) is drift-tested against the registry.
+  Reporting moves to a sink-based model and parser/eval diagnostic coverage is tightened.
+- Resolver ([`crates/mos-eval/src/resolve.rs`][mos-eval:resolve.rs]) now models label targets
+  explicitly (https://github.com/kjanat/mosaic/issues/44): the label index is a typed
+  `label → LabelTarget` map distinguishing `Section { number }`, `Figure`, and `Generic` targets
+  instead of an untyped `label → NodeId` lookup. Section references still render from the captured
+  hierarchical counter; figure labels are recognised as a distinct kind but still render as the bare
+  label name until figure numbering lands (https://github.com/kjanat/mosaic/issues/46).
+  Duplicate-label (`MOS0030`) and unknown-reference (`MOS0033`) diagnostics are unchanged.
+- Tree-sitter grammar ([`crates/tree-sitter-mosaic`][tree-sitter-mosaic]) realigned with the
+  compiler's inline parser for the author-facing line-break controls
+  (https://github.com/kjanat/mosaic/issues/26): `\\` now parses as a dedicated `hard_break` node and
+  `\-` as `soft_hyphen_escape`, both highlighted under `@string.escape`. The external
+  `linebreak_escape` token is removed; a bare `\` that does not form one of the recognised escape
+  tokens (typically a trailing `\` before a newline, which the compiler also warns as `MOS0038`)
+  parses as `loose_backslash` rather than a structural ERROR, matching the compiler's "literal text"
+  treatment. `escaped_char` continues to cover `\#`, `\*`, `\[`, `\]`, `\<`, etc. Mirrored into
+  [`crates/zed-mosaic`][zed-mosaic] via `just sync-zed-queries`, and the Zed extension grammar `rev`
+  is bumped to pick up the new node types. [`mosaic.ebnf`][mosaic.ebnf] and [`EBNF.md`][EBNF]
+  refreshed to match.
 
 ## [0.0.0] - 2026-05-22
 
-First tagged pre-alpha. The full crate stack under `crates/` (everything except the `zed-mosaic`
-editor extension) is published to crates.io via a resumable release workflow.
+First tagged pre-alpha. The full crate stack under [`crates/`][crates] (everything except the
+[`zed-mosaic`][zed-mosaic] editor extension) is published to crates.io via a resumable release
+workflow.
 
 ### Added
 
@@ -87,9 +92,24 @@ editor extension) is published to crates.io via a resumable release workflow.
 - PDF backend: WinAnsi plus Latin-Extended text via per-document `/Differences` and `/ToUnicode`,
   Type 0 CID emission for embedded fonts, GPOS-positioned glyph output, PNG and JPEG image XObjects,
   title / author Info metadata, and deterministic object / font / image emission order.
-- Editor tooling: a Tree-sitter grammar and corpus (`tree-sitter-mosaic`) and a Zed extension
-  (`zed-mosaic`) providing highlighting, outline, document runnables, and semantic-token defaults.
-- An in-memory cache foundation (`mos-cache`) backed by a `HashMap`.
+- Editor tooling: a Tree-sitter grammar and corpus ([`tree-sitter-mosaic`][tree-sitter-mosaic]) and
+  a Zed extension ([`zed-mosaic`][zed-mosaic]) providing highlighting, outline, document runnables,
+  and semantic-token defaults.
+- An in-memory cache foundation ([`mos-cache`][mos-cache]) backed by a `HashMap`.
 
 [Unreleased]: https://github.com/kjanat/mosaic/compare/v0.0.0...HEAD
 [0.0.0]: https://github.com/kjanat/mosaic/releases/tag/v0.0.0
+
+<!-- other-link-definitions -->
+
+[EBNF]: EBNF.md
+[crates]: crates/
+[docs:diagnostic-codes]: docs/diagnostic-codes.md
+[docs:labels-and-references]: docs/labels-and-references.md
+[ex:linebreaks]: examples/linebreaks/
+[mos-cache]: crates/mos-cache/
+[mos-eval:resolve.rs]: crates/mos-eval/src/resolve.rs
+[mos-lsp]: crates/mos-lsp/
+[mosaic.ebnf]: mosaic.ebnf
+[tree-sitter-mosaic]: crates/tree-sitter-mosaic/
+[zed-mosaic]: crates/zed-mosaic/

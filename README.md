@@ -41,12 +41,15 @@ substantially landed:
 - [ ] HTML and EPUB backends, persistent incremental cache, bibliography resolution, and richer LSP
       features — see MVP 1–6 in `manifest.md`.
 
+Label and reference behavior is documented in
+[`docs/labels-and-references.md`](./docs/labels-and-references.md).
+
 ## Quick start
 
 Toolchain pinned via `rust-toolchain.toml` (stable, edition 2024, resolver 3). Rust 1.95+.
 
 ```sh
-cargo build --workspace            # or: cargo bw
+cargo build --workspace     # or: cargo bw
 cargo run -p mos -- --help  # or: cargo mos --help
 ```
 
@@ -133,3 +136,5 @@ examples/
 ## License
 
 [MIT](./LICENSE) © Kaj Kowalski 2026.
+
+<!-- rumdl-disable-file MD033 MD041 -->
