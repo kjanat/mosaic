@@ -158,8 +158,12 @@ fn section_order(document: &Document) -> Vec<(mos_core::NodeId, u8)> {
 /// figure shows its number with no backend changes; distinct label
 /// *styling* is left to the future float/caption pass. The supplement
 /// word comes from [`figure_supplement`] (the single localization seam)
-/// and is joined to the number with a non-breaking space so the label
-/// never wraps away from its number.
+/// and is joined to the number with a non-breaking space (U+00A0). That
+/// space is *semantic generated text*, not layout policy in disguise: it
+/// encodes `Figure` and its counter as one cohesive label token — the
+/// same non-breaking space an author could type by hand — which the
+/// layout engine merely honors. The resolver makes no wrapping decision
+/// of its own; it just emits the token.
 ///
 /// The pass is **idempotent**: the pre-label caption is preserved under a
 /// `caption_source` attribute and the visible `text` is always re-derived
@@ -344,9 +348,11 @@ fn build_label_index(
 /// Section targets render as their bare hierarchical counter (e.g.
 /// `"1.2"`). Figure targets render kind-aware as `"Figure N"` — the
 /// localized [`figure_supplement`] joined to the figure's flat
-/// document-order counter with a non-breaking space (U+00A0) so the
-/// label never wraps off its number. Generic targets (paragraphs,
-/// images, raw blocks) have no counter and render as the bare label.
+/// document-order counter with a non-breaking space (U+00A0): one
+/// cohesive label token the layout engine honors, not a wrapping
+/// decision made here (see [`number_figures`]). Generic targets
+/// (paragraphs, images, raw blocks) have no counter and render as the
+/// bare label.
 fn render_target(target: &LabelTarget, label: &str) -> String {
     match &target.kind {
         LabelTargetKind::Section { number } if !number.is_empty() => number.clone(),
