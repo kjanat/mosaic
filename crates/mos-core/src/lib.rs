@@ -321,6 +321,12 @@ pub enum DiagnosticAnnotation {
 /// consume it without re-parsing: the CLI can print a fix-it diff and an LSP
 /// can surface it as a code action keyed on the same span.
 ///
+/// Two edge cases fall out of the replace-the-span model and are intentional:
+///
+/// - an empty `replacement` **deletes** the bytes covered by `span`;
+/// - a zero-length `span` (`start == end`) **inserts** `replacement` at that
+///   offset without removing anything.
+///
 /// # Examples
 ///
 /// ```
@@ -335,9 +341,11 @@ pub enum DiagnosticAnnotation {
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Suggestion {
-    /// The source range the fix replaces.
+    /// The source range the fix replaces. A zero-length span
+    /// (`start == end`) marks a pure insertion point.
     pub span: SourceSpan,
-    /// The text to substitute for the bytes covered by `span`.
+    /// The text to substitute for the bytes covered by `span`. An empty
+    /// string deletes that range.
     pub replacement: String,
 }
 
@@ -1029,5 +1037,81 @@ mod tests {
         assert_eq!(suggestions[1].span.start, 12);
         assert_eq!(suggestions[1].span.end, 15);
         assert_eq!(suggestions[1].replacement, "@summary");
+    }
+
+    #[test]
+    fn suggestion_new_accepts_str_and_owned_string() {
+        let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 10);
+        let from_str = Suggestion::new(span.clone(), "@intro");
+        let from_string = Suggestion::new(span, String::from("@intro"));
+        assert_eq!(from_str, from_string);
+    }
+
+    #[test]
+    fn suggestion_clone_and_equality() {
+        let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 10);
+        let suggestion = Suggestion::new(span.clone(), "@intro");
+
+        // A clone equals its original.
+        assert_eq!(suggestion.clone(), suggestion);
+        // Built independently from the same parts => equal.
+        assert_eq!(Suggestion::new(span.clone(), "@intro"), suggestion);
+        // Differing replacement text => unequal.
+        assert_ne!(Suggestion::new(span, "@outro"), suggestion);
+        // Differing span => unequal.
+        let wider = SourceSpan::new(PathBuf::from("main.mos"), 4, 11);
+        assert_ne!(Suggestion::new(wider, "@intro"), suggestion);
+    }
+
+    #[test]
+    fn suggestion_empty_replacement_encodes_deletion() {
+        let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 10);
+        let deletion = Suggestion::new(span, "");
+        assert!(deletion.replacement.is_empty());
+        // A deletion still covers a real, non-empty range.
+        assert!(deletion.span.start < deletion.span.end);
+    }
+
+    #[test]
+    fn suggestion_zero_length_span_encodes_insertion() {
+        let point = SourceSpan::new(PathBuf::from("main.mos"), 7, 7);
+        let insertion = Suggestion::new(point, "@intro");
+        assert_eq!(insertion.span.start, insertion.span.end);
+        assert_eq!(insertion.replacement, "@intro");
+    }
+
+    #[test]
+    fn suggestions_and_annotations_are_independent_channels() {
+        let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 10);
+
+        // A suggestion does not leak into the annotation channel.
+        let with_fix = Diagnostic::simple(&codes::MOS0033, None, "unknown label")
+            .with_suggestion(Suggestion::new(span.clone(), "@intro"));
+        assert_eq!(with_fix.suggestions().len(), 1);
+        assert!(with_fix.annotations().is_empty());
+
+        // Prose help does not leak into the suggestion channel.
+        let with_help = Diagnostic::simple(&codes::MOS0033, None, "unknown label").with_annotation(
+            DiagnosticAnnotation::Help("did you mean `@intro`?".to_owned()),
+        );
+        assert_eq!(with_help.annotations().len(), 1);
+        assert!(with_help.suggestions().is_empty());
+
+        // Both channels populate independently and keep their own payloads.
+        let with_both = Diagnostic::simple(&codes::MOS0033, None, "unknown label")
+            .with_annotation(DiagnosticAnnotation::Help(
+                "did you mean `@intro`?".to_owned(),
+            ))
+            .with_suggestion(Suggestion::new(span, "@intro"));
+        assert_eq!(with_both.suggestions().len(), 1);
+        assert_eq!(with_both.annotations().len(), 1);
+        assert_eq!(with_both.suggestions()[0].replacement, "@intro");
+
+        // The existing Help annotation is carried through unchanged.
+        let help_text = match &with_both.annotations()[0] {
+            DiagnosticAnnotation::Help(text) => Some(text.as_str()),
+            _ => None,
+        };
+        assert_eq!(help_text, Some("did you mean `@intro`?"));
     }
 }
