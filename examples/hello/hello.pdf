@@ -3290,6 +3290,8 @@ endobj
 <<
   /Title (Hello, Mosaic)
   /Author (Mosaic contributors)
+  /Producer (Mosaic 0.0.0)
+  /Creator (Mosaic 0.0.0)
 >>
 endobj
 
@@ -3355,5 +3357,5 @@ trailer
   /Info 3 0 R
 >>
 startxref
-135787
+135840
 %%EOF

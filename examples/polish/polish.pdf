@@ -2509,6 +2509,8 @@ endobj
 <<
   /Title (From the desk of Localization)
   /Author (Mosaic contributors)
+  /Producer (Mosaic 0.0.0)
+  /Creator (Mosaic 0.0.0)
 >>
 endobj
 
@@ -2566,5 +2568,5 @@ trailer
   /Info 3 0 R
 >>
 startxref
-107914
+107967
 %%EOF

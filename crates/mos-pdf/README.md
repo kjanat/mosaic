@@ -9,6 +9,8 @@ not parse `.mos`, lower documents, or decide layout policy.
 - Creates the output parent directory when needed.
 - Returns PDF-emission diagnostics, currently including Base-14 extended-glyph budget warnings.
 - Writes `PdfMetadata.title` and `PdfMetadata.author` to the PDF Info dictionary.
+- Stamps a deterministic `/Producer` and `/Creator` of `Mosaic <version>` (compile-time
+  `CARGO_PKG_VERSION`) so generated PDFs trace back to the compiler.
 - Captures `PdfMetadata.language`, but does not emit catalog `/Lang` yet.
 
 ## Emitted PDF Support

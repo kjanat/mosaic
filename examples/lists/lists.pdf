@@ -2725,6 +2725,8 @@ endobj
 <<
   /Title (SOP-114: Coffee Reimbursement)
   /Author (Mosaic contributors)
+  /Producer (Mosaic 0.0.0)
+  /Creator (Mosaic 0.0.0)
 >>
 endobj
 
@@ -2779,5 +2781,5 @@ trailer
   /Info 3 0 R
 >>
 startxref
-103898
+103951
 %%EOF

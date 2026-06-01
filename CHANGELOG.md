@@ -8,6 +8,15 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Mosaic provenance stamp in PDF metadata (https://github.com/kjanat/mosaic/issues/79):
+  [`mos-pdf`][mos-pdf] now writes deterministic `/Producer` and `/Creator` Info-dictionary entries
+  set to `Mosaic <version>` (sourced from `CARGO_PKG_VERSION` at compile time via the `PRODUCER`
+  constant), so a generated PDF traces back to the compiler that bred it. Existing `/Title` and
+  `/Author` are preserved and output stays byte-for-byte deterministic — no `/CreationDate`,
+  `/ModDate`, XMP, git SHA, hostname, username, path, wall-clock, or build-timestamp data. Both
+  fields carry the same constant string and PDF string escaping is handled by the existing `TextStr`
+  writer. Deterministic dates via `SOURCE_DATE_EPOCH` and an XMP metadata packet are deferred
+  follow-ups.
 - Structured diagnostic suggestions (https://github.com/kjanat/mosaic/issues/63): `mos-core` gains a
   backend-neutral `Suggestion` payload — a `SourceSpan` plus replacement text — that diagnostics can
   carry alongside prose `DiagnosticAnnotation::Help` annotations. `Diagnostic` stores them in a
@@ -140,6 +149,7 @@ workflow.
 [mos-cache]: crates/mos-cache/
 [mos-eval:resolve.rs]: crates/mos-eval/src/resolve.rs
 [mos-lsp]: crates/mos-lsp/
+[mos-pdf]: crates/mos-pdf/
 [mosaic.ebnf]: mosaic.ebnf
 [tree-sitter-mosaic]: crates/tree-sitter-mosaic/
 [zed-mosaic]: crates/zed-mosaic/

@@ -53,7 +53,8 @@ Implemented now:
   paper sizes, margins, text styles, NBSP/hard-break/greedy soft-hyphen controls, NFC-normalized
   text, embedded glyph fallback sub-runs.
 - PDF: Base-14 metrics, `/Differences`, bundled Noto Sans embedding/subsetting, `/ToUnicode`,
-  GPOS-positioned embedded glyph output, PNG/JPEG image XObjects, title/author Info metadata.
+  GPOS-positioned embedded glyph output, PNG/JPEG image XObjects, title/author Info metadata,
+  deterministic `Mosaic <version>` `/Producer`+`/Creator` provenance stamp.
 - LSP: `mos-lsp` stdio server publishes current compiler parse/lower/resolve diagnostics for opened
   and changed documents.
 

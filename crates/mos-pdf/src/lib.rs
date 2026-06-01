@@ -40,6 +40,20 @@ use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str, TextStr};
 use crate::embedded::{EmbeddedFontPlan, EmbeddedRefs};
 use crate::encoding::{DocEncoding, EncodingPlanner};
 
+/// Identifies Mosaic as the PDF's producing application, written to the
+/// Info dictionary `/Producer` and `/Creator` so a built PDF traces back
+/// to the compiler that bred it (the way ffmpeg/Word/Adobe stamp theirs).
+/// A compile-time constant, so output stays byte-for-byte deterministic —
+/// no wall-clock, host, path, or user data leaks in. The version tracks
+/// the workspace `CARGO_PKG_VERSION` automatically.
+///
+/// Follow-up (intentionally deferred to keep this stamp deterministic):
+/// - `/CreationDate` + `/ModDate` driven by a `SOURCE_DATE_EPOCH`-style
+///   deterministic input (UTC, stable `D:YYYYMMDDHHmmSS'+00'00'` format).
+/// - An XMP metadata packet (catalog `/Metadata`) for PDF/A / Adobe tooling,
+///   kept in sync with this Info dict.
+const PRODUCER: &str = concat!("Mosaic ", env!("CARGO_PKG_VERSION"));
+
 /// Document-level metadata that gets written to the PDF Info
 /// dictionary. Populated by the lowerer from `#set document(...)`.
 /// The `language` field is captured but not yet emitted (it belongs in
@@ -341,6 +355,11 @@ pub(crate) fn build_pdf(
         if let Some(author) = metadata.author.as_deref() {
             info.author(TextStr(author));
         }
+        // Provenance stamp: mark Mosaic as the producing application. Both
+        // keys carry the same constant string, so this adds no wall-clock
+        // or environment data and the output stays deterministic.
+        info.producer(TextStr(PRODUCER));
+        info.creator(TextStr(PRODUCER));
         info.finish();
     }
 
@@ -525,6 +544,20 @@ mod tests {
                 .windows(b"(A. Person)".len())
                 .any(|w| w == b"(A. Person)"),
             "author not found in PDF"
+        );
+    }
+
+    #[test]
+    fn producer_and_creator_stamp_is_emitted() {
+        // The provenance stamp must land even when the document declares
+        // no title/author, and must carry the crate version constant.
+        // Reference `PRODUCER` (not a hardcoded "Mosaic 0.0.0") so the
+        // test survives version bumps.
+        let (bytes, _) = build_pdf(&sample_graph(), &PdfMetadata::default()).unwrap();
+        let needle = PRODUCER.as_bytes();
+        assert!(
+            bytes.windows(needle.len()).any(|w| w == needle),
+            "producer/creator stamp {PRODUCER:?} not found in PDF"
         );
     }
 
