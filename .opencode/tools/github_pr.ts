@@ -702,7 +702,7 @@ export const list_open = tool({
 	},
 	async execute(args) {
 		try {
-			const repo = await defaults(args.owner, args.repository);
+			const repo = defaults(args.owner, args.repository);
 			const limit = args.limit ?? DEFAULT_PR_LIMIT;
 			const prs = (await openPullRequests(repo, limit)).map(summarizePullRequest);
 			return success({ repository: repo, count: prs.length, pullRequests: prs });
@@ -721,7 +721,7 @@ export const view = tool({
 	},
 	async execute(args) {
 		try {
-			const repo = await defaults(args.owner, args.repository);
+			const repo = defaults(args.owner, args.repository);
 			const pr = await pullRequest(repo, args.pr);
 			const issues = await relatedIssues(repo, pr);
 			return success({
@@ -745,7 +745,7 @@ export const related_issues = tool({
 	},
 	async execute(args) {
 		try {
-			const repo = await defaults(args.owner, args.repository);
+			const repo = defaults(args.owner, args.repository);
 			const issues = await relatedIssues(repo, await pullRequest(repo, args.pr));
 			return success({ repository: repo, pr: args.pr, count: issues.length, relatedIssues: issues });
 		} catch (error) {
@@ -763,7 +763,7 @@ export const classify = tool({
 	},
 	async execute(args) {
 		try {
-			const repo = await defaults(args.owner, args.repository);
+			const repo = defaults(args.owner, args.repository);
 			return success({
 				repository: repo,
 				pr: args.pr,
@@ -785,7 +785,7 @@ export const triage = tool({
 	},
 	async execute(args) {
 		try {
-			const repo = await defaults(args.owner, args.repository);
+			const repo = defaults(args.owner, args.repository);
 			const pr = await pullRequest(repo, args.pr);
 			const summary = summarizePullRequest(pr);
 			const classification = classifyPullRequest(pr);

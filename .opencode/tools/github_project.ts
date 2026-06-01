@@ -34,13 +34,6 @@ const PHASE_OPTIONS: readonly [string, string, string, string, string, string, s
 	'MVP 6',
 	'Later',
 ];
-const SPRINT_OPTIONS: readonly [string, string, string, string, string] = [
-	'Sprint 1',
-	'Sprint 2',
-	'Sprint 3',
-	'Sprint 4',
-	'Sprint 5',
-];
 const SPRINT_FILTER_OPTIONS: readonly [string, string, string, string, string, string, string] = [
 	'Sprint 1',
 	'Sprint 2',
@@ -239,10 +232,6 @@ function readFile(path: string): string {
 
 function repositoryOwnerDefault(): string {
 	return repositoryFromGitConfig().owner;
-}
-
-function repositoryNameDefault(): string {
-	return repositoryFromGitConfig().repository;
 }
 
 function parseGitDir(text: string): string | null {
@@ -1139,7 +1128,7 @@ export const queue = tool({
 	},
 	async execute(args) {
 		try {
-			const project = await defaults(args.owner, args.projectNumber);
+			const project = defaults(args.owner, args.projectNumber);
 			const items = (await rawItems(project)).map(summarizeItem);
 			return formatItems(queueItems(items, args.includeBacklog));
 		} catch (error) {
@@ -1156,7 +1145,7 @@ export const fields = tool({
 	},
 	async execute(args) {
 		try {
-			const project = await defaults(args.owner, args.projectNumber);
+			const project = defaults(args.owner, args.projectNumber);
 			const [projectFields, sprintField] = await Promise.all([
 				rawFields(project),
 				iterationField(project).catch(() => null),
@@ -1179,7 +1168,7 @@ export const view = tool({
 	},
 	async execute(args) {
 		try {
-			const project = await defaults(args.owner, args.projectNumber);
+			const project = defaults(args.owner, args.projectNumber);
 			const target = requireTarget(args.itemId, args.issue, args.pr);
 			const item = findItemByTarget(await rawItems(project), target, project.projectNumber);
 			return success({ project, item });
@@ -1200,8 +1189,8 @@ export const add_issue = tool({
 	},
 	async execute(args) {
 		try {
-			const project = await defaults(args.owner, args.projectNumber);
-			const repository = await repositoryDefaults(undefined, undefined);
+			const project = defaults(args.owner, args.projectNumber);
+			const repository = repositoryDefaults(undefined, undefined);
 			const id = await projectId(project);
 			const itemId = await addIssueItem(id, await issueNodeId(repository, args.issue));
 			const updates: Array<JsonRecord> = [{ field: 'item', value: itemId }];
@@ -1247,7 +1236,7 @@ export const set_field = tool({
 	},
 	async execute(args) {
 		try {
-			const project = await defaults(args.owner, args.projectNumber);
+			const project = defaults(args.owner, args.projectNumber);
 			const target = requireTarget(args.itemId, args.issue, args.pr);
 			return success(await setProjectFieldForTarget(project, target, args.field, args.value, args.clear));
 		} catch (error) {
@@ -1267,7 +1256,7 @@ export const create_field = tool({
 	},
 	async execute(args) {
 		try {
-			const project = await defaults(args.owner, args.projectNumber);
+			const project = defaults(args.owner, args.projectNumber);
 			const id = await createProjectField(await projectId(project), args.name, args.dataType, args.options);
 			return success({ project, field: { id, name: args.name, dataType: args.dataType } });
 		} catch (error) {
@@ -1288,7 +1277,7 @@ export const set_status = tool({
 	},
 	async execute(args) {
 		try {
-			const project = await defaults(args.owner, args.projectNumber);
+			const project = defaults(args.owner, args.projectNumber);
 			const target = requireTarget(args.itemId, args.issue, args.pr);
 			return success(await setProjectFieldForTarget(project, target, 'Status', args.status, false));
 		} catch (error) {
@@ -1310,7 +1299,7 @@ export const set_select = tool({
 	},
 	async execute(args) {
 		try {
-			const project = await defaults(args.owner, args.projectNumber);
+			const project = defaults(args.owner, args.projectNumber);
 			const target = requireTarget(args.itemId, args.issue, args.pr);
 			return success(await setProjectFieldForTarget(project, target, args.field, args.option, false));
 		} catch (error) {
@@ -1331,7 +1320,7 @@ export const set_sprint = tool({
 	},
 	async execute(args) {
 		try {
-			const project = await defaults(args.owner, args.projectNumber);
+			const project = defaults(args.owner, args.projectNumber);
 			const target = requireTarget(args.itemId, args.issue, args.pr);
 			const requested = normalize(args.sprint);
 			const clear = requested === 'clear' || requested === 'none' || requested === 'unscheduled';
@@ -1354,7 +1343,7 @@ export const set_estimate = tool({
 	},
 	async execute(args) {
 		try {
-			const project = await defaults(args.owner, args.projectNumber);
+			const project = defaults(args.owner, args.projectNumber);
 			const target = requireTarget(args.itemId, args.issue, args.pr);
 			return success(await setProjectFieldForTarget(project, target, 'Estimate', args.estimate.toString(), false));
 		} catch (error) {
