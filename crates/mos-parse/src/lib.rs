@@ -8,9 +8,10 @@
 //! - inline `*emphasis*`, `**strong**`, and `` `inline code` ``,
 //! - `#set name(...)` blocks, recorded with span and name but interpreted
 //!   later by the evaluator,
-//! - `#image(...)` and `#figure(...)` directives, sharing the same
-//!   `key: value` body grammar as `#set` plus an optional leading
-//!   positional string literal (`#image("path.png")`),
+//! - `#image(...)`, `#figure(...)`, and `#bibliography(...)` directives,
+//!   sharing the same `key: value` body grammar as `#set` plus an optional
+//!   leading positional string literal (`#image("path.png")`,
+//!   `#bibliography("refs.bib")`),
 //! - raw `#pre[[...]]` and `#code[[...]]` long-bracket blocks,
 //! - `<label>` attached to the preceding block (trailing on a heading or
 //!   leading on a paragraph), and `@label` cross-references as inline
