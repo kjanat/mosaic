@@ -303,6 +303,12 @@ fn classify_target(node: &mos_core::Node) -> LabelTargetKind {
     }
 }
 
+/// Build the `label -> LabelTarget` index from every label-declaring block,
+/// reporting `MOS0030` for redeclarations. The first declaration of a label
+/// wins; later occurrences keep their numbering but are not indexed, and each
+/// carries a related note pointing at the first declaration plus a structured
+/// `{label}-2` rename [`Suggestion`] over its declaration span (see the
+/// module-level docs). Reads the document only, so `resolve` stays idempotent.
 fn build_label_index(
     document: &Document,
     diagnostics: &mut Vec<Diagnostic>,
