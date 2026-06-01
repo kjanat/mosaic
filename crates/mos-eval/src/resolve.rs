@@ -25,7 +25,8 @@
 //!
 //! - `MOS0030`: a label is declared more than once. The first occurrence
 //!   wins; later occurrences keep their numbering but are not added to
-//!   the index.
+//!   the index. Each duplicate also carries a structured rename
+//!   [`Suggestion`] (`{label}-2`) over its declaration span.
 //! - `MOS0033`: a `@label` reference targets a label that doesn't exist.
 //!   The reference's text is left at its lowered placeholder
 //!   (`?label?`) so it remains visible in the rendered output.
@@ -48,7 +49,7 @@
 use std::collections::BTreeMap;
 
 use mos_core::{
-    AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeKind, SourceSpan, codes,
+    AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeKind, SourceSpan, Suggestion, codes,
 };
 
 /// Cap on resolver fixpoint iterations. MVP 1 always converges in one
@@ -318,6 +319,13 @@ fn build_label_index(
             continue;
         };
         if let Some(existing) = index.get(label) {
+            // Offer a deterministic, non-conflicting rename for the
+            // duplicate (`{label}-2`) — a boring stable rule, not a ranked
+            // guess. The fix targets the whole duplicate declaration span:
+            // the lowerer records the label as a string attribute but no
+            // label-token span, so that's the finest granularity available
+            // here. Narrowing it to the bare label token is a parser change
+            // left to a later slice.
             diagnostics.push(
                 Diagnostic::simple(
                     &codes::MOS0030,
@@ -328,7 +336,8 @@ fn build_label_index(
                 .with_annotation(DiagnosticAnnotation::Related {
                     span: existing.span.clone(),
                     message: format!("first declaration of `{label}` is here"),
-                }),
+                })
+                .with_suggestion(Suggestion::new(node.span.clone(), format!("{label}-2"))),
             );
             continue;
         }
@@ -522,6 +531,32 @@ mod tests {
                 "first-decl note should name the label, got {note_message:?}"
             );
         }
+        // The duplicate carries exactly one structured rename suggestion:
+        // replace the duplicate declaration span with the deterministic
+        // `dup-2` candidate. Editors apply this as a fix-it, so the payload
+        // — span + replacement — is asserted directly, not via rendered text.
+        let suggestions = d.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "MOS0030 should carry exactly one rename suggestion, got {suggestions:?}"
+        );
+        if let Some(suggestion) = suggestions.first() {
+            assert_eq!(
+                &src[suggestion.span.start..suggestion.span.end],
+                "= B <dup>",
+                "suggestion span should cover the duplicate declaration"
+            );
+            assert_eq!(
+                suggestion.replacement, "dup-2",
+                "suggestion should rename the duplicate label deterministically"
+            );
+            assert_eq!(
+                Some(&suggestion.span),
+                d.span(),
+                "the suggestion targets the diagnostic's primary span"
+            );
+        }
         // Reference still resolves to the first declaration's number.
         let reference_text = doc
             .nodes()
@@ -575,6 +610,27 @@ mod tests {
                     &src[ns.start..ns.end],
                     "= A <dup>",
                     "every redeclaration must link back to the first decl"
+                );
+            }
+            // Each redeclaration carries its own deterministic rename
+            // suggestion over its own span. The rule is the boring stable
+            // `{label}-2`, so both duplicates suggest `dup-2` — no clever
+            // per-occurrence ranking.
+            let suggestions = d.suggestions();
+            assert_eq!(
+                suggestions.len(),
+                1,
+                "each MOS0030 carries exactly one rename suggestion, got {suggestions:?}"
+            );
+            if let Some(suggestion) = suggestions.first() {
+                assert_eq!(
+                    suggestion.replacement, "dup-2",
+                    "the rename rule is the deterministic `{{label}}-2`"
+                );
+                assert_eq!(
+                    Some(&suggestion.span),
+                    d.span(),
+                    "the suggestion span matches the redeclaration span"
                 );
             }
         }

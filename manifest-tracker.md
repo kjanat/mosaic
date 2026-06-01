@@ -197,7 +197,7 @@ example.
 - [ ] Add structured suggestions.
   - [x] `mos-core` `Suggestion` payload (source span + replacement) with `Diagnostic` storage,
         builder, and accessor
-  - [ ] Emit structured suggestions from duplicate-label diagnostics (#52)
+  - [x] Emit structured suggestions from duplicate-label diagnostics (#52)
   - [ ] Render suggestions in CLI and LSP output
 - [ ] Add layout warnings.
 - [ ] Add float placement diagnostics.
