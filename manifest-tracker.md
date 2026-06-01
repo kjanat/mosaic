@@ -100,6 +100,7 @@ example.
   - [x] positioned embedded glyph output for GPOS advances/offsets
   - [x] title metadata
   - [x] author metadata
+  - [x] deterministic `/Producer` + `/Creator` provenance stamp (`Mosaic <version>`)
 - [x] Example PDF snapshots exist for current examples.
 
 ## Immediate Cleanup

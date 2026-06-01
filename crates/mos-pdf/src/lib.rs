@@ -434,6 +434,7 @@ mod tests {
     // `clippy::panic`.
     use std::error::Error;
 
+    use lopdf::{Document as LopdfDocument, Object};
     use mos_layout::{Base14Font, Font, Page, PageGraph, TextRun};
 
     use super::*;
@@ -495,6 +496,20 @@ mod tests {
         }
     }
 
+    fn info_string<'info>(
+        info: &'info lopdf::Dictionary,
+        key: &[u8],
+    ) -> std::result::Result<&'info str, Box<dyn Error>> {
+        let Object::String(bytes, _) = info.get(key)? else {
+            return Err(format!(
+                "expected Info key /{} to be a string",
+                String::from_utf8_lossy(key)
+            )
+            .into());
+        };
+        Ok(std::str::from_utf8(bytes)?)
+    }
+
     #[test]
     fn build_pdf_starts_with_pdf_header_and_ends_with_eof() {
         let (bytes, diags) = build_pdf(&sample_graph(), &PdfMetadata::default()).unwrap();
@@ -528,37 +543,30 @@ mod tests {
     }
 
     #[test]
-    fn metadata_appears_in_info_dictionary() {
+    fn metadata_and_provenance_appear_in_info_dictionary() -> TestResult {
         let metadata = PdfMetadata {
             title: Some("My Doc".to_owned()),
             author: Some("A. Person".to_owned()),
             language: None,
         };
         let (bytes, _) = build_pdf(&sample_graph(), &metadata).unwrap();
-        assert!(
-            bytes.windows(b"(My Doc)".len()).any(|w| w == b"(My Doc)"),
-            "title not found in PDF"
-        );
-        assert!(
-            bytes
-                .windows(b"(A. Person)".len())
-                .any(|w| w == b"(A. Person)"),
-            "author not found in PDF"
-        );
-    }
+        let doc = LopdfDocument::load_mem(&bytes)?;
+        let Object::Reference(info_id) = doc.trailer.get(b"Info")? else {
+            return Err("expected trailer /Info reference".into());
+        };
+        let info = doc.get_dictionary(*info_id)?;
 
-    #[test]
-    fn producer_and_creator_stamp_is_emitted() {
-        // The provenance stamp must land even when the document declares
-        // no title/author, and must carry the crate version constant.
-        // Reference `PRODUCER` (not a hardcoded "Mosaic 0.0.0") so the
-        // test survives version bumps.
-        let (bytes, _) = build_pdf(&sample_graph(), &PdfMetadata::default()).unwrap();
-        let needle = PRODUCER.as_bytes();
-        assert!(
-            bytes.windows(needle.len()).any(|w| w == needle),
-            "producer/creator stamp {PRODUCER:?} not found in PDF"
+        ensure!(info_string(info, b"Title")? == "My Doc", "wrong /Title");
+        ensure!(
+            info_string(info, b"Author")? == "A. Person",
+            "wrong /Author"
         );
+        ensure!(
+            info_string(info, b"Producer")? == PRODUCER,
+            "wrong /Producer"
+        );
+        ensure!(info_string(info, b"Creator")? == PRODUCER, "wrong /Creator");
+        Ok(())
     }
 
     #[test]
