@@ -17,11 +17,11 @@ All notable changes to this project will be documented here. The format is based
 - Nearest-label suggestions for unknown references (https://github.com/kjanat/mosaic/issues/51): the
   resolver now attaches a structured `Suggestion` to `MOS0033` ("unknown label") that rewrites the
   whole `@label` token to the closest existing label (`@intrdo` → `@intro`). Candidates are drawn
-  only from the resolver label index and filtered to names spellable as `@` references, so an applied
-  fix always parses and resolves. Matching is a local byte Levenshtein with a conservative threshold
-  (edit distance within `len / 3`, and nothing suggested below three bytes); ties break deterministically
-  on `(distance, label)` and at most one candidate is offered. Rendering suggestions in the CLI/LSP
-  stays out of this slice.
+  only from the resolver label index and filtered to names spellable as `@` references, so an
+  applied fix always parses and resolves. Matching is a local byte Levenshtein with a conservative
+  threshold (edit distance within `len / 3`, and nothing suggested below three bytes); ties break
+  deterministically on `(distance, label)` and at most one candidate is offered. Rendering
+  suggestions in the CLI/LSP stays out of this slice.
 - Minimal single-key `[@key]` citation syntax (https://github.com/kjanat/mosaic/issues/47):
   citations parse and lower into semantic placeholder nodes rendered as `[?key?]` until bibliography
   resolution lands. Malformed citation groups recover as literal text with diagnostic `MOS0039`.

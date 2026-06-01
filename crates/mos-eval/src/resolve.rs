@@ -860,10 +860,8 @@ mod tests {
 
     #[test]
     fn multiple_unknown_references_each_emit_one_mos0033() {
-        // Three distinct unknown labels in a single paragraph. The
-        // fixpoint loop runs more than once (each iteration sees the
-        // unresolved placeholders again), but every bad reference must
-        // produce exactly one diagnostic — not one per iteration.
+        // Three distinct unknown labels in a single paragraph produce one
+        // diagnostic apiece in a single resolver pass.
         let src = "see @alpha and @beta and @gamma\n";
         let (_doc, diags) = lower(src);
         let mos0033: Vec<&Diagnostic> = diags
@@ -889,6 +887,52 @@ mod tests {
             labels,
             ["alpha", "beta", "gamma"].into_iter().collect(),
             "each unknown label should appear exactly once"
+        );
+    }
+
+    #[test]
+    fn unknown_reference_suggestion_is_not_duplicated_after_fixpoint_rerun() {
+        // The resolved `@intro` changes reference text on the first pass, so
+        // the fixpoint runs again. The unknown `@intrdo` must still get one
+        // MOS0033 with one structured suggestion, not one per iteration.
+        let src = "= Intro <intro>\n\nsee @intro and @intrdo\n";
+        let (doc, diags) = lower(src);
+        let mos0033: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0033.code())
+            .collect();
+        assert_eq!(
+            mos0033.len(),
+            1,
+            "expected one MOS0033 after fixpoint rerun, got {diags:?}"
+        );
+        let d = mos0033[0];
+        let suggestions = d.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "expected one suggestion after fixpoint rerun, got {suggestions:?}"
+        );
+        if let Some(suggestion) = suggestions.first() {
+            assert_eq!(suggestion.replacement, "@intro");
+            assert_eq!(
+                apply_suggestion(src, suggestion),
+                "= Intro <intro>\n\nsee @intro and @intro\n",
+                "fix should replace only the unknown reference token"
+            );
+        }
+        let reference_texts: Vec<&str> = doc
+            .nodes()
+            .filter(|n| n.kind == NodeKind::Reference)
+            .filter_map(|n| match n.attributes.get("text") {
+                Some(AttrValue::Str(s)) => Some(s.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reference_texts,
+            vec!["1", "?intrdo?"],
+            "resolved refs rewrite while unknown refs keep visible placeholders"
         );
     }
 
