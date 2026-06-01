@@ -31,15 +31,16 @@ substantially landed:
       `\-` (or literal U+00AD) soft hyphen that stays invisible when the word fits and otherwise
       breaks the line at the latest fitting marker with a visible hyphen (optimal non-greedy
       selection still belongs to the eventual Knuth-Plass pass) — see `examples/linebreaks/`;
-- [x] lowering to a typed semantic `Document` graph in `mos-core`, with `#image(...)` and
-      `#figure(...)` directives evaluated in `mos-eval` (manifest §5, §6 stage 2);
+- [x] lowering to a typed semantic `Document` graph in `mos-core`, with `#image(...)`,
+      `#figure(...)`, and `#bibliography(...)` source declarations evaluated in `mos-eval` (manifest
+      §5, §6 stage 2);
 - [x] `mos check` end-to-end — parse → lower → render diagnostics with `file:line:col` and source
       carets;
 - [x] `mos build` end-to-end — layout + PDF emission for the Base-14 core fonts and bundled Noto
       Sans, with PNG/JPEG raster images and figure captions (manifest §6 stages 5–9, §21.1);
 - [x] `mos-lsp` publishes current compiler diagnostics over stdio LSP on open/change;
-- [ ] HTML and EPUB backends, persistent incremental cache, bibliography resolution, and richer LSP
-      features — see MVP 1–6 in `manifest.md`.
+- [ ] HTML and EPUB backends, persistent incremental cache, bibliography
+      parsing/resolution/rendering, and richer LSP features — see MVP 1–6 in `manifest.md`.
 
 Label and reference behavior is documented in
 [`docs/labels-and-references.md`](./docs/labels-and-references.md).

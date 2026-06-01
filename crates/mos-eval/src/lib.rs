@@ -1116,6 +1116,35 @@ mod tests {
     }
 
     #[test]
+    fn bibliography_src_alias_resolves_against_source_dir() {
+        // The `src:` alias is accepted for parity with image source naming,
+        // and preserves the literal source path for the later BibTeX reader.
+        let dir = unique_temp_dir("src-alias");
+        let sub = dir.join("sources");
+        std::fs::create_dir_all(&sub).unwrap();
+        let bib = sub.join("refs.bib");
+        std::fs::write(&bib, "@book{a, title={A}}\n").unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(&source, "#bibliography(src: \"sources/refs.bib\")\n").unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Bibliography)
+            .expect("Bibliography node");
+        assert_eq!(
+            node.attributes.get("src"),
+            Some(&AttrValue::Str("sources/refs.bib".to_owned()))
+        );
+        assert_eq!(
+            node.attributes.get("resolved_path"),
+            Some(&AttrValue::Str(bib.to_string_lossy().into_owned()))
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn missing_bibliography_path_emits_mos0040() {
         // `#bibliography()` with no path is the same authoring mistake as
         // `#image()`: a hard error, and no node leaks into the document.
@@ -1152,6 +1181,38 @@ mod tests {
             "empty path must not trip the filesystem warning: {:?}",
             r.diagnostics
         );
+    }
+
+    #[test]
+    fn non_string_bibliography_path_emits_type_mismatch_only() {
+        // A path-shaped arg with the wrong type is not "missing"; report
+        // the type mismatch once and do not also emit missing-path/I/O noise.
+        let r = lower(
+            "#bibliography(src: 12pt)\n",
+            &PathBuf::from("/tmp/whatever/main.mos"),
+        );
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0020.code()),
+            "expected MOS0020, got {:?}",
+            r.diagnostics
+        );
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0040.code()),
+            "non-string path must not also emit MOS0040: {:?}",
+            r.diagnostics
+        );
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0041.code()),
+            "non-string path must not reach filesystem warning: {:?}",
+            r.diagnostics
+        );
+        assert!(!r.document.nodes().any(|n| n.kind == NodeKind::Bibliography));
     }
 
     #[test]

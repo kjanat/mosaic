@@ -90,38 +90,47 @@ fn bibliography_path(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<String> {
     let mut path: Option<String> = None;
+    let mut invalid_path_arg = false;
     for arg in args {
         match arg {
             // Positional first arg -- the path literal, same shorthand
             // `#image("path.png")` accepts.
-            SetArg::Positional { value, value_span } => match value {
-                SetValue::Str(s) => path = Some(s.clone()),
-                _ => diagnostics.push(
-                    Diagnostic::simple(
-                        &codes::MOS0020,
-                        None,
-                        "`#bibliography(...)` expects a string path",
-                    )
-                    .with_span(value_span.clone()),
-                ),
-            },
-            SetArg::Named {
-                key,
-                value,
-                key_span,
-                value_span,
-            } => match key.as_str() {
-                "src" | "path" => match value {
-                    SetValue::Str(s) => path = Some(s.clone()),
-                    _ => diagnostics.push(
+            SetArg::Positional { value, value_span } => {
+                if let SetValue::Str(s) = value {
+                    path = Some(s.clone());
+                } else {
+                    invalid_path_arg = true;
+                    diagnostics.push(
                         Diagnostic::simple(
                             &codes::MOS0020,
                             None,
                             "`#bibliography(...)` expects a string path",
                         )
                         .with_span(value_span.clone()),
-                    ),
-                },
+                    );
+                }
+            }
+            SetArg::Named {
+                key,
+                value,
+                key_span,
+                value_span,
+            } => match key.as_str() {
+                "src" | "path" => {
+                    if let SetValue::Str(s) = value {
+                        path = Some(s.clone());
+                    } else {
+                        invalid_path_arg = true;
+                        diagnostics.push(
+                            Diagnostic::simple(
+                                &codes::MOS0020,
+                                None,
+                                "`#bibliography(...)` expects a string path",
+                            )
+                            .with_span(value_span.clone()),
+                        );
+                    }
+                }
                 _ => diagnostics.push(
                     Diagnostic::simple(
                         &codes::MOS0015,
@@ -134,6 +143,9 @@ fn bibliography_path(
         }
     }
     let Some(path) = path else {
+        if invalid_path_arg {
+            return None;
+        }
         diagnostics.push(
             Diagnostic::simple(
                 &codes::MOS0040,
