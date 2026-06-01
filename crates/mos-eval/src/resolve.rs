@@ -25,7 +25,10 @@
 //!
 //! - `MOS0030`: a label is declared more than once. The first occurrence
 //!   wins; later occurrences keep their numbering but are not added to
-//!   the index.
+//!   the index. Each duplicate also carries a structured rename
+//!   [`Suggestion`] — the next free `{label}-N` (`N >= 2`) that no other
+//!   declaration or earlier suggestion already uses — over the duplicate
+//!   label token span.
 //! - `MOS0033`: a `@label` reference targets a label that doesn't exist.
 //!   The reference's text is left at its lowered placeholder
 //!   (`?label?`) so it remains visible in the rendered output.
@@ -45,11 +48,13 @@
 //! of re-reading the already-stamped text (which would nest the label
 //! into `"Figure 1: Figure 1: …"`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use mos_core::{
-    AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeKind, SourceSpan, codes,
+    AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeKind, SourceSpan, Suggestion, codes,
 };
+
+use crate::{LABEL_SPAN_END_ATTR, LABEL_SPAN_START_ATTR};
 
 /// Cap on resolver fixpoint iterations. MVP 1 always converges in one
 /// pass; the cap is a safety net against forward-reference loops once
@@ -302,10 +307,47 @@ fn classify_target(node: &mos_core::Node) -> LabelTargetKind {
     }
 }
 
+/// Collect every label declared anywhere in the document — any non-reference
+/// block carrying a `label` attribute — regardless of document order or
+/// duplication. The duplicate-rename suggestion consults this set so it never
+/// proposes a name that some other declaration already uses.
+fn declared_labels(document: &Document) -> BTreeSet<String> {
+    document
+        .nodes()
+        .filter(|node| node.kind != NodeKind::Reference)
+        .filter_map(|node| match node.attributes.get("label") {
+            Some(AttrValue::Str(label)) => Some(label.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Pick a deterministic, collision-aware rename for a duplicated `label`: the
+/// smallest integer suffix `N >= 2` whose `{label}-{N}` is not already in
+/// `declared`. Boring and stable — no similarity ranking — but it steps over
+/// existing labels so the suggested fix never re-creates the clash it
+/// resolves. Among the first `declared.len() + 1` candidates at least one is
+/// free (pigeonhole), so the bounded search always yields a name.
+fn nonconflicting_rename(label: &str, declared: &BTreeSet<String>) -> String {
+    let ceiling = declared.len().saturating_add(2);
+    (2..=ceiling)
+        .map(|n| format!("{label}-{n}"))
+        .find(|candidate| !declared.contains(candidate))
+        .unwrap_or_else(|| format!("{label}-{ceiling}"))
+}
+
+/// Build the `label -> LabelTarget` index from every label-declaring block,
+/// reporting `MOS0030` for redeclarations. The first declaration of a label
+/// wins; later occurrences keep their numbering but are not indexed, and each
+/// carries a related note pointing at the first declaration plus a structured
+/// rename [`Suggestion`] — the next free `{label}-N` — over the duplicate label
+/// token span (see the module-level docs). Reads the document only, so
+/// `resolve` stays idempotent.
 fn build_label_index(
     document: &Document,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> BTreeMap<String, LabelTarget> {
+    let mut occupied_labels = declared_labels(document);
     let mut index: BTreeMap<String, LabelTarget> = BTreeMap::new();
     for node in document.nodes() {
         // References *consume* labels; only blocks declare them.
@@ -318,18 +360,29 @@ fn build_label_index(
             continue;
         };
         if let Some(existing) = index.get(label) {
-            diagnostics.push(
-                Diagnostic::simple(
-                    &codes::MOS0030,
-                    None,
-                    format!("label `{label}` is declared more than once"),
-                )
-                .with_span(node.span.clone())
-                .with_annotation(DiagnosticAnnotation::Related {
-                    span: existing.span.clone(),
-                    message: format!("first declaration of `{label}` is here"),
-                }),
-            );
+            // Offer a deterministic, collision-aware rename for the duplicate:
+            // the next free `{label}-N` that no declaration, or earlier
+            // suggestion in this pass, already uses. Still a boring stable
+            // rule, not a similarity-ranked guess. The fix targets only the
+            // duplicate label token span so applying it preserves the
+            // surrounding heading/directive syntax.
+            let rename = nonconflicting_rename(label, &occupied_labels);
+            occupied_labels.insert(rename.clone());
+            let suggestion = label_span(node).map(|span| Suggestion::new(span, rename));
+            let mut diagnostic = Diagnostic::simple(
+                &codes::MOS0030,
+                None,
+                format!("label `{label}` is declared more than once"),
+            )
+            .with_span(node.span.clone())
+            .with_annotation(DiagnosticAnnotation::Related {
+                span: existing.span.clone(),
+                message: format!("first declaration of `{label}` is here"),
+            });
+            if let Some(suggestion) = suggestion {
+                diagnostic = diagnostic.with_suggestion(suggestion);
+            }
+            diagnostics.push(diagnostic);
             continue;
         }
         index.insert(
@@ -341,6 +394,21 @@ fn build_label_index(
         );
     }
     index
+}
+
+fn label_span(node: &mos_core::Node) -> Option<SourceSpan> {
+    let start = match node.attributes.get(LABEL_SPAN_START_ATTR) {
+        Some(AttrValue::Int(value)) => usize::try_from(*value).ok()?,
+        _ => return None,
+    };
+    let end = match node.attributes.get(LABEL_SPAN_END_ATTR) {
+        Some(AttrValue::Int(value)) => usize::try_from(*value).ok()?,
+        _ => return None,
+    };
+    if start > end {
+        return None;
+    }
+    Some(SourceSpan::new(node.span.file.clone(), start, end))
 }
 
 /// Compute the display string for a reference to `target`.
@@ -430,6 +498,14 @@ mod tests {
     fn lower(src: &str) -> (Document, Vec<Diagnostic>) {
         let r = crate::lower(src, &PathBuf::from("test.mos"));
         (r.document, r.diagnostics)
+    }
+
+    fn apply_suggestion(src: &str, suggestion: &Suggestion) -> String {
+        let mut out = String::new();
+        out.push_str(&src[..suggestion.span.start]);
+        out.push_str(&suggestion.replacement);
+        out.push_str(&src[suggestion.span.end..]);
+        out
     }
 
     fn section_numbers(doc: &Document) -> Vec<(String, String)> {
@@ -522,6 +598,33 @@ mod tests {
                 "first-decl note should name the label, got {note_message:?}"
             );
         }
+        // The duplicate carries exactly one structured rename suggestion:
+        // replace only the duplicate label token with the smallest free
+        // `dup-2` candidate (nothing else here claims it). Editors apply this
+        // as a fix-it, so the payload — span + replacement — must preserve the
+        // surrounding heading syntax.
+        let suggestions = d.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "MOS0030 should carry exactly one rename suggestion, got {suggestions:?}"
+        );
+        if let Some(suggestion) = suggestions.first() {
+            assert_eq!(
+                &src[suggestion.span.start..suggestion.span.end],
+                "dup",
+                "suggestion span should cover only the duplicate label token"
+            );
+            assert_eq!(
+                suggestion.replacement, "dup-2",
+                "suggestion should rename the duplicate label deterministically"
+            );
+            assert_eq!(
+                apply_suggestion(src, suggestion),
+                "= A <dup>\n\n= B <dup-2>\n\nsee @dup\n",
+                "applying the fix must preserve the heading and label delimiters"
+            );
+        }
         // Reference still resolves to the first declaration's number.
         let reference_text = doc
             .nodes()
@@ -577,12 +680,70 @@ mod tests {
                     "every redeclaration must link back to the first decl"
                 );
             }
+            // Each redeclaration carries its own deterministic rename
+            // suggestion over its own label-token span. Generated suggestions
+            // are reserved during this resolver pass, so bulk-applying both
+            // fixes does not create a fresh duplicate.
+            let suggestions = d.suggestions();
+            assert_eq!(
+                suggestions.len(),
+                1,
+                "each MOS0030 carries exactly one rename suggestion, got {suggestions:?}"
+            );
+            if let Some(suggestion) = suggestions.first() {
+                assert_eq!(&src[suggestion.span.start..suggestion.span.end], "dup");
+            }
         }
+        let replacements: Vec<&str> = mos0030
+            .iter()
+            .filter_map(|d| d.suggestions().first())
+            .map(|suggestion| suggestion.replacement.as_str())
+            .collect();
+        assert_eq!(replacements, vec!["dup-2", "dup-3"]);
         let reference_text = doc
             .nodes()
             .find(|n| n.kind == NodeKind::Reference)
             .and_then(|n| n.attributes.get("text"));
         assert_eq!(reference_text, Some(&AttrValue::Str("1".to_owned())));
+    }
+
+    #[test]
+    fn duplicate_suggestion_skips_existing_label() {
+        // `dup-2` already names another block, so the collision-aware rename
+        // for the duplicate `dup` must step over it to `dup-3` rather than
+        // propose a name that would just re-collide. Only `dup` is
+        // duplicated; `dup-2` is a distinct, valid label (hyphens are legal
+        // label chars).
+        let src = "= A <dup>\n\n= B <dup-2>\n\n= C <dup>\n";
+        let (_doc, diags) = lower(src);
+        let mos0030: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0030.code())
+            .collect();
+        assert_eq!(mos0030.len(), 1, "only `dup` is duplicated, got {diags:?}");
+        let d = mos0030[0];
+        let suggestions = d.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "the duplicate carries one rename suggestion, got {suggestions:?}"
+        );
+        if let Some(suggestion) = suggestions.first() {
+            assert_eq!(
+                suggestion.replacement, "dup-3",
+                "rename must skip the existing `dup-2` and land on the next free suffix"
+            );
+            assert_eq!(
+                &src[suggestion.span.start..suggestion.span.end],
+                "dup",
+                "suggestion targets the duplicate label token"
+            );
+            assert_eq!(
+                apply_suggestion(src, suggestion),
+                "= A <dup>\n\n= B <dup-2>\n\n= C <dup-3>\n",
+                "applying the fix must preserve the duplicate declaration syntax"
+            );
+        }
     }
 
     #[test]
@@ -638,7 +799,7 @@ mod tests {
             3,
             "expected one MOS0033 per unknown label, got {diags:?}"
         );
-        let labels: std::collections::BTreeSet<&str> = mos0033
+        let labels: BTreeSet<&str> = mos0033
             .iter()
             .filter_map(|d| {
                 // Each MOS0033's message is `unknown label `<name>` in `@` reference`.

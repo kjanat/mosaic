@@ -140,6 +140,12 @@ pub(super) fn normalize_raw_text(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
+pub(super) struct ParsedLabel {
+    pub text: String,
+    pub start: usize,
+    pub end: usize,
+}
+
 /// If the substring `src[start..end]` begins with optional ASCII
 /// whitespace followed by `<label>`, return `(label_body_start, Some(id))`
 /// where `label_body_start` is the offset just past the closing `>`
@@ -148,7 +154,11 @@ pub(super) fn normalize_raw_text(text: &str) -> String {
 ///
 /// Only a single leading label is recognised; further `<...>` runs in
 /// the body are left intact for downstream stages.
-pub(super) fn strip_leading_label(src: &str, start: usize, end: usize) -> (usize, Option<String>) {
+pub(super) fn strip_leading_label(
+    src: &str,
+    start: usize,
+    end: usize,
+) -> (usize, Option<ParsedLabel>) {
     let bytes = src.as_bytes();
     let mut i = start;
     while i < end && (bytes[i] == b' ' || bytes[i] == b'\t') {
@@ -162,7 +172,11 @@ pub(super) fn strip_leading_label(src: &str, start: usize, end: usize) -> (usize
     if id_end == id_start || id_end >= end || bytes[id_end] != b'>' {
         return (start, None);
     }
-    let label = src[id_start..id_end].to_owned();
+    let label = ParsedLabel {
+        text: src[id_start..id_end].to_owned(),
+        start: id_start,
+        end: id_end,
+    };
     let mut after = id_end + 1;
     while after < end && (bytes[after] == b' ' || bytes[after] == b'\t' || bytes[after] == b'\n') {
         after += 1;
@@ -175,7 +189,11 @@ pub(super) fn strip_leading_label(src: &str, start: usize, end: usize) -> (usize
 /// `text_end` is the offset of the first byte to *exclude* from the
 /// preceding text -- trailing whitespace before the label is also
 /// trimmed. Otherwise return `(end, None)`.
-pub(super) fn strip_trailing_label(src: &str, start: usize, end: usize) -> (usize, Option<String>) {
+pub(super) fn strip_trailing_label(
+    src: &str,
+    start: usize,
+    end: usize,
+) -> (usize, Option<ParsedLabel>) {
     let bytes = src.as_bytes();
     if end <= start || bytes[end - 1] != b'>' {
         return (end, None);
@@ -194,7 +212,11 @@ pub(super) fn strip_trailing_label(src: &str, start: usize, end: usize) -> (usiz
     if i == close || i == start || bytes[i - 1] != b'<' {
         return (end, None);
     }
-    let label = src[i..close].to_owned();
+    let label = ParsedLabel {
+        text: src[i..close].to_owned(),
+        start: i,
+        end: close,
+    };
     let mut text_end = i - 1;
     while text_end > start && (bytes[text_end - 1] == b' ' || bytes[text_end - 1] == b'\t') {
         text_end -= 1;

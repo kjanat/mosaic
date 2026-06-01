@@ -75,7 +75,11 @@ impl Parser<'_> {
         if let Some((body_end, close_end)) = self.scan_long_raw_close(body_start, eq_count) {
             let text = normalize_raw_text(&self.src[body_start..body_end]);
             let (_, content_end, _) = self.line_bounds_from(close_end);
-            let (after_label, label) = strip_leading_label(self.src, close_end, content_end);
+            let (after_label, parsed_label) = strip_leading_label(self.src, close_end, content_end);
+            let label_span = parsed_label
+                .as_ref()
+                .map(|label| self.span(label.start, label.end));
+            let label = parsed_label.map(|label| label.text);
             let kind = if kw == "code" {
                 RawBlockKind::Code
             } else {
@@ -86,6 +90,7 @@ impl Parser<'_> {
                 args,
                 text,
                 label,
+                label_span,
                 span: self.span(line_start, after_label),
             });
             self.pos = after_label;
