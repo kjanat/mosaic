@@ -435,6 +435,73 @@ fn render_target(target: &LabelTarget, label: &str) -> String {
     }
 }
 
+/// Whether `label` can be spelled as an `@` reference — i.e. it is drawn
+/// from the reference grammar's alphabet `[A-Za-z0-9_:.-]` (mirrors
+/// `scan_label_chars` in `mos-parse`). `#figure(label: …)` and
+/// `#image(label: …)` accept arbitrary strings, so the label index can hold
+/// names — `"intro x"`, non-ASCII — that an `@…` reference can never name;
+/// suggesting one would produce a fix that does not parse.
+fn is_reference_label(label: &str) -> bool {
+    !label.is_empty()
+        && label
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':' | b'.'))
+}
+
+/// Levenshtein edit distance between `a` and `b` over their bytes.
+///
+/// Callers only pass reference-alphabet labels (the parsed reference name and
+/// [`is_reference_label`] candidates), all ASCII, so byte distance equals
+/// character distance while staying allocation-light: one reusable row, where
+/// `row[j]` holds the distance from the processed prefix of `a` to `b[..j]`.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let b = b.as_bytes();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, &ai) in a.as_bytes().iter().enumerate() {
+        let mut diag = row[0];
+        row[0] = i + 1;
+        for (j, &bj) in b.iter().enumerate() {
+            let cost = usize::from(ai != bj);
+            let sub = diag + cost;
+            diag = row[j + 1];
+            row[j + 1] = sub.min(row[j + 1] + 1).min(row[j] + 1);
+        }
+    }
+    row[b.len()]
+}
+
+/// The single nearest *resolvable* label to `unknown`, when one is a
+/// reasonable near-miss rather than an unrelated string — the candidate for a
+/// "did you mean `@intro`?" fix on an unknown reference.
+///
+/// "Reasonable" is deliberately conservative:
+///
+/// - references shorter than three bytes get no suggestion (a one-edit guess
+///   on a one- or two-byte name is noise, not help);
+/// - the edit distance must be within `unknown.len() / 3` — rustc's "did you
+///   mean" heuristic. With the length floor that bound is always at least 1,
+///   admitting `intrdo` → `intro` (distance 1, bound 2) while rejecting wholly
+///   unrelated names.
+///
+/// Candidates are the label-index keys that [`is_reference_label`] accepts.
+/// The index is the resolvable, first-occurrence-wins set, so any surviving
+/// candidate both resolves and is spellable as `@candidate`. Ties break on
+/// `(distance, label)`; the `BTreeMap` already yields labels in sorted order,
+/// so the choice is identical on every run and every fixpoint pass.
+fn nearest_label(unknown: &str, labels: &BTreeMap<String, LabelTarget>) -> Option<String> {
+    if unknown.len() < 3 {
+        return None;
+    }
+    let max_distance = unknown.len() / 3;
+    labels
+        .keys()
+        .filter(|label| is_reference_label(label))
+        .map(|label| (edit_distance(unknown, label), label))
+        .filter(|&(distance, _)| distance <= max_distance)
+        .min_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(b.1)))
+        .map(|(_, label)| label.clone())
+}
+
 /// Rewrite each `Reference` node's `text` attribute to point at its
 /// target. Returns true if any node was mutated this iteration —
 /// callers use that signal to drive the §6 stage 3 fixpoint loop.
@@ -464,14 +531,23 @@ fn rewrite_references(
                 .iter()
                 .any(|d| d.def().code() == codes::MOS0033.code() && d.span() == Some(&node.span));
             if !already_diagnosed {
-                diagnostics.push(
-                    Diagnostic::simple(
-                        &codes::MOS0033,
-                        None,
-                        format!("unknown label `{label}` in `@` reference"),
-                    )
-                    .with_span(node.span.clone()),
-                );
+                let mut diagnostic = Diagnostic::simple(
+                    &codes::MOS0033,
+                    None,
+                    format!("unknown label `{label}` in `@` reference"),
+                )
+                .with_span(node.span.clone());
+                // Offer the nearest existing label as a machine-applicable
+                // fix (`@intrdo` -> `@intro`) when a reasonable near-miss
+                // exists. `node.span` covers the whole `@label` token (sigil
+                // included), so the replacement carries its own `@`.
+                if let Some(candidate) = nearest_label(&label, labels) {
+                    diagnostic = diagnostic.with_suggestion(Suggestion::new(
+                        node.span.clone(),
+                        format!("@{candidate}"),
+                    ));
+                }
+                diagnostics.push(diagnostic);
             }
             continue;
         };
@@ -784,10 +860,8 @@ mod tests {
 
     #[test]
     fn multiple_unknown_references_each_emit_one_mos0033() {
-        // Three distinct unknown labels in a single paragraph. The
-        // fixpoint loop runs more than once (each iteration sees the
-        // unresolved placeholders again), but every bad reference must
-        // produce exactly one diagnostic — not one per iteration.
+        // Three distinct unknown labels in a single paragraph produce one
+        // diagnostic apiece in a single resolver pass.
         let src = "see @alpha and @beta and @gamma\n";
         let (_doc, diags) = lower(src);
         let mos0033: Vec<&Diagnostic> = diags
@@ -813,6 +887,52 @@ mod tests {
             labels,
             ["alpha", "beta", "gamma"].into_iter().collect(),
             "each unknown label should appear exactly once"
+        );
+    }
+
+    #[test]
+    fn unknown_reference_suggestion_is_not_duplicated_after_fixpoint_rerun() {
+        // The resolved `@intro` changes reference text on the first pass, so
+        // the fixpoint runs again. The unknown `@intrdo` must still get one
+        // MOS0033 with one structured suggestion, not one per iteration.
+        let src = "= Intro <intro>\n\nsee @intro and @intrdo\n";
+        let (doc, diags) = lower(src);
+        let mos0033: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0033.code())
+            .collect();
+        assert_eq!(
+            mos0033.len(),
+            1,
+            "expected one MOS0033 after fixpoint rerun, got {diags:?}"
+        );
+        let d = mos0033[0];
+        let suggestions = d.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "expected one suggestion after fixpoint rerun, got {suggestions:?}"
+        );
+        if let Some(suggestion) = suggestions.first() {
+            assert_eq!(suggestion.replacement, "@intro");
+            assert_eq!(
+                apply_suggestion(src, suggestion),
+                "= Intro <intro>\n\nsee @intro and @intro\n",
+                "fix should replace only the unknown reference token"
+            );
+        }
+        let reference_texts: Vec<&str> = doc
+            .nodes()
+            .filter(|n| n.kind == NodeKind::Reference)
+            .filter_map(|n| match n.attributes.get("text") {
+                Some(AttrValue::Str(s)) => Some(s.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reference_texts,
+            vec!["1", "?intrdo?"],
+            "resolved refs rewrite while unknown refs keep visible placeholders"
         );
     }
 
@@ -1137,5 +1257,156 @@ mod tests {
             })
             .collect();
         assert_eq!(nums, vec!["1", "1.1", "1.1.1", "1.2", "2"]);
+    }
+
+    #[test]
+    fn unknown_reference_suggests_nearest_label() {
+        // A near-miss typo gets a machine-applicable "did you mean" fix:
+        // replace the whole `@intrdo` token (sigil included) with `@intro`.
+        let src = "= Intro <intro>\n\nsee @intrdo\n";
+        let (doc, diags) = lower(src);
+        let mos0033: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0033.code())
+            .collect();
+        assert_eq!(
+            mos0033.len(),
+            1,
+            "expected exactly one MOS0033, got {diags:?}"
+        );
+        let d = mos0033[0];
+        // Message and span are unchanged from the no-suggestion path.
+        assert!(
+            d.message().contains("`intrdo`"),
+            "message should still name the missing label, got {:?}",
+            d.message()
+        );
+        assert_eq!(
+            d.span().map(|span| &src[span.start..span.end]),
+            Some("@intrdo"),
+            "MOS0033 span should still cover the bad reference exactly"
+        );
+        // Exactly one structured suggestion, replacing the full reference.
+        let suggestions = d.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "expected one nearest-label suggestion, got {suggestions:?}"
+        );
+        if let Some(suggestion) = suggestions.first() {
+            assert_eq!(
+                &src[suggestion.span.start..suggestion.span.end],
+                "@intrdo",
+                "suggestion should replace the whole `@` reference token"
+            );
+            assert_eq!(suggestion.replacement, "@intro");
+            assert_eq!(
+                apply_suggestion(src, suggestion),
+                "= Intro <intro>\n\nsee @intro\n",
+                "applying the fix should rewrite `@intrdo` to `@intro`"
+            );
+        }
+        // The unresolved placeholder stays visible in the meantime.
+        let reference_text = doc
+            .nodes()
+            .find(|n| n.kind == NodeKind::Reference)
+            .and_then(|n| n.attributes.get("text"));
+        assert_eq!(reference_text, Some(&AttrValue::Str("?intrdo?".to_owned())));
+    }
+
+    #[test]
+    fn unknown_reference_suggestion_breaks_ties_deterministically() {
+        // `@intrx` sits one edit from both `intra` and `intro`. The tie
+        // breaks on `(distance, label)`, so the single suggestion is always
+        // the lexicographically smaller `@intra`.
+        let src = "= A <intra>\n\n= B <intro>\n\nsee @intrx\n";
+        let (_doc, diags) = lower(src);
+        let mos0033: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0033.code())
+            .collect();
+        assert_eq!(mos0033.len(), 1, "got {diags:?}");
+        if let Some(d) = mos0033.first() {
+            let suggestions = d.suggestions();
+            assert_eq!(
+                suggestions.len(),
+                1,
+                "exactly one nearest-label suggestion, got {suggestions:?}"
+            );
+            if let Some(suggestion) = suggestions.first() {
+                assert_eq!(
+                    suggestion.replacement, "@intra",
+                    "ties must resolve to the lexicographically smaller label"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unknown_reference_without_close_match_has_no_suggestion() {
+        // An unrelated reference name is left without a guess.
+        let src = "= Intro <intro>\n\nsee @conclusion\n";
+        let (_doc, diags) = lower(src);
+        let mos0033: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0033.code())
+            .collect();
+        assert_eq!(mos0033.len(), 1, "got {diags:?}");
+        if let Some(d) = mos0033.first() {
+            assert!(
+                d.suggestions().is_empty(),
+                "an unrelated label must not be suggested, got {:?}",
+                d.suggestions()
+            );
+        }
+    }
+
+    #[test]
+    fn short_unknown_reference_has_no_suggestion() {
+        // Conservative floor: references shorter than three bytes never get a
+        // suggestion, even when a one-edit neighbour (`ax`) exists.
+        let src = "= A <ax>\n\nsee @ab\n";
+        let (_doc, diags) = lower(src);
+        let mos0033: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0033.code())
+            .collect();
+        assert_eq!(mos0033.len(), 1, "got {diags:?}");
+        if let Some(d) = mos0033.first() {
+            assert!(
+                d.suggestions().is_empty(),
+                "short references must not be guessed, got {:?}",
+                d.suggestions()
+            );
+        }
+    }
+
+    #[test]
+    fn unreferenceable_label_is_not_suggested() {
+        // `#figure(label: "...")` / `#image(label: "...")` accept arbitrary
+        // strings, so the index can hold a label the `@`-reference grammar
+        // cannot spell. `@intro x` would not parse, so even this one-edit
+        // match must be filtered out and produce no suggestion.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let _figure = make_node(&mut doc, NodeKind::Figure, Some("intro x"), None);
+        let _reference = make_node(&mut doc, NodeKind::Reference, Some("introx"), None);
+
+        let mut diagnostics: Vec<Diagnostic> = Vec::new();
+        let index = build_label_index(&doc, &mut diagnostics);
+        let changed = rewrite_references(&mut doc, &index, &mut diagnostics);
+        assert!(!changed, "an unknown reference rewrites no text");
+
+        let mos0033: Vec<&Diagnostic> = diagnostics
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0033.code())
+            .collect();
+        assert_eq!(mos0033.len(), 1, "got {diagnostics:?}");
+        if let Some(d) = mos0033.first() {
+            assert!(
+                d.suggestions().is_empty(),
+                "an unreferenceable label must not be suggested, got {:?}",
+                d.suggestions()
+            );
+        }
     }
 }

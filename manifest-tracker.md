@@ -193,7 +193,7 @@ example.
 - [x] Report parse/lower/resolve errors without panicking.
 - [x] Report duplicate and unknown labels.
 - [x] Add diagnostic codes.
-- [ ] Add similar-label suggestions.
+- [x] Emit structured similar-label suggestions for MOS0033 (#51).
 - [ ] Add structured suggestions.
   - [x] `mos-core` `Suggestion` payload (source span + replacement) with `Diagnostic` storage,
         builder, and accessor
