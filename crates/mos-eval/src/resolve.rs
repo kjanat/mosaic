@@ -27,7 +27,8 @@
 //!   wins; later occurrences keep their numbering but are not added to
 //!   the index. Each duplicate also carries a structured rename
 //!   [`Suggestion`] — the next free `{label}-N` (`N >= 2`) that no other
-//!   declaration already uses — over its declaration span.
+//!   declaration or earlier suggestion already uses — over the duplicate
+//!   label token span.
 //! - `MOS0033`: a `@label` reference targets a label that doesn't exist.
 //!   The reference's text is left at its lowered placeholder
 //!   (`?label?`) so it remains visible in the rendered output.
@@ -52,6 +53,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use mos_core::{
     AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeKind, SourceSpan, Suggestion, codes,
 };
+
+use crate::{LABEL_SPAN_END_ATTR, LABEL_SPAN_START_ATTR};
 
 /// Cap on resolver fixpoint iterations. MVP 1 always converges in one
 /// pass; the cap is a safety net against forward-reference loops once
@@ -337,14 +340,14 @@ fn nonconflicting_rename(label: &str, declared: &BTreeSet<String>) -> String {
 /// reporting `MOS0030` for redeclarations. The first declaration of a label
 /// wins; later occurrences keep their numbering but are not indexed, and each
 /// carries a related note pointing at the first declaration plus a structured
-/// rename [`Suggestion`] — the next free `{label}-N` — over its declaration
-/// span (see the module-level docs). Reads the document only, so `resolve`
-/// stays idempotent.
+/// rename [`Suggestion`] — the next free `{label}-N` — over the duplicate label
+/// token span (see the module-level docs). Reads the document only, so
+/// `resolve` stays idempotent.
 fn build_label_index(
     document: &Document,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> BTreeMap<String, LabelTarget> {
-    let declared = declared_labels(document);
+    let mut occupied_labels = declared_labels(document);
     let mut index: BTreeMap<String, LabelTarget> = BTreeMap::new();
     for node in document.nodes() {
         // References *consume* labels; only blocks declare them.
@@ -358,28 +361,28 @@ fn build_label_index(
         };
         if let Some(existing) = index.get(label) {
             // Offer a deterministic, collision-aware rename for the duplicate:
-            // the next free `{label}-N` that no other declaration already
-            // uses, so the suggested fix never reintroduces the clash it
-            // resolves. Still a boring stable rule, not a similarity-ranked
-            // guess. The fix targets the whole duplicate declaration span:
-            // the lowerer records the label as a string attribute but no
-            // label-token span, so that's the finest granularity available
-            // here. Narrowing it to the bare label token is a parser change
-            // left to a later slice.
-            let rename = nonconflicting_rename(label, &declared);
-            diagnostics.push(
-                Diagnostic::simple(
-                    &codes::MOS0030,
-                    None,
-                    format!("label `{label}` is declared more than once"),
-                )
-                .with_span(node.span.clone())
-                .with_annotation(DiagnosticAnnotation::Related {
-                    span: existing.span.clone(),
-                    message: format!("first declaration of `{label}` is here"),
-                })
-                .with_suggestion(Suggestion::new(node.span.clone(), rename)),
-            );
+            // the next free `{label}-N` that no declaration, or earlier
+            // suggestion in this pass, already uses. Still a boring stable
+            // rule, not a similarity-ranked guess. The fix targets only the
+            // duplicate label token span so applying it preserves the
+            // surrounding heading/directive syntax.
+            let rename = nonconflicting_rename(label, &occupied_labels);
+            occupied_labels.insert(rename.clone());
+            let suggestion = label_span(node).map(|span| Suggestion::new(span, rename));
+            let mut diagnostic = Diagnostic::simple(
+                &codes::MOS0030,
+                None,
+                format!("label `{label}` is declared more than once"),
+            )
+            .with_span(node.span.clone())
+            .with_annotation(DiagnosticAnnotation::Related {
+                span: existing.span.clone(),
+                message: format!("first declaration of `{label}` is here"),
+            });
+            if let Some(suggestion) = suggestion {
+                diagnostic = diagnostic.with_suggestion(suggestion);
+            }
+            diagnostics.push(diagnostic);
             continue;
         }
         index.insert(
@@ -391,6 +394,21 @@ fn build_label_index(
         );
     }
     index
+}
+
+fn label_span(node: &mos_core::Node) -> Option<SourceSpan> {
+    let start = match node.attributes.get(LABEL_SPAN_START_ATTR) {
+        Some(AttrValue::Int(value)) => usize::try_from(*value).ok()?,
+        _ => return None,
+    };
+    let end = match node.attributes.get(LABEL_SPAN_END_ATTR) {
+        Some(AttrValue::Int(value)) => usize::try_from(*value).ok()?,
+        _ => return None,
+    };
+    if start > end {
+        return None;
+    }
+    Some(SourceSpan::new(node.span.file.clone(), start, end))
 }
 
 /// Compute the display string for a reference to `target`.
@@ -480,6 +498,14 @@ mod tests {
     fn lower(src: &str) -> (Document, Vec<Diagnostic>) {
         let r = crate::lower(src, &PathBuf::from("test.mos"));
         (r.document, r.diagnostics)
+    }
+
+    fn apply_suggestion(src: &str, suggestion: &Suggestion) -> String {
+        let mut out = String::new();
+        out.push_str(&src[..suggestion.span.start]);
+        out.push_str(&suggestion.replacement);
+        out.push_str(&src[suggestion.span.end..]);
+        out
     }
 
     fn section_numbers(doc: &Document) -> Vec<(String, String)> {
@@ -573,10 +599,10 @@ mod tests {
             );
         }
         // The duplicate carries exactly one structured rename suggestion:
-        // replace the duplicate declaration span with the smallest free
+        // replace only the duplicate label token with the smallest free
         // `dup-2` candidate (nothing else here claims it). Editors apply this
-        // as a fix-it, so the payload — span + replacement — is asserted
-        // directly, not via rendered text.
+        // as a fix-it, so the payload — span + replacement — must preserve the
+        // surrounding heading syntax.
         let suggestions = d.suggestions();
         assert_eq!(
             suggestions.len(),
@@ -586,17 +612,17 @@ mod tests {
         if let Some(suggestion) = suggestions.first() {
             assert_eq!(
                 &src[suggestion.span.start..suggestion.span.end],
-                "= B <dup>",
-                "suggestion span should cover the duplicate declaration"
+                "dup",
+                "suggestion span should cover only the duplicate label token"
             );
             assert_eq!(
                 suggestion.replacement, "dup-2",
                 "suggestion should rename the duplicate label deterministically"
             );
             assert_eq!(
-                Some(&suggestion.span),
-                d.span(),
-                "the suggestion targets the diagnostic's primary span"
+                apply_suggestion(src, suggestion),
+                "= A <dup>\n\n= B <dup-2>\n\nsee @dup\n",
+                "applying the fix must preserve the heading and label delimiters"
             );
         }
         // Reference still resolves to the first declaration's number.
@@ -655,9 +681,9 @@ mod tests {
                 );
             }
             // Each redeclaration carries its own deterministic rename
-            // suggestion over its own span. The document declares no `dup-2`,
-            // so the collision-aware rule lands on `dup-2` for both
-            // duplicates — the smallest free suffix, no per-occurrence ranking.
+            // suggestion over its own label-token span. Generated suggestions
+            // are reserved during this resolver pass, so bulk-applying both
+            // fixes does not create a fresh duplicate.
             let suggestions = d.suggestions();
             assert_eq!(
                 suggestions.len(),
@@ -665,17 +691,15 @@ mod tests {
                 "each MOS0030 carries exactly one rename suggestion, got {suggestions:?}"
             );
             if let Some(suggestion) = suggestions.first() {
-                assert_eq!(
-                    suggestion.replacement, "dup-2",
-                    "the rename rule is the deterministic `{{label}}-2`"
-                );
-                assert_eq!(
-                    Some(&suggestion.span),
-                    d.span(),
-                    "the suggestion span matches the redeclaration span"
-                );
+                assert_eq!(&src[suggestion.span.start..suggestion.span.end], "dup");
             }
         }
+        let replacements: Vec<&str> = mos0030
+            .iter()
+            .filter_map(|d| d.suggestions().first())
+            .map(|suggestion| suggestion.replacement.as_str())
+            .collect();
+        assert_eq!(replacements, vec!["dup-2", "dup-3"]);
         let reference_text = doc
             .nodes()
             .find(|n| n.kind == NodeKind::Reference)
@@ -711,8 +735,13 @@ mod tests {
             );
             assert_eq!(
                 &src[suggestion.span.start..suggestion.span.end],
-                "= C <dup>",
-                "suggestion targets the duplicate declaration"
+                "dup",
+                "suggestion targets the duplicate label token"
+            );
+            assert_eq!(
+                apply_suggestion(src, suggestion),
+                "= A <dup>\n\n= B <dup-2>\n\n= C <dup-3>\n",
+                "applying the fix must preserve the duplicate declaration syntax"
             );
         }
     }

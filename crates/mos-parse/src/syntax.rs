@@ -18,6 +18,7 @@ pub enum Item {
         level: u8,
         inlines: Vec<Inline>,
         label: Option<String>,
+        label_span: Option<SourceSpan>,
         span: SourceSpan,
     },
     /// One or more consecutive non-blank lines that are not a heading
@@ -26,6 +27,7 @@ pub enum Item {
     Paragraph {
         inlines: Vec<Inline>,
         label: Option<String>,
+        label_span: Option<SourceSpan>,
         span: SourceSpan,
     },
     /// `#set name(...)`, `#image(...)`, `#figure(...)`. The body is
@@ -48,6 +50,7 @@ pub enum Item {
         args: Vec<SetArg>,
         text: String,
         label: Option<String>,
+        label_span: Option<SourceSpan>,
         span: SourceSpan,
     },
     /// A bullet (`- `) or numbered (`\d+\. `) list. Sibling items at
@@ -101,6 +104,7 @@ pub struct RawBlockView<'a> {
     pub args: &'a [SetArg],
     pub text: &'a str,
     pub label: Option<&'a str>,
+    pub label_span: Option<&'a SourceSpan>,
     pub span: &'a SourceSpan,
 }
 
@@ -280,6 +284,7 @@ impl Item {
             args,
             text,
             label,
+            label_span,
             span,
         } = self
         {
@@ -288,6 +293,7 @@ impl Item {
                 args: args.as_slice(),
                 text: text.as_str(),
                 label: label.as_deref(),
+                label_span: label_span.as_ref(),
                 span,
             })
         } else {
@@ -330,6 +336,19 @@ impl Item {
             Self::Heading { label, .. }
             | Self::Paragraph { label, .. }
             | Self::RawBlock { label, .. } => label.as_deref(),
+            Self::Set { .. } | Self::List { .. } => None,
+        }
+    }
+
+    /// Borrow the source span covering only the label token text, if any.
+    /// The delimiters (`<`, `>`, or directive string quotes) are excluded so a
+    /// structured suggestion can replace just the label bytes.
+    #[must_use]
+    pub fn label_span(&self) -> Option<&SourceSpan> {
+        match self {
+            Self::Heading { label_span, .. }
+            | Self::Paragraph { label_span, .. }
+            | Self::RawBlock { label_span, .. } => label_span.as_ref(),
             Self::Set { .. } | Self::List { .. } => None,
         }
     }

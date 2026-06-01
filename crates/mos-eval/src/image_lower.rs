@@ -9,7 +9,7 @@ use mos_core::{
 };
 use mos_parse::{SetArg, SetValue};
 
-use crate::{image, set::coerce_positive_length};
+use crate::{image, insert_label_attributes, set::coerce_positive_length};
 
 /// Lower a top-level `#image(...)` directive into a single
 /// [`NodeKind::Image`] node hanging off the document root. The decoded
@@ -64,7 +64,7 @@ pub(super) fn lower_figure_directive(
     // equivalent to `#figure(image: "x.png")`.
     let mut image_args: Vec<SetArg> = Vec::new();
     let mut caption: Option<(String, SourceSpan)> = None;
-    let mut figure_label: Option<String> = None;
+    let mut figure_label: Option<(String, SourceSpan)> = None;
     for arg in args {
         match arg {
             // A leading positional string is the same shorthand
@@ -101,7 +101,9 @@ pub(super) fn lower_figure_directive(
                     ),
                 },
                 "label" => match value {
-                    SetValue::Str(s) => figure_label = Some(s.clone()),
+                    SetValue::Str(s) => {
+                        figure_label = Some((s.clone(), string_content_span(value_span)));
+                    }
                     _ => diagnostics.push(
                         Diagnostic::simple(&codes::MOS0020, None,
                             "`#figure(label: ...)` expects a string",
@@ -130,8 +132,8 @@ pub(super) fn lower_figure_directive(
     };
 
     let mut figure_attrs: AttrMap = BTreeMap::new();
-    if let Some(label) = figure_label {
-        figure_attrs.insert("label".to_owned(), AttrValue::Str(label));
+    if let Some((label, label_span)) = figure_label {
+        insert_label_attributes(&mut figure_attrs, &label, Some(&label_span));
     }
     let figure_id = document.alloc_child(
         root,
@@ -210,7 +212,7 @@ fn build_image_attributes(
     let mut alt: Option<String> = None;
     let mut declared_width: Option<f64> = None;
     let mut declared_height: Option<f64> = None;
-    let mut label: Option<String> = None;
+    let mut label: Option<(String, SourceSpan)> = None;
     for arg in args {
         match arg {
             // Positional first arg -- the path literal.
@@ -262,7 +264,7 @@ fn build_image_attributes(
                     }
                 }
                 "label" => match value {
-                    SetValue::Str(s) => label = Some(s.clone()),
+                    SetValue::Str(s) => label = Some((s.clone(), string_content_span(value_span))),
                     _ => diagnostics.push(
                         Diagnostic::simple(&codes::MOS0020, None,
                             "`#image(label: ...)` expects a string",
@@ -329,8 +331,8 @@ fn build_image_attributes(
     if let Some(h) = declared_height {
         attrs.insert("height".to_owned(), AttrValue::Length(h));
     }
-    if let Some(l) = &label {
-        attrs.insert("label".to_owned(), AttrValue::Str(l.clone()));
+    if let Some((label_text, label_span)) = &label {
+        insert_label_attributes(&mut attrs, label_text, Some(label_span));
     }
     attrs.insert(
         "pixel_width".to_owned(),
@@ -349,5 +351,17 @@ fn build_image_attributes(
         "pixels".to_owned(),
         AttrValue::Bytes(Arc::from(decoded.rgb8)),
     );
-    Some((attrs, label))
+    Some((attrs, label.map(|(text, _)| text)))
+}
+
+fn string_content_span(value_span: &SourceSpan) -> SourceSpan {
+    if value_span.end > value_span.start.saturating_add(1) {
+        SourceSpan::new(
+            value_span.file.clone(),
+            value_span.start + 1,
+            value_span.end - 1,
+        )
+    } else {
+        value_span.clone()
+    }
 }

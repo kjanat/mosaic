@@ -600,22 +600,32 @@ mod tests {
 
     #[test]
     fn heading_with_trailing_label_attaches() {
-        let r = parse_str("= Methods <sec:methods>\n");
+        let src = "= Methods <sec:methods>\n";
+        let r = parse_str(src);
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         let item = &r.tree.items[0];
         let (_, inlines, _) = item.as_heading().unwrap();
         assert_eq!(item.label(), Some("sec:methods"));
+        assert_eq!(
+            item.label_span().map(|span| &src[span.start..span.end]),
+            Some("sec:methods")
+        );
         assert_eq!(inlines.len(), 1);
         assert_eq!(inlines[0].text, "Methods");
     }
 
     #[test]
     fn paragraph_with_leading_label_attaches() {
-        let r = parse_str("<intro> body text\n");
+        let src = "<intro> body text\n";
+        let r = parse_str(src);
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         let item = &r.tree.items[0];
         let (inlines, _) = item.as_paragraph().unwrap();
         assert_eq!(item.label(), Some("intro"));
+        assert_eq!(
+            item.label_span().map(|span| &src[span.start..span.end]),
+            Some("intro")
+        );
         assert_eq!(inlines[0].text, "body text");
     }
 
@@ -802,7 +812,8 @@ mod tests {
 
     #[test]
     fn raw_blocks_preserve_arguments_and_label() {
-        let r = parse_str("#code(lang: \"rust\")[[fn main() {}]] <ex:code>\n");
+        let src = "#code(lang: \"rust\")[[fn main() {}]] <ex:code>\n";
+        let r = parse_str(src);
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
         assert_eq!(r.tree.items.len(), 1);
 
@@ -819,6 +830,10 @@ mod tests {
             assert_eq!(raw.args[0].value(), &SetValue::Str("rust".to_owned()));
             assert_eq!(raw.text, "fn main() {}");
             assert_eq!(raw.label, Some("ex:code"));
+            assert_eq!(
+                raw.label_span.map(|span| &src[span.start..span.end]),
+                Some("ex:code")
+            );
         }
         assert_eq!(r.tree.items[0].label(), Some("ex:code"));
     }

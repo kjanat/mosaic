@@ -19,7 +19,11 @@ impl Parser<'_> {
         while i < content_end && (bytes[i] == b' ' || bytes[i] == b'\t') {
             i += 1;
         }
-        let (text_end, label) = strip_trailing_label(self.src, i, content_end);
+        let (text_end, parsed_label) = strip_trailing_label(self.src, i, content_end);
+        let label_span = parsed_label
+            .as_ref()
+            .map(|label| self.span(label.start, label.end));
+        let label = parsed_label.map(|label| label.text);
         let content = &self.src[i..text_end];
         let inlines = self.parse_inlines(content, i);
         let span = self.span(line_start, content_end);
@@ -27,6 +31,7 @@ impl Parser<'_> {
             level,
             inlines,
             label,
+            label_span,
             span,
         });
         self.pos = line_end;
@@ -55,7 +60,11 @@ impl Parser<'_> {
             self.pos = line_end;
         }
         if let Some(start) = text_start {
-            let (body_start, label) = strip_leading_label(self.src, start, para_end);
+            let (body_start, parsed_label) = strip_leading_label(self.src, start, para_end);
+            let label_span = parsed_label
+                .as_ref()
+                .map(|label| self.span(label.start, label.end));
+            let label = parsed_label.map(|label| label.text);
             let slice = &self.src[body_start..para_end];
             let mut inlines = self.parse_inlines(slice, body_start);
             for inline in &mut inlines {
@@ -67,6 +76,7 @@ impl Parser<'_> {
             self.items.push(Item::Paragraph {
                 inlines,
                 label,
+                label_span,
                 span,
             });
         }

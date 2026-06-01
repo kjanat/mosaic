@@ -34,6 +34,19 @@ use inline::lower_inlines;
 use list::lower_list;
 use set::lower_set_directive;
 
+const LABEL_SPAN_START_ATTR: &str = "label_span.start";
+const LABEL_SPAN_END_ATTR: &str = "label_span.end";
+
+fn insert_label_attributes(attributes: &mut AttrMap, label: &str, label_span: Option<&SourceSpan>) {
+    attributes.insert("label".to_owned(), AttrValue::Str(label.to_owned()));
+    if let Some(span) = label_span
+        && let (Ok(start), Ok(end)) = (i64::try_from(span.start), i64::try_from(span.end))
+    {
+        attributes.insert(LABEL_SPAN_START_ATTR.to_owned(), AttrValue::Int(start));
+        attributes.insert(LABEL_SPAN_END_ATTR.to_owned(), AttrValue::Int(end));
+    }
+}
+
 /// Document-level metadata harvested from `#set document(...)` directives.
 /// The PDF backend writes `title` and `author` to the Info dictionary;
 /// `language` is captured for the catalog `/Lang` entry that the next
@@ -177,12 +190,13 @@ impl Evaluator {
                     level,
                     inlines,
                     label,
+                    label_span,
                     span,
                 } => {
                     let mut attributes: AttrMap = BTreeMap::new();
                     attributes.insert("level".to_owned(), AttrValue::Int(i64::from(*level)));
                     if let Some(id) = label {
-                        attributes.insert("label".to_owned(), AttrValue::Str(id.clone()));
+                        insert_label_attributes(&mut attributes, id, label_span.as_ref());
                     }
                     let heading = document.alloc_child(
                         root,
@@ -201,11 +215,12 @@ impl Evaluator {
                 Item::Paragraph {
                     inlines,
                     label,
+                    label_span,
                     span,
                 } => {
                     let mut attributes: AttrMap = BTreeMap::new();
                     if let Some(id) = label {
-                        attributes.insert("label".to_owned(), AttrValue::Str(id.clone()));
+                        insert_label_attributes(&mut attributes, id, label_span.as_ref());
                     }
                     let para = document.alloc_child(
                         root,
@@ -232,10 +247,19 @@ impl Evaluator {
                     kind,
                     text,
                     label,
+                    label_span,
                     span,
                     ..
                 } => {
-                    lower_raw_block(&mut document, root, *kind, text, label.as_deref(), span);
+                    lower_raw_block(
+                        &mut document,
+                        root,
+                        *kind,
+                        text,
+                        label.as_deref(),
+                        label_span.as_ref(),
+                        span,
+                    );
                 }
                 Item::Set {
                     kind,
@@ -299,12 +323,13 @@ fn lower_raw_block(
     kind: RawBlockKind,
     text: &str,
     label: Option<&str>,
+    label_span: Option<&SourceSpan>,
     span: &SourceSpan,
 ) {
     let mut attributes: AttrMap = BTreeMap::new();
     attributes.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
     if let Some(id) = label {
-        attributes.insert("label".to_owned(), AttrValue::Str(id.to_owned()));
+        insert_label_attributes(&mut attributes, id, label_span);
     }
     attributes.insert(
         "raw.kind".to_owned(),
