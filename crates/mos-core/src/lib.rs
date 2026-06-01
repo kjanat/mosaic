@@ -313,6 +313,58 @@ pub enum DiagnosticAnnotation {
     Hint(String),
 }
 
+/// A machine-actionable fix for a [`Diagnostic`].
+///
+/// A `Suggestion` says "replace the bytes at this [`SourceSpan`] with this
+/// text" — it is structured data a tool can apply automatically, as opposed
+/// to the prose advice carried by [`DiagnosticAnnotation::Help`]. Backends
+/// consume it without re-parsing: the CLI can print a fix-it diff and an LSP
+/// can surface it as a code action keyed on the same span.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::PathBuf;
+///
+/// use mos_core::{SourceSpan, Suggestion};
+///
+/// let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 10);
+/// let fix = Suggestion::new(span, "@intro");
+///
+/// assert_eq!(fix.replacement, "@intro");
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Suggestion {
+    /// The source range the fix replaces.
+    pub span: SourceSpan,
+    /// The text to substitute for the bytes covered by `span`.
+    pub replacement: String,
+}
+
+impl Suggestion {
+    /// Construct a suggestion replacing `span` with `replacement`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::{SourceSpan, Suggestion};
+    ///
+    /// let span = SourceSpan::new(PathBuf::from("main.mos"), 0, 3);
+    /// let fix = Suggestion::new(span, "set".to_owned());
+    ///
+    /// assert_eq!(fix.span.start, 0);
+    /// ```
+    #[must_use]
+    pub fn new(span: SourceSpan, replacement: impl Into<String>) -> Self {
+        Self {
+            span,
+            replacement: replacement.into(),
+        }
+    }
+}
+
 /// A user-facing diagnostic (manifest §16, §31).
 ///
 /// Identity and default severity come from a `'static` [`DiagnosticDef`] in
@@ -338,6 +390,7 @@ pub struct Diagnostic {
     span: Option<SourceSpan>,
     message: String,
     annotations: Vec<DiagnosticAnnotation>,
+    suggestions: Vec<Suggestion>,
 }
 
 impl Diagnostic {
@@ -366,6 +419,7 @@ impl Diagnostic {
             span,
             message: message.into(),
             annotations: Vec::new(),
+            suggestions: Vec::new(),
         }
     }
 
@@ -401,6 +455,26 @@ impl Diagnostic {
     #[must_use]
     pub fn with_annotation(mut self, annotation: DiagnosticAnnotation) -> Self {
         self.annotations.push(annotation);
+        self
+    }
+
+    /// Attach a machine-actionable [`Suggestion`], builder-style.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::{Diagnostic, SourceSpan, Suggestion, codes};
+    ///
+    /// let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 10);
+    /// let d = Diagnostic::simple(&codes::MOS0033, None, "unknown label")
+    ///     .with_suggestion(Suggestion::new(span, "@intro"));
+    /// assert_eq!(d.suggestions().len(), 1);
+    /// ```
+    #[must_use]
+    pub fn with_suggestion(mut self, suggestion: Suggestion) -> Self {
+        self.suggestions.push(suggestion);
         self
     }
 
@@ -504,6 +578,26 @@ impl Diagnostic {
     #[must_use]
     pub fn annotations(&self) -> &[DiagnosticAnnotation] {
         &self.annotations
+    }
+
+    /// The attached machine-actionable suggestions, in attach order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::{Diagnostic, SourceSpan, Suggestion, codes};
+    ///
+    /// let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 10);
+    /// let diagnostic = Diagnostic::simple(&codes::MOS0033, None, "unknown label")
+    ///     .with_suggestion(Suggestion::new(span, "@intro"));
+    ///
+    /// assert_eq!(diagnostic.suggestions().len(), 1);
+    /// ```
+    #[must_use]
+    pub fn suggestions(&self) -> &[Suggestion] {
+        &self.suggestions
     }
 }
 
@@ -896,5 +990,44 @@ mod tests {
         assert_eq!(doc.len(), 3);
         assert_eq!(doc.get(doc.root).unwrap().children.len(), 1);
         assert_eq!(doc.get(para).unwrap().children.len(), 1);
+    }
+
+    #[test]
+    fn suggestion_new_sets_span_and_replacement() {
+        let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 10);
+        let suggestion = Suggestion::new(span.clone(), "@intro");
+        assert_eq!(suggestion.span, span);
+        assert_eq!(suggestion.replacement, "@intro");
+    }
+
+    #[test]
+    fn diagnostic_has_no_suggestions_by_default() {
+        let diagnostic = Diagnostic::simple(&codes::MOS0033, None, "unknown label");
+        assert!(diagnostic.suggestions().is_empty());
+    }
+
+    #[test]
+    fn with_suggestion_accumulates_in_order() {
+        let first = Suggestion::new(SourceSpan::new(PathBuf::from("main.mos"), 4, 10), "@intro");
+        let second = Suggestion::new(
+            SourceSpan::new(PathBuf::from("other.mos"), 12, 15),
+            "@summary",
+        );
+        let diagnostic = Diagnostic::simple(&codes::MOS0033, None, "unknown label")
+            .with_suggestion(first)
+            .with_suggestion(second);
+
+        let suggestions = diagnostic.suggestions();
+        assert_eq!(suggestions.len(), 2);
+
+        assert_eq!(suggestions[0].span.file, PathBuf::from("main.mos"));
+        assert_eq!(suggestions[0].span.start, 4);
+        assert_eq!(suggestions[0].span.end, 10);
+        assert_eq!(suggestions[0].replacement, "@intro");
+
+        assert_eq!(suggestions[1].span.file, PathBuf::from("other.mos"));
+        assert_eq!(suggestions[1].span.start, 12);
+        assert_eq!(suggestions[1].span.end, 15);
+        assert_eq!(suggestions[1].replacement, "@summary");
     }
 }

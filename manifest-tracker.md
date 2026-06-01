@@ -195,6 +195,10 @@ example.
 - [x] Add diagnostic codes.
 - [ ] Add similar-label suggestions.
 - [ ] Add structured suggestions.
+  - [x] `mos-core` `Suggestion` payload (source span + replacement) with `Diagnostic` storage,
+        builder, and accessor
+  - [ ] CLI fix-it rendering (#52)
+  - [ ] LSP code-action mapping (#52)
 - [ ] Add layout warnings.
 - [ ] Add float placement diagnostics.
 - [ ] Add performance diagnostics.
