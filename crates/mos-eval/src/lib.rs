@@ -39,12 +39,17 @@ const LABEL_SPAN_END_ATTR: &str = "label_span.end";
 
 fn insert_label_attributes(attributes: &mut AttrMap, label: &str, label_span: Option<&SourceSpan>) {
     attributes.insert("label".to_owned(), AttrValue::Str(label.to_owned()));
-    if let Some(span) = label_span
-        && let (Ok(start), Ok(end)) = (i64::try_from(span.start), i64::try_from(span.end))
-    {
-        attributes.insert(LABEL_SPAN_START_ATTR.to_owned(), AttrValue::Int(start));
-        attributes.insert(LABEL_SPAN_END_ATTR.to_owned(), AttrValue::Int(end));
-    }
+    let Some(span) = label_span else {
+        return;
+    };
+    let (Ok(start), Ok(end)) = (i64::try_from(span.start), i64::try_from(span.end)) else {
+        // AttrValue::Int is i64 while SourceSpan offsets are usize. If a future
+        // source can exceed that range, omit the fix-it span instead of storing
+        // a lossy edit location; the resolver will skip the unsafe suggestion.
+        return;
+    };
+    attributes.insert(LABEL_SPAN_START_ATTR.to_owned(), AttrValue::Int(start));
+    attributes.insert(LABEL_SPAN_END_ATTR.to_owned(), AttrValue::Int(end));
 }
 
 /// Document-level metadata harvested from `#set document(...)` directives.
@@ -438,6 +443,27 @@ mod tests {
     use mos_core::{NodeKind, codes};
 
     use super::*;
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn label_attributes_omit_unrepresentable_span_bounds() {
+        let too_large = usize::try_from(i64::MAX).unwrap().saturating_add(1);
+        let span = SourceSpan::new(
+            PathBuf::from("test.mos"),
+            too_large,
+            too_large.saturating_add(1),
+        );
+        let mut attributes = AttrMap::new();
+
+        insert_label_attributes(&mut attributes, "huge", Some(&span));
+
+        assert_eq!(
+            attributes.get("label"),
+            Some(&AttrValue::Str("huge".to_owned()))
+        );
+        assert!(!attributes.contains_key(LABEL_SPAN_START_ATTR));
+        assert!(!attributes.contains_key(LABEL_SPAN_END_ATTR));
+    }
 
     #[test]
     fn lowers_heading_and_paragraph() {
