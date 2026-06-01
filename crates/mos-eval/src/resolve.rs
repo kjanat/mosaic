@@ -26,7 +26,8 @@
 //! - `MOS0030`: a label is declared more than once. The first occurrence
 //!   wins; later occurrences keep their numbering but are not added to
 //!   the index. Each duplicate also carries a structured rename
-//!   [`Suggestion`] (`{label}-2`) over its declaration span.
+//!   [`Suggestion`] — the next free `{label}-N` (`N >= 2`) that no other
+//!   declaration already uses — over its declaration span.
 //! - `MOS0033`: a `@label` reference targets a label that doesn't exist.
 //!   The reference's text is left at its lowered placeholder
 //!   (`?label?`) so it remains visible in the rendered output.
@@ -46,7 +47,7 @@
 //! of re-reading the already-stamped text (which would nest the label
 //! into `"Figure 1: Figure 1: …"`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use mos_core::{
     AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeKind, SourceSpan, Suggestion, codes,
@@ -303,16 +304,47 @@ fn classify_target(node: &mos_core::Node) -> LabelTargetKind {
     }
 }
 
+/// Collect every label declared anywhere in the document — any non-reference
+/// block carrying a `label` attribute — regardless of document order or
+/// duplication. The duplicate-rename suggestion consults this set so it never
+/// proposes a name that some other declaration already uses.
+fn declared_labels(document: &Document) -> BTreeSet<String> {
+    document
+        .nodes()
+        .filter(|node| node.kind != NodeKind::Reference)
+        .filter_map(|node| match node.attributes.get("label") {
+            Some(AttrValue::Str(label)) => Some(label.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Pick a deterministic, collision-aware rename for a duplicated `label`: the
+/// smallest integer suffix `N >= 2` whose `{label}-{N}` is not already in
+/// `declared`. Boring and stable — no similarity ranking — but it steps over
+/// existing labels so the suggested fix never re-creates the clash it
+/// resolves. Among the first `declared.len() + 1` candidates at least one is
+/// free (pigeonhole), so the bounded search always yields a name.
+fn nonconflicting_rename(label: &str, declared: &BTreeSet<String>) -> String {
+    let ceiling = declared.len().saturating_add(2);
+    (2..=ceiling)
+        .map(|n| format!("{label}-{n}"))
+        .find(|candidate| !declared.contains(candidate))
+        .unwrap_or_else(|| format!("{label}-{ceiling}"))
+}
+
 /// Build the `label -> LabelTarget` index from every label-declaring block,
 /// reporting `MOS0030` for redeclarations. The first declaration of a label
 /// wins; later occurrences keep their numbering but are not indexed, and each
 /// carries a related note pointing at the first declaration plus a structured
-/// `{label}-2` rename [`Suggestion`] over its declaration span (see the
-/// module-level docs). Reads the document only, so `resolve` stays idempotent.
+/// rename [`Suggestion`] — the next free `{label}-N` — over its declaration
+/// span (see the module-level docs). Reads the document only, so `resolve`
+/// stays idempotent.
 fn build_label_index(
     document: &Document,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> BTreeMap<String, LabelTarget> {
+    let declared = declared_labels(document);
     let mut index: BTreeMap<String, LabelTarget> = BTreeMap::new();
     for node in document.nodes() {
         // References *consume* labels; only blocks declare them.
@@ -325,13 +357,16 @@ fn build_label_index(
             continue;
         };
         if let Some(existing) = index.get(label) {
-            // Offer a deterministic, non-conflicting rename for the
-            // duplicate (`{label}-2`) — a boring stable rule, not a ranked
+            // Offer a deterministic, collision-aware rename for the duplicate:
+            // the next free `{label}-N` that no other declaration already
+            // uses, so the suggested fix never reintroduces the clash it
+            // resolves. Still a boring stable rule, not a similarity-ranked
             // guess. The fix targets the whole duplicate declaration span:
             // the lowerer records the label as a string attribute but no
             // label-token span, so that's the finest granularity available
             // here. Narrowing it to the bare label token is a parser change
             // left to a later slice.
+            let rename = nonconflicting_rename(label, &declared);
             diagnostics.push(
                 Diagnostic::simple(
                     &codes::MOS0030,
@@ -343,7 +378,7 @@ fn build_label_index(
                     span: existing.span.clone(),
                     message: format!("first declaration of `{label}` is here"),
                 })
-                .with_suggestion(Suggestion::new(node.span.clone(), format!("{label}-2"))),
+                .with_suggestion(Suggestion::new(node.span.clone(), rename)),
             );
             continue;
         }
@@ -538,9 +573,10 @@ mod tests {
             );
         }
         // The duplicate carries exactly one structured rename suggestion:
-        // replace the duplicate declaration span with the deterministic
-        // `dup-2` candidate. Editors apply this as a fix-it, so the payload
-        // — span + replacement — is asserted directly, not via rendered text.
+        // replace the duplicate declaration span with the smallest free
+        // `dup-2` candidate (nothing else here claims it). Editors apply this
+        // as a fix-it, so the payload — span + replacement — is asserted
+        // directly, not via rendered text.
         let suggestions = d.suggestions();
         assert_eq!(
             suggestions.len(),
@@ -619,9 +655,9 @@ mod tests {
                 );
             }
             // Each redeclaration carries its own deterministic rename
-            // suggestion over its own span. The rule is the boring stable
-            // `{label}-2`, so both duplicates suggest `dup-2` — no clever
-            // per-occurrence ranking.
+            // suggestion over its own span. The document declares no `dup-2`,
+            // so the collision-aware rule lands on `dup-2` for both
+            // duplicates — the smallest free suffix, no per-occurrence ranking.
             let suggestions = d.suggestions();
             assert_eq!(
                 suggestions.len(),
@@ -645,6 +681,40 @@ mod tests {
             .find(|n| n.kind == NodeKind::Reference)
             .and_then(|n| n.attributes.get("text"));
         assert_eq!(reference_text, Some(&AttrValue::Str("1".to_owned())));
+    }
+
+    #[test]
+    fn duplicate_suggestion_skips_existing_label() {
+        // `dup-2` already names another block, so the collision-aware rename
+        // for the duplicate `dup` must step over it to `dup-3` rather than
+        // propose a name that would just re-collide. Only `dup` is
+        // duplicated; `dup-2` is a distinct, valid label (hyphens are legal
+        // label chars).
+        let src = "= A <dup>\n\n= B <dup-2>\n\n= C <dup>\n";
+        let (_doc, diags) = lower(src);
+        let mos0030: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0030.code())
+            .collect();
+        assert_eq!(mos0030.len(), 1, "only `dup` is duplicated, got {diags:?}");
+        let d = mos0030[0];
+        let suggestions = d.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "the duplicate carries one rename suggestion, got {suggestions:?}"
+        );
+        if let Some(suggestion) = suggestions.first() {
+            assert_eq!(
+                suggestion.replacement, "dup-3",
+                "rename must skip the existing `dup-2` and land on the next free suffix"
+            );
+            assert_eq!(
+                &src[suggestion.span.start..suggestion.span.end],
+                "= C <dup>",
+                "suggestion targets the duplicate declaration"
+            );
+        }
     }
 
     #[test]
@@ -700,7 +770,7 @@ mod tests {
             3,
             "expected one MOS0033 per unknown label, got {diags:?}"
         );
-        let labels: std::collections::BTreeSet<&str> = mos0033
+        let labels: BTreeSet<&str> = mos0033
             .iter()
             .filter_map(|d| {
                 // Each MOS0033's message is `unknown label `<name>` in `@` reference`.

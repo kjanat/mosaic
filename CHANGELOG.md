@@ -65,12 +65,12 @@ All notable changes to this project will be documented here. The format is based
   generic-label fallback, and duplicate/unknown diagnostics are unchanged.
 - Resolver ([`crates/mos-eval/src/resolve.rs`][mos-eval:resolve.rs]) now attaches a structured
   rename suggestion to duplicate-label diagnostics (https://github.com/kjanat/mosaic/issues/52):
-  every `MOS0030` carries a machine-readable `Suggestion` — a deterministic, non-conflicting
-  `{label}-2` rename over the duplicate declaration span — building on the `mos-core` `Suggestion`
-  payload above. The existing `MOS0030` message, the related first-declaration note, and
-  first-declaration-wins resolution are unchanged; emitting the suggestion does not mutate the
-  document, so the resolver stays idempotent. Rendering suggestions in the CLI/LSP remains out of
-  this slice.
+  every `MOS0030` carries a machine-readable `Suggestion` — a deterministic, collision-aware rename
+  to the next free `{label}-N` (smallest `N >= 2` not already declared) over the duplicate
+  declaration span — building on the `mos-core` `Suggestion` payload above. The existing `MOS0030`
+  message, the related first-declaration note, and first-declaration-wins resolution are unchanged;
+  emitting the suggestion does not mutate the document, so the resolver stays idempotent. Rendering
+  suggestions in the CLI/LSP remains out of this slice.
 - Tree-sitter grammar ([`crates/tree-sitter-mosaic`][tree-sitter-mosaic]) realigned with the
   compiler's inline parser for the author-facing line-break controls
   (https://github.com/kjanat/mosaic/issues/26): `\\` now parses as a dedicated `hard_break` node and
