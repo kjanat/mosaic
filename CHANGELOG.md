@@ -8,6 +8,12 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Structured diagnostic suggestions (https://github.com/kjanat/mosaic/issues/63): `mos-core` gains a
+  backend-neutral `Suggestion` payload — a `SourceSpan` plus replacement text — that diagnostics can
+  carry alongside prose `DiagnosticAnnotation::Help` annotations. `Diagnostic` stores them in a
+  private `suggestions` vec exposed through a `with_suggestion` builder and a `suggestions()`
+  accessor; an empty replacement encodes deletion and a zero-length span encodes insertion. Emitting
+  suggestions from resolver diagnostics and rendering them in the CLI/LSP are out of this slice.
 - Minimal single-key `[@key]` citation syntax (https://github.com/kjanat/mosaic/issues/47):
   citations parse and lower into semantic placeholder nodes rendered as `[?key?]` until bibliography
   resolution lands. Malformed citation groups recover as literal text with diagnostic `MOS0039`.
