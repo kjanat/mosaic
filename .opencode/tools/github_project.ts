@@ -1,12 +1,119 @@
 import { graphql } from '@octokit/graphql';
 import { tool } from '@opencode-ai/plugin';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 
-const DEFAULT_OWNER = 'kjanat';
 const DEFAULT_PROJECT_NUMBER = 5;
-const DEFAULT_REPOSITORY_OWNER = 'kjanat';
-const DEFAULT_REPOSITORY_NAME = 'mosaic';
 const ITEM_LIMIT = 200;
 const GRAPHQL_TIMEOUT_MS = 30_000;
+const DEFAULT_REMOTE = 'origin';
+const STATUS_OPTIONS: readonly [string, string, string, string, string] = [
+	'Backlog',
+	'Ready',
+	'In progress',
+	'In review',
+	'Done',
+];
+const PRIORITY_OPTIONS: readonly [string, string, string] = ['P0', 'P1', 'P2'];
+const SIZE_OPTIONS: readonly [string, string, string, string, string] = ['XS', 'S', 'M', 'L', 'XL'];
+const TYPE_OPTIONS: readonly [string, string, string, string, string] = ['Plan', 'Idea', 'Task', 'Bug', 'Maintenance'];
+const FIELD_TYPE_OPTIONS: readonly [string, string, string, string, string] = [
+	'TEXT',
+	'NUMBER',
+	'DATE',
+	'SINGLE_SELECT',
+	'ITERATION',
+];
+const PHASE_OPTIONS: readonly [string, string, string, string, string, string, string, string] = [
+	'MVP 0',
+	'MVP 1',
+	'MVP 2',
+	'MVP 3',
+	'MVP 4',
+	'MVP 5',
+	'MVP 6',
+	'Later',
+];
+const SPRINT_OPTIONS: readonly [string, string, string, string, string] = [
+	'Sprint 1',
+	'Sprint 2',
+	'Sprint 3',
+	'Sprint 4',
+	'Sprint 5',
+];
+const SPRINT_FILTER_OPTIONS: readonly [string, string, string, string, string, string, string] = [
+	'Sprint 1',
+	'Sprint 2',
+	'Sprint 3',
+	'Sprint 4',
+	'Sprint 5',
+	'none',
+	'unscheduled',
+];
+const SPRINT_SET_OPTIONS: readonly [string, string, string, string, string, string, string, string, string, string] = [
+	'Sprint 1',
+	'Sprint 2',
+	'Sprint 3',
+	'Sprint 4',
+	'Sprint 5',
+	'current',
+	'next',
+	'clear',
+	'none',
+	'unscheduled',
+];
+const SINGLE_SELECT_FIELD_OPTIONS: readonly [string, string, string, string, string, string] = [
+	'Status',
+	'Priority',
+	'Area',
+	'Phase',
+	'Type',
+	'Size',
+];
+const AREA_OPTIONS = [
+	'CLI',
+	'Core',
+	'Diagnostics',
+	'Parser/Syntax',
+	'Semantic/Resolver',
+	'Layout',
+	'Fonts',
+	'PDF',
+	'Figures/Floats',
+	'Bibliography',
+	'Incremental Cache',
+	'Page Reflow/Fixpoints',
+	'Other Backends',
+	'Determinism',
+	'Editor/LSP',
+	'Tree-sitter',
+	'Zed',
+	'Testing',
+	'Examples',
+	'CI/Release',
+	'Docs/Tracker',
+	'Project/Packages',
+	'Scripting/Templates',
+].join(', ');
+const PROJECT_FIELD_CHOICES = [
+	'Status',
+	'Priority',
+	'Area',
+	'Phase',
+	'Type',
+	'Size',
+	'Sprint',
+	'Estimate',
+	'claude-code',
+].join(', ');
+const SELECT_OPTION_GUIDE = [
+	`Status: ${STATUS_OPTIONS.join(', ')}`,
+	`Priority: ${PRIORITY_OPTIONS.join(', ')}`,
+	`Size: ${SIZE_OPTIONS.join(', ')}`,
+	`Type: ${TYPE_OPTIONS.join(', ')}`,
+	`Phase: ${PHASE_OPTIONS.join(', ')}`,
+	`Area: ${AREA_OPTIONS}`,
+].join('; ');
 
 type JsonRecord = Record<string, unknown>;
 
@@ -15,21 +122,35 @@ type ProjectDefaults = {
 	projectNumber: number;
 };
 
+type RepositoryDefaults = {
+	owner: string;
+	repository: string;
+};
+
 type ProjectItemSummary = {
 	itemId: string;
-	issueNumber: number | null;
+	contentType: string;
+	contentNumber: number | null;
 	title: string;
 	status: string;
 	sprint: string;
 	priority: string;
 	area: string;
 	url: string;
+	fields: ReadonlyArray<ProjectItemFieldValue>;
+};
+
+type ProjectItemFieldValue = {
+	name: string;
+	value: string;
+	type: string;
 };
 
 type ProjectField = {
 	id: string;
 	name: string;
 	type: string;
+	dataType: string;
 	options: ReadonlyArray<ProjectOption>;
 };
 
@@ -51,11 +172,133 @@ type ProjectIteration = {
 	duration: number;
 };
 
+let cachedRepository: RepositoryDefaults | null = null;
+
 function defaults(owner: string | undefined, projectNumber: number | undefined): ProjectDefaults {
+	const repository = repositoryDefaults(undefined, undefined);
 	return {
-		owner: owner ?? DEFAULT_OWNER,
+		owner: owner ?? repository.owner,
 		projectNumber: projectNumber ?? DEFAULT_PROJECT_NUMBER,
 	};
+}
+
+function repositoryDefaults(owner: string | undefined, repository: string | undefined): RepositoryDefaults {
+	const remoteRepository = repositoryFromGitConfig();
+	return {
+		owner: owner ?? remoteRepository.owner,
+		repository: repository ?? remoteRepository.repository,
+	};
+}
+
+function repositoryFromGitConfig(): RepositoryDefaults {
+	if (cachedRepository !== null) {
+		return cachedRepository;
+	}
+	const config = readFileSync(findGitConfig(process.cwd()), 'utf8');
+	const remoteUrl = parseRemoteUrl(config, DEFAULT_REMOTE);
+	const repository = parseGitHubRemoteUrl(remoteUrl);
+	cachedRepository = repository;
+	return repository;
+}
+
+function findGitConfig(start: string): string {
+	let current = start;
+	while (true) {
+		const configPath = join(current, '.git', 'config');
+		if (existsSync(configPath)) {
+			return configPath;
+		}
+
+		const gitPath = join(current, '.git');
+		if (existsSync(gitPath)) {
+			const gitFileText = readFile(gitPath);
+			const gitDir = parseGitDir(gitFileText);
+			if (gitDir !== null) {
+				const worktreeConfig = join(isAbsolute(gitDir) ? gitDir : resolve(current, gitDir), 'config');
+				if (existsSync(worktreeConfig)) {
+					return worktreeConfig;
+				}
+			}
+		}
+
+		const parent = dirname(current);
+		if (parent === current) {
+			throw new Error('Could not find .git/config');
+		}
+		current = parent;
+	}
+}
+
+function readFile(path: string): string {
+	try {
+		return readFileSync(path, 'utf8');
+	} catch (error) {
+		return '';
+	}
+}
+
+function repositoryOwnerDefault(): string {
+	return repositoryFromGitConfig().owner;
+}
+
+function repositoryNameDefault(): string {
+	return repositoryFromGitConfig().repository;
+}
+
+function parseGitDir(text: string): string | null {
+	const prefix = 'gitdir:';
+	const trimmed = text.trim();
+	return trimmed.startsWith(prefix) ? trimmed.slice(prefix.length).trim() : null;
+}
+
+function parseRemoteUrl(config: string, remote: string): string {
+	const section = `[remote "${remote}"]`;
+	let inRemote = false;
+	for (const line of config.split('\n')) {
+		const trimmed = line.trim();
+		if (trimmed.startsWith('[')) {
+			inRemote = trimmed === section;
+			continue;
+		}
+		if (!inRemote || !trimmed.startsWith('url')) {
+			continue;
+		}
+		const separator = trimmed.indexOf('=');
+		if (separator >= 0) {
+			return trimmed.slice(separator + 1).trim();
+		}
+	}
+	throw new Error(`Remote ${remote} URL not found in .git/config`);
+}
+
+function parseGitHubRemoteUrl(remoteUrl: string): RepositoryDefaults {
+	const trimmed = remoteUrl.trim();
+	const scpPrefix = 'git@github.com:';
+	if (trimmed.startsWith(scpPrefix)) {
+		return repositoryFromPath(trimmed.slice(scpPrefix.length));
+	}
+
+	let parsed: URL;
+	try {
+		parsed = new URL(trimmed);
+	} catch (error) {
+		throw new Error(`Unsupported GitHub remote URL: ${remoteUrl}`);
+	}
+	if (parsed.hostname.toLowerCase() !== 'github.com') {
+		throw new Error(`Remote is not github.com: ${remoteUrl}`);
+	}
+	return repositoryFromPath(parsed.pathname);
+}
+
+function repositoryFromPath(path: string): RepositoryDefaults {
+	const parts = path.replace(/^\/+|\/+$/g, '').split('/');
+	const owner = parts[0];
+	const rawRepository = parts[1];
+	if (owner === undefined || owner === '' || rawRepository === undefined || rawRepository === '') {
+		throw new Error(`Could not parse GitHub owner/repo from ${path}`);
+	}
+	const repository = rawRepository.endsWith('.git') ? rawRepository.slice(0, -4) : rawRepository;
+	return { owner, repository };
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -93,6 +336,18 @@ function errorMessage(error: unknown): string {
 		return error.message;
 	}
 	return String(error);
+}
+
+function serialize(value: unknown): string {
+	return JSON.stringify(value, null, 2) ?? 'null';
+}
+
+function success(data: JsonRecord): string {
+	return serialize({ ok: true, ...data });
+}
+
+function failure(toolName: string, error: unknown): string {
+	return serialize({ ok: false, tool: toolName, error: errorMessage(error) });
 }
 
 let cachedToken: string | null = null;
@@ -170,10 +425,14 @@ async function rawItems(project: ProjectDefaults): Promise<ReadonlyArray<JsonRec
                   text
                   field { ... on ProjectV2FieldCommon { name } }
                 }
-                ... on ProjectV2ItemFieldNumberValue {
-                  number
-                  field { ... on ProjectV2FieldCommon { name } }
-                }
+					... on ProjectV2ItemFieldNumberValue {
+						number
+						field { ... on ProjectV2FieldCommon { name } }
+					}
+					... on ProjectV2ItemFieldDateValue {
+						date
+						field { ... on ProjectV2FieldCommon { name } }
+					}
                 ... on ProjectV2ItemFieldSingleSelectValue {
                   name
                   field { ... on ProjectV2FieldCommon { name } }
@@ -247,11 +506,12 @@ async function rawFields(project: ProjectDefaults): Promise<ReadonlyArray<Projec
 
   fragment ProjectFields on ProjectV2 {
         fields(first: 50) {
-          nodes {
-            __typename
-            ... on ProjectV2FieldCommon { id name }
-            ... on ProjectV2SingleSelectField { id name options { id name } }
-          }
+				nodes {
+					__typename
+					... on ProjectV2FieldCommon { id name }
+					... on ProjectV2Field { dataType }
+					... on ProjectV2SingleSelectField { id name options { id name } }
+				}
         }
   }`;
 	const data = await githubGraphql(query, { owner: project.owner, number: project.projectNumber });
@@ -265,6 +525,7 @@ async function rawFields(project: ProjectDefaults): Promise<ReadonlyArray<Projec
 		const id = stringField(field, 'id');
 		const name = stringField(field, 'name');
 		const type = stringField(field, '__typename') ?? 'ProjectV2Field';
+		const dataType = stringField(field, 'dataType') ?? type;
 		if (id === null || name === null) {
 			return [];
 		}
@@ -278,7 +539,7 @@ async function rawFields(project: ProjectDefaults): Promise<ReadonlyArray<Projec
 			return [{ id: optionId, name: optionName }];
 		});
 
-		return [{ id, name, type, options }];
+		return [{ id, name, type, dataType, options }];
 	});
 }
 
@@ -302,6 +563,9 @@ function projectFieldValue(value: JsonRecord): string | null {
 		const number = numberField(value, 'number');
 		return number === null ? null : number.toString();
 	}
+	if (type === 'ProjectV2ItemFieldDateValue') {
+		return stringField(value, 'date');
+	}
 	return null;
 }
 
@@ -322,35 +586,82 @@ function itemField(item: JsonRecord, names: ReadonlyArray<string>): string {
 	return '';
 }
 
+function itemFieldValues(item: JsonRecord): ReadonlyArray<ProjectItemFieldValue> {
+	const values = recordValue(item, 'fieldValues');
+	const nodes = values === null ? [] : arrayField(values, 'nodes').filter(isRecord);
+	return nodes.flatMap((node) => {
+		const name = projectFieldName(node);
+		const value = projectFieldValue(node);
+		if (name === null || value === null || value === '') {
+			return [];
+		}
+		return [{ name, value, type: stringField(node, '__typename') ?? '' }];
+	});
+}
+
+function contentType(content: JsonRecord | null): string {
+	return content === null ? 'UNKNOWN' : stringField(content, '__typename') ?? 'UNKNOWN';
+}
+
+function contentNumber(content: JsonRecord | null): number | null {
+	return content === null ? null : numberField(content, 'number');
+}
+
 function summarizeItem(item: JsonRecord): ProjectItemSummary {
 	const content = recordValue(item, 'content');
-	const issueNumber = content === null ? null : numberField(content, 'number');
 
 	return {
 		itemId: stringField(item, 'id') ?? '',
-		issueNumber,
+		contentType: contentType(content),
+		contentNumber: contentNumber(content),
 		title: (content === null ? null : stringField(content, 'title')) ?? stringField(item, 'title') ?? '',
 		status: itemField(item, ['Status']),
 		sprint: itemField(item, ['Sprint', 'Iteration']),
 		priority: itemField(item, ['Priority']),
 		area: itemField(item, ['Area']),
 		url: (content === null ? null : stringField(content, 'url')) ?? '',
+		fields: itemFieldValues(item),
 	};
 }
 
-function findItemByIssue(
+function findItemByTarget(
 	items: ReadonlyArray<JsonRecord>,
-	issueNumber: number,
+	target: { itemId?: string; issue?: number; pr?: number },
 	projectNumber: number,
 ): ProjectItemSummary {
-	const found = items.map(summarizeItem).find((item) => item.issueNumber === issueNumber);
+	const summaries = items.map(summarizeItem);
+	const found = summaries.find((item) => {
+		if (target.itemId !== undefined) {
+			return item.itemId === target.itemId;
+		}
+		if (target.issue !== undefined) {
+			return item.contentType === 'Issue' && item.contentNumber === target.issue;
+		}
+		if (target.pr !== undefined) {
+			return item.contentType === 'PullRequest' && item.contentNumber === target.pr;
+		}
+		return false;
+	});
 	if (found === undefined) {
-		throw new Error(`Issue #${issueNumber} is not in Project ${projectNumber}`);
+		const label = target.itemId ?? (target.issue === undefined ? `PR #${target.pr}` : `issue #${target.issue}`);
+		throw new Error(`${label} is not in Project ${projectNumber}`);
 	}
 	if (found.itemId === '') {
-		throw new Error(`Project item for #${issueNumber} has no item id`);
+		throw new Error('Project item has no item id');
 	}
 	return found;
+}
+
+function requireTarget(itemId: string | undefined, issue: number | undefined, pr: number | undefined): {
+	itemId?: string;
+	issue?: number;
+	pr?: number;
+} {
+	const provided = [itemId !== undefined, issue !== undefined, pr !== undefined].filter(Boolean).length;
+	if (provided !== 1) {
+		throw new Error('Provide exactly one target: itemId, issue, or pr');
+	}
+	return { itemId, issue, pr };
 }
 
 function statusRank(status: string): number {
@@ -399,7 +710,7 @@ function queueItems(
 			if (priorityDelta !== 0) {
 				return priorityDelta;
 			}
-			return (left.issueNumber ?? Number.MAX_SAFE_INTEGER) - (right.issueNumber ?? Number.MAX_SAFE_INTEGER);
+			return (left.contentNumber ?? Number.MAX_SAFE_INTEGER) - (right.contentNumber ?? Number.MAX_SAFE_INTEGER);
 		});
 }
 
@@ -426,27 +737,8 @@ function findOption(field: ProjectField, name: string): ProjectOption {
 	return option;
 }
 
-function markdownCell(value: string): string {
-	return value.replace(/\|/g, '\\|');
-}
-
 function formatItems(items: ReadonlyArray<ProjectItemSummary>): string {
-	if (items.length === 0) {
-		return 'No matching project items.';
-	}
-
-	const rows = items.map((item) => {
-		const number = item.issueNumber === null ? '' : `#${item.issueNumber}`;
-		return [number, item.title, item.status, item.sprint, item.priority, item.area]
-			.map(markdownCell)
-			.join(' | ');
-	});
-
-	return [
-		'| Issue | Title | Status | Sprint | Priority | Area |',
-		'| --- | --- | --- | --- | --- | --- |',
-		...rows.map((row) => `| ${row} |`),
-	].join('\n');
+	return success({ count: items.length, items });
 }
 
 function filterItems(
@@ -474,48 +766,22 @@ function filterItems(
 	});
 }
 
-async function issueDetails(issueNumber: number): Promise<JsonRecord> {
-	const query = `query($owner: String!, $name: String!, $number: Int!) {
-    repository(owner: $owner, name: $name) {
-      issue(number: $number) {
-        number
-        title
-        state
-        body
-        url
-        labels(first: 30) { nodes { name } }
-      }
-    }
-  }`;
-	const data = await githubGraphql(query, {
-		owner: DEFAULT_REPOSITORY_OWNER,
-		name: DEFAULT_REPOSITORY_NAME,
-		number: issueNumber,
-	});
-	const repository = recordValue(data, 'repository');
-	const issue = repository === null ? null : recordValue(repository, 'issue');
-	if (issue === null) {
-		throw new Error(`Issue #${issueNumber} not found in ${DEFAULT_REPOSITORY_OWNER}/${DEFAULT_REPOSITORY_NAME}`);
-	}
-	return issue;
-}
-
-async function issueNodeId(issueNumber: number): Promise<string> {
+async function issueNodeId(repositoryDefaults: RepositoryDefaults, issueNumber: number): Promise<string> {
 	const query = `query($owner: String!, $name: String!, $number: Int!) {
     repository(owner: $owner, name: $name) {
       issue(number: $number) { id }
     }
   }`;
 	const data = await githubGraphql(query, {
-		owner: DEFAULT_REPOSITORY_OWNER,
-		name: DEFAULT_REPOSITORY_NAME,
+		owner: repositoryDefaults.owner,
+		name: repositoryDefaults.repository,
 		number: issueNumber,
 	});
 	const repository = recordValue(data, 'repository');
 	const issue = repository === null ? null : recordValue(repository, 'issue');
 	const id = issue === null ? null : stringField(issue, 'id');
 	if (id === null) {
-		throw new Error(`Issue #${issueNumber} not found in ${DEFAULT_REPOSITORY_OWNER}/${DEFAULT_REPOSITORY_NAME}`);
+		throw new Error(`Issue #${issueNumber} not found in ${repositoryDefaults.owner}/${repositoryDefaults.repository}`);
 	}
 	return id;
 }
@@ -644,6 +910,38 @@ async function setNumberField(projectIdValue: string, itemId: string, fieldId: s
 	await githubGraphql(mutation, { project: projectIdValue, item: itemId, field: fieldId, value });
 }
 
+async function setTextField(projectIdValue: string, itemId: string, fieldId: string, value: string): Promise<void> {
+	const mutation = `mutation($project: ID!, $item: ID!, $field: ID!, $value: String!) {
+    updateProjectV2ItemFieldValue(
+      input: {
+        projectId: $project
+        itemId: $item
+        fieldId: $field
+        value: { text: $value }
+      }
+    ) {
+      projectV2Item { id }
+    }
+  }`;
+	await githubGraphql(mutation, { project: projectIdValue, item: itemId, field: fieldId, value });
+}
+
+async function setDateField(projectIdValue: string, itemId: string, fieldId: string, value: string): Promise<void> {
+	const mutation = `mutation($project: ID!, $item: ID!, $field: ID!, $value: Date!) {
+    updateProjectV2ItemFieldValue(
+      input: {
+        projectId: $project
+        itemId: $item
+        fieldId: $field
+        value: { date: $value }
+      }
+    ) {
+      projectV2Item { id }
+    }
+  }`;
+	await githubGraphql(mutation, { project: projectIdValue, item: itemId, field: fieldId, value });
+}
+
 async function setIterationField(
 	projectIdValue: string,
 	itemId: string,
@@ -692,26 +990,134 @@ async function addIssueItem(projectIdValue: string, issueId: string): Promise<st
 	return id;
 }
 
+function parseNumber(value: string): number {
+	const parsed = Number.parseFloat(value);
+	if (!Number.isFinite(parsed)) {
+		throw new Error(`Expected number field value, got ${value}`);
+	}
+	return parsed;
+}
+
+async function setDiscoveredField(
+	project: ProjectDefaults,
+	projectIdValue: string,
+	itemId: string,
+	field: ProjectField,
+	value: string,
+): Promise<string> {
+	if (field.type === 'ProjectV2SingleSelectField' || field.dataType === 'SINGLE_SELECT') {
+		const option = findOption(field, value);
+		await setSingleSelectField(projectIdValue, itemId, field.id, option.id);
+		return option.name;
+	}
+	if (field.type === 'ProjectV2IterationField' || field.dataType === 'ITERATION') {
+		const iteration = resolveIteration(
+			await iterationField(project).then((item) => item.iterations),
+			value,
+		);
+		if (iteration === null) {
+			throw new Error(`Sprint ${value} not found`);
+		}
+		await setIterationField(projectIdValue, itemId, field.id, iteration.id);
+		return iteration.title;
+	}
+	if (field.dataType === 'NUMBER') {
+		const parsed = parseNumber(value);
+		await setNumberField(projectIdValue, itemId, field.id, parsed);
+		return parsed.toString();
+	}
+	if (field.dataType === 'DATE') {
+		await setDateField(projectIdValue, itemId, field.id, value);
+		return value;
+	}
+	if (field.dataType === 'TEXT') {
+		await setTextField(projectIdValue, itemId, field.id, value);
+		return value;
+	}
+	throw new Error(
+		`Field ${field.name} has unsupported type ${field.dataType}; use issue/PR-native mutations for built-ins`,
+	);
+}
+
+function parseCsv(value: string | undefined): ReadonlyArray<string> {
+	if (value === undefined || value.trim() === '') {
+		return [];
+	}
+	return value.split(',').map((item) => item.trim()).filter((item) => item !== '');
+}
+
+async function createProjectField(
+	projectIdValue: string,
+	name: string,
+	dataType: string,
+	optionsCsv: string | undefined,
+): Promise<string> {
+	const normalizedType = dataType.trim().toUpperCase().replace(/-/g, '_');
+	const options = parseCsv(optionsCsv).map((option) => ({ name: option, color: 'GRAY', description: '' }));
+	const mutation =
+		`mutation($project: ID!, $name: String!, $dataType: ProjectV2CustomFieldType!, $options: [ProjectV2SingleSelectFieldOptionInput!]) {
+    createProjectV2Field(input: { projectId: $project, name: $name, dataType: $dataType, singleSelectOptions: $options }) {
+      projectV2Field { ... on ProjectV2FieldCommon { id name } }
+    }
+  }`;
+	const variables: JsonRecord = { project: projectIdValue, name, dataType: normalizedType };
+	if (normalizedType === 'SINGLE_SELECT') {
+		variables.options = options;
+	} else if (options.length > 0) {
+		throw new Error('Options are only valid for SINGLE_SELECT fields');
+	}
+	const data = await githubGraphql(mutation, variables);
+	const payload = recordValue(data, 'createProjectV2Field');
+	const field = payload === null ? null : recordValue(payload, 'projectV2Field');
+	const id = field === null ? null : stringField(field, 'id');
+	if (id === null) {
+		throw new Error('createProjectV2Field did not return a field id');
+	}
+	return id;
+}
+
+async function setProjectFieldForTarget(
+	project: ProjectDefaults,
+	target: { itemId?: string; issue?: number; pr?: number },
+	fieldName: string,
+	value: string | undefined,
+	clear: boolean | undefined,
+): Promise<JsonRecord> {
+	const [id, item, projectFields] = await Promise.all([
+		projectId(project),
+		rawItems(project).then((items) => findItemByTarget(items, target, project.projectNumber)),
+		rawFields(project),
+	]);
+	const field = findField(projectFields, fieldName);
+	if (clear === true) {
+		await clearProjectField(id, item.itemId, field.id);
+		return { project, item, field: field.name, cleared: true };
+	}
+	if (value === undefined) {
+		throw new Error(`Value required for ${field.name}; pass clear=true to clear it`);
+	}
+	const appliedValue = await setDiscoveredField(project, id, item.itemId, field, value);
+	return { project, item, field: field.name, value: appliedValue, cleared: false };
+}
+
 function formatFields(fields: ReadonlyArray<ProjectField>, iteration: IterationField | null): string {
-	const rows = fields.map((field) => {
-		const iterationOptions = iteration !== null && normalize(field.name) === normalize(iteration.name)
-			? iteration.iterations.map((item) => item.title).join(', ')
-			: null;
-		const options = iterationOptions
-			?? (field.options.length === 0 ? '' : field.options.map((option) => option.name).join(', '));
-		return [field.name, field.type, options].map(markdownCell).join(' | ');
+	return success({
+		fields: fields.map((field) => ({
+			...field,
+			options: field.options,
+			iterations: iteration !== null && normalize(field.name) === normalize(iteration.name) ? iteration.iterations : [],
+		})),
 	});
-	return ['| Field | Type | Options |', '| --- | --- | --- |', ...rows.map((row) => `| ${row} |`)].join('\n');
 }
 
 export const list = tool({
 	description: 'List GitHub Project 5 items for Mosaic, with optional status/sprint filters.',
 	args: {
-		status: tool.schema.string().optional().describe('Optional status filter, e.g. Ready, Backlog, Done.'),
-		sprint: tool.schema.string().optional().describe('Optional sprint title filter, or none/unscheduled.'),
-		includeDone: tool.schema.boolean().optional().describe('Include Done items. Defaults to false.'),
-		owner: tool.schema.string().optional().describe('GitHub owner. Defaults to kjanat.'),
-		projectNumber: tool.schema.number().optional().describe('GitHub Project number. Defaults to 5.'),
+		status: tool.schema.enum(STATUS_OPTIONS).optional().describe('Optional status filter.'),
+		sprint: tool.schema.enum(SPRINT_FILTER_OPTIONS).optional().describe('Optional sprint title filter.'),
+		includeDone: tool.schema.boolean().default(false).describe('Include Done items.'),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
 	async execute(args) {
 		try {
@@ -719,7 +1125,7 @@ export const list = tool({
 			const items = (await rawItems(project)).map(summarizeItem);
 			return formatItems(filterItems(items, args.status, args.sprint, args.includeDone));
 		} catch (error) {
-			return `github_project_list failed: ${errorMessage(error)}`;
+			return failure('github_project_list', error);
 		}
 	},
 });
@@ -727,17 +1133,17 @@ export const list = tool({
 export const queue = tool({
 	description: 'Show the active Mosaic Project 5 queue, sorted by status and priority.',
 	args: {
-		includeBacklog: tool.schema.boolean().optional().describe('Include Backlog items. Defaults to false.'),
-		owner: tool.schema.string().optional().describe('GitHub owner. Defaults to kjanat.'),
-		projectNumber: tool.schema.number().optional().describe('GitHub Project number. Defaults to 5.'),
+		includeBacklog: tool.schema.boolean().default(false).describe('Include Backlog items.'),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
 	async execute(args) {
 		try {
-			const project = defaults(args.owner, args.projectNumber);
+			const project = await defaults(args.owner, args.projectNumber);
 			const items = (await rawItems(project)).map(summarizeItem);
 			return formatItems(queueItems(items, args.includeBacklog));
 		} catch (error) {
-			return `github_project_queue failed: ${errorMessage(error)}`;
+			return failure('github_project_queue', error);
 		}
 	},
 });
@@ -745,57 +1151,40 @@ export const queue = tool({
 export const fields = tool({
 	description: 'List Mosaic GitHub Project 5 fields, options, and sprint choices.',
 	args: {
-		owner: tool.schema.string().optional().describe('GitHub owner. Defaults to kjanat.'),
-		projectNumber: tool.schema.number().optional().describe('GitHub Project number. Defaults to 5.'),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
 	async execute(args) {
 		try {
-			const project = defaults(args.owner, args.projectNumber);
+			const project = await defaults(args.owner, args.projectNumber);
 			const [projectFields, sprintField] = await Promise.all([
 				rawFields(project),
 				iterationField(project).catch(() => null),
 			]);
 			return formatFields(projectFields, sprintField);
 		} catch (error) {
-			return `github_project_fields failed: ${errorMessage(error)}`;
+			return failure('github_project_fields', error);
 		}
 	},
 });
 
 export const view = tool({
-	description: 'View one GitHub issue with its GitHub Project 5 fields.',
+	description: 'View one GitHub Project 5 item by issue, PR, or item id.',
 	args: {
-		issue: tool.schema.number().describe('Issue number to inspect.'),
-		owner: tool.schema.string().optional().describe('GitHub owner. Defaults to kjanat.'),
-		projectNumber: tool.schema.number().optional().describe('GitHub Project number. Defaults to 5.'),
+		issue: tool.schema.number().optional().describe('Issue number to inspect.'),
+		pr: tool.schema.number().optional().describe('Pull request number to inspect.'),
+		itemId: tool.schema.string().optional().describe('Project item id to inspect.'),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
 	async execute(args) {
 		try {
-			const project = defaults(args.owner, args.projectNumber);
-			const item = findItemByIssue(await rawItems(project), args.issue, project.projectNumber);
-			const issue = await issueDetails(args.issue);
-			const labelsConnection = recordValue(issue, 'labels');
-			const labels = (labelsConnection === null ? [] : arrayField(labelsConnection, 'nodes')).filter(isRecord).flatMap(
-				(label) => {
-					const name = stringField(label, 'name');
-					return name === null ? [] : [name];
-				},
-			);
-			const body = stringField(issue, 'body') ?? '';
-			return [
-				`#${args.issue} ${stringField(issue, 'title') ?? item.title}`,
-				`URL: ${stringField(issue, 'url') ?? item.url}`,
-				`State: ${stringField(issue, 'state') ?? ''}`,
-				`Status: ${item.status || '(none)'}`,
-				`Sprint: ${item.sprint || '(none)'}`,
-				`Priority: ${item.priority || '(none)'}`,
-				`Area: ${item.area || '(none)'}`,
-				`Labels: ${labels.join(', ') || '(none)'}`,
-				'',
-				body,
-			].join('\n');
+			const project = await defaults(args.owner, args.projectNumber);
+			const target = requireTarget(args.itemId, args.issue, args.pr);
+			const item = findItemByTarget(await rawItems(project), target, project.projectNumber);
+			return success({ project, item });
 		} catch (error) {
-			return `github_project_view failed: ${errorMessage(error)}`;
+			return failure('github_project_view', error);
 		}
 	},
 });
@@ -804,23 +1193,24 @@ export const add_issue = tool({
 	description: 'Add a Mosaic GitHub issue to Project 5, optionally setting status and sprint.',
 	args: {
 		issue: tool.schema.number().describe('Issue number to add to Project 5.'),
-		status: tool.schema.string().optional().describe('Optional status to set after adding, e.g. Ready.'),
-		sprint: tool.schema.string().optional().describe('Optional sprint title/id, current, or next.'),
-		owner: tool.schema.string().optional().describe('GitHub owner. Defaults to kjanat.'),
-		projectNumber: tool.schema.number().optional().describe('GitHub Project number. Defaults to 5.'),
+		status: tool.schema.enum(STATUS_OPTIONS).optional().describe('Optional status to set.'),
+		sprint: tool.schema.enum(SPRINT_SET_OPTIONS).optional().describe('Optional sprint title/id, current, or next.'),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
 	async execute(args) {
 		try {
-			const project = defaults(args.owner, args.projectNumber);
+			const project = await defaults(args.owner, args.projectNumber);
+			const repository = await repositoryDefaults(undefined, undefined);
 			const id = await projectId(project);
-			const itemId = await addIssueItem(id, await issueNodeId(args.issue));
-			const updates: Array<string> = [`added #${args.issue}`];
+			const itemId = await addIssueItem(id, await issueNodeId(repository, args.issue));
+			const updates: Array<JsonRecord> = [{ field: 'item', value: itemId }];
 
 			if (args.status !== undefined) {
 				const statusField = findField(await rawFields(project), 'Status');
 				const option = findOption(statusField, args.status);
 				await setSingleSelectField(id, itemId, statusField.id, option.id);
-				updates.push(`status ${option.name}`);
+				updates.push({ field: statusField.name, value: option.name });
 			}
 
 			if (args.sprint !== undefined) {
@@ -831,129 +1221,144 @@ export const add_issue = tool({
 					throw new Error(`Sprint ${args.sprint} not found. Choices: current, next, ${choices}`);
 				}
 				await setIterationField(id, itemId, field.id, iteration.id);
-				updates.push(`${field.name} ${iteration.title}`);
+				updates.push({ field: field.name, value: iteration.title });
 			}
 
-			return `Project 5 item updated: ${updates.join(', ')}.`;
+			return success({ project, repository, issue: args.issue, itemId, updates });
 		} catch (error) {
-			return `github_project_add_issue failed: ${errorMessage(error)}`;
+			return failure('github_project_add_issue', error);
+		}
+	},
+});
+
+export const set_field = tool({
+	description: 'Set or clear any supported GitHub Project 5 field by issue, PR, or item id.',
+	args: {
+		issue: tool.schema.number().optional().describe('Issue number to update.'),
+		pr: tool.schema.number().optional().describe('Pull request number to update.'),
+		itemId: tool.schema.string().optional().describe('Project item id to update.'),
+		field: tool.schema.string().describe(`Project field name. Known fields: ${PROJECT_FIELD_CHOICES}.`),
+		value: tool.schema.string().optional().describe(
+			`Value to set. Required unless clear is true. Select guides: ${SELECT_OPTION_GUIDE}.`,
+		),
+		clear: tool.schema.boolean().default(false).describe('Clear the field instead of setting a value.'),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
+	},
+	async execute(args) {
+		try {
+			const project = await defaults(args.owner, args.projectNumber);
+			const target = requireTarget(args.itemId, args.issue, args.pr);
+			return success(await setProjectFieldForTarget(project, target, args.field, args.value, args.clear));
+		} catch (error) {
+			return failure('github_project_set_field', error);
+		}
+	},
+});
+
+export const create_field = tool({
+	description: 'Create a GitHub Project 5 custom field.',
+	args: {
+		name: tool.schema.string().describe('New field name.'),
+		dataType: tool.schema.enum(FIELD_TYPE_OPTIONS).describe('Field type.'),
+		options: tool.schema.string().optional().describe('Comma-separated options for SINGLE_SELECT fields.'),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
+	},
+	async execute(args) {
+		try {
+			const project = await defaults(args.owner, args.projectNumber);
+			const id = await createProjectField(await projectId(project), args.name, args.dataType, args.options);
+			return success({ project, field: { id, name: args.name, dataType: args.dataType } });
+		} catch (error) {
+			return failure('github_project_create_field', error);
 		}
 	},
 });
 
 export const set_status = tool({
-	description: 'Set the Status field for a Mosaic GitHub Project 5 issue.',
+	description: 'Set the Status field for a Mosaic GitHub Project 5 item.',
 	args: {
-		issue: tool.schema.number().describe('Issue number to update.'),
-		status: tool.schema.string().describe('Status name, e.g. Backlog, Ready, In progress, In review, Done.'),
-		owner: tool.schema.string().optional().describe('GitHub owner. Defaults to kjanat.'),
-		projectNumber: tool.schema.number().optional().describe('GitHub Project number. Defaults to 5.'),
+		issue: tool.schema.number().optional().describe('Issue number to update.'),
+		pr: tool.schema.number().optional().describe('Pull request number to update.'),
+		itemId: tool.schema.string().optional().describe('Project item id to update.'),
+		status: tool.schema.enum(STATUS_OPTIONS).describe('Status name.'),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
 	async execute(args) {
 		try {
-			const project = defaults(args.owner, args.projectNumber);
-			const [id, item, fields] = await Promise.all([
-				projectId(project),
-				rawItems(project).then((items) => findItemByIssue(items, args.issue, project.projectNumber)),
-				rawFields(project),
-			]);
-			const statusField = findField(fields, 'Status');
-			const option = findOption(statusField, args.status);
-			await setSingleSelectField(id, item.itemId, statusField.id, option.id);
-			return `Set #${args.issue} status to ${option.name}.`;
+			const project = await defaults(args.owner, args.projectNumber);
+			const target = requireTarget(args.itemId, args.issue, args.pr);
+			return success(await setProjectFieldForTarget(project, target, 'Status', args.status, false));
 		} catch (error) {
-			return `github_project_set_status failed: ${errorMessage(error)}`;
+			return failure('github_project_set_status', error);
 		}
 	},
 });
 
 export const set_select = tool({
-	description: 'Set any single-select field for a Mosaic GitHub Project 5 issue.',
+	description: 'Set any single-select field for a Mosaic GitHub Project 5 item.',
 	args: {
-		issue: tool.schema.number().describe('Issue number to update.'),
-		field: tool.schema.string().describe('Single-select field name, e.g. Priority, Area, Phase, Type, Size.'),
-		option: tool.schema.string().describe('Option name to set.'),
-		owner: tool.schema.string().optional().describe('GitHub owner. Defaults to kjanat.'),
-		projectNumber: tool.schema.number().optional().describe('GitHub Project number. Defaults to 5.'),
+		issue: tool.schema.number().optional().describe('Issue number to update.'),
+		pr: tool.schema.number().optional().describe('Pull request number to update.'),
+		itemId: tool.schema.string().optional().describe('Project item id to update.'),
+		field: tool.schema.enum(SINGLE_SELECT_FIELD_OPTIONS).describe('Single-select field name.'),
+		option: tool.schema.string().describe(`Option name to set. Choices by field: ${SELECT_OPTION_GUIDE}.`),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
 	async execute(args) {
 		try {
-			const project = defaults(args.owner, args.projectNumber);
-			const [id, item, projectFields] = await Promise.all([
-				projectId(project),
-				rawItems(project).then((items) => findItemByIssue(items, args.issue, project.projectNumber)),
-				rawFields(project),
-			]);
-			const field = findField(projectFields, args.field);
-			const option = findOption(field, args.option);
-			await setSingleSelectField(id, item.itemId, field.id, option.id);
-			return `Set #${args.issue} ${field.name} to ${option.name}.`;
+			const project = await defaults(args.owner, args.projectNumber);
+			const target = requireTarget(args.itemId, args.issue, args.pr);
+			return success(await setProjectFieldForTarget(project, target, args.field, args.option, false));
 		} catch (error) {
-			return `github_project_set_select failed: ${errorMessage(error)}`;
+			return failure('github_project_set_select', error);
 		}
 	},
 });
 
 export const set_sprint = tool({
-	description: 'Set or clear the Sprint/Iteration field for a Mosaic GitHub Project 5 issue.',
+	description: 'Set or clear the Sprint/Iteration field for a Mosaic GitHub Project 5 item.',
 	args: {
-		issue: tool.schema.number().describe('Issue number to update.'),
-		sprint: tool.schema
-			.string()
-			.describe('Sprint title/id, current, next, or clear/none/unscheduled to remove sprint.'),
-		owner: tool.schema.string().optional().describe('GitHub owner. Defaults to kjanat.'),
-		projectNumber: tool.schema.number().optional().describe('GitHub Project number. Defaults to 5.'),
+		issue: tool.schema.number().optional().describe('Issue number to update.'),
+		pr: tool.schema.number().optional().describe('Pull request number to update.'),
+		itemId: tool.schema.string().optional().describe('Project item id to update.'),
+		sprint: tool.schema.enum(SPRINT_SET_OPTIONS).describe('Sprint title/id, current, next, or clear/none/unscheduled.'),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
 	async execute(args) {
 		try {
-			const project = defaults(args.owner, args.projectNumber);
-			const [id, item, field] = await Promise.all([
-				projectId(project),
-				rawItems(project).then((items) => findItemByIssue(items, args.issue, project.projectNumber)),
-				iterationField(project),
-			]);
-
+			const project = await defaults(args.owner, args.projectNumber);
+			const target = requireTarget(args.itemId, args.issue, args.pr);
 			const requested = normalize(args.sprint);
-			if (requested === 'clear' || requested === 'none' || requested === 'unscheduled') {
-				await clearProjectField(id, item.itemId, field.id);
-				return `Cleared sprint for #${args.issue}.`;
-			}
-
-			const iteration = resolveIteration(field.iterations, args.sprint);
-			if (iteration === null) {
-				const choices = field.iterations.map((candidate) => candidate.title).join(', ');
-				throw new Error(`Sprint ${args.sprint} not found. Choices: current, next, clear, ${choices}`);
-			}
-
-			await setIterationField(id, item.itemId, field.id, iteration.id);
-			return `Set #${args.issue} ${field.name} to ${iteration.title}.`;
+			const clear = requested === 'clear' || requested === 'none' || requested === 'unscheduled';
+			return success(await setProjectFieldForTarget(project, target, 'Sprint', clear ? undefined : args.sprint, clear));
 		} catch (error) {
-			return `github_project_set_sprint failed: ${errorMessage(error)}`;
+			return failure('github_project_set_sprint', error);
 		}
 	},
 });
 
 export const set_estimate = tool({
-	description: 'Set the Estimate number field for a Mosaic GitHub Project 5 issue.',
+	description: 'Set the Estimate number field for a Mosaic GitHub Project 5 item.',
 	args: {
-		issue: tool.schema.number().describe('Issue number to update.'),
+		issue: tool.schema.number().optional().describe('Issue number to update.'),
+		pr: tool.schema.number().optional().describe('Pull request number to update.'),
+		itemId: tool.schema.string().optional().describe('Project item id to update.'),
 		estimate: tool.schema.number().describe('Estimate value to set.'),
-		owner: tool.schema.string().optional().describe('GitHub owner. Defaults to kjanat.'),
-		projectNumber: tool.schema.number().optional().describe('GitHub Project number. Defaults to 5.'),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
 	},
 	async execute(args) {
 		try {
-			const project = defaults(args.owner, args.projectNumber);
-			const [id, item, projectFields] = await Promise.all([
-				projectId(project),
-				rawItems(project).then((items) => findItemByIssue(items, args.issue, project.projectNumber)),
-				rawFields(project),
-			]);
-			const field = findField(projectFields, 'Estimate');
-			await setNumberField(id, item.itemId, field.id, args.estimate);
-			return `Set #${args.issue} ${field.name} to ${args.estimate}.`;
+			const project = await defaults(args.owner, args.projectNumber);
+			const target = requireTarget(args.itemId, args.issue, args.pr);
+			return success(await setProjectFieldForTarget(project, target, 'Estimate', args.estimate.toString(), false));
 		} catch (error) {
-			return `github_project_set_estimate failed: ${errorMessage(error)}`;
+			return failure('github_project_set_estimate', error);
 		}
 	},
 });
