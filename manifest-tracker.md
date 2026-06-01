@@ -296,7 +296,9 @@ example.
 - [x] Define minimal single-key citation syntax (`[@key]`).
 - [x] Parse minimal single-key citations.
 - [ ] Resolve citation keys.
-- [ ] Load bibliography databases.
+- [x] Define bibliography source directive (`#bibliography("refs.bib")`).
+- [ ] Load bibliography databases. *(Source path is parsed, resolved against the source directory,
+      and preserved on a `Bibliography` node; reading and parsing the database is BibTeX import.)*
 - [ ] Import BibTeX.
 - [ ] Import BibLaTeX.
 - [ ] Support CSL styles.

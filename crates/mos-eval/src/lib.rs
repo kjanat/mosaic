@@ -11,6 +11,7 @@
     html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
 )]
 
+mod bibliography;
 mod image;
 mod image_lower;
 mod inline;
@@ -29,6 +30,7 @@ use mos_parse::{DirectiveKind, Item, RawBlockKind, SyntaxTree};
 
 pub use resolve::resolve;
 
+use bibliography::lower_bibliography_directive;
 use image_lower::{lower_figure_directive, lower_image_directive};
 use inline::lower_inlines;
 use list::lower_list;
@@ -297,6 +299,16 @@ impl Evaluator {
                             span,
                             &tree.file,
                             current_text_size_pt,
+                            &mut diagnostics,
+                        );
+                    }
+                    DirectiveKind::Bibliography => {
+                        lower_bibliography_directive(
+                            &mut document,
+                            root,
+                            args,
+                            span,
+                            &tree.file,
                             &mut diagnostics,
                         );
                     }
@@ -1032,5 +1044,168 @@ mod tests {
             Some(&AttrValue::Str("fig_pos.png".to_owned()))
         );
         std::fs::remove_dir_all(png_path.parent().unwrap()).ok();
+    }
+
+    /// Create a unique temp dir for a bibliography test. Salted with the
+    /// caller's `name` plus a high-resolution timestamp so parallel tests
+    /// don't collide, mirroring `write_tiny_png`.
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "mos-eval-bib-{}-{}",
+            name,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn bibliography_directive_preserves_resolved_path() {
+        // A declared `#bibliography("refs.bib")` lowers to a Bibliography
+        // node that preserves both the literal `src` and the path resolved
+        // against the source file's directory, so the later BibTeX reader
+        // can open the database. With the file present there is no warning.
+        let dir = unique_temp_dir("preserve");
+        let bib = dir.join("refs.bib");
+        std::fs::write(&bib, "@book{a, title={A}}\n").unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(&source, "#bibliography(\"refs.bib\")\n").unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Bibliography)
+            .expect("Bibliography node");
+        assert_eq!(
+            node.attributes.get("src"),
+            Some(&AttrValue::Str("refs.bib".to_owned()))
+        );
+        assert_eq!(
+            node.attributes.get("resolved_path"),
+            Some(&AttrValue::Str(bib.to_string_lossy().into_owned()))
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn bibliography_named_path_resolves_against_source_dir() {
+        // The named `path:` form resolves a subdirectory-relative path the
+        // same way, exercising project-relative resolution explicitly.
+        let dir = unique_temp_dir("named");
+        let sub = dir.join("sources");
+        std::fs::create_dir_all(&sub).unwrap();
+        let bib = sub.join("refs.bib");
+        std::fs::write(&bib, "@book{a, title={A}}\n").unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(&source, "#bibliography(path: \"sources/refs.bib\")\n").unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Bibliography)
+            .expect("Bibliography node");
+        assert_eq!(
+            node.attributes.get("resolved_path"),
+            Some(&AttrValue::Str(bib.to_string_lossy().into_owned()))
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn missing_bibliography_path_emits_mos0040() {
+        // `#bibliography()` with no path is the same authoring mistake as
+        // `#image()`: a hard error, and no node leaks into the document.
+        let r = lower("#bibliography()\n", &PathBuf::from("/tmp/no-such.mos"));
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0040.code()),
+            "expected MOS0040, got {:?}",
+            r.diagnostics
+        );
+        assert!(!r.document.nodes().any(|n| n.kind == NodeKind::Bibliography));
+    }
+
+    #[test]
+    fn empty_bibliography_path_emits_mos0040() {
+        // `#bibliography("")` is a missing-path mistake, not an I/O failure;
+        // it surfaces as MOS0040 and never reaches the filesystem check.
+        let r = lower(
+            "#bibliography(\"\")\n",
+            &PathBuf::from("/tmp/whatever/main.mos"),
+        );
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0040.code()),
+            "expected MOS0040, got {:?}",
+            r.diagnostics
+        );
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0041.code()),
+            "empty path must not trip the filesystem warning: {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn missing_bibliography_source_warns_mos0041_but_keeps_node() {
+        // A declared-but-absent database is a non-fatal warning: the build
+        // still succeeds and the node is emitted with its resolved path so
+        // the later BibTeX slice can act on it.
+        let dir = unique_temp_dir("absent");
+        let source = dir.join("main.mos");
+        std::fs::write(&source, "#bibliography(\"nope.bib\")\n").unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(
+            !r.has_errors(),
+            "a missing source is a warning, not an error: {:?}",
+            r.diagnostics
+        );
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0041.code()),
+            "expected MOS0041, got {:?}",
+            r.diagnostics
+        );
+        let node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Bibliography)
+            .expect("Bibliography node still emitted on a missing source");
+        assert_eq!(
+            node.attributes.get("resolved_path"),
+            Some(&AttrValue::Str(
+                dir.join("nope.bib").to_string_lossy().into_owned()
+            ))
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn unknown_bibliography_arg_emits_mos0015() {
+        // Arguments beyond the path (e.g. a future `style:`) are rejected
+        // now so the directive's surface stays narrow until later slices
+        // grow it deliberately.
+        let dir = unique_temp_dir("unknownarg");
+        std::fs::write(dir.join("refs.bib"), "@book{a}\n").unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(&source, "#bibliography(\"refs.bib\", style: \"ieee\")\n").unwrap();
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0015.code()),
+            "expected MOS0015, got {:?}",
+            r.diagnostics
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
