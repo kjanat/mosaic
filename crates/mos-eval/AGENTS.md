@@ -17,25 +17,26 @@ Implemented:
 - Document metadata: title, author, language.
 - `#image` and `#figure` with PNG/JPEG decode and image attrs.
 - Label index, duplicate label diagnostics, unknown reference diagnostics.
-- Section numbering, generic reference text rewrite, and citation placeholder text.
+- Section numbering; figure numbering with kind-aware `Figure N` references and stamped `Figure N:`
+  caption labels; generic reference text rewrite and citation placeholder text.
 
 Not implemented yet:
 
 - User functions, `#let`, scripting, templates, bibliography resolution/rendering, citation
-  clusters, math/equation semantics, figure/equation numbering, package resolution, full fixpoint
-  over layout/page references.
+  clusters, math/equation semantics, equation numbering, package resolution, full fixpoint over
+  layout/page references.
 
 ## WHERE TO LOOK
 
-| Task          | Location                         | Notes                                   |
-| ------------- | -------------------------------- | --------------------------------------- |
-| Entry point   | `Evaluator::evaluate`            | Dispatch from syntax items.             |
-| Public helper | `lower`                          | Parse result to `LowerResult`.          |
-| `#set` schema | `src/set_schema.rs`              | Supported targets and args.             |
-| Images        | `src/image.rs` + lowerer helpers | Decode, attrs, path resolution.         |
-| Figures       | `lower_figure_directive`         | Image + caption semantic node.          |
-| References    | `src/resolve.rs`                 | Label index and generic reference text. |
-| Unit coercion | length helpers                   | `em` depends on current text size.      |
+| Task          | Location                         | Notes                                                     |
+| ------------- | -------------------------------- | --------------------------------------------------------- |
+| Entry point   | `Evaluator::evaluate`            | Dispatch from syntax items.                               |
+| Public helper | `lower`                          | Parse result to `LowerResult`.                            |
+| `#set` schema | `src/set_schema.rs`              | Supported targets and args.                               |
+| Images        | `src/image.rs` + lowerer helpers | Decode, attrs, path resolution.                           |
+| Figures       | `lower_figure_directive`         | Image + caption semantic node.                            |
+| References    | `src/resolve.rs`                 | Label index, section/figure numbering, figure-aware refs. |
+| Unit coercion | length helpers                   | `em` depends on current text size.                        |
 
 ## CONVENTIONS
 
@@ -43,6 +44,10 @@ Not implemented yet:
 - Keep layout and backend concerns out. Store semantic attrs only.
 - Resolve paths relative to the source file/project context used by existing code.
 - Image decode failures should prevent phantom figure output.
+- `resolve` is public and re-entrant — the fixpoint reruns it and future page-ref passes will too —
+  so every pass must be idempotent. Numbering overwrites; caption labelling re-derives `text` from a
+  preserved `caption_source` rather than re-reading the already-stamped text (which would nest
+  `Figure 1: Figure 1: …`).
 - Preserve diagnostics with useful spans; user input errors are not panics.
 - `current_text_size_pt` affects `em` conversion order. Be careful around `#set text(size: ...)`.
 

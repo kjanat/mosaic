@@ -1,21 +1,25 @@
 //! Cross-reference resolver (manifest §6 stage 3, MVP 1).
 //!
-//! Walks a lowered [`Document`] and, in two passes:
+//! Walks a lowered [`Document`] and, in three passes:
 //!
 //! 1. Assigns hierarchical `number` attributes to every [`NodeKind::Section`]
 //!    (`"1"`, `"1.1"`, `"1.2"`, `"2"`), keyed off the existing `level`
 //!    attribute.
-//! 2. Builds a `label → LabelTarget` index from every block carrying a
+//! 2. Assigns flat document-order `number` attributes to every
+//!    [`NodeKind::Figure`] (`"1"`, `"2"`, `"3"`) and stamps a visible
+//!    `"Figure N: …"` supplement label onto each captioned figure.
+//!    Figures are not hierarchical, so the counter never resets.
+//! 3. Builds a `label → LabelTarget` index from every block carrying a
 //!    `label` attribute, then rewrites each [`NodeKind::Reference`]'s
 //!    `text` attribute to its target's resolved string.
 //!
 //! The label index is *typed*: each entry records what kind of thing
-//! the label points at (section, figure, or generic block). Section
-//! references render from the section's captured counter; figure
-//! targets are recognised distinctly so future figure-numbering work
-//! (issue #46) has a hook, but figure display text still falls back to
-//! the bare label name for now. Generic targets (paragraphs, raw
-//! blocks, …) also render as the bare label, matching prior behavior.
+//! the label points at (section, figure, or generic block). A section
+//! reference renders as its bare hierarchical number (`"1.2"`); a figure
+//! reference renders kind-aware as `"Figure {n}"` from the figure's flat
+//! document-order number. Generic targets (paragraphs, raw blocks,
+//! images, …) carry no counter and render as the bare label, matching
+//! prior behavior.
 //!
 //! Diagnostics:
 //!
@@ -32,6 +36,14 @@
 //! driver shape mirrors the manifest's "internal fixpoint" anyway: the
 //! loop runs until no rewrite changes the document, with a hard cap to
 //! detect pathological cycles.
+//!
+//! Every pass is **idempotent**: `resolve` is public and re-entrant, so
+//! running it twice — inside the fixpoint above, or from a future
+//! page-reference stage — must reproduce the same document rather than
+//! compounding edits. Numbering overwrites attributes with the same
+//! value; caption labelling re-derives from a preserved source instead
+//! of re-reading the already-stamped text (which would nest the label
+//! into `"Figure 1: Figure 1: …"`).
 
 use std::collections::BTreeMap;
 
@@ -50,19 +62,14 @@ const MAX_FIXPOINT_ITERATIONS: u32 = 8;
 /// display text — references never re-traverse the document via the
 /// target [`mos_core::NodeId`] once the index is built, so the resolver can stay
 /// kind-aware without exposing a node-typed handle to callers.
-///
-/// Figure targets carry no extra data yet: figure numbering is pending
-/// on issue #46. The variant exists so the resolver can plumb figure
-/// labels through as a distinct kind today and the renderer can light
-/// up once counters arrive.
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum LabelTargetKind {
     /// Heading target with its resolved hierarchical number (e.g.
     /// `"1.2"`).
     Section { number: String },
-    /// Captioned figure. Numbering is deferred to issue #46; until
-    /// then references render as the bare label name.
-    Figure,
+    /// Captioned figure with its resolved flat document-order number
+    /// (e.g. `"3"`). References render kind-aware as `"Figure 3"`.
+    Figure { number: String },
     /// Anything else carrying a label (paragraph, raw block, image, …).
     Generic,
 }
@@ -84,6 +91,7 @@ struct LabelTarget {
 pub fn resolve(document: &mut Document) -> Vec<Diagnostic> {
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     number_sections(document);
+    number_figures(document);
     let labels = build_label_index(document, &mut diagnostics);
 
     for _ in 0..MAX_FIXPOINT_ITERATIONS {
@@ -123,25 +131,160 @@ fn number_sections(document: &mut Document) {
 }
 
 fn section_order(document: &Document) -> Vec<(mos_core::NodeId, u8)> {
-    // MVP 1 only sees flat `Section` siblings under the document root,
-    // but iterating via the children vector keeps this resilient if the
-    // lowerer starts nesting sections later.
-    let Some(root) = document.get(document.root) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for &child_id in &root.children {
-        if let Some(child) = document.get(child_id)
-            && child.kind == NodeKind::Section
-        {
-            let level = match child.attributes.get("level") {
+    // Scan every `Section` in document order via the shared
+    // `nodes_of_kind` collector (the same traversal figure numbering
+    // uses). MVP 1 only emits flat sections under the root, but walking
+    // the whole arena means nested sections would still be numbered in
+    // order if the lowerer ever produced them.
+    nodes_of_kind(document, NodeKind::Section)
+        .into_iter()
+        .map(|id| {
+            let level = match document.get(id).and_then(|n| n.attributes.get("level")) {
                 Some(AttrValue::Int(n)) => u8::try_from((*n).clamp(1, 255)).unwrap_or(1),
                 _ => 1,
             };
-            out.push((child_id, level));
+            (id, level)
+        })
+        .collect()
+}
+
+/// Assign flat, document-order numbers to every figure (`"1"`, `"2"`,
+/// `"3"`, …) and stamp a visible `"Figure N: …"` label onto each
+/// captioned figure. Figures are not hierarchical, so the counter never
+/// resets.
+///
+/// The label is baked into the caption text here — rather than rendered
+/// by the layout engine the way section numbers are — so a numbered
+/// figure shows its number with no backend changes; distinct label
+/// *styling* is left to the future float/caption pass. The supplement
+/// word comes from [`figure_supplement`] (the single localization seam)
+/// and is joined to the number with a non-breaking space (U+00A0). That
+/// space is *semantic generated text*, not layout policy in disguise: it
+/// encodes `Figure` and its counter as one cohesive label token — the
+/// same non-breaking space an author could type by hand — which the
+/// layout engine merely honors. The resolver makes no wrapping decision
+/// of its own; it just emits the token.
+///
+/// The pass is **idempotent**: the pre-label caption is preserved under a
+/// `caption_source` attribute and the visible `text` is always re-derived
+/// from it. Re-running the resolver — as the §6 stage 3 fixpoint and any
+/// future page-reference pass do — therefore re-stamps the same label
+/// instead of nesting `"Figure 1: Figure 1: …"`, and stays correct when a
+/// figure is re-numbered, because the source never carries a stale counter.
+fn number_figures(document: &mut Document) {
+    for (index, figure_id) in nodes_of_kind(document, NodeKind::Figure)
+        .into_iter()
+        .enumerate()
+    {
+        let number = (index + 1).to_string();
+        // Resolve the caption's *source* text before mutating: `get`
+        // borrows the document immutably, but the writes below need
+        // `get_mut`. Prefer the preserved `caption_source`; fall back to
+        // the live `text` only on the first pass, before any label has
+        // been stamped. Re-deriving the label from this stable source —
+        // never from the already-stamped `text` — is what keeps `resolve`
+        // idempotent across reruns.
+        let caption = figure_caption_text(document, figure_id).and_then(|text_id| {
+            read_str_attr(document, text_id, "caption_source")
+                .or_else(|| read_str_attr(document, text_id, "text"))
+                .map(|source| (text_id, source))
+        });
+
+        if let Some(node) = document.get_mut(figure_id) {
+            node.attributes
+                .insert("number".to_owned(), AttrValue::Str(number.clone()));
+        }
+
+        if let Some((text_id, caption_source)) = caption {
+            let labelled = format!("{}\u{00A0}{number}: {caption_source}", figure_supplement());
+            if let Some(node) = document.get_mut(text_id) {
+                // Stash the pre-label caption so later passes re-derive the
+                // label from the original instead of the stamped text.
+                node.attributes
+                    .insert("caption_source".to_owned(), AttrValue::Str(caption_source));
+                node.attributes
+                    .insert("text".to_owned(), AttrValue::Str(labelled));
+            }
         }
     }
-    out
+}
+
+/// Collect the ids of every node of `kind` in document order. `nodes()`
+/// iterates the arena by ascending [`mos_core::NodeId`] (allocation
+/// order), and the lowerer allocates nodes in source order, so the
+/// result is stable document order regardless of nesting depth. Shared
+/// by figure numbering and [`section_order`] so both passes agree on
+/// what "document order" means.
+fn nodes_of_kind(document: &Document, kind: NodeKind) -> Vec<mos_core::NodeId> {
+    document
+        .nodes()
+        .filter(|node| node.kind == kind)
+        .map(|node| node.id)
+        .collect()
+}
+
+/// Find the text node of a figure's caption, if it has one. The lowerer
+/// tags the caption paragraph with `role = "caption"` and gives it a
+/// single [`NodeKind::Text`] child carrying the caption string.
+fn figure_caption_text(
+    document: &Document,
+    figure_id: mos_core::NodeId,
+) -> Option<mos_core::NodeId> {
+    let figure = document.get(figure_id)?;
+    for &child_id in &figure.children {
+        let Some(child) = document.get(child_id) else {
+            continue;
+        };
+        let is_caption = child.kind == NodeKind::Paragraph
+            && matches!(child.attributes.get("role"), Some(AttrValue::Str(role)) if role == "caption");
+        if !is_caption {
+            continue;
+        }
+        for &grandchild_id in &child.children {
+            if document
+                .get(grandchild_id)
+                .is_some_and(|gc| gc.kind == NodeKind::Text)
+            {
+                return Some(grandchild_id);
+            }
+        }
+    }
+    None
+}
+
+/// Read a string attribute off a node by id, cloning it out. `None` if
+/// the node is missing or the attribute is absent or non-string.
+fn read_str_attr(document: &Document, id: mos_core::NodeId, key: &str) -> Option<String> {
+    match document.get(id)?.attributes.get(key) {
+        Some(AttrValue::Str(s)) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+/// The human-facing *supplement* word prefixed to a figure's number in
+/// generated reference and caption text — the "Figure" in "Figure 1".
+///
+/// This is the single localization seam for figure labels: LaTeX
+/// localizes it through babel's `\figurename`, Typst through
+/// `figure.supplement` under the document `text(lang: …)`. Mosaic
+/// captures a document `language` in metadata but does not yet thread it
+/// into the resolver, so this returns the English default; when that
+/// plumbing lands, a language-keyed lookup replaces the constant here
+/// without touching any call site. Sibling kinds (tables, equations,
+/// theorems) grow their own supplements alongside their numbering.
+fn figure_supplement() -> &'static str {
+    "Figure"
+}
+
+/// Read a node's resolved `number` attribute, or an empty string if it
+/// has none. Both section and figure numbering stash their counter
+/// there before the label index is built; an empty result means the
+/// numbering pass didn't reach the node (a resolver/lowerer bug).
+fn captured_number(node: &mos_core::Node) -> String {
+    match node.attributes.get("number") {
+        Some(AttrValue::Str(s)) => s.clone(),
+        _ => String::new(),
+    }
 }
 
 /// Classify a labelled node into a [`LabelTargetKind`]. Only nodes
@@ -149,14 +292,12 @@ fn section_order(document: &Document) -> Vec<(mos_core::NodeId, u8)> {
 /// filtered out by the caller.
 fn classify_target(node: &mos_core::Node) -> LabelTargetKind {
     match node.kind {
-        NodeKind::Section => {
-            let number = match node.attributes.get("number") {
-                Some(AttrValue::Str(s)) => s.clone(),
-                _ => String::new(),
-            };
-            LabelTargetKind::Section { number }
-        }
-        NodeKind::Figure => LabelTargetKind::Figure,
+        NodeKind::Section => LabelTargetKind::Section {
+            number: captured_number(node),
+        },
+        NodeKind::Figure => LabelTargetKind::Figure {
+            number: captured_number(node),
+        },
         _ => LabelTargetKind::Generic,
     }
 }
@@ -204,18 +345,25 @@ fn build_label_index(
 
 /// Compute the display string for a reference to `target`.
 ///
-/// Section targets render as their captured counter (e.g. `"1.2"`).
-/// Figure targets are recognised but have no counter yet (#46) and
-/// fall back to the bare label name, matching the generic fallback
-/// used for paragraphs and other unnumbered blocks.
+/// Section targets render as their bare hierarchical counter (e.g.
+/// `"1.2"`). Figure targets render kind-aware as `"Figure N"` — the
+/// localized [`figure_supplement`] joined to the figure's flat
+/// document-order counter with a non-breaking space (U+00A0): one
+/// cohesive label token the layout engine honors, not a wrapping
+/// decision made here (see [`number_figures`]). Generic targets
+/// (paragraphs, images, raw blocks) have no counter and render as the
+/// bare label.
 fn render_target(target: &LabelTarget, label: &str) -> String {
     match &target.kind {
         LabelTargetKind::Section { number } if !number.is_empty() => number.clone(),
-        // Section without a number is a lowerer bug, but fall back to
-        // the label name so the rendered output stays readable.
-        LabelTargetKind::Section { .. } | LabelTargetKind::Figure | LabelTargetKind::Generic => {
-            label.to_owned()
+        LabelTargetKind::Figure { number } if !number.is_empty() => {
+            format!("{}\u{00A0}{number}", figure_supplement())
         }
+        // A numbered target carrying an empty number is a resolver/lowerer
+        // bug; fall back to the label name so the output stays readable.
+        LabelTargetKind::Section { .. }
+        | LabelTargetKind::Figure { .. }
+        | LabelTargetKind::Generic => label.to_owned(),
     }
 }
 
@@ -567,11 +715,68 @@ mod tests {
         )
     }
 
+    /// Build a synthetic `Text` node under `parent` carrying `text`,
+    /// returning its id. The lowerer's caption text nodes have exactly
+    /// this shape.
+    fn make_text(doc: &mut Document, parent: mos_core::NodeId, text: &str) -> mos_core::NodeId {
+        let mut attrs = mos_core::AttrMap::new();
+        attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
+        doc.alloc_child(
+            parent,
+            mos_core::Node {
+                id: mos_core::NodeId::default(),
+                kind: NodeKind::Text,
+                span: SourceSpan::placeholder(doc.file.clone()),
+                content_hash: mos_core::ContentHash::default(),
+                style_id: mos_core::StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        )
+    }
+
+    /// Build a `Figure` (optionally labelled) carrying a `role = "caption"`
+    /// paragraph whose single `Text` child holds `caption`. Returns the
+    /// figure id and the caption text-node id so tests can assert on the
+    /// stamped label. Mirrors the shape the lowerer produces for a
+    /// captioned `#figure`.
+    fn make_captioned_figure(
+        doc: &mut Document,
+        label: Option<&str>,
+        caption: &str,
+    ) -> (mos_core::NodeId, mos_core::NodeId) {
+        let figure = make_node(doc, NodeKind::Figure, label, None);
+        let mut caption_attrs = mos_core::AttrMap::new();
+        caption_attrs.insert("role".to_owned(), AttrValue::Str("caption".to_owned()));
+        let caption_para = doc.alloc_child(
+            figure,
+            mos_core::Node {
+                id: mos_core::NodeId::default(),
+                kind: NodeKind::Paragraph,
+                span: SourceSpan::placeholder(doc.file.clone()),
+                content_hash: mos_core::ContentHash::default(),
+                style_id: mos_core::StyleId::default(),
+                children: Vec::new(),
+                attributes: caption_attrs,
+            },
+        );
+        let caption_text = make_text(doc, caption_para, caption);
+        (figure, caption_text)
+    }
+
+    /// Read a node's resolved `number` attribute as an owned string, or
+    /// the empty string if the node is missing or unnumbered. Test-only
+    /// convenience wrapping [`captured_number`] for the numbering
+    /// assertions below.
+    fn node_number(doc: &Document, id: mos_core::NodeId) -> String {
+        doc.get(id).map(captured_number).unwrap_or_default()
+    }
+
     #[test]
     fn classify_target_distinguishes_kinds() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         let section_id = make_node(&mut doc, NodeKind::Section, Some("sec"), Some("1.2"));
-        let figure_id = make_node(&mut doc, NodeKind::Figure, Some("fig"), None);
+        let figure_id = make_node(&mut doc, NodeKind::Figure, Some("fig"), Some("3"));
         let paragraph_id = make_node(&mut doc, NodeKind::Paragraph, Some("p"), None);
 
         assert_eq!(
@@ -583,7 +788,9 @@ mod tests {
 
         assert_eq!(
             doc.get(figure_id).map(classify_target),
-            Some(LabelTargetKind::Figure)
+            Some(LabelTargetKind::Figure {
+                number: "3".to_owned()
+            })
         );
 
         assert_eq!(
@@ -593,17 +800,16 @@ mod tests {
     }
 
     #[test]
-    fn figure_label_is_recognised_as_figure_target() {
+    fn figure_reference_renders_kind_aware_text() {
         // Constructs a Figure node with a label and a Reference to it,
-        // then runs the resolver directly. Verifies:
+        // then runs the full resolver. Verifies:
+        //   - the figure receives document-order number "1",
         //   - the figure label is found (no MOS0033),
-        //   - the reference's rewritten text falls back to the bare
-        //     label name, matching the "figure numbering is pending
-        //     #46" contract,
-        //   - the label index records the target as `Figure`, not
-        //     `Generic`.
+        //   - the label index records the target as a numbered `Figure`,
+        //   - the reference's rewritten text is kind-aware `"Figure 1"`,
+        //     not the bare label name.
         let mut doc = Document::new(PathBuf::from("test.mos"));
-        let _figure = make_node(&mut doc, NodeKind::Figure, Some("fig:one"), None);
+        let figure_id = make_node(&mut doc, NodeKind::Figure, Some("fig:one"), None);
         let ref_id = doc.alloc_child(
             doc.root,
             mos_core::Node {
@@ -625,19 +831,113 @@ mod tests {
         let diags = resolve(&mut doc);
         assert!(diags.is_empty(), "{diags:?}");
 
+        // The figure carries its resolved document-order number.
+        assert_eq!(
+            doc.get(figure_id).and_then(|f| f.attributes.get("number")),
+            Some(&AttrValue::Str("1".to_owned()))
+        );
+
         let mut sink: Vec<Diagnostic> = Vec::new();
         let index = build_label_index(&doc, &mut sink);
         assert!(sink.is_empty(), "{sink:?}");
         assert_eq!(
             index.get("fig:one").map(|target| &target.kind),
-            Some(&LabelTargetKind::Figure)
+            Some(&LabelTargetKind::Figure {
+                number: "1".to_owned()
+            })
         );
 
         assert_eq!(
             doc.get(ref_id).and_then(|r| r.attributes.get("text")),
-            Some(&AttrValue::Str("fig:one".to_owned())),
-            "figure references render as the bare label until figure numbering lands (#46)"
+            Some(&AttrValue::Str("Figure\u{00A0}1".to_owned())),
+            "a figure reference resolves to kind-aware `Figure N` text, joined by a non-breaking space"
         );
+    }
+
+    #[test]
+    fn captioned_figure_gets_supplement_label_stamped() {
+        // A figure with a `role = "caption"` paragraph gets its caption
+        // text prefixed with the non-breaking `Figure N: ` label so the
+        // number is visible; the figure itself is still numbered "1".
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let (figure, caption_text) = make_captioned_figure(&mut doc, Some("fig:a"), "A plot.");
+
+        let diags = resolve(&mut doc);
+        assert!(diags.is_empty(), "{diags:?}");
+
+        assert_eq!(node_number(&doc, figure), "1");
+        assert_eq!(
+            read_str_attr(&doc, caption_text, "text"),
+            Some("Figure\u{00A0}1: A plot.".to_owned()),
+            "the caption is prefixed with the non-breaking `Figure N: ` label"
+        );
+    }
+
+    #[test]
+    fn resolve_is_idempotent_for_captioned_figures() {
+        // `resolve` is public and re-entrant: the §6 stage 3 fixpoint and
+        // future page-reference passes rerun it. Stamping the caption
+        // label must therefore be idempotent — the second pass has to
+        // reproduce `"Figure 1: A plot."` byte-for-byte instead of
+        // re-reading the stamped text and nesting the label into
+        // `"Figure 1: Figure 1: A plot."`.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let (_figure, caption_text) = make_captioned_figure(&mut doc, Some("fig:a"), "A plot.");
+
+        let first = resolve(&mut doc);
+        assert!(first.is_empty(), "{first:?}");
+        let after_first = read_str_attr(&doc, caption_text, "text");
+        assert_eq!(after_first, Some("Figure\u{00A0}1: A plot.".to_owned()));
+
+        let second = resolve(&mut doc);
+        assert!(second.is_empty(), "{second:?}");
+        assert_eq!(
+            read_str_attr(&doc, caption_text, "text"),
+            after_first,
+            "a second resolve pass must not re-stamp the figure label"
+        );
+    }
+
+    #[test]
+    fn figures_get_sequential_document_order_numbers() {
+        // Three figures, one without a label, get flat document-order
+        // numbers. Numbering is unconditional: the unlabelled middle
+        // figure still advances the counter.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let first = make_node(&mut doc, NodeKind::Figure, Some("fig:a"), None);
+        let middle = make_node(&mut doc, NodeKind::Figure, None, None);
+        let last = make_node(&mut doc, NodeKind::Figure, Some("fig:c"), None);
+
+        let diags = resolve(&mut doc);
+        assert!(diags.is_empty(), "{diags:?}");
+
+        assert_eq!(node_number(&doc, first), "1");
+        assert_eq!(
+            node_number(&doc, middle),
+            "2",
+            "unlabelled figures are still numbered"
+        );
+        assert_eq!(node_number(&doc, last), "3");
+    }
+
+    #[test]
+    fn figures_and_sections_use_independent_counters() {
+        // Sections and figures count independently: a figure sandwiched
+        // between two sections is still figure "1", and the sections are
+        // "1"/"2" regardless of the figures interleaved with them.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let sec_one = make_node(&mut doc, NodeKind::Section, Some("sec:a"), None);
+        let fig_one = make_node(&mut doc, NodeKind::Figure, Some("fig:a"), None);
+        let sec_two = make_node(&mut doc, NodeKind::Section, Some("sec:b"), None);
+        let fig_two = make_node(&mut doc, NodeKind::Figure, Some("fig:b"), None);
+
+        let diags = resolve(&mut doc);
+        assert!(diags.is_empty(), "{diags:?}");
+
+        assert_eq!(node_number(&doc, sec_one), "1");
+        assert_eq!(node_number(&doc, sec_two), "2");
+        assert_eq!(node_number(&doc, fig_one), "1");
+        assert_eq!(node_number(&doc, fig_two), "2");
     }
 
     #[test]

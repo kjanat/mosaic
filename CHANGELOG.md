@@ -52,9 +52,17 @@ All notable changes to this project will be documented here. The format is based
   explicitly (https://github.com/kjanat/mosaic/issues/44): the label index is a typed
   `label → LabelTarget` map distinguishing `Section { number }`, `Figure`, and `Generic` targets
   instead of an untyped `label → NodeId` lookup. Section references still render from the captured
-  hierarchical counter; figure labels are recognised as a distinct kind but still render as the bare
-  label name until figure numbering lands (https://github.com/kjanat/mosaic/issues/46).
+  hierarchical counter; figure labels are recognised as a distinct kind (figure numbering and
+  kind-aware reference text land in https://github.com/kjanat/mosaic/issues/46, below).
   Duplicate-label (`MOS0030`) and unknown-reference (`MOS0033`) diagnostics are unchanged.
+- Resolver ([`crates/mos-eval/src/resolve.rs`][mos-eval:resolve.rs]) now numbers figures and
+  resolves figure references (https://github.com/kjanat/mosaic/issues/46): every `NodeKind::Figure`
+  receives a deterministic document-order `number` (`1`, `2`, `3`, …, counted independently of
+  section numbering); captioned figures get a visible `Figure N: …` label stamped onto the caption;
+  and an `@label` reference to a figure renders kind-aware as `Figure N` instead of the bare label.
+  The supplement word (`Figure`) comes from a single localization seam and is joined to the number
+  with a non-breaking space so the label never wraps off its number. Section references,
+  generic-label fallback, and duplicate/unknown diagnostics are unchanged.
 - Tree-sitter grammar ([`crates/tree-sitter-mosaic`][tree-sitter-mosaic]) realigned with the
   compiler's inline parser for the author-facing line-break controls
   (https://github.com/kjanat/mosaic/issues/26): `\\` now parses as a dedicated `hard_break` node and

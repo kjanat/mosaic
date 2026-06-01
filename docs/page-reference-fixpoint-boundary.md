@@ -23,9 +23,9 @@ into semantic resolution. Page references and layout-dependent stabilization bel
 
 - `@label` references resolve against a typed `label → LabelTarget` index built from the lowered
   `Document`.
-- Reference text uses a section target's captured number. Figure and generic targets render as the
-  bare label until their own layout-independent numbering lands. See
-  `paragraph_label_indexes_paragraph` and `figure_label_is_recognised_as_figure_target` in
+- Reference text uses a section target's captured hierarchical number and a figure target's captured
+  document-order number (rendered kind-aware as `Figure N`). Generic targets render as the bare
+  label. See `paragraph_label_indexes_paragraph` and `figure_reference_renders_kind_aware_text` in
   `crates/mos-eval/src/resolve.rs`.
 - Diagnostics: `MOS0030` duplicate label, `MOS0033` unknown reference.
 - Reference text is `text`-only. The resolver never reads layout output.

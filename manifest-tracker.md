@@ -172,11 +172,11 @@ example.
 - [x] Lower citation placeholders.
 - [ ] Make reference text kind-aware:
   - [ ] section references
-  - [ ] figure references
+  - [x] figure references
   - [ ] equation references
   - [ ] table references
   - [ ] theorem references
-- [ ] Resolve figure numbering.
+- [x] Resolve figure numbering.
 - [ ] Resolve equation numbering.
 - [ ] Resolve table numbering.
 - [ ] Resolve theorem numbering.
@@ -244,8 +244,11 @@ example.
 
 - [x] Support raster images.
 - [x] Support simple figures with captions.
-- [ ] Add figure numbering.
-- [ ] Add figure references with figure-aware labels.
+- [x] Add figure numbering.
+- [x] Add figure references with figure-aware labels.
+- [x] Stamp numbered figure captions (`Figure N: …`).
+- [ ] Style figure caption labels distinctly (currently baked into caption text).
+- [ ] Localize the figure supplement and caption separator to the document language.
 - [ ] Add anchored float placement.
 - [ ] Add allowed float positions.
 - [ ] Add float priority.
