@@ -466,6 +466,147 @@ async function rawItems(project: ProjectDefaults): Promise<ReadonlyArray<JsonRec
 	return items;
 }
 
+const PROJECT_ITEM_DETAILS_FRAGMENT = `fragment ProjectItemDetails on ProjectV2Item {
+  id
+  project { id }
+  fieldValues(first: 50) {
+    nodes {
+      __typename
+      ... on ProjectV2ItemFieldTextValue {
+        text
+        field { ... on ProjectV2FieldCommon { name } }
+      }
+      ... on ProjectV2ItemFieldNumberValue {
+        number
+        field { ... on ProjectV2FieldCommon { name } }
+      }
+      ... on ProjectV2ItemFieldDateValue {
+        date
+        field { ... on ProjectV2FieldCommon { name } }
+      }
+      ... on ProjectV2ItemFieldSingleSelectValue {
+        name
+        field { ... on ProjectV2FieldCommon { name } }
+      }
+      ... on ProjectV2ItemFieldIterationValue {
+        title
+        startDate
+        duration
+        field { ... on ProjectV2FieldCommon { name } }
+      }
+    }
+  }
+  content {
+    __typename
+    ... on DraftIssue { title body }
+    ... on Issue {
+      number
+      title
+      url
+      state
+      body
+      labels(first: 30) { nodes { name } }
+    }
+    ... on PullRequest {
+      number
+      title
+      url
+      state
+      body
+      labels(first: 30) { nodes { name } }
+    }
+  }
+}`;
+
+function projectItemProjectId(item: JsonRecord): string | null {
+	const project = recordValue(item, 'project');
+	return project === null ? null : stringField(project, 'id');
+}
+
+function itemForProject(items: ReadonlyArray<JsonRecord>, projectIdValue: string): JsonRecord | null {
+	return items.find((item) => projectItemProjectId(item) === projectIdValue) ?? null;
+}
+
+async function rawItemById(projectIdValue: string, itemId: string): Promise<JsonRecord | null> {
+	const query = `query($item: ID!) {
+    node(id: $item) {
+      ... on ProjectV2Item { ...ProjectItemDetails }
+    }
+  }
+
+  ${PROJECT_ITEM_DETAILS_FRAGMENT}`;
+	const data = await githubGraphql(query, { item: itemId });
+	const node = recordValue(data, 'node');
+	return node !== null && projectItemProjectId(node) === projectIdValue ? node : null;
+}
+
+async function rawIssueProjectItem(
+	projectIdValue: string,
+	repositoryDefaults: RepositoryDefaults,
+	issueNumber: number,
+): Promise<JsonRecord | null> {
+	const query = `query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        projectItems(first: 50) { nodes { ...ProjectItemDetails } }
+      }
+    }
+  }
+
+  ${PROJECT_ITEM_DETAILS_FRAGMENT}`;
+	const data = await githubGraphql(query, {
+		owner: repositoryDefaults.owner,
+		repo: repositoryDefaults.repository,
+		number: issueNumber,
+	});
+	const repository = recordValue(data, 'repository');
+	const issue = repository === null ? null : recordValue(repository, 'issue');
+	const projectItems = issue === null ? null : recordValue(issue, 'projectItems');
+	const items = projectItems === null ? [] : arrayField(projectItems, 'nodes').filter(isRecord);
+	return itemForProject(items, projectIdValue);
+}
+
+async function rawPullRequestProjectItem(
+	projectIdValue: string,
+	repositoryDefaults: RepositoryDefaults,
+	prNumber: number,
+): Promise<JsonRecord | null> {
+	const query = `query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        projectItems(first: 50) { nodes { ...ProjectItemDetails } }
+      }
+    }
+  }
+
+  ${PROJECT_ITEM_DETAILS_FRAGMENT}`;
+	const data = await githubGraphql(query, {
+		owner: repositoryDefaults.owner,
+		repo: repositoryDefaults.repository,
+		number: prNumber,
+	});
+	const repository = recordValue(data, 'repository');
+	const pr = repository === null ? null : recordValue(repository, 'pullRequest');
+	const projectItems = pr === null ? null : recordValue(pr, 'projectItems');
+	const items = projectItems === null ? [] : arrayField(projectItems, 'nodes').filter(isRecord);
+	return itemForProject(items, projectIdValue);
+}
+
+async function rawItemByTarget(project: ProjectDefaults, target: ProjectItemTarget): Promise<JsonRecord | null> {
+	const id = await projectId(project);
+	if (target.itemId !== '') {
+		return rawItemById(id, target.itemId);
+	}
+	const repository = repositoryDefaults(undefined, undefined);
+	if (target.issue > 0) {
+		return rawIssueProjectItem(id, repository, target.issue);
+	}
+	if (target.pr > 0) {
+		return rawPullRequestProjectItem(id, repository, target.pr);
+	}
+	return null;
+}
+
 async function rawFields(project: ProjectDefaults): Promise<ReadonlyArray<ProjectField>> {
 	const query = `query($owner: String!, $number: Int!) {
 		repositoryOwner(login: $owner) {
@@ -635,6 +776,18 @@ function findItemByTarget(
 		throw new Error('Project item has no item id');
 	}
 	return found;
+}
+
+async function projectItemByTarget(project: ProjectDefaults, target: ProjectItemTarget): Promise<ProjectItemSummary> {
+	try {
+		return findItemByTarget(await rawItems(project), target, project.projectNumber);
+	} catch (listError) {
+		const item = await rawItemByTarget(project, target);
+		if (item !== null) {
+			return summarizeItem(item);
+		}
+		throw listError;
+	}
 }
 
 function requireTarget(
@@ -1071,7 +1224,7 @@ async function setProjectFieldForTarget(
 ): Promise<JsonRecord> {
 	const [id, item, projectFields] = await Promise.all([
 		projectId(project),
-		rawItems(project).then((items) => findItemByTarget(items, target, project.projectNumber)),
+		projectItemByTarget(project, target),
 		rawFields(project),
 	]);
 	const field = findField(projectFields, fieldName);
@@ -1123,7 +1276,7 @@ async function setProjectFieldsForTarget(
 	}
 	const [id, item, projectFields] = await Promise.all([
 		projectId(project),
-		rawItems(project).then((items) => findItemByTarget(items, target, project.projectNumber)),
+		projectItemByTarget(project, target),
 		rawFields(project),
 	]);
 
@@ -1142,7 +1295,7 @@ async function setProjectFieldsForTarget(
 		results.push({ field: field.name, value, cleared: false });
 	}
 
-	const updatedItem = findItemByTarget(await rawItems(project), target, project.projectNumber);
+	const updatedItem = await projectItemByTarget(project, target);
 	return { project, item: updatedItem, updates: results };
 }
 
@@ -1231,7 +1384,7 @@ export const view = tool({
 		try {
 			const project = defaults(args.owner, args.projectNumber);
 			const target = requireTarget(args.itemId, args.issue, args.pr);
-			const item = findItemByTarget(await rawItems(project), target, project.projectNumber);
+			const item = await projectItemByTarget(project, target);
 			return success({ project, item });
 		} catch (error) {
 			return failure('github_project_view', error);
