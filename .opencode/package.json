@@ -1,0 +1,9 @@
+{
+	"name": "opencode",
+	"dependencies": {
+		"@octokit/graphql": "catalog:",
+		"@opencode-ai/plugin": "1.15.13",
+		"@types/bun": "catalog:",
+		"typescript": "catalog:"
+	}
+}

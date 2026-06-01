@@ -24,6 +24,7 @@
 	],
 	"scripts": {
 		"generate": "tree-sitter generate",
+		"highlight": "tree-sitter highlight",
 		"postinstall": "node scripts/ensure-native.mjs",
 		"parse": "tree-sitter parse",
 		"playground": "tree-sitter playground --quiet",
@@ -34,9 +35,9 @@
 		"node-gyp-build": "^4.8.4"
 	},
 	"devDependencies": {
-		"@types/node": "^25.7.0",
+		"@types/node": "catalog:",
 		"tree-sitter": "^0.25.0",
-		"tree-sitter-cli": "^0.26.0",
-		"typescript": "^6.0.3"
+		"tree-sitter-cli": "catalog:",
+		"typescript": "catalog:"
 	}
 }
