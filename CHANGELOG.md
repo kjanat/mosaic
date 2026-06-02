@@ -8,6 +8,18 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Citation Style Language (CSL) data foundations (manifest §12): a new [`mos-csl`][mos-csl] crate
+  adds (1) a typed CSL **item data model** — `Item`, `ItemType`, and the standard/number/date/name
+  variable vocabularies from CSL 1.0.2 Appendices III–IV, plus `Name` and `Date`/`DateParts`; (2) an
+  infallible **BibTeX → CSL mapping** (`item_from_bib_entry`, `library_from_bibliography`) from
+  `mos-bib` records (entry types map to the closest CSL type, recognised fields to variables,
+  unknown fields dropped, authors split on `and`, numeric `year` → `issued`); and (3) a **CSL XML
+  style parser** (`parse_style` → a typed `Style` AST covering `<style>`, `<info>`, `<citation>`,
+  `<bibliography>`, `<macro>`, and the rendering elements) built on `roxmltree`. Malformed styles
+  return a recoverable `CslParseError` carrying a byte offset and bridging to a `mos-core`
+  `Diagnostic` via the new `MOS0044` code. This is the data/parser foundation only: no CSL processor
+  (no style evaluation, formatting, sorting, disambiguation, or locales), no locale-file parsing,
+  and no `mos-eval` / layout / PDF wiring.
 - Minimal BibTeX record parser (https://github.com/kjanat/mosaic/issues/66): [`mos-bib`][mos-bib]
   gains `parse_bibtex(input: &str) -> Result<Bibliography, BibParseError>`, reading a BibTeX string
   into typed records — `Bibliography { entries }` keyed by citation key and
@@ -171,6 +183,7 @@ workflow.
 [ex:linebreaks]: examples/linebreaks/
 [mos-bib]: crates/mos-bib/
 [mos-cache]: crates/mos-cache/
+[mos-csl]: crates/mos-csl/
 [mos-eval]: crates/mos-eval/
 [mos-eval:resolve.rs]: crates/mos-eval/src/resolve.rs
 [mos-lsp]: crates/mos-lsp/

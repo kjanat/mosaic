@@ -76,7 +76,7 @@ Treat as aspirational/stub unless user asks:
 ├── manifest.md         # roadmap/design manifesto, partly ahead/stale
 ├── manifest-tracker.md # public roadmap/status derived from manifest + current code
 ├── README.md           # best quick status doc
-├── crates/             # 15 workspace crates + excluded Zed extension
+├── crates/             # 16 workspace crates + excluded Zed extension
 ├── docs/               # developer docs; diagnostic-codes.md mirrors the registry
 ├── examples/           # self-contained .mos projects + committed PDF snapshots
 ├── justfile            # fmt + example snapshot regeneration
