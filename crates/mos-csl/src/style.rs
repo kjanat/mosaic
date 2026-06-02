@@ -45,6 +45,28 @@ pub struct StyleOptions {
     pub page_range_format: Option<String>,
     pub demote_non_dropping_particle: Option<String>,
     pub initialize_with_hyphen: Option<String>,
+    /// Inheritable name options set as `<style>`-level defaults.
+    pub names: InheritableNameOptions,
+}
+
+/// Inheritable name options, valid on `<style>`, `<citation>`, `<bibliography>`,
+/// and `<name>`. Retained but not evaluated; a processor applies them as the
+/// cascading defaults a `<name>` element inherits.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InheritableNameOptions {
+    pub et_al_min: Option<String>,
+    pub et_al_use_first: Option<String>,
+    pub et_al_subsequent_min: Option<String>,
+    pub et_al_subsequent_use_first: Option<String>,
+    pub et_al_use_last: Option<String>,
+    /// `and="text"|"symbol"`.
+    pub and: Option<String>,
+    pub delimiter_precedes_et_al: Option<String>,
+    pub delimiter_precedes_last: Option<String>,
+    pub initialize: Option<String>,
+    pub initialize_with: Option<String>,
+    pub name_as_sort_order: Option<String>,
+    pub sort_separator: Option<String>,
 }
 
 /// The `class` of a CSL style.
@@ -114,17 +136,17 @@ pub struct Citation {
 /// `<citation>` options retained but not evaluated.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CitationOptions {
-    pub et_al_min: Option<String>,
-    pub et_al_use_first: Option<String>,
-    pub et_al_subsequent_min: Option<String>,
-    pub et_al_subsequent_use_first: Option<String>,
     pub collapse: Option<String>,
     pub cite_group_delimiter: Option<String>,
+    pub year_suffix_delimiter: Option<String>,
+    pub after_collapse_delimiter: Option<String>,
     pub disambiguate_add_names: Option<String>,
     pub disambiguate_add_givenname: Option<String>,
     pub disambiguate_add_year_suffix: Option<String>,
     pub givenname_disambiguation_rule: Option<String>,
     pub near_note_distance: Option<String>,
+    /// Inheritable name options set as `<citation>`-level defaults.
+    pub names: InheritableNameOptions,
 }
 
 /// The `<bibliography>` element: how bibliography entries are formatted.
@@ -144,16 +166,14 @@ pub struct Bibliography {
 /// `<bibliography>` options retained but not evaluated.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BibliographyOptions {
-    pub et_al_min: Option<String>,
-    pub et_al_use_first: Option<String>,
-    pub et_al_subsequent_min: Option<String>,
-    pub et_al_subsequent_use_first: Option<String>,
     pub hanging_indent: Option<String>,
     pub second_field_align: Option<String>,
     pub line_spacing: Option<String>,
     pub entry_spacing: Option<String>,
     pub subsequent_author_substitute: Option<String>,
     pub subsequent_author_substitute_rule: Option<String>,
+    /// Inheritable name options set as `<bibliography>`-level defaults.
+    pub names: InheritableNameOptions,
 }
 
 /// A `<layout>` — an ordered list of rendering elements plus common attributes.
@@ -273,6 +293,8 @@ pub struct DatePart {
     pub name: String,
     pub form: Option<String>,
     pub range_delimiter: Option<String>,
+    /// `strip-periods="true"|"false"` (only meaningful when `name="month"`).
+    pub strip_periods: Option<String>,
     pub common: Common,
 }
 
@@ -290,13 +312,14 @@ pub struct Names {
 }
 
 /// The `<name>` child of `<names>` (a subset of its many options).
+///
+/// `<name>` carries the same inheritable name options as `<style>`/`<citation>`/
+/// `<bibliography>` (including `and`), retained in [`options`](Self::options).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NameElement {
     pub form: Option<String>,
-    /// `and="text"|"symbol"`.
-    pub and: Option<String>,
     /// Name-rendering options retained for a future processor.
-    pub options: NameOptions,
+    pub options: InheritableNameOptions,
     /// `<name-part>` formatting overrides.
     pub parts: Vec<NamePart>,
     pub common: Common,
@@ -307,22 +330,6 @@ pub struct NameElement {
 pub struct NamePart {
     pub name: Option<String>,
     pub common: Common,
-}
-
-/// `<name>` options retained but not evaluated.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct NameOptions {
-    pub et_al_min: Option<String>,
-    pub et_al_use_first: Option<String>,
-    pub et_al_subsequent_min: Option<String>,
-    pub et_al_subsequent_use_first: Option<String>,
-    pub et_al_use_last: Option<String>,
-    pub delimiter_precedes_et_al: Option<String>,
-    pub delimiter_precedes_last: Option<String>,
-    pub initialize: Option<String>,
-    pub initialize_with: Option<String>,
-    pub name_as_sort_order: Option<String>,
-    pub sort_separator: Option<String>,
 }
 
 /// The `<et-al>` child of `<names>`.

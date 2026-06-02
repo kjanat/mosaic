@@ -46,11 +46,11 @@ Not implemented:
 - `parse_style` returns the local `CslParseError`, but bridge it to a `mos-core` `Diagnostic`
   (`MOS0044`) via `to_diagnostic` / `From`. Do not change the signature to return `CoreError`.
 - Use `BTreeMap` and ordered enums so output and tests stay deterministic.
-- Dispatch the parser on element *local* names (namespace-tolerant). Retain modelled rendering
-  options as raw strings; retain in-style `<locale>` as raw XML; ignore other unmodelled attributes;
-  error on unknown rendering elements. Keep namespace tolerance deliberate, but reject unsupported
-  style versions, `<text>` elements with multiple source selectors, and invalid `<choose>` branch
-  order.
+- Dispatch the parser on element *local* names, but require the `<style>` root to be in the CSL
+  namespace or none (reject a foreign namespace). Retain modelled rendering options as raw strings;
+  retain in-style `<locale>` as raw XML; ignore other unmodelled attributes; error on unknown
+  rendering elements. Reject unsupported style versions, `<text>` elements with multiple source
+  selectors, and invalid `<choose>` branch order.
 - Tests return `()` and use `expect`/`expect_err` — the workspace enables
   `clippy::panic_in_result_fn`, so `Result`-returning tests with `assert!` are clippy errors.
 

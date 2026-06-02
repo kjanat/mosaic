@@ -20,6 +20,8 @@ pub enum CslParseErrorKind {
     MalformedXml(String),
     /// The root element is not `<style>`.
     UnexpectedRoot(String),
+    /// The `<style>` root is in a namespace other than the CSL namespace.
+    ForeignNamespace(String),
     /// `<style>` lacks the required `version` attribute.
     MissingVersion,
     /// `<style>` lacks the required `class` attribute.
@@ -49,6 +51,12 @@ impl CslParseErrorKind {
             Self::UnexpectedRoot(name) => {
                 write!(f, "expected a <style> root element, found <{name}>")
             }
+            Self::ForeignNamespace(namespace) => {
+                write!(
+                    f,
+                    "<style> is in an unsupported namespace `{namespace}` (expected the CSL namespace or none)"
+                )
+            }
             Self::MissingVersion => {
                 f.write_str("<style> is missing the required `version` attribute")
             }
@@ -60,7 +68,10 @@ impl CslParseErrorKind {
                 )
             }
             Self::UnsupportedVersion(version) => {
-                write!(f, "unsupported CSL version `{version}` (expected `1.0`)")
+                write!(
+                    f,
+                    "unsupported CSL version `{version}` (expected `1.0` or a `1.0.x` release)"
+                )
             }
             Self::MissingMacroName => {
                 f.write_str("<macro> is missing the required `name` attribute")
@@ -177,6 +188,10 @@ mod tests {
                 "CSL parse error at byte 7: expected a <style> root element, found <not-style>",
             ),
             (
+                CslParseErrorKind::ForeignNamespace("urn:not-csl".to_owned()),
+                "CSL parse error at byte 7: <style> is in an unsupported namespace `urn:not-csl` (expected the CSL namespace or none)",
+            ),
+            (
                 CslParseErrorKind::MissingVersion,
                 "CSL parse error at byte 7: <style> is missing the required `version` attribute",
             ),
@@ -190,7 +205,7 @@ mod tests {
             ),
             (
                 CslParseErrorKind::UnsupportedVersion("1.1".to_owned()),
-                "CSL parse error at byte 7: unsupported CSL version `1.1` (expected `1.0`)",
+                "CSL parse error at byte 7: unsupported CSL version `1.1` (expected `1.0` or a `1.0.x` release)",
             ),
             (
                 CslParseErrorKind::MissingMacroName,

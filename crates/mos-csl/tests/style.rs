@@ -66,18 +66,27 @@ fn parses_a_full_style() {
 }
 
 #[test]
-fn accepts_missing_or_foreign_namespaces_by_local_name() {
+fn accepts_csl_or_absent_namespace_but_rejects_foreign() {
     let no_namespace = parse_style(
         r#"<style version="1.0" class="in-text"><citation><layout><text value="ok"/></layout></citation></style>"#,
     )
     .expect("style without namespace should parse");
     assert!(no_namespace.citation.is_some());
 
+    let csl_namespace = parse_style(
+        r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text"><citation><layout><text value="ok"/></layout></citation></style>"#,
+    )
+    .expect("style in the CSL namespace should parse");
+    assert!(csl_namespace.citation.is_some());
+
     let foreign_namespace = parse_style(
         r#"<x:style xmlns:x="urn:not-csl" version="1.0" class="in-text"><x:citation><x:layout><x:text value="ok"/></x:layout></x:citation></x:style>"#,
     )
-    .expect("foreign namespace should parse by local names");
-    assert!(foreign_namespace.citation.is_some());
+    .expect_err("foreign namespace should be rejected");
+    assert!(matches!(
+        foreign_namespace.kind(),
+        CslParseErrorKind::ForeignNamespace(namespace) if namespace == "urn:not-csl"
+    ));
 }
 
 #[test]
@@ -122,6 +131,10 @@ fn requires_version_and_class() {
         bad_version.kind(),
         CslParseErrorKind::UnsupportedVersion(version) if version == "1.1"
     ));
+
+    let point_release = parse_style(r#"<style version="1.0.2" class="in-text"/>"#)
+        .expect("a 1.0.x point release should parse");
+    assert_eq!(point_release.version, "1.0.2");
 }
 
 #[test]
@@ -139,7 +152,7 @@ fn rejects_an_unsupported_element() {
 #[test]
 fn parses_rendering_variants_sort_and_conditions() {
     let style = parse_style(
-        r#"<style version="1.0" class="note" page-range-format="expanded" demote-non-dropping-particle="sort-only" initialize-with-hyphen="false">
+        r#"<style version="1.0" class="note" page-range-format="expanded" demote-non-dropping-particle="sort-only" initialize-with-hyphen="false" et-al-min="2" and="text" name-as-sort-order="first" sort-separator=", ">
           <info>
             <id>http://example.org/styles/dependent-demo</id>
             <title>Dependent Demo</title>
@@ -155,7 +168,7 @@ fn parses_rendering_variants_sort_and_conditions() {
           <macro name="term-macro">
             <text term="editor" form="short" plural="true"/>
           </macro>
-          <citation et-al-min="3" et-al-use-first="1" et-al-subsequent-min="4" et-al-subsequent-use-first="2" collapse="year" cite-group-delimiter=", " disambiguate-add-names="true" disambiguate-add-givenname="true" disambiguate-add-year-suffix="true" givenname-disambiguation-rule="primary-name" near-note-distance="5">
+          <citation et-al-min="3" et-al-use-first="1" et-al-subsequent-min="4" et-al-subsequent-use-first="2" name-as-sort-order="all" collapse="year" cite-group-delimiter=", " year-suffix-delimiter="; " after-collapse-delimiter=". " disambiguate-add-names="true" disambiguate-add-givenname="true" disambiguate-add-year-suffix="true" givenname-disambiguation-rule="primary-name" near-note-distance="5">
             <sort>
               <key macro="term-macro" sort="descending" names-min="3" names-use-first="1" names-use-last="true"/>
               <key variable="issued"/>
@@ -163,7 +176,7 @@ fn parses_rendering_variants_sort_and_conditions() {
             <layout prefix="[" suffix="]" delimiter=", " font-style="italic" font-variant="small-caps" font-weight="bold" text-decoration="underline" vertical-align="sup" text-case="capitalize-first" display="block">
               <number variable="volume" form="roman" prefix="v"/>
               <date variable="issued" form="text" date-parts="year-month-day">
-                <date-part name="month" form="short" range-delimiter="/" suffix=" "/>
+                <date-part name="month" form="short" range-delimiter="/" strip-periods="true" suffix=" "/>
                 <date-part name="year"/>
               </date>
               <names variable="author editor" delimiter=", ">
@@ -202,6 +215,13 @@ fn parses_rendering_variants_sort_and_conditions() {
         style.options.initialize_with_hyphen.as_deref(),
         Some("false")
     );
+    assert_eq!(style.options.names.et_al_min.as_deref(), Some("2"));
+    assert_eq!(style.options.names.and.as_deref(), Some("text"));
+    assert_eq!(
+        style.options.names.name_as_sort_order.as_deref(),
+        Some("first")
+    );
+    assert_eq!(style.options.names.sort_separator.as_deref(), Some(", "));
     assert_eq!(
         style.info.id.as_deref(),
         Some("http://example.org/styles/dependent-demo")
@@ -260,15 +280,30 @@ fn parses_rendering_variants_sort_and_conditions() {
     );
 
     let citation = style.citation.expect("citation present");
-    assert_eq!(citation.options.et_al_min.as_deref(), Some("3"));
-    assert_eq!(citation.options.et_al_use_first.as_deref(), Some("1"));
-    assert_eq!(citation.options.et_al_subsequent_min.as_deref(), Some("4"));
+    assert_eq!(citation.options.names.et_al_min.as_deref(), Some("3"));
+    assert_eq!(citation.options.names.et_al_use_first.as_deref(), Some("1"));
     assert_eq!(
-        citation.options.et_al_subsequent_use_first.as_deref(),
+        citation.options.names.et_al_subsequent_min.as_deref(),
+        Some("4")
+    );
+    assert_eq!(
+        citation.options.names.et_al_subsequent_use_first.as_deref(),
         Some("2")
+    );
+    assert_eq!(
+        citation.options.names.name_as_sort_order.as_deref(),
+        Some("all")
     );
     assert_eq!(citation.options.collapse.as_deref(), Some("year"));
     assert_eq!(citation.options.cite_group_delimiter.as_deref(), Some(", "));
+    assert_eq!(
+        citation.options.year_suffix_delimiter.as_deref(),
+        Some("; ")
+    );
+    assert_eq!(
+        citation.options.after_collapse_delimiter.as_deref(),
+        Some(". ")
+    );
     assert_eq!(
         citation.options.disambiguate_add_names.as_deref(),
         Some("true")
@@ -340,6 +375,7 @@ fn parses_rendering_variants_sort_and_conditions() {
     assert_eq!(date.parts[0].name, "month");
     assert_eq!(date.parts[0].form.as_deref(), Some("short"));
     assert_eq!(date.parts[0].range_delimiter.as_deref(), Some("/"));
+    assert_eq!(date.parts[0].strip_periods.as_deref(), Some("true"));
     assert_eq!(date.parts[0].common.suffix.as_deref(), Some(" "));
     assert_eq!(date.parts[1].name, "year");
 
@@ -354,7 +390,7 @@ fn parses_rendering_variants_sort_and_conditions() {
     );
     let name = names.name.as_ref().expect("name child");
     assert_eq!(name.form.as_deref(), Some("short"));
-    assert_eq!(name.and.as_deref(), Some("symbol"));
+    assert_eq!(name.options.and.as_deref(), Some("symbol"));
     assert_eq!(name.options.et_al_min.as_deref(), Some("3"));
     assert_eq!(name.options.et_al_use_first.as_deref(), Some("1"));
     assert_eq!(name.options.et_al_subsequent_min.as_deref(), Some("4"));
@@ -456,14 +492,21 @@ fn parses_rendering_variants_sort_and_conditions() {
     );
 
     let bibliography = style.bibliography.expect("bibliography present");
-    assert_eq!(bibliography.options.et_al_min.as_deref(), Some("5"));
-    assert_eq!(bibliography.options.et_al_use_first.as_deref(), Some("2"));
+    assert_eq!(bibliography.options.names.et_al_min.as_deref(), Some("5"));
     assert_eq!(
-        bibliography.options.et_al_subsequent_min.as_deref(),
+        bibliography.options.names.et_al_use_first.as_deref(),
+        Some("2")
+    );
+    assert_eq!(
+        bibliography.options.names.et_al_subsequent_min.as_deref(),
         Some("6")
     );
     assert_eq!(
-        bibliography.options.et_al_subsequent_use_first.as_deref(),
+        bibliography
+            .options
+            .names
+            .et_al_subsequent_use_first
+            .as_deref(),
         Some("3")
     );
     assert_eq!(bibliography.options.hanging_indent.as_deref(), Some("true"));

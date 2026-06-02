@@ -45,10 +45,10 @@ assert_eq!(style.class, StyleClass::InText);
   (affixes, formatting, `delimiter`, `text-case`, …), `<name-part>` formatting, and
   retained-but-not-evaluated style, citation, bibliography, name, sort-key, date-part, and label
   rendering options.
-- Leniency decisions: dispatch is on element local names, so the CSL XML namespace, no namespace, or
-  a foreign namespace is tolerated; `version` must be `1.0`; `<text>` must select exactly one of
-  `variable`/`macro`/`term`/`value`; `<choose>` must use `<if>`, then `<else-if>`, then optional
-  `<else>` order.
+- Leniency decisions: dispatch is on element local names, and the `<style>` root must be in the CSL
+  namespace or none (a foreign namespace is rejected); `version` must be `1.0` or a `1.0.x` release;
+  `<text>` must select exactly one of `variable`/`macro`/`term`/`value`; `<choose>` must use `<if>`,
+  then `<else-if>`, then optional `<else>` order.
 - Useful, panic-free errors: malformed XML, wrong root, missing/unsupported `version`, missing or
   unknown `class`, a `<macro>` without a `name`, a `<citation>`/`<bibliography>` without a
   `<layout>`, a `<text>` with no or multiple sources, invalid `<choose>` order, or an unsupported

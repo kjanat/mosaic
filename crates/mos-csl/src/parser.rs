@@ -1,9 +1,11 @@
 //! Parse a CSL 1.0.2 style document into the typed [`Style`] AST.
 //!
-//! A read-only [`roxmltree`] DOM walk, dispatching on element local names (so
-//! it tolerates CSL, absent, or foreign namespaces). It models the structure and
-//! common attributes; unmodelled attributes are ignored, unknown rendering
-//! elements are a [`CslParseError`], and in-style `<locale>` blocks are retained
+//! A read-only [`roxmltree`] DOM walk, dispatching on element local names.
+//! The `<style>` root must be in the CSL namespace or none
+//! (an unnamespaced root is tolerated; a foreign namespace is rejected).
+//!
+//! It models the structure and common attributes; unmodelled attributes are ignored,
+//! unknown rendering elements are a [`CslParseError`], and in-style `<locale>` blocks are retained
 //! as raw XML for a later locale slice.
 
 use std::collections::BTreeMap;
@@ -14,9 +16,13 @@ use crate::error::{CslParseError, CslParseErrorKind};
 use crate::style::{
     Bibliography, BibliographyOptions, Branch, Choose, Citation, CitationOptions, Common,
     Conditions, DateElement, DatePart, Element, EtAl, Group, Info, InfoCategory, InfoContributor,
-    InfoLink, Label, Layout, LocaleBlock, Match, NameElement, NameOptions, NamePart, Names, Number,
-    SortKey, SortKeyOptions, SortTarget, Style, StyleClass, StyleOptions, Text, TextSource,
+    InfoLink, InheritableNameOptions, Label, Layout, LocaleBlock, Match, NameElement, NamePart,
+    Names, Number, SortKey, SortKeyOptions, SortTarget, Style, StyleClass, StyleOptions, Text,
+    TextSource,
 };
+
+/// The CSL XML namespace. A namespaced `<style>` root must use it.
+const CSL_NAMESPACE: &str = "http://purl.org/net/xbiblio/csl";
 
 /// Parse `input` as a CSL 1.0.2 style.
 ///
@@ -54,11 +60,25 @@ pub fn parse_style(input: &str) -> Result<Style, CslParseError> {
         let name = root.tag_name().name().to_owned();
         return Err(err_at(root, CslParseErrorKind::UnexpectedRoot(name)));
     }
+    // A namespaced root must use the CSL namespace; an unnamespaced root is
+    // tolerated (hand-authored styles routinely omit it). A foreign namespace
+    // is rejected — element local names alone would otherwise accept non-CSL XML.
+    if let Some(namespace) = root.tag_name().namespace()
+        && namespace != CSL_NAMESPACE
+    {
+        return Err(err_at(
+            root,
+            CslParseErrorKind::ForeignNamespace(namespace.to_owned()),
+        ));
+    }
 
     let version = root
         .attribute("version")
         .ok_or_else(|| err_at(root, CslParseErrorKind::MissingVersion))?;
-    if version != "1.0" {
+    // Accept the `1.0` schema major and any `1.0.x` point release; the version
+    // attribute of real CSL 1.0.x styles is almost always `1.0`, but tolerate an
+    // explicit patch suffix rather than reject otherwise-valid styles.
+    if version != "1.0" && !version.starts_with("1.0.") {
         return Err(err_at(
             root,
             CslParseErrorKind::UnsupportedVersion(version.to_owned()),
@@ -322,6 +342,7 @@ fn parse_date(node: Node<'_, '_>) -> DateElement {
                 name: attr(child, "name").unwrap_or_default(),
                 form: attr(child, "form"),
                 range_delimiter: attr(child, "range-delimiter"),
+                strip_periods: attr(child, "strip-periods"),
                 common: parse_common(child),
             });
         }
@@ -389,8 +410,7 @@ fn parse_name_element(node: Node<'_, '_>) -> NameElement {
 
     NameElement {
         form: attr(node, "form"),
-        and: attr(node, "and"),
-        options: parse_name_options(node),
+        options: parse_inheritable_name_options(node),
         parts,
         common: parse_common(node),
     }
@@ -501,37 +521,34 @@ fn parse_style_options(node: Node<'_, '_>) -> StyleOptions {
         page_range_format: attr(node, "page-range-format"),
         demote_non_dropping_particle: attr(node, "demote-non-dropping-particle"),
         initialize_with_hyphen: attr(node, "initialize-with-hyphen"),
+        names: parse_inheritable_name_options(node),
     }
 }
 
 fn parse_citation_options(node: Node<'_, '_>) -> CitationOptions {
     CitationOptions {
-        et_al_min: attr(node, "et-al-min"),
-        et_al_use_first: attr(node, "et-al-use-first"),
-        et_al_subsequent_min: attr(node, "et-al-subsequent-min"),
-        et_al_subsequent_use_first: attr(node, "et-al-subsequent-use-first"),
         collapse: attr(node, "collapse"),
         cite_group_delimiter: attr(node, "cite-group-delimiter"),
+        year_suffix_delimiter: attr(node, "year-suffix-delimiter"),
+        after_collapse_delimiter: attr(node, "after-collapse-delimiter"),
         disambiguate_add_names: attr(node, "disambiguate-add-names"),
         disambiguate_add_givenname: attr(node, "disambiguate-add-givenname"),
         disambiguate_add_year_suffix: attr(node, "disambiguate-add-year-suffix"),
         givenname_disambiguation_rule: attr(node, "givenname-disambiguation-rule"),
         near_note_distance: attr(node, "near-note-distance"),
+        names: parse_inheritable_name_options(node),
     }
 }
 
 fn parse_bibliography_options(node: Node<'_, '_>) -> BibliographyOptions {
     BibliographyOptions {
-        et_al_min: attr(node, "et-al-min"),
-        et_al_use_first: attr(node, "et-al-use-first"),
-        et_al_subsequent_min: attr(node, "et-al-subsequent-min"),
-        et_al_subsequent_use_first: attr(node, "et-al-subsequent-use-first"),
         hanging_indent: attr(node, "hanging-indent"),
         second_field_align: attr(node, "second-field-align"),
         line_spacing: attr(node, "line-spacing"),
         entry_spacing: attr(node, "entry-spacing"),
         subsequent_author_substitute: attr(node, "subsequent-author-substitute"),
         subsequent_author_substitute_rule: attr(node, "subsequent-author-substitute-rule"),
+        names: parse_inheritable_name_options(node),
     }
 }
 
@@ -543,13 +560,14 @@ fn parse_sort_key_options(node: Node<'_, '_>) -> SortKeyOptions {
     }
 }
 
-fn parse_name_options(node: Node<'_, '_>) -> NameOptions {
-    NameOptions {
+fn parse_inheritable_name_options(node: Node<'_, '_>) -> InheritableNameOptions {
+    InheritableNameOptions {
         et_al_min: attr(node, "et-al-min"),
         et_al_use_first: attr(node, "et-al-use-first"),
         et_al_subsequent_min: attr(node, "et-al-subsequent-min"),
         et_al_subsequent_use_first: attr(node, "et-al-subsequent-use-first"),
         et_al_use_last: attr(node, "et-al-use-last"),
+        and: attr(node, "and"),
         delimiter_precedes_et_al: attr(node, "delimiter-precedes-et-al"),
         delimiter_precedes_last: attr(node, "delimiter-precedes-last"),
         initialize: attr(node, "initialize"),
