@@ -12,8 +12,9 @@ keywords.workspace     = true
 categories.workspace   = true
 
 [dependencies]
-mos-bib.workspace  = true
-mos-core.workspace = true
+mos-bib.workspace   = true
+mos-core.workspace  = true
+roxmltree.workspace = true
 
 [lints]
 workspace = true
