@@ -17,12 +17,12 @@ use std::fmt;
 macro_rules! csl_vocab {
     (
         $(#[$meta:meta])*
-        $vis:vis enum $name:ident { $($variant:ident => $text:literal),+ $(,)? }
+        $vis:vis enum $name:ident { $($(#[$variant_meta:meta])* $variant:ident => $text:literal),+ $(,)? }
     ) => {
         $(#[$meta])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
         $vis enum $name {
-            $($variant),+
+            $($(#[$variant_meta])* $variant),+
         }
 
         impl $name {
@@ -135,6 +135,8 @@ csl_vocab! {
         Dimensions => "dimensions",
         Division => "division",
         Doi => "DOI",
+        /// Deprecated CSL standard variable retained for spec coverage.
+        Event => "event",
         EventTitle => "event-title",
         EventPlace => "event-place",
         Genre => "genre",
@@ -381,9 +383,14 @@ mod tests {
         assert_eq!(ItemType::Webpage.to_string(), "webpage");
 
         assert_eq!(StandardVariable::Doi.as_str(), "DOI");
+        assert_eq!(StandardVariable::Event.as_str(), "event");
         assert_eq!(
             StandardVariable::from_csl("container-title"),
             Some(StandardVariable::ContainerTitle)
+        );
+        assert_eq!(
+            StandardVariable::from_csl("event"),
+            Some(StandardVariable::Event)
         );
         assert_eq!(StandardVariable::from_csl("doi"), None);
         assert_eq!(StandardVariable::Url.to_string(), "URL");

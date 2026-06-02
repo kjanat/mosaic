@@ -66,6 +66,21 @@ fn parses_a_full_style() {
 }
 
 #[test]
+fn accepts_missing_or_foreign_namespaces_by_local_name() {
+    let no_namespace = parse_style(
+        r#"<style version="1.0" class="in-text"><citation><layout><text value="ok"/></layout></citation></style>"#,
+    )
+    .expect("style without namespace should parse");
+    assert!(no_namespace.citation.is_some());
+
+    let foreign_namespace = parse_style(
+        r#"<x:style xmlns:x="urn:not-csl" version="1.0" class="in-text"><x:citation><x:layout><x:text value="ok"/></x:layout></x:citation></x:style>"#,
+    )
+    .expect("foreign namespace should parse by local names");
+    assert!(foreign_namespace.citation.is_some());
+}
+
+#[test]
 fn rejects_malformed_xml() {
     let err = parse_style(r#"<style version="1.0" class="in-text">"#).expect_err("unclosed root");
     assert!(matches!(err.kind(), CslParseErrorKind::MalformedXml(_)));
@@ -99,6 +114,13 @@ fn requires_version_and_class() {
     assert!(matches!(
         bad_class.kind(),
         CslParseErrorKind::UnknownClass(_)
+    ));
+
+    let bad_version =
+        parse_style(r#"<style version="1.1" class="in-text"/>"#).expect_err("unsupported version");
+    assert!(matches!(
+        bad_version.kind(),
+        CslParseErrorKind::UnsupportedVersion(version) if version == "1.1"
     ));
 }
 
@@ -480,6 +502,15 @@ fn text_requires_a_source() {
 }
 
 #[test]
+fn text_rejects_multiple_sources() {
+    let err = parse_style(
+        r#"<style version="1.0" class="in-text"><citation><layout><text variable="title" macro="title"/></layout></citation></style>"#,
+    )
+    .expect_err("text with multiple sources");
+    assert_eq!(err.kind(), &CslParseErrorKind::TextWithMultipleSources);
+}
+
+#[test]
 fn citation_requires_a_layout() {
     let err = parse_style(r#"<style version="1.0" class="in-text"><citation/></style>"#)
         .expect_err("citation without a layout");
@@ -528,6 +559,30 @@ fn rejects_unsupported_children_in_containers() {
         choose_child.kind(),
         CslParseErrorKind::UnsupportedElement(name) if name == "foo"
     ));
+}
+
+#[test]
+fn choose_requires_schema_branch_order() {
+    let no_if = parse_style(
+        r#"<style version="1.0" class="in-text"><citation><layout><choose><else><text value="x"/></else></choose></layout></citation></style>"#,
+    )
+    .expect_err("choose without if");
+    assert_eq!(no_if.kind(), &CslParseErrorKind::InvalidChooseOrder);
+
+    let else_if_after_else = parse_style(
+        r#"<style version="1.0" class="in-text"><citation><layout><choose><if variable="title"><text value="x"/></if><else><text value="y"/></else><else-if variable="DOI"><text value="z"/></else-if></choose></layout></citation></style>"#,
+    )
+    .expect_err("else-if after else");
+    assert_eq!(
+        else_if_after_else.kind(),
+        &CslParseErrorKind::InvalidChooseOrder
+    );
+
+    let second_if = parse_style(
+        r#"<style version="1.0" class="in-text"><citation><layout><choose><if variable="title"><text value="x"/></if><if variable="DOI"><text value="y"/></if></choose></layout></citation></style>"#,
+    )
+    .expect_err("second if branch");
+    assert_eq!(second_if.kind(), &CslParseErrorKind::InvalidChooseOrder);
 }
 
 #[test]
