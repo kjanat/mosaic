@@ -36,6 +36,7 @@ Inline runs:
 - `` `code` ``.
 - `@label` references.
 - `[@key]` citations.
+- `\\` hard line breaks, `\-` soft-hyphen shorthand, and literal U+00A0 NBSP preservation.
 
 Labels:
 

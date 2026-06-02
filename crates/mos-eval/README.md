@@ -12,7 +12,8 @@ cross-references currently supported by `mos check` / `mos build`.
 - Build `mos_core` nodes for headings, paragraphs, inline spans, raw/code blocks, lists, images,
   figures, and `#set` directives.
 - Preserve source spans and emit user-facing diagnostics instead of panicking on bad documents.
-- Run reference resolution through `resolve`, assigning section numbers and rewriting `@label` text.
+- Run reference resolution through `resolve`, assigning section/figure numbers and rewriting
+  `@label` text.
 - Capture document metadata from `#set document(...)` for downstream emitters.
 
 ## Public API
@@ -44,6 +45,10 @@ sizes, or leading values produce warnings, not hard errors.
 ## Resolution Behavior
 
 - Sections receive hierarchical `number` attributes such as `1`, `1.1`, and `2`.
+- Figures receive flat `number` attributes such as `1`, `2`, and `3`.
+- References to figures render as kind-aware `Figure N` text.
+- Captioned figures get a visible `Figure N: ...` prefix stamped onto the caption text, preserving
+  the original caption source so repeated resolution is idempotent.
 - Any non-reference node with a `label` attribute can be a reference target.
 - Duplicate labels emit `MOS0030`; the first declaration wins.
 - Unknown references emit `MOS0033`; placeholder text remains visible in output.
@@ -112,7 +117,7 @@ See @intro.
 - No user functions, `#let`, templates, or scripting runtime.
 - No bibliography resolution/rendering, citation clusters, math/equation semantics,
   theorem/footnote/index/glossary handling.
-- No figure/equation numbering beyond generic label lookup.
+- No equation numbering beyond generic label lookup.
 - No page references, TOC resolution, or layout-dependent fixpoint.
 - No package resolution, registry access, persistent cache, or project-output semantics.
 - No image defaults application from `#set image(...)` to later bare images yet.

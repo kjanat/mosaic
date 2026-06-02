@@ -15,6 +15,8 @@ non-goals stays unbuilt.
 - After every open/change the server sends `textDocument/publishDiagnostics` with the compiler
   diagnostics for that document; close clears them.
 - Unknown requests get a JSON-RPC `MethodNotFound` (-32601); unknown notifications are dropped.
+- Advertised capabilities are intentionally narrow: full text sync and UTF-16 position encoding.
+  Pull diagnostics are not advertised.
 - Binary: `mos-lsp`, defined in `Cargo.toml`, calls `mos_lsp::run()`.
 
 ### Manual smoke test

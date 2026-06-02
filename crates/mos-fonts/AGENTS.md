@@ -10,15 +10,16 @@ runs and widths; PDF asks for resource/subset details.
 Implemented:
 
 - Base-14 font metrics through `pdf-base14-metrics`.
-- Bundled Noto Sans faces: regular, bold, italic, bold italic, mono.
+- Bundled Noto Sans faces: regular, bold, italic, bold italic, mono, and Math.
 - Embedded font loading from `data/*.ttf`.
 - `rustybuzz` shaping for embedded fonts.
+- Cluster-granular fallback from Noto Sans to Noto Sans Math.
 - Base-14 glyph names, WinAnsi helpers, extended glyph names.
 - Width/ascent/descent helpers and simple family resolution.
 
 Not implemented yet:
 
-- System font discovery, arbitrary font files, fallback chains, variable fonts, Noto Sans Math, rich
+- System font discovery, arbitrary font files, user-configured fallback chains, variable fonts, rich
   language/script itemization.
 
 ## WHERE TO LOOK
@@ -31,6 +32,7 @@ Not implemented yet:
 | Base-14 helpers    | `pdf-base14-metrics` re-exports | Glyph and width data.                      |
 | Family resolution  | `FontFamily::resolve`           | Helvetica/Times/Courier/Noto Sans mapping. |
 | Width/shaping      | `text_width`, `shape_text`      | Called by layout.                          |
+| Fallback shaping   | `shape_with_fallback`           | Noto Sans to Math sub-runs.                |
 
 ## CONVENTIONS
 

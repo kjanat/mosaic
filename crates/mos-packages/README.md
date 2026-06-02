@@ -3,8 +3,9 @@
 `mos-packages` owns the current Mosaic project manifest schema for `mosaic.toml`.
 
 Today it is intentionally small: it parses TOML into typed Rust structs and reports disk/parse
-errors with manifest paths. It does not resolve packages, generate lockfiles, fetch registries, or
-drive the `mos` CLI build pipeline yet.
+errors with manifest paths. The CLI uses `project.entry` and `output.pdf` for directory builds, but
+this crate does not resolve packages, generate lockfiles, fetch registries, or own the build
+pipeline.
 
 ## Scope
 

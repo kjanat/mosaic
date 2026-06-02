@@ -87,6 +87,4 @@ assert!(!runs.is_empty());
 - No variable fonts.
 - No rich script/language itemization.
 - No RTL shaping support; shaping currently forces LTR.
-- No full GPOS positioning in PDF output; embedded shaping keeps glyph selection but normalizes
-  advances to `hmtx` and zeroes offsets so layout matches current simple CID-string emission.
 - No diagnostics for Base-14 missing Unicode; unsupported codepoints become `?`.

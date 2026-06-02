@@ -32,6 +32,8 @@ not parse `.mos`, lower documents, or decide layout policy.
   the bundled embedded Noto Sans path provided by layout/fonts.
 - Emits used embedded faces as Type 0 CID-keyed fonts with subsetted `/FontFile2`, Identity-H,
   widths, and `/ToUnicode` CMaps.
+- Emits embedded shaped glyph positioning with `TJ` adjustments and glyph offsets, so GPOS kerning
+  and mark placement can survive PDF output.
 - Emits decoded image data as RGB8 `/DeviceRGB` image XObjects compressed with `/FlateDecode`.
 - PNG/JPEG decoding and image deduplication happen before this crate, in earlier pipeline stages.
 - Alpha/soft masks are not emitted; upstream image handling composites to opaque RGB.

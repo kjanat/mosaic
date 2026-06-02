@@ -20,8 +20,8 @@ building. The actionable implementation checklist lives in
 
 ## Status
 
-Pre-alpha (`0.0.0`). The 15-crate workspace skeleton is in place. MVP 0 from `manifest.md` §30 is
-substantially landed:
+Pre-alpha (`0.0.0`). The 16-crate workspace skeleton is in place, plus an excluded Zed extension
+under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed:
 
 - [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline `*emphasis*` / `**strong**` /
       `` `code` `` / `[@key]` citations, `-` / `N.` lists with hanging indents, and `#set name(...)`
@@ -39,8 +39,9 @@ substantially landed:
 - [x] `mos build` end-to-end — layout + PDF emission for the Base-14 core fonts and bundled Noto
       Sans, with PNG/JPEG raster images and figure captions (manifest §6 stages 5–9, §21.1);
 - [x] `mos-lsp` publishes current compiler diagnostics over stdio LSP on open/change;
-- [ ] HTML and EPUB backends, persistent incremental cache, bibliography
-      parsing/resolution/rendering, and richer LSP features — see MVP 1–6 in `manifest.md`.
+- [ ] HTML and EPUB backends, persistent incremental cache, bibliography resolution/rendering and
+      compiler integration, and richer LSP features — see MVP 1–6 in `manifest.md`. BibTeX/CSL
+      parser foundations exist, but they are not a shipped bibliography pipeline.
 
 Label and reference behavior is documented in
 [`docs/labels-and-references.md`](./docs/labels-and-references.md).
@@ -82,8 +83,23 @@ ships a committed `<name>.pdf` snapshot so GitHub previews render inline:
 | `examples/polish`     | Polish diacritics through Noto Sans                             |
 | `examples/linebreaks` | NBSP (U+00A0), hard line break (`\\`), soft hyphen (`\-`)       |
 
-Regenerate every snapshot with `just examples` (rebuilds each project and copies `build/main.pdf`
-next to its `main.mos`).
+Regenerate every snapshot with `just examples`. The recipe bootstraps `runner-run` if needed, then
+runs `runner mos build examples/*`; each example manifest writes its committed `<name>.pdf` output.
+
+## Tooling Recipes
+
+Root JavaScript tooling is managed by Bun. `package.json` provides local `dprint`, `tombi`, and
+`runner-run`; the `justfile` uses `runner-run` for project recipes.
+
+```sh
+just setup       # install runner commands
+just fmt         # runner fmt -> dprint fmt
+just examples    # runner mos build examples/*
+just doc-nightly # rustup run nightly -- runner dwn
+```
+
+`dprint` also formats Rust through `rustfmt`, TOML through `tombi`, and the `justfile` through
+`just --dump --justfile`.
 
 ## Cargo aliases
 
@@ -94,11 +110,14 @@ two-letter names instead:
 | alias          | expansion                                                                       | purpose                                         |
 | -------------- | ------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `cargo bw`     | `build --workspace`                                                             | build every crate                               |
+| `cargo bwa`    | `build --workspace --all-targets`                                               | build all targets                               |
 | `cargo cw`     | `check --workspace --all-targets`                                               | type-check including tests / examples / benches |
 | `cargo tw`     | `test --workspace`                                                              | run every crate's test suite                    |
 | `cargo dw`     | `doc --workspace --no-deps`                                                     | rustdoc for our crates only                     |
+| `cargo dwn`    | `--config .cargo/nightly.toml doc`                                              | nightly rustdoc checks                          |
 | `cargo br`     | `build --release`                                                               | release build of the current package            |
 | `cargo rr`     | `run --release`                                                                 | release run of the current package              |
+| `cargo cov`    | `llvm-cov --summary-only --no-clean`                                            | coverage summary                                |
 | `cargo lint`   | `clippy --workspace --all-targets --all-features -- -D warnings -D clippy::all` | strict clippy; warnings fail the run            |
 | `cargo mos`    | `run --release -q -p mos --`                                                    | invoke the `mos` CLI                            |
 | `cargo mosls`  | `run --release -q -p mos-lsp --`                                                | invoke the `mos-lsp` server                     |
@@ -115,13 +134,14 @@ crates/
   mos                  command-line interface                 (manifest §15.1)
   mos-core             document model, IDs, diagnostics       (manifest §5, §31)
   mos-parse            parser for .mos                        (manifest §3, §6)
-  mos-eval             expression / template evaluator        (manifest §4, §25)
+  mos-eval             lowering + reference/figure resolver   (manifest §4, §25)
   mos-layout           inline, block, and page layout         (manifest §6, §22)
   mos-pdf              PDF backend                            (manifest §21.1)
-  mos-html             semantic HTML backend                  (manifest §21.2)
-  mos-fonts            font discovery, shaping, metrics       (manifest §22.1)
-  mos-bib              bibliography / citation engine         (manifest §12)
-  mos-cache            incremental build cache                (manifest §7, §32)
+  mos-html             stub semantic HTML backend boundary    (manifest §21.2)
+  mos-fonts            font identity, shaping, metrics        (manifest §22.1)
+  mos-bib              minimal BibTeX parser                  (manifest §12)
+  mos-csl              CSL item/style parser foundations      (manifest §12)
+  mos-cache            cache trait + in-memory implementation (manifest §7, §32)
   mos-lsp              language server (lib + mos-lsp bin)    (manifest §17)
   mos-packages         project / package manifest schema      (manifest §14)
   adobe-font-metrics   zero-dep AFM v4 parser                 (Adobe TN 5004)
@@ -132,7 +152,8 @@ examples/
   hello, code, linebreaks, lists, math, polish (committed PDF snapshots)
 ```
 
-`adobe-font-metrics` is the leaf-most crate (zero deps); nothing else depends on `mos`.
+`adobe-font-metrics` is the leaf-most crate (zero deps); nothing else depends on `mos`. `zed-mosaic`
+lives under `crates/` but is excluded from the Cargo workspace.
 
 ## License
 

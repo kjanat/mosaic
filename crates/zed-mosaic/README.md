@@ -50,8 +50,9 @@ filenames. Navigation and editing features use Zed query files such as [`outline
 
 ## Development and regeneration
 
-- Build/check the extension crate with normal workspace Rust commands, for example
-  `cargo check -p zed-mosaic`.
+- Build/check the extension crate from this directory with `cargo check`, or from the repo root with
+  `cargo check --manifest-path crates/zed-mosaic/Cargo.toml`. The root Cargo workspace excludes this
+  crate.
 - Regenerate the Tree-sitter parser from [`crates/tree-sitter-mosaic`] with `npm run generate` when
   `grammar.js` changes.
 - Run `just sync-zed-queries` after changing canonical query files in
