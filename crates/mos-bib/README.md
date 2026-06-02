@@ -37,9 +37,9 @@ assert_eq!(entry.fields["year"], "1984");
 - Comma-separated fields, with an optional trailing comma before the closing `}`.
 - **Case handling:** entry types and field names are normalised to lowercase (BibTeX treats them
   case-insensitively); citation keys are preserved verbatim (keys are case-sensitive).
-- **Ordering:** entries and fields are stored in `BTreeMap`s, so iteration is deterministic
-  (sorted) and stable across runs. On a duplicate citation key the last entry wins; likewise for a
-  repeated field name within an entry.
+- **Ordering:** entries and fields are stored in `BTreeMap`s, so iteration is deterministic (sorted)
+  and stable across runs. On a duplicate citation key the last entry wins; likewise for a repeated
+  field name within an entry.
 - Brace values balance nested `{}` by naive counting, so `{The {LaTeX} Companion}` is captured
   whole. Value text is stored **verbatim** (no decoding).
 - Panic-free, useful errors for malformed input: a missing `@`, entry type, `{`, citation key, `=`,
