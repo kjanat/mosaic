@@ -6,9 +6,10 @@
 //! processors do.
 //!
 //! Name handling is intentionally minimal: `author`/`editor` are split on
-//! ` and `, and per name a `Last, First` comma form becomes family/given —
-//! everything else is kept as a name [`literal`](Name::literal). Full BibTeX
-//! name parsing (von/Jr particles) and `month` handling are future refinements.
+//! whitespace-delimited `and` tokens, and per name a `Last, First` comma form
+//! becomes family/given — everything else is kept as a name
+//! [`literal`](Name::literal). Full BibTeX name parsing (von/Jr particles) and
+//! `month` handling are future refinements.
 
 use std::collections::BTreeMap;
 
@@ -107,14 +108,37 @@ fn apply_field(item: &mut Item, field: &str, value: &str) {
     }
 }
 
-/// Split a BibTeX name list on ` and ` into individual CSL names.
+/// Split a BibTeX name list on whitespace-delimited `and` tokens.
 fn parse_names(value: &str) -> Vec<Name> {
-    value
-        .split(" and ")
-        .map(str::trim)
-        .filter(|token| !token.is_empty())
-        .map(parse_one_name)
-        .collect()
+    let mut names = Vec::new();
+    let mut token_start = 0;
+    let mut search_start = 0;
+
+    while let Some(relative_start) = value[search_start..].find("and") {
+        let and_start = search_start + relative_start;
+        let and_end = and_start + "and".len();
+        if is_name_separator(value, and_start, and_end) {
+            push_name(&mut names, &value[token_start..and_start]);
+            token_start = and_end;
+        }
+        search_start = and_end;
+    }
+
+    push_name(&mut names, &value[token_start..]);
+    names
+}
+
+fn is_name_separator(value: &str, start: usize, end: usize) -> bool {
+    let before = value[..start].chars().next_back();
+    let after = value[end..].chars().next();
+    before.is_some_and(char::is_whitespace) && after.is_some_and(char::is_whitespace)
+}
+
+fn push_name(names: &mut Vec<Name>, token: &str) {
+    let trimmed = token.trim();
+    if !trimmed.is_empty() {
+        names.push(parse_one_name(trimmed));
+    }
 }
 
 /// A `Last, First` comma form becomes family/given; anything else is a literal.
@@ -187,6 +211,23 @@ mod tests {
             "book",
             "k",
             &[("author", "Knuth, Donald E. and Ada Lovelace")],
+        );
+        let item = item_from_bib_entry(&bib_entry);
+        let authors = item
+            .name
+            .get(&NameVariable::Author)
+            .expect("authors present");
+        assert_eq!(authors.len(), 2);
+        assert_eq!(authors[0], Name::person("Knuth", "Donald E."));
+        assert_eq!(authors[1], Name::literal("Ada Lovelace"));
+    }
+
+    #[test]
+    fn splits_names_on_whitespace_delimited_and_tokens() {
+        let bib_entry = entry(
+            "book",
+            "k",
+            &[("author", "Knuth, Donald E.  and\n  Ada Lovelace")],
         );
         let item = item_from_bib_entry(&bib_entry);
         let authors = item

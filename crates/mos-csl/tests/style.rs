@@ -72,6 +72,15 @@ fn rejects_malformed_xml() {
 }
 
 #[test]
+fn malformed_xml_reports_real_offset() {
+    let input = "<style version=\"1.0\" class=\"in-text\">\n  <\n</style>";
+    let err = parse_style(input).expect_err("bad element start");
+    assert!(matches!(err.kind(), CslParseErrorKind::MalformedXml(_)));
+    assert_ne!(err.offset(), 0);
+    assert_eq!(err.line_col(input).0, 2);
+}
+
+#[test]
 fn rejects_a_wrong_root_element() {
     let err = parse_style("<not-a-style/>").expect_err("wrong root");
     assert!(matches!(err.kind(), CslParseErrorKind::UnexpectedRoot(_)));

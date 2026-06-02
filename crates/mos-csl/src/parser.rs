@@ -44,7 +44,8 @@ use crate::style::{
 /// ```
 pub fn parse_style(input: &str) -> Result<Style, CslParseError> {
     let document = Document::parse(input).map_err(|error| {
-        CslParseError::new(CslParseErrorKind::MalformedXml(error.to_string()), 0)
+        let offset = text_pos_to_byte_offset(input, error.pos()).unwrap_or(0);
+        CslParseError::new(CslParseErrorKind::MalformedXml(error.to_string()), offset)
     })?;
     let root = document.root_element();
     if root.tag_name().name() != "style" {
@@ -393,6 +394,54 @@ fn tokens(node: Node<'_, '_>, name: &str) -> Vec<String> {
     node.attribute(name)
         .map(|value| value.split_whitespace().map(str::to_owned).collect())
         .unwrap_or_default()
+}
+
+fn text_pos_to_byte_offset(input: &str, position: roxmltree::TextPos) -> Option<usize> {
+    let row = usize::try_from(position.row).ok()?;
+    let col = usize::try_from(position.col).ok()?;
+    if row == 0 || col == 0 {
+        return None;
+    }
+
+    let (line_start, line) = line_at(input, row)?;
+    let col_offset = column_to_byte_offset(line, col)?;
+    Some(line_start + col_offset)
+}
+
+fn line_at(input: &str, row: usize) -> Option<(usize, &str)> {
+    let mut line_start = 0;
+    for (line_index, line) in input.split_inclusive('\n').enumerate() {
+        if line_index + 1 == row {
+            let line_without_newline = match line.strip_suffix('\n') {
+                Some(stripped) => stripped,
+                None => line,
+            };
+            return Some((line_start, line_without_newline));
+        }
+        line_start += line.len();
+    }
+
+    if row == 1 && input.is_empty() {
+        return Some((0, ""));
+    }
+    None
+}
+
+fn column_to_byte_offset(line: &str, col: usize) -> Option<usize> {
+    let target_chars = col.checked_sub(1)?;
+    let mut chars_seen = 0;
+    for (byte_offset, _) in line.char_indices() {
+        if chars_seen == target_chars {
+            return Some(byte_offset);
+        }
+        chars_seen += 1;
+    }
+
+    if chars_seen == target_chars {
+        Some(line.len())
+    } else {
+        None
+    }
 }
 
 /// Build an error anchored at a node's start byte offset.
