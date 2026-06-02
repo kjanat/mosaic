@@ -400,6 +400,9 @@ define_codes! {
     /// BibTeX database could not be parsed (`mos-bib`).
     MOS0043 = 43, Error, Syntax, "bibtex-parse-failed", "mos-bib",
         "syntax: BibTeX database could not be parsed";
+    /// CSL style could not be parsed (`mos-csl`).
+    MOS0044 = 44, Error, Syntax, "csl-parse-failed", "mos-csl",
+        "syntax: CSL style could not be parsed";
 
     // ── semantic (mos-eval) ───────────────────────────────────────────
     /// Unknown `#set` target (only `page`, `text`, `document`, `image`).

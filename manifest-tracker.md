@@ -40,6 +40,7 @@ example.
   - [x] [`mos-html`]
   - [x] [`mos-fonts`]
   - [x] [`mos-bib`]
+  - [x] [`mos-csl`]
   - [x] [`mos-cache`]
   - [x] [`mos-lsp`]
   - [x] [`mos-packages`]
@@ -304,7 +305,9 @@ example.
       braced/quoted/bare string fields into typed records. Strings only; no resolution or
       rendering.)*
 - [ ] Import BibLaTeX.
-- [ ] Support CSL styles.
+- [ ] Support CSL styles. *(Foundation only: `mos-csl` has a CSL item data model, a BibTeX→CSL
+      mapping, and a CSL 1.0.2 style **parser** into a typed AST; applying styles to render
+      citations is not implemented.)*
 - [ ] Render numeric citations.
 - [ ] Render author-year citations.
 - [ ] Render footnote citations.
@@ -518,6 +521,7 @@ These are design goals, not near-term implementation commitments.
 [README]: README.md
 [`adobe-font-metrics`]: crates/adobe-font-metrics/
 [`mos-bib`]: crates/mos-bib/
+[`mos-csl`]: crates/mos-csl/
 [`mos-cache`]: crates/mos-cache/
 [`mos-core`]: crates/mos-core/
 [`mos-eval`]: crates/mos-eval/

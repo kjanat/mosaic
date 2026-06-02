@@ -19,6 +19,7 @@ adobe-font-metrics = { path = "crates/adobe-font-metrics", version = "0.0.0" }
 mos-bib            = { path = "crates/mos-bib", version = "0.0.0" }
 mos-cache          = { path = "crates/mos-cache", version = "0.0.0" }
 mos-core           = { path = "crates/mos-core", version = "0.0.0" }
+mos-csl            = { path = "crates/mos-csl", version = "0.0.0" }
 mos-eval           = { path = "crates/mos-eval", version = "0.0.0" }
 mos-fonts          = { path = "crates/mos-fonts", version = "0.0.0" }
 mos-html           = { path = "crates/mos-html", version = "0.0.0" }
@@ -36,6 +37,7 @@ flate2                = "1.1"
 lopdf                 = "0.40"
 opener                = "0.8"
 pdf-writer            = "0.15"
+roxmltree             = "0.20"
 rustybuzz             = "0.20"
 serde_json            = "1"
 subsetter             = "0.2"

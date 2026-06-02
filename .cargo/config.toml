@@ -7,18 +7,18 @@
 # Release flavours.
 br = "build --release"
 
-# Workspace shortcuts (built-in single-letter aliases b/c/d/t/r/rm
-# can't be redefined per the alias schema, so the workspace flavours
-# get short two-letter names).
+# Workspace shortcuts
+# (built-in single-letter aliases b/c/d/t/r/rm can't be redefined per the alias schema,
+# so the workspace flavours get short two-letter names).
 bw  = "build --workspace"
 bwa = "build --workspace --all-targets"
 cw  = "check --workspace --all-targets"
 dw  = "doc --workspace --no-deps"
-dwn = "--config .cargo/nightly.toml doc"
+dwn = "--config .cargo/nightly.toml doc"  # Run: rustup run nightly -- cargo dwn
 rr  = "run --release"
 tw  = "test --workspace"
 
-# Lints. Not aliased as `clippy` because that's an existing subcommand.
+cov  = "llvm-cov --summary-only --no-clean"
 lint = "clippy --workspace --all-targets --all-features -- -D warnings -D clippy::all"
 
 # Run the `mos` CLI from the workspace.
