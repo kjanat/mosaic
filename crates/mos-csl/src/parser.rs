@@ -1,10 +1,10 @@
 //! Parse a CSL 1.0.2 style document into the typed [`Style`] AST.
 //!
 //! A read-only [`roxmltree`] DOM walk, dispatching on element local names (so
-//! it tolerates the CSL namespace or its absence). It models the structure and
+//! it tolerates CSL, absent, or foreign namespaces). It models the structure and
 //! common attributes; unmodelled attributes are ignored, unknown rendering
-//! elements are a [`CslParseError`], and in-style `<locale>` blocks are skipped
-//! (locale parsing is a later slice).
+//! elements are a [`CslParseError`], and in-style `<locale>` blocks are retained
+//! as raw XML for a later locale slice.
 
 use std::collections::BTreeMap;
 
@@ -24,9 +24,10 @@ use crate::style::{
 ///
 /// Returns a [`CslParseError`] when `input` is not well-formed XML, the root is
 /// not `<style>`, the required `version`/`class` attributes are missing or
-/// invalid, a `<macro>` lacks a `name`, a `<citation>`/`<bibliography>` lacks
-/// its `<layout>`, a `<text>` selects no source, or an unsupported rendering
-/// element is encountered.
+/// invalid or unsupported, a `<macro>` lacks a `name`, a `<citation>`/
+/// `<bibliography>` lacks its `<layout>`, a `<text>` selects no source or too
+/// many sources, a `<choose>` has invalid branch order, or an unsupported
+/// rendering element is encountered.
 ///
 /// # Examples
 ///
@@ -56,8 +57,14 @@ pub fn parse_style(input: &str) -> Result<Style, CslParseError> {
 
     let version = root
         .attribute("version")
-        .ok_or_else(|| err_at(root, CslParseErrorKind::MissingVersion))?
-        .to_owned();
+        .ok_or_else(|| err_at(root, CslParseErrorKind::MissingVersion))?;
+    if version != "1.0" {
+        return Err(err_at(
+            root,
+            CslParseErrorKind::UnsupportedVersion(version.to_owned()),
+        ));
+    }
+    let version = version.to_owned();
     let class = match root.attribute("class") {
         Some("in-text") => StyleClass::InText,
         Some("note") => StyleClass::Note,
@@ -260,6 +267,19 @@ fn parse_element(node: Node<'_, '_>) -> Result<Element, CslParseError> {
 }
 
 fn parse_text(node: Node<'_, '_>) -> Result<Text, CslParseError> {
+    let source_count = [
+        node.attribute("variable"),
+        node.attribute("macro"),
+        node.attribute("term"),
+        node.attribute("value"),
+    ]
+    .into_iter()
+    .flatten()
+    .count();
+    if source_count > 1 {
+        return Err(err_at(node, CslParseErrorKind::TextWithMultipleSources));
+    }
+
     let source = if let Some(variable) = node.attribute("variable") {
         TextSource::Variable {
             name: variable.to_owned(),
@@ -396,13 +416,36 @@ fn parse_group(node: Node<'_, '_>) -> Result<Group, CslParseError> {
 fn parse_choose(node: Node<'_, '_>) -> Result<Choose, CslParseError> {
     let mut branches = Vec::new();
     let mut otherwise = Vec::new();
+    let mut seen_if = false;
+    let mut seen_else = false;
     for child in child_elements(node) {
         match child.tag_name().name() {
-            "if" | "else-if" => branches.push(Branch {
-                conditions: parse_conditions(child),
-                children: parse_elements(child)?,
-            }),
-            "else" => otherwise = parse_elements(child)?,
+            "if" => {
+                if seen_if || seen_else {
+                    return Err(err_at(child, CslParseErrorKind::InvalidChooseOrder));
+                }
+                seen_if = true;
+                branches.push(Branch {
+                    conditions: parse_conditions(child),
+                    children: parse_elements(child)?,
+                });
+            }
+            "else-if" => {
+                if !seen_if || seen_else {
+                    return Err(err_at(child, CslParseErrorKind::InvalidChooseOrder));
+                }
+                branches.push(Branch {
+                    conditions: parse_conditions(child),
+                    children: parse_elements(child)?,
+                });
+            }
+            "else" => {
+                if !seen_if || seen_else {
+                    return Err(err_at(child, CslParseErrorKind::InvalidChooseOrder));
+                }
+                seen_else = true;
+                otherwise = parse_elements(child)?;
+            }
             other => {
                 return Err(err_at(
                     child,
@@ -410,6 +453,9 @@ fn parse_choose(node: Node<'_, '_>) -> Result<Choose, CslParseError> {
                 ));
             }
         }
+    }
+    if !seen_if {
+        return Err(err_at(node, CslParseErrorKind::InvalidChooseOrder));
     }
     Ok(Choose {
         branches,

@@ -26,12 +26,18 @@ pub enum CslParseErrorKind {
     MissingClass,
     /// `class` is neither `in-text` nor `note`.
     UnknownClass(String),
+    /// `version` is not a supported CSL style version.
+    UnsupportedVersion(String),
     /// A `<macro>` lacks the required `name` attribute.
     MissingMacroName,
     /// A `<citation>` or `<bibliography>` lacks its required `<layout>`.
     MissingLayout,
     /// A `<text>` element selects none of `variable`/`macro`/`term`/`value`.
     TextWithoutSource,
+    /// A `<text>` element selects more than one source attribute.
+    TextWithMultipleSources,
+    /// A `<choose>` has no leading `<if>` or branches in the wrong order.
+    InvalidChooseOrder,
     /// A rendering element name is not part of the supported CSL subset.
     UnsupportedElement(String),
 }
@@ -53,6 +59,9 @@ impl CslParseErrorKind {
                     "unknown style class `{class}` (expected `in-text` or `note`)"
                 )
             }
+            Self::UnsupportedVersion(version) => {
+                write!(f, "unsupported CSL version `{version}` (expected `1.0`)")
+            }
             Self::MissingMacroName => {
                 f.write_str("<macro> is missing the required `name` attribute")
             }
@@ -61,6 +70,12 @@ impl CslParseErrorKind {
             }
             Self::TextWithoutSource => {
                 f.write_str("<text> must select a variable, macro, term, or value")
+            }
+            Self::TextWithMultipleSources => {
+                f.write_str("<text> must select exactly one variable, macro, term, or value")
+            }
+            Self::InvalidChooseOrder => {
+                f.write_str("<choose> must contain <if>, then <else-if>, then optional <else>")
             }
             Self::UnsupportedElement(name) => write!(f, "unsupported CSL element <{name}>"),
         }
@@ -174,6 +189,10 @@ mod tests {
                 "CSL parse error at byte 7: unknown style class `weird` (expected `in-text` or `note`)",
             ),
             (
+                CslParseErrorKind::UnsupportedVersion("1.1".to_owned()),
+                "CSL parse error at byte 7: unsupported CSL version `1.1` (expected `1.0`)",
+            ),
+            (
                 CslParseErrorKind::MissingMacroName,
                 "CSL parse error at byte 7: <macro> is missing the required `name` attribute",
             ),
@@ -184,6 +203,14 @@ mod tests {
             (
                 CslParseErrorKind::TextWithoutSource,
                 "CSL parse error at byte 7: <text> must select a variable, macro, term, or value",
+            ),
+            (
+                CslParseErrorKind::TextWithMultipleSources,
+                "CSL parse error at byte 7: <text> must select exactly one variable, macro, term, or value",
+            ),
+            (
+                CslParseErrorKind::InvalidChooseOrder,
+                "CSL parse error at byte 7: <choose> must contain <if>, then <else-if>, then optional <else>",
             ),
             (
                 CslParseErrorKind::UnsupportedElement("magic".to_owned()),

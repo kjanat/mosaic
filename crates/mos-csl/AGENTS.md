@@ -11,9 +11,9 @@ evaluation of a style against data, and no wiring into the compiler pipeline.
 Implemented:
 
 - Item data model (`item.rs`): `Item`, `ItemType`, and the standard/number/date/name variable
-  vocabularies (spec Appendices III–IV), plus `Name` and `Date`/`DateParts`. A `csl_vocab!` macro
-  generates each vocabulary's `as_str`/`from_csl`/`Display`. Ordered enums + `BTreeMap`s for
-  deterministic iteration.
+  vocabularies (spec Appendices III–IV, including deprecated standard variable `event`), plus `Name`
+  and `Date`/`DateParts`. A `csl_vocab!` macro generates each vocabulary's
+  `as_str`/`from_csl`/`Display`. Ordered enums + `BTreeMap`s for deterministic iteration.
 - BibTeX mapping (`from_bibtex.rs`): infallible `item_from_bib_entry` / `library_from_bibliography`.
 - Style parser (`parser.rs` + `style.rs`): `parse_style(&str) -> Result<Style, CslParseError>`, a
   read-only `roxmltree` DOM walk into the `Style` AST; local error bridges to `MOS0044`. It retains
@@ -48,7 +48,9 @@ Not implemented:
 - Use `BTreeMap` and ordered enums so output and tests stay deterministic.
 - Dispatch the parser on element *local* names (namespace-tolerant). Retain modelled rendering
   options as raw strings; retain in-style `<locale>` as raw XML; ignore other unmodelled attributes;
-  error on unknown rendering elements.
+  error on unknown rendering elements. Keep namespace tolerance deliberate, but reject unsupported
+  style versions, `<text>` elements with multiple source selectors, and invalid `<choose>` branch
+  order.
 - Tests return `()` and use `expect`/`expect_err` — the workspace enables
   `clippy::panic_in_result_fn`, so `Result`-returning tests with `assert!` are clippy errors.
 

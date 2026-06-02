@@ -19,9 +19,12 @@ All notable changes to this project will be documented here. The format is based
   `<style>`, `<info>`, `<citation>`, `<bibliography>`, `<macro>`, and the rendering elements) built
   on `roxmltree`, retaining selected style/citation/bibliography/name/sort/date/label rendering
   options, dependent-style info links, `<name-part>` formatting, and raw in-style `<locale>` blocks
-  for a future processor. Malformed styles return a recoverable `CslParseError` carrying a byte
-  offset and bridging to a `mos-core` `Diagnostic` via the new `MOS0044` code. This is the
-  data/parser foundation only: no CSL processor (no style evaluation, formatting, sorting,
+  for a future processor. The data model includes the deprecated CSL standard variable `event` for
+  spec coverage, and the parser rejects unsupported style versions, `<text>` elements with multiple
+  source selectors, and invalid `<choose>` branch order while continuing to dispatch on element
+  local names for namespace tolerance. Malformed styles return a recoverable `CslParseError`
+  carrying a byte offset and bridging to a `mos-core` `Diagnostic` via the new `MOS0044` code. This
+  is the data/parser foundation only: no CSL processor (no style evaluation, formatting, sorting,
   disambiguation, or locales), no locale-file parsing/fallback, and no `mos-eval` / layout / PDF
   wiring.
 - Minimal BibTeX record parser (https://github.com/kjanat/mosaic/issues/66): [`mos-bib`][mos-bib]
