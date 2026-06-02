@@ -1,41 +1,69 @@
 # mos-bib
 
-Placeholder bibliography and citation types for Mosaic.
+Bibliography records for Mosaic.
 
-This crate exists to reserve the bibliography domain boundary from `manifest.md` §12. It is not a
-bibliography engine yet. Current shipped citation syntax/lowering lives in `mos-parse` / `mos-eval`;
-bibliography loading, resolution, formatting, and rendering remain aspirational/stubbed.
+This crate owns the bibliography domain boundary from `manifest.md` §12. It provides a **minimal
+BibTeX record parser**: it reads a `.bib` string into typed records that a citation resolver can
+build on. The scope is deliberately a small, well-defined BibTeX subset — entry type, citation key,
+and string fields — and within that subset the parser is complete and does not panic. It is **not**
+a full bibliography engine; styling, resolution, and rendering are separate concerns (see below).
 
-## Current API
+## API
 
-`mos-bib` currently exposes two simple public types:
-
-- `Bibliography`: an empty, private-field collection placeholder.
-- `Citation`: a document-body citation reference with a public `key: String`.
+- `parse_bibtex(input: &str) -> Result<Bibliography, BibParseError>` — parse a string.
+- `Bibliography { entries: BTreeMap<String, BibEntry> }` — parsed entries keyed by citation key.
+- `BibEntry { entry_type: String, key: String, fields: BTreeMap<String, String> }` — one
+  `@type{...}` record.
+- `BibParseError` / `BibParseErrorKind` — a local, recoverable parse error carrying a byte offset
+  (with a `line_col` helper that bridges to `mos-core` diagnostics).
+- `Citation { key: String }` — a document-body citation reference.
 
 ```rust
-use mos_bib::{Bibliography, Citation};
+use mos_bib::parse_bibtex;
 
-let bibliography = Bibliography::default();
-let citation = Citation {
-    key: "knuth1984".to_owned(),
-};
-
-assert_eq!(citation.key, "knuth1984");
-assert_eq!(format!("{bibliography:?}"), "Bibliography { _private: () }");
+let bib = parse_bibtex("@article{knuth1984, title = {Literate Programming}, year = 1984}")
+    .expect("valid BibTeX");
+let entry = &bib.entries["knuth1984"];
+assert_eq!(entry.entry_type, "article");
+assert_eq!(entry.fields["title"], "Literate Programming");
+assert_eq!(entry.fields["year"], "1984");
 ```
+
+## What the parser accepts
+
+- One or more `@type{key, field = value, ...}` entries (any entry type, e.g. `@article`), separated
+  by whitespace.
+- Field values as `{braced}`, `"quoted"`, or bare tokens (e.g. `year = 1984`).
+- Comma-separated fields, with an optional trailing comma before the closing `}`.
+- **Case handling:** entry types and field names are normalised to lowercase (BibTeX treats them
+  case-insensitively); citation keys are preserved verbatim (keys are case-sensitive).
+- **Ordering:** entries and fields are stored in `BTreeMap`s, so iteration is deterministic
+  (sorted) and stable across runs. On a duplicate citation key the last entry wins; likewise for a
+  repeated field name within an entry.
+- Brace values balance nested `{}` by naive counting, so `{The {LaTeX} Companion}` is captured
+  whole. Value text is stored **verbatim** (no decoding).
+- Panic-free, useful errors for malformed input: a missing `@`, entry type, `{`, citation key, `=`,
+  or value; an unterminated brace/quote value; or a missing separator. Each `BibParseError` carries
+  the byte offset where it was detected.
 
 ## Boundary
 
-- Depends only on `mos-core` today.
-- Should stay close to core model types until real integration needs more.
-- Should own bibliography/citation data modeling when implemented.
-- Should not parse `.mos` syntax, lower documents, lay out pages, or emit backend output.
+- Depends only on `mos-core`.
+- Stays close to core model types until real integration needs more.
+- Owns bibliography/citation data modeling.
+- Does not parse `.mos` syntax, lower documents, lay out pages, or emit backend output.
+- Must not depend on `mos-parse` or `mos-eval`.
 
-## Known Non-Goals Today
+## Out of scope (separate features)
 
-- No BibTeX, BibLaTeX, or CSL parsing.
-- No citation resolution, ordering, clustering, formatting, or rendering.
-- No `#bibliography()` language support and no citation resolution beyond parser/eval placeholders.
-- No `mos-bib` integration with `mos check`, `mos build`, layout, PDF, HTML, or LSP.
-- No claim of manifest §12 completion. Manifest loud; code quiet. Booga trust code.
+These are distinct capabilities, not unfinished parts of this parser. They live elsewhere when they
+land:
+
+- Full BibTeX, BibLaTeX, or CSL parsing and styling.
+- `@string`, `@preamble`, and `@comment` directives, and `#` string concatenation.
+- TeX/LaTeX decoding, accent handling, and author-name parsing.
+- Reading `.bib` files from disk (this crate parses strings).
+- Citation resolution, ordering, clustering, formatting, sorting, and rendering.
+- Integration with `mos check`, `mos build`, layout, PDF, HTML, or LSP.
+
+No claim of manifest §12 completion. Manifest loud; code quiet. Booga trust code.

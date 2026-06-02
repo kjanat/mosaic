@@ -8,6 +8,19 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Minimal BibTeX record parser (https://github.com/kjanat/mosaic/issues/66): [`mos-bib`][mos-bib]
+  gains `parse_bibtex(input: &str) -> Result<Bibliography, BibParseError>`, reading a BibTeX string
+  into typed records — `Bibliography { entries }` keyed by citation key and
+  `BibEntry { entry_type, key, fields }`, both ordered by `BTreeMap` for deterministic iteration. It
+  accepts any `@type{key, field = value, ...}` entry with braced (`{...}`), quoted (`"..."`), or bare
+  (`year = 1984`) values, comma-separated fields with an optional trailing comma, and naive
+  nested-brace balancing. Entry types and field names are lowercased (BibTeX treats them
+  case-insensitively); citation keys are preserved verbatim. Malformed input returns a recoverable
+  `BibParseError` carrying a byte offset (with a `line_col` bridge to `mos-core` diagnostics) and
+  never panics. This is the parser slice only: reading `.bib` files from disk, `@string` /
+  `@preamble` / `@comment` and `#` concatenation, TeX decoding, name parsing, citation-key
+  resolution, and any citation/bibliography rendering are out of scope, and there is no `mos-eval` /
+  layout / PDF integration yet.
 - Bibliography source directive boundary (https://github.com/kjanat/mosaic/issues/68): a
   `#bibliography("refs.bib")` directive ([`mos-parse`][mos-parse] adds a
   `DirectiveKind::Bibliography` call-block shape that accepts a positional path or the named
@@ -155,6 +168,7 @@ workflow.
 [docs:diagnostic-codes]: docs/diagnostic-codes.md
 [docs:labels-and-references]: docs/labels-and-references.md
 [ex:linebreaks]: examples/linebreaks/
+[mos-bib]: crates/mos-bib/
 [mos-cache]: crates/mos-cache/
 [mos-eval]: crates/mos-eval/
 [mos-eval:resolve.rs]: crates/mos-eval/src/resolve.rs
