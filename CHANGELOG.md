@@ -17,10 +17,11 @@ All notable changes to this project will be documented here. The format is based
   personal names, numeric `year` → `issued`, report `number` → CSL `number`, conference `address` →
   `event-place`); and (3) a **CSL XML style parser** (`parse_style` → a typed `Style` AST covering
   `<style>`, `<info>`, `<citation>`, `<bibliography>`, `<macro>`, and the rendering elements) built
-  on `roxmltree`. Malformed styles return a recoverable `CslParseError` carrying a byte offset and
-  bridging to a `mos-core` `Diagnostic` via the new `MOS0044` code. This is the data/parser
-  foundation only: no CSL processor (no style evaluation, formatting, sorting, disambiguation, or
-  locales), no locale-file parsing, and no `mos-eval` / layout / PDF wiring.
+  on `roxmltree`, retaining selected style/citation/bibliography/name/sort/date/label rendering
+  options for a future processor. Malformed styles return a recoverable `CslParseError` carrying a
+  byte offset and bridging to a `mos-core` `Diagnostic` via the new `MOS0044` code. This is the
+  data/parser foundation only: no CSL processor (no style evaluation, formatting, sorting,
+  disambiguation, or locales), no locale-file parsing, and no `mos-eval` / layout / PDF wiring.
 - Minimal BibTeX record parser (https://github.com/kjanat/mosaic/issues/66): [`mos-bib`][mos-bib]
   gains `parse_bibtex(input: &str) -> Result<Bibliography, BibParseError>`, reading a BibTeX string
   into typed records — `Bibliography { entries }` keyed by citation key and

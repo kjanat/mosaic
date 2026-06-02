@@ -117,29 +117,29 @@ fn rejects_an_unsupported_element() {
 #[test]
 fn parses_rendering_variants_sort_and_conditions() {
     let style = parse_style(
-        r#"<style version="1.0" class="note">
+        r#"<style version="1.0" class="note" page-range-format="expanded" demote-non-dropping-particle="sort-only" initialize-with-hyphen="false">
           <locale><terms><term name="page">p.</term></terms></locale>
           <macro name="term-macro">
             <text term="editor" form="short" plural="true"/>
           </macro>
-          <citation>
+          <citation et-al-min="3" et-al-use-first="1" et-al-subsequent-min="4" et-al-subsequent-use-first="2" collapse="year" cite-group-delimiter=", " disambiguate-add-names="true" disambiguate-add-givenname="true" disambiguate-add-year-suffix="true" givenname-disambiguation-rule="primary-name" near-note-distance="5">
             <sort>
-              <key macro="term-macro" sort="descending"/>
+              <key macro="term-macro" sort="descending" names-min="3" names-use-first="1" names-use-last="true"/>
               <key variable="issued"/>
             </sort>
             <layout prefix="[" suffix="]" delimiter=", " font-style="italic" font-variant="small-caps" font-weight="bold" text-decoration="underline" vertical-align="sup" text-case="capitalize-first" display="block">
               <number variable="volume" form="roman" prefix="v"/>
               <date variable="issued" form="text" date-parts="year-month-day">
-                <date-part name="month" form="short" suffix=" "/>
+                <date-part name="month" form="short" range-delimiter="/" suffix=" "/>
                 <date-part name="year"/>
               </date>
               <names variable="author editor" delimiter=", ">
-                <name form="short" and="symbol"/>
+                <name form="short" and="symbol" et-al-min="3" et-al-use-first="1" et-al-subsequent-min="4" et-al-subsequent-use-first="2" et-al-use-last="true" delimiter-precedes-et-al="always" delimiter-precedes-last="contextual" initialize="true" initialize-with=". " name-as-sort-order="first" sort-separator=", "/>
                 <et-al term="et-al"/>
-                <label form="short" plural="contextual"/>
+                <label form="short" plural="contextual" strip-periods="true"/>
                 <substitute><text value="Anonymous"/></substitute>
               </names>
-              <label variable="page" form="short" plural="always"/>
+              <label variable="page" form="short" plural="always" strip-periods="true"/>
               <choose>
                 <if match="any" type="book article" variable="title issued" is-numeric="volume" is-uncertain-date="issued" locator="page" position="first subsequent" disambiguate="true">
                   <text variable="title" form="short"/>
@@ -149,7 +149,7 @@ fn parses_rendering_variants_sort_and_conditions() {
               </choose>
             </layout>
           </citation>
-          <bibliography>
+          <bibliography et-al-min="5" et-al-use-first="2" et-al-subsequent-min="6" et-al-subsequent-use-first="3" hanging-indent="true" second-field-align="flush" line-spacing="2" entry-spacing="1" subsequent-author-substitute="---" subsequent-author-substitute-rule="partial-each">
             <sort><key variable="title" sort="descending"/></sort>
             <layout><text variable="title"/></layout>
           </bibliography>
@@ -158,6 +158,15 @@ fn parses_rendering_variants_sort_and_conditions() {
     .expect("style should parse");
 
     assert_eq!(style.class, StyleClass::Note);
+    assert_eq!(style.options.page_range_format.as_deref(), Some("expanded"));
+    assert_eq!(
+        style.options.demote_non_dropping_particle.as_deref(),
+        Some("sort-only")
+    );
+    assert_eq!(
+        style.options.initialize_with_hyphen.as_deref(),
+        Some("false")
+    );
     assert_eq!(style.macros.len(), 1, "locale children should be skipped");
     let macro_elements = style.macros.get("term-macro").expect("macro present");
     assert!(
@@ -174,12 +183,47 @@ fn parses_rendering_variants_sort_and_conditions() {
     );
 
     let citation = style.citation.expect("citation present");
+    assert_eq!(citation.options.et_al_min.as_deref(), Some("3"));
+    assert_eq!(citation.options.et_al_use_first.as_deref(), Some("1"));
+    assert_eq!(citation.options.et_al_subsequent_min.as_deref(), Some("4"));
+    assert_eq!(
+        citation.options.et_al_subsequent_use_first.as_deref(),
+        Some("2")
+    );
+    assert_eq!(citation.options.collapse.as_deref(), Some("year"));
+    assert_eq!(citation.options.cite_group_delimiter.as_deref(), Some(", "));
+    assert_eq!(
+        citation.options.disambiguate_add_names.as_deref(),
+        Some("true")
+    );
+    assert_eq!(
+        citation.options.disambiguate_add_givenname.as_deref(),
+        Some("true")
+    );
+    assert_eq!(
+        citation.options.disambiguate_add_year_suffix.as_deref(),
+        Some("true")
+    );
+    assert_eq!(
+        citation.options.givenname_disambiguation_rule.as_deref(),
+        Some("primary-name")
+    );
+    assert_eq!(citation.options.near_note_distance.as_deref(), Some("5"));
     assert_eq!(citation.sort.len(), 2);
     assert_eq!(
         citation.sort[0].target,
         SortTarget::Macro("term-macro".to_owned())
     );
     assert!(citation.sort[0].descending);
+    assert_eq!(citation.sort[0].options.names_min.as_deref(), Some("3"));
+    assert_eq!(
+        citation.sort[0].options.names_use_first.as_deref(),
+        Some("1")
+    );
+    assert_eq!(
+        citation.sort[0].options.names_use_last.as_deref(),
+        Some("true")
+    );
     assert_eq!(
         citation.sort[1].target,
         SortTarget::Variable("issued".to_owned())
@@ -218,6 +262,7 @@ fn parses_rendering_variants_sort_and_conditions() {
     assert_eq!(date.parts.len(), 2);
     assert_eq!(date.parts[0].name, "month");
     assert_eq!(date.parts[0].form.as_deref(), Some("short"));
+    assert_eq!(date.parts[0].range_delimiter.as_deref(), Some("/"));
     assert_eq!(date.parts[0].common.suffix.as_deref(), Some(" "));
     assert_eq!(date.parts[1].name, "year");
 
@@ -233,6 +278,26 @@ fn parses_rendering_variants_sort_and_conditions() {
     let name = names.name.as_ref().expect("name child");
     assert_eq!(name.form.as_deref(), Some("short"));
     assert_eq!(name.and.as_deref(), Some("symbol"));
+    assert_eq!(name.options.et_al_min.as_deref(), Some("3"));
+    assert_eq!(name.options.et_al_use_first.as_deref(), Some("1"));
+    assert_eq!(name.options.et_al_subsequent_min.as_deref(), Some("4"));
+    assert_eq!(
+        name.options.et_al_subsequent_use_first.as_deref(),
+        Some("2")
+    );
+    assert_eq!(name.options.et_al_use_last.as_deref(), Some("true"));
+    assert_eq!(
+        name.options.delimiter_precedes_et_al.as_deref(),
+        Some("always")
+    );
+    assert_eq!(
+        name.options.delimiter_precedes_last.as_deref(),
+        Some("contextual")
+    );
+    assert_eq!(name.options.initialize.as_deref(), Some("true"));
+    assert_eq!(name.options.initialize_with.as_deref(), Some(". "));
+    assert_eq!(name.options.name_as_sort_order.as_deref(), Some("first"));
+    assert_eq!(name.options.sort_separator.as_deref(), Some(", "));
     assert_eq!(
         names.et_al.as_ref().and_then(|et_al| et_al.term.as_deref()),
         Some("et-al")
@@ -240,6 +305,7 @@ fn parses_rendering_variants_sort_and_conditions() {
     let label = names.label.as_ref().expect("label child");
     assert_eq!(label.form.as_deref(), Some("short"));
     assert_eq!(label.plural.as_deref(), Some("contextual"));
+    assert_eq!(label.strip_periods.as_deref(), Some("true"));
     assert!(
         matches!(
             &names.substitute[0],
@@ -256,6 +322,7 @@ fn parses_rendering_variants_sort_and_conditions() {
     assert_eq!(label.variable.as_deref(), Some("page"));
     assert_eq!(label.form.as_deref(), Some("short"));
     assert_eq!(label.plural.as_deref(), Some("always"));
+    assert_eq!(label.strip_periods.as_deref(), Some("true"));
 
     let choose = match &citation.layout.elements[4] {
         Element::Choose(choose) => Some(choose),
@@ -306,6 +373,34 @@ fn parses_rendering_variants_sort_and_conditions() {
     );
 
     let bibliography = style.bibliography.expect("bibliography present");
+    assert_eq!(bibliography.options.et_al_min.as_deref(), Some("5"));
+    assert_eq!(bibliography.options.et_al_use_first.as_deref(), Some("2"));
+    assert_eq!(
+        bibliography.options.et_al_subsequent_min.as_deref(),
+        Some("6")
+    );
+    assert_eq!(
+        bibliography.options.et_al_subsequent_use_first.as_deref(),
+        Some("3")
+    );
+    assert_eq!(bibliography.options.hanging_indent.as_deref(), Some("true"));
+    assert_eq!(
+        bibliography.options.second_field_align.as_deref(),
+        Some("flush")
+    );
+    assert_eq!(bibliography.options.line_spacing.as_deref(), Some("2"));
+    assert_eq!(bibliography.options.entry_spacing.as_deref(), Some("1"));
+    assert_eq!(
+        bibliography.options.subsequent_author_substitute.as_deref(),
+        Some("---")
+    );
+    assert_eq!(
+        bibliography
+            .options
+            .subsequent_author_substitute_rule
+            .as_deref(),
+        Some("partial-each")
+    );
     assert_eq!(bibliography.sort.len(), 1);
     assert_eq!(
         bibliography.sort[0].target,

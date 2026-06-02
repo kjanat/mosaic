@@ -12,9 +12,10 @@ use roxmltree::{Document, Node};
 
 use crate::error::{CslParseError, CslParseErrorKind};
 use crate::style::{
-    Bibliography, Branch, Choose, Citation, Common, Conditions, DateElement, DatePart, Element,
-    EtAl, Group, Info, Label, Layout, Match, NameElement, Names, Number, SortKey, SortTarget,
-    Style, StyleClass, Text, TextSource,
+    Bibliography, BibliographyOptions, Branch, Choose, Citation, CitationOptions, Common,
+    Conditions, DateElement, DatePart, Element, EtAl, Group, Info, Label, Layout, Match,
+    NameElement, NameOptions, Names, Number, SortKey, SortKeyOptions, SortTarget, Style,
+    StyleClass, StyleOptions, Text, TextSource,
 };
 
 /// Parse `input` as a CSL 1.0.2 style.
@@ -101,6 +102,7 @@ pub fn parse_style(input: &str) -> Result<Style, CslParseError> {
         class,
         version,
         default_locale,
+        options: parse_style_options(root),
         info,
         citation,
         bibliography,
@@ -123,12 +125,20 @@ fn parse_info(node: Node<'_, '_>) -> Info {
 
 fn parse_citation(node: Node<'_, '_>) -> Result<Citation, CslParseError> {
     let (layout, sort) = parse_layout_and_sort(node)?;
-    Ok(Citation { layout, sort })
+    Ok(Citation {
+        layout,
+        sort,
+        options: parse_citation_options(node),
+    })
 }
 
 fn parse_bibliography(node: Node<'_, '_>) -> Result<Bibliography, CslParseError> {
     let (layout, sort) = parse_layout_and_sort(node)?;
-    Ok(Bibliography { layout, sort })
+    Ok(Bibliography {
+        layout,
+        sort,
+        options: parse_bibliography_options(node),
+    })
 }
 
 fn parse_layout_and_sort(node: Node<'_, '_>) -> Result<(Layout, Vec<SortKey>), CslParseError> {
@@ -168,6 +178,7 @@ fn parse_sort(node: Node<'_, '_>) -> Vec<SortKey> {
             keys.push(SortKey {
                 target,
                 descending: child.attribute("sort") == Some("descending"),
+                options: parse_sort_key_options(child),
             });
         }
     }
@@ -243,6 +254,7 @@ fn parse_date(node: Node<'_, '_>) -> DateElement {
             parts.push(DatePart {
                 name: attr(child, "name").unwrap_or_default(),
                 form: attr(child, "form"),
+                range_delimiter: attr(child, "range-delimiter"),
                 common: parse_common(child),
             });
         }
@@ -272,6 +284,7 @@ fn parse_names(node: Node<'_, '_>) -> Result<Names, CslParseError> {
                 name = Some(NameElement {
                     form: attr(child, "form"),
                     and: attr(child, "and"),
+                    options: parse_name_options(child),
                     common: parse_common(child),
                 });
             }
@@ -306,6 +319,7 @@ fn parse_label(node: Node<'_, '_>) -> Label {
         variable: attr(node, "variable"),
         form: attr(node, "form"),
         plural: attr(node, "plural"),
+        strip_periods: attr(node, "strip-periods"),
         common: parse_common(node),
     }
 }
@@ -371,6 +385,69 @@ fn parse_common(node: Node<'_, '_>) -> Common {
         vertical_align: attr(node, "vertical-align"),
         text_case: attr(node, "text-case"),
         display: attr(node, "display"),
+    }
+}
+
+fn parse_style_options(node: Node<'_, '_>) -> StyleOptions {
+    StyleOptions {
+        page_range_format: attr(node, "page-range-format"),
+        demote_non_dropping_particle: attr(node, "demote-non-dropping-particle"),
+        initialize_with_hyphen: attr(node, "initialize-with-hyphen"),
+    }
+}
+
+fn parse_citation_options(node: Node<'_, '_>) -> CitationOptions {
+    CitationOptions {
+        et_al_min: attr(node, "et-al-min"),
+        et_al_use_first: attr(node, "et-al-use-first"),
+        et_al_subsequent_min: attr(node, "et-al-subsequent-min"),
+        et_al_subsequent_use_first: attr(node, "et-al-subsequent-use-first"),
+        collapse: attr(node, "collapse"),
+        cite_group_delimiter: attr(node, "cite-group-delimiter"),
+        disambiguate_add_names: attr(node, "disambiguate-add-names"),
+        disambiguate_add_givenname: attr(node, "disambiguate-add-givenname"),
+        disambiguate_add_year_suffix: attr(node, "disambiguate-add-year-suffix"),
+        givenname_disambiguation_rule: attr(node, "givenname-disambiguation-rule"),
+        near_note_distance: attr(node, "near-note-distance"),
+    }
+}
+
+fn parse_bibliography_options(node: Node<'_, '_>) -> BibliographyOptions {
+    BibliographyOptions {
+        et_al_min: attr(node, "et-al-min"),
+        et_al_use_first: attr(node, "et-al-use-first"),
+        et_al_subsequent_min: attr(node, "et-al-subsequent-min"),
+        et_al_subsequent_use_first: attr(node, "et-al-subsequent-use-first"),
+        hanging_indent: attr(node, "hanging-indent"),
+        second_field_align: attr(node, "second-field-align"),
+        line_spacing: attr(node, "line-spacing"),
+        entry_spacing: attr(node, "entry-spacing"),
+        subsequent_author_substitute: attr(node, "subsequent-author-substitute"),
+        subsequent_author_substitute_rule: attr(node, "subsequent-author-substitute-rule"),
+    }
+}
+
+fn parse_sort_key_options(node: Node<'_, '_>) -> SortKeyOptions {
+    SortKeyOptions {
+        names_min: attr(node, "names-min"),
+        names_use_first: attr(node, "names-use-first"),
+        names_use_last: attr(node, "names-use-last"),
+    }
+}
+
+fn parse_name_options(node: Node<'_, '_>) -> NameOptions {
+    NameOptions {
+        et_al_min: attr(node, "et-al-min"),
+        et_al_use_first: attr(node, "et-al-use-first"),
+        et_al_subsequent_min: attr(node, "et-al-subsequent-min"),
+        et_al_subsequent_use_first: attr(node, "et-al-subsequent-use-first"),
+        et_al_use_last: attr(node, "et-al-use-last"),
+        delimiter_precedes_et_al: attr(node, "delimiter-precedes-et-al"),
+        delimiter_precedes_last: attr(node, "delimiter-precedes-last"),
+        initialize: attr(node, "initialize"),
+        initialize_with: attr(node, "initialize-with"),
+        name_as_sort_order: attr(node, "name-as-sort-order"),
+        sort_separator: attr(node, "sort-separator"),
     }
 }
 
