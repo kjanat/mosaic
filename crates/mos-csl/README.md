@@ -12,7 +12,9 @@ parser; evaluating a style against data to render citations is a separate, later
   `StandardVariable` / `NumberVariable` / `DateVariable` / `NameVariable` vocabularies (spec
   Appendices III–IV), plus `Name` and `Date`/`DateParts`. Each vocabulary has `as_str` / `from_csl`.
 - **BibTeX → CSL mapping** — `item_from_bib_entry(&BibEntry) -> Item` and
-  `library_from_bibliography(&Bibliography) -> BTreeMap<String, Item>` (infallible, best-effort).
+  `library_from_bibliography(&Bibliography) -> BTreeMap<String, Item>` (infallible, best-effort):
+  common entry types/fields, `Last, First` and `First Last` names, numeric years, report numbers,
+  and conference event places.
 - **CSL style parser** — `parse_style(&str) -> Result<Style, CslParseError>` producing the typed
   `Style` AST (`<style>`, `<info>`, `<citation>`, `<bibliography>`, `<macro>`, and the rendering
   elements). `CslParseError` / `CslParseErrorKind` carry a byte offset and bridge to a `mos-core`
@@ -57,7 +59,7 @@ These are distinct capabilities, not unfinished parts of this crate:
   bibliographies — formatting, sorting, disambiguation, cite grouping/collapsing, name ordering,
   ordinals, term/date rendering.
 - Locale files (`locales-xx-XX.xml`) and locale fallback; in-style `<locale>` blocks are skipped.
-- Full BibTeX name parsing (von/Jr particles) in the mapping.
+- Full BibTeX name parsing (protected institutional names, von/Jr particles) in the mapping.
 - Reading `.csl`/`.bib` files from disk, and any `mos check` / `mos build` / layout / PDF / LSP
   wiring.
 

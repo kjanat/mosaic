@@ -23,7 +23,7 @@ Not implemented:
 - The CSL processor: style evaluation, formatting, sorting, disambiguation, name ordering, terms,
   ordinals, date rendering.
 - Locale files / locale fallback; in-style `<locale>` is skipped.
-- Full BibTeX name parsing (particles/suffixes); `month` mapping.
+- Full BibTeX name parsing (protected institutional names, particles/suffixes); `month` mapping.
 - Disk I/O and any `mos-eval`/layout/PDF/LSP integration.
 
 ## WHERE TO LOOK
