@@ -21,16 +21,17 @@ repository.workspace   = true
 license                = "MIT AND APAFML"
 keywords.workspace     = true
 categories.workspace   = true
-# Vendored-data crate: enumerate the files that DON'T ship to crates.io.
-# - `LICENSE-AGL` + `data/agl/`: BSD-3-Clause Adobe Glyph List data, kept in
-#   the repo as a test oracle (see `tests/winansi_vendor.rs`) but not part of
-#   the shipped artifact — keeps the SPDX expression to `MIT AND APAFML`.
-# - `tests/winansi_vendor.rs`: reads the AGL data above at test time, so it
-#   would fail for anyone running `cargo test` against the published crate.
-exclude                = [
-  "LICENSE-AGL",
-  "data/agl/**",
-  "tests/winansi_vendor.rs",
+# Vendored-data crate: publish only runtime AFM data and tests that work without
+# the AGL test oracle (`data/agl/**`, `LICENSE-AGL`, `tests/winansi_vendor.rs`).
+include                = [
+  "/LICENSE",
+  "/LICENSE-APAFML",
+  "/LICENSE-MIT",
+  "/README.md",
+  "/build.rs",
+  "/data/afm",
+  "/src",
+  "/tests/baked.rs",
 ]
 
 [dependencies]

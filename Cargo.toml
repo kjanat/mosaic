@@ -8,11 +8,12 @@ version      = "0.0.1"
 edition      = "2024"
 rust-version = "1.95"
 readme       = "README.md"
-homepage     = "https://github.com/kjanat/mosaic#readme"
+homepage     = "https://github.com/kjanat/mosaic#mosaic"
 repository   = "https://github.com/kjanat/mosaic"
 license      = "MIT"
 keywords     = ["compiler", "layout", "pdf", "typesetting", "typography"]
 categories   = ["compilers", "text-processing"]
+include      = ["/LICENSE*", "/README.md", "/examples", "/src", "/tests"]
 
 [workspace.dependencies]
 adobe-font-metrics = { path = "crates/adobe-font-metrics", version = "0.0.1" }

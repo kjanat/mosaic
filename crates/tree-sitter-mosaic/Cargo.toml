@@ -12,11 +12,13 @@ categories             = ["parser-implementations", "parsing", "text-editors"]
 build                  = "bindings/rust/build.rs"
 include                = [
   "/LICENSE",
-  "bindings/rust/*",
-  "grammar.js",
-  "queries/*",
-  "src/*",
-  "tree-sitter.json",
+  "/README.md",
+  "/bindings/rust",
+  "/grammar.js",
+  "/queries",
+  "/src",
+  "/test",
+  "/tree-sitter.json",
 ]
 
 [lib]

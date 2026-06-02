@@ -10,7 +10,7 @@ repository.workspace   = true
 license.workspace      = true
 keywords.workspace     = true
 categories.workspace   = true
-exclude                = ["AGENTS.md"]
+include.workspace      = true
 
 [dependencies]
 # PNG + JPEG decode for `#image(...)` directives. Default features are
