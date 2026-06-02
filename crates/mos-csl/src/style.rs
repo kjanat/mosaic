@@ -29,6 +29,14 @@ pub struct Style {
     pub bibliography: Option<Bibliography>,
     /// `<macro>` definitions keyed by name, in sorted order.
     pub macros: BTreeMap<String, Vec<Element>>,
+    /// In-style `<locale>` blocks retained as raw XML for future locale support.
+    pub locales: Vec<LocaleBlock>,
+}
+
+/// An in-style `<locale>` block retained but not interpreted.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LocaleBlock {
+    pub xml: String,
 }
 
 /// Global `<style>` rendering options retained but not evaluated.
@@ -55,6 +63,41 @@ pub struct Info {
     pub id: Option<String>,
     /// `<title>` — the human-facing style name.
     pub title: Option<String>,
+    /// `<link>` entries, including dependent-style `rel="independent-parent"`.
+    pub links: Vec<InfoLink>,
+    /// `<category>` entries describing citation format or field.
+    pub categories: Vec<InfoCategory>,
+    /// `<author>` entries.
+    pub authors: Vec<InfoContributor>,
+    /// `<contributor>` entries.
+    pub contributors: Vec<InfoContributor>,
+    /// `<updated>` timestamp text.
+    pub updated: Option<String>,
+    /// `<issn>` values.
+    pub issn: Vec<String>,
+}
+
+/// An `<info><link .../>` entry.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InfoLink {
+    pub rel: Option<String>,
+    pub href: Option<String>,
+    pub media_type: Option<String>,
+}
+
+/// An `<info><category .../>` entry.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InfoCategory {
+    pub citation_format: Option<String>,
+    pub field: Option<String>,
+}
+
+/// An `<info><author>` or `<info><contributor>` entry.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InfoContributor {
+    pub name: Option<String>,
+    pub uri: Option<String>,
+    pub email: Option<String>,
 }
 
 /// The `<citation>` element: how cites are formatted.
@@ -254,6 +297,15 @@ pub struct NameElement {
     pub and: Option<String>,
     /// Name-rendering options retained for a future processor.
     pub options: NameOptions,
+    /// `<name-part>` formatting overrides.
+    pub parts: Vec<NamePart>,
+    pub common: Common,
+}
+
+/// A `<name-part>` child of `<name>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NamePart {
+    pub name: Option<String>,
     pub common: Common,
 }
 
