@@ -50,7 +50,7 @@ a thin protocol boundary.
 | Zed extension         | `zed-mosaic`         | Excluded from workspace; query copies and tasks.           |
 | Cache                 | `mos-cache`          | Trait/in-memory stub; no persistence yet.                  |
 | LSP                   | `mos-lsp`            | Stdio diagnostic publisher; richer editor features future. |
-| Bibliography          | `mos-bib`            | Placeholder only.                                          |
+| Bibliography          | `mos-bib`            | Minimal BibTeX record parser; no resolution/rendering yet. |
 
 ## BOUNDARY RULES
 

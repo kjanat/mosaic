@@ -91,7 +91,7 @@ fn field_order_is_deterministic() {
 }
 
 #[test]
-fn normalises_type_and_field_case_but_preserves_key() {
+fn normalizes_type_and_field_case_but_preserves_key() {
     // BibTeX entry types and tag names are case-insensitive; keys are not.
     let bib =
         parse_bibtex("@ARTICLE{Knuth1984, Title = {T}, AUTHOR = {A}}").expect("input should parse");
@@ -108,6 +108,14 @@ fn accepts_trailing_comma() {
     let bib = parse_bibtex("@article{k, title = {T}, year = {1984},}").expect("input should parse");
     let entry = bib.entries.get("k").expect("entry present");
     assert_eq!(entry.fields.len(), 2);
+}
+
+#[test]
+fn rejects_trailing_comma_without_fields() {
+    // A comma after the key must be followed by at least one field, so
+    // `@type{key,}` is malformed (distinct from the field-less `@type{key}`).
+    let err = parse_bibtex("@article{k,}").expect_err("comma without a field should be rejected");
+    assert_eq!(err.kind(), BibParseErrorKind::ExpectedFieldName);
 }
 
 #[test]

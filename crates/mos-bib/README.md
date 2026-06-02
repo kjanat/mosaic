@@ -35,7 +35,7 @@ assert_eq!(entry.fields["year"], "1984");
   by whitespace.
 - Field values as `{braced}`, `"quoted"`, or bare tokens (e.g. `year = 1984`).
 - Comma-separated fields, with an optional trailing comma before the closing `}`.
-- **Case handling:** entry types and field names are normalised to lowercase (BibTeX treats them
+- **Case handling:** entry types and field names are normalized to lowercase (BibTeX treats them
   case-insensitively); citation keys are preserved verbatim (keys are case-sensitive).
 - **Ordering:** entries and fields are stored in `BTreeMap`s, so iteration is deterministic (sorted)
   and stable across runs. On a duplicate citation key the last entry wins; likewise for a repeated
@@ -66,4 +66,5 @@ land:
 - Citation resolution, ordering, clustering, formatting, sorting, and rendering.
 - Integration with `mos check`, `mos build`, layout, PDF, HTML, or LSP.
 
-No claim of manifest §12 completion. Manifest loud; code quiet. Booga trust code.
+This crate does not claim manifest §12 is complete. Where the manifest and the code disagree, trust
+the code.

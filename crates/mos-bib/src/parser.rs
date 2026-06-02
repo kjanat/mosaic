@@ -181,16 +181,21 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse the comma-separated field list up to and including the closing
-    /// `}`. A trailing comma before `}` is accepted.
+    /// `}`. At least one field is required after the key's comma, so
+    /// `@type{key,}` is rejected; a trailing comma *after* a field is accepted.
     fn parse_fields(&mut self, fields: &mut BTreeMap<String, String>) -> Result<(), BibParseError> {
+        let mut saw_field = false;
         loop {
             self.skip_whitespace();
             match self.peek() {
-                // Closing brace (also the trailing-comma / empty-list case).
-                Some(b'}') => {
+                // A `}` ends the list. After the key's comma we still owe a
+                // field, so `@type{key,}` (no field yet) is rejected; once a
+                // field has been seen this is the normal / trailing-comma end.
+                Some(b'}') if saw_field => {
                     self.bump();
                     return Ok(());
                 }
+                Some(b'}') => return Err(self.error_here(BibParseErrorKind::ExpectedFieldName)),
                 None => return Err(self.error_here(BibParseErrorKind::UnterminatedEntry)),
                 _ => {}
             }
@@ -203,6 +208,7 @@ impl<'a> Parser<'a> {
             let value = self.parse_value()?;
             // Last field wins on a repeated (post-lowercasing) field name.
             fields.insert(name, value);
+            saw_field = true;
             self.skip_whitespace();
             match self.peek() {
                 Some(b',') => self.bump(),

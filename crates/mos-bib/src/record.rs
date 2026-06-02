@@ -26,7 +26,7 @@ pub struct Bibliography {
 
 /// A single parsed BibTeX entry — one `@type{...}` record.
 ///
-/// The entry type and field names are normalised to lowercase, because
+/// The entry type and field names are normalized to lowercase, because
 /// BibTeX treats them case-insensitively; the citation [`key`](Self::key) is
 /// preserved verbatim, because keys *are* case-sensitive. Fields live in a
 /// [`BTreeMap`], so [`fields`](Self::fields) iterates in sorted, stable
