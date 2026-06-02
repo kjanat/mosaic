@@ -19,6 +19,7 @@ adobe-font-metrics = { path = "crates/adobe-font-metrics", version = "0.0.0" }
 mos-bib            = { path = "crates/mos-bib", version = "0.0.0" }
 mos-cache          = { path = "crates/mos-cache", version = "0.0.0" }
 mos-core           = { path = "crates/mos-core", version = "0.0.0" }
+mos-csl            = { path = "crates/mos-csl", version = "0.0.0" }
 mos-eval           = { path = "crates/mos-eval", version = "0.0.0" }
 mos-fonts          = { path = "crates/mos-fonts", version = "0.0.0" }
 mos-html           = { path = "crates/mos-html", version = "0.0.0" }
