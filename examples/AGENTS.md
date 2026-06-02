@@ -29,8 +29,8 @@ examples/<name>/
 ## CONVENTIONS
 
 - Regenerate snapshots with `just examples` from repo root.
-- `just examples` runs `cargo mos build examples/*`; each example manifest declares `[output].pdf`
-  so the CLI writes `<name>.pdf` directly.
+- `just examples` runs `runner mos build examples/*` after `just setup`; each example manifest
+  declares `[output].pdf` so the CLI writes `<name>.pdf` directly.
 - Commit `<name>.pdf`; do not commit generated `build/*.pdf`.
 - `mosaic.toml` is partly active: CLI directory builds honor `project.entry` and `output.pdf`.
   Current CLI still does not honor `document.output = ["html"]`.

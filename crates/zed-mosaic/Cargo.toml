@@ -1,5 +1,6 @@
 [package]
 name        = "zed-mosaic"
+# Keep in sync with: crates/zed-mosaic/extension.toml#version
 version     = "0.0.0"
 edition     = "2024"
 description = "Zed editor extension for the Mosaic typesetting language"

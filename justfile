@@ -1,22 +1,32 @@
 # https://just.systems
+set unstable
 
 alias f := fmt
 alias format := fmt
 
+# https://npm.im/runner-run
+runner := "node_modules" / ".bin" / "runner"
+runner-package := "--package=runner-run"
+
+bootstrap-runner := if path_exists(runner) == "true" { quote(runner) } else if which("runner") != "" { "runner" } else if which("bunx") != "" { "bunx " + runner-package + " runner" } else { "npx -y " + runner-package + " runner" }
+
 # List all available recipes.
 default:
-    @just --list
+    just --list
+
+setup:
+    @{{ bootstrap-runner }} install
 
 # Build every example project and refresh committed PDF snapshots.
-examples:
-    cargo mos build examples/*
+examples: setup
+    {{ runner }} mos build examples/*
 
-fmt:
-    dprint fmt
+fmt: setup
+    {{ runner }} fmt
 
 # Build docs with nightly-only rustdoc config.
-dwn:
-    rustup run nightly -- cargo dwn
+doc-nightly: setup
+    rustup run nightly -- {{ runner }} dwn
 
 # Sync the Zed extension's query files from the canonical
 # `tree-sitter-mosaic/queries/` sources. Zed does not load Tree-sitter
@@ -27,9 +37,9 @@ sync-zed-queries:
     src=crates/tree-sitter-mosaic/queries
     dst=crates/zed-mosaic/languages/mosaic
     for path in "$src"/*.scm; do
-    	query="$(basename "$path")"
-    	case "$query" in
-    		locals.scm|tags.scm) continue ;;
-    	esac
-    	cp "$path" "$dst/$query"
+      query="$(basename "$path")"
+      case "$query" in
+        locals.scm|tags.scm) continue ;;
+      esac
+      cp "$path" "$dst/$query"
     done

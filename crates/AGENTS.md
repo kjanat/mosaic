@@ -30,29 +30,30 @@ zed-mosaic = excluded Zed extension side world
 ```
 
 Side/future domains: `mos-cache`, `mos-packages`, `mos-bib`, and `mos-csl` should stay close to
-`mos-core` (and `mos-bib`, for `mos-csl`) until real integration requires more. `mos-lsp` may
-consume current compiler phases, but should stay a thin protocol boundary.
+`mos-core` (and `mos-bib`, for `mos-csl`) until real integration requires more. `mos-html` is a stub
+backend. `mos-lsp` may consume current compiler phases, but should stay a thin protocol boundary.
 
 ## WHERE TO LOOK
 
-| Task                  | Crate                | Notes                                                         |
-| --------------------- | -------------------- | ------------------------------------------------------------- |
-| Document model/errors | `mos-core`           | Lowest Mosaic layer. No parse/layout/backend deps.            |
-| Source syntax         | `mos-parse`          | CST + spans only. No semantic lowering.                       |
-| Lower/resolve         | `mos-eval`           | Parse tree to `Document`; refs/images/figures.                |
-| Text/font metrics     | `mos-fonts`          | Base-14 + bundled Noto Sans.                                  |
-| Page layout           | `mos-layout`         | Consumes `Document`; emits `PageGraph`.                       |
-| PDF output            | `mos-pdf`            | Consumes `PageGraph`; emits files/bytes.                      |
-| CLI                   | `mos`                | Pipeline glue and user diagnostics.                           |
-| AFM parser            | `adobe-font-metrics` | Zero-dep parser below metrics crate.                          |
-| Core-14 metrics       | `pdf-base14-metrics` | Vendored data + build-generated table.                        |
-| Manifest schema       | `mos-packages`       | Parses `mosaic.toml`; no registry yet.                        |
-| Tree-sitter grammar   | `tree-sitter-mosaic` | Editor syntax and queries; separate from compiler.            |
-| Zed extension         | `zed-mosaic`         | Excluded from workspace; query copies and tasks.              |
-| Cache                 | `mos-cache`          | Trait/in-memory stub; no persistence yet.                     |
-| LSP                   | `mos-lsp`            | Stdio diagnostic publisher; richer editor features future.    |
-| Bibliography          | `mos-bib`            | Minimal BibTeX record parser; no resolution/rendering yet.    |
-| CSL styling           | `mos-csl`            | CSL item model + BibTeX mapping + style parser; no processor. |
+| Task                  | Crate                | Notes                                                          |
+| --------------------- | -------------------- | -------------------------------------------------------------- |
+| Document model/errors | `mos-core`           | Lowest Mosaic layer. No parse/layout/backend deps.             |
+| Source syntax         | `mos-parse`          | CST + spans only. No semantic lowering.                        |
+| Lower/resolve         | `mos-eval`           | Parse tree to `Document`; refs/images/figures.                 |
+| Text/font metrics     | `mos-fonts`          | Base-14 + bundled Noto Sans.                                   |
+| Page layout           | `mos-layout`         | Consumes `Document`; emits `PageGraph`.                        |
+| PDF output            | `mos-pdf`            | Consumes `PageGraph`; emits files/bytes.                       |
+| HTML output           | `mos-html`           | Stub backend; see crate guide before touching.                 |
+| CLI                   | `mos`                | Pipeline glue and user diagnostics.                            |
+| AFM parser            | `adobe-font-metrics` | Zero-dep parser below metrics crate.                           |
+| Core-14 metrics       | `pdf-base14-metrics` | Vendored data + build-generated table.                         |
+| Manifest schema       | `mos-packages`       | Parses `mosaic.toml`; no registry yet.                         |
+| Tree-sitter grammar   | `tree-sitter-mosaic` | Editor syntax and queries; separate from compiler.             |
+| Zed extension         | `zed-mosaic`         | Excluded from workspace; query copies and tasks.               |
+| Cache                 | `mos-cache`          | Trait/in-memory stub; no persistence yet; see crate guide.     |
+| LSP                   | `mos-lsp`            | Stdio diagnostic publisher; see crate guide for protocol edge. |
+| Bibliography          | `mos-bib`            | Minimal BibTeX record parser; no resolution/rendering yet.     |
+| CSL styling           | `mos-csl`            | CSL item model + BibTeX mapping + style parser; no processor.  |
 
 ## BOUNDARY RULES
 

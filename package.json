@@ -7,7 +7,8 @@
 		".opencode"
 	],
 	"scripts": {
-		"postinstall": "bun --filter '*' postinstall"
+		"postinstall": "bun --filter '*' postinstall",
+		"fmt": "dprint fmt"
 	},
 	"patchedDependencies": {
 		"tree-sitter@0.25.0": "patches/tree-sitter@0.25.0.patch"
@@ -18,5 +19,10 @@
 		"tree-sitter-cli": "^0.26.0",
 		"typescript": "^6",
 		"@octokit/graphql": "^9.0.3"
+	},
+	"devDependencies": {
+		"dprint": "^0.54.0",
+		"runner-run": "^0.12.0",
+		"tombi": "^1.1.1"
 	}
 }
