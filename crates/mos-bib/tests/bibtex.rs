@@ -1,10 +1,13 @@
 //! Black-box tests for the `mos-bib` minimal BibTeX record parser, driven
 //! entirely through the public API.
+//!
+//! Tests return `()` and use `expect`/`expect_err` (allowed in tests by
+//! `clippy.toml`): the workspace also enables `clippy::panic_in_result_fn`, so a
+//! `Result`-returning test with `assert!` would itself be a clippy error.
 
 use mos_bib::{BibEntry, BibParseErrorKind, parse_bibtex};
 
-/// Field names in their (sorted) iteration order. Defined outside the test
-/// bodies because it never unwraps.
+/// Field names in their (sorted) iteration order.
 fn field_names(entry: &BibEntry) -> Vec<&str> {
     entry.fields.keys().map(String::as_str).collect()
 }
@@ -244,9 +247,20 @@ fn error_carries_offset_message_and_line_col() {
 }
 
 #[test]
+fn error_bridges_to_a_core_diagnostic() {
+    // The local error converts into the standard `mos-core` diagnostic
+    // (`MOS0043`) carrying the byte offset as a span — no parallel pipeline.
+    let err = parse_bibtex("nope").expect_err("malformed input should be rejected");
+    let diagnostic = err.to_diagnostic("refs.bib");
+    assert_eq!(diagnostic.def().code().to_string(), "MOS0043");
+    let span = diagnostic.span().expect("diagnostic should carry a span");
+    assert_eq!(span.start, err.offset());
+}
+
+#[test]
 fn arbitrary_input_never_panics() {
-    // Each of these is malformed or partial; the contract is only that
-    // parsing returns (Ok or Err) rather than panicking.
+    // Each of these is malformed or partial; the contract is only that parsing
+    // returns (Ok or Err) rather than panicking.
     let inputs = [
         "@",
         "@@@@",

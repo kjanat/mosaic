@@ -35,9 +35,10 @@ Not implemented:
 ## CONVENTIONS
 
 - Keep the public API small: `parse_bibtex` plus the record/error types.
-- Error reporting uses the local `BibParseError` by design (issue #66), carrying a byte offset for a
-  later conversion into a `mos-core` `Diagnostic` at the resolver boundary. Do not switch the public
-  signature to `CoreError`/`Diagnostic` until that integration slice actually lands and mints codes.
+- `parse_bibtex` returns the local `BibParseError` (issue #66), but it bridges into the standard
+  diagnostics surface via `BibParseError::to_diagnostic` and `From<BibParseError> for CoreError`
+  (code `MOS0043`). Keep the local type as the parser entry point; don't change `parse_bibtex` to
+  return `CoreError` directly.
 - Use `BTreeMap` (not `HashMap`) so output and tests stay deterministic.
 - No panics on malformed input; return `BibParseError` instead.
 - Document the parser's deliberate limits (verbatim values, naive brace counting) honestly.

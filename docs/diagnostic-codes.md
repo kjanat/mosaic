@@ -54,6 +54,7 @@ codes use the next free integer.
 | MOS0036 | stray-at-sign              | Warning          | mos-parse   | syntax: stray @ not followed by a label; treated as text         |
 | MOS0038 | lone-trailing-backslash    | Warning          | mos-parse   | syntax: lone trailing backslash at end of input; treated as text |
 | MOS0039 | malformed-citation         | Warning          | mos-parse   | syntax: malformed citation group; treated as text                |
+| MOS0043 | bibtex-parse-failed        | Error            | mos-bib     | syntax: BibTeX database could not be parsed                      |
 
 ### Semantic
 

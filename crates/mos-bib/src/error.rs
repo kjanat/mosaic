@@ -1,14 +1,18 @@
 //! The local BibTeX parse error type, [`BibParseError`], and its
 //! [`BibParseErrorKind`] classification.
 //!
-//! It is intentionally a local error rather than a `mos-core`
-//! `CoreError`/`Diagnostic`: this crate owns no `mos-core` diagnostic code,
-//! and a small self-contained error keeps the public API independent of the
-//! diagnostics surface. The byte offset and
-//! [`line_col`](BibParseError::line_col) bridge make it cheap to convert into
-//! a compiler diagnostic when citation resolution lands.
+//! [`parse_bibtex`](crate::parse_bibtex) returns this small local error (per
+//! issue #66) so the parser stays self-contained, but it is **not** a parallel
+//! bad-document pipeline: it bridges into the standard `mos-core` diagnostics
+//! surface. [`BibParseError::to_diagnostic`] and `From<BibParseError> for
+//! CoreError` map it onto the `MOS0043` code — carrying the byte offset as a
+//! span — so a malformed `.bib` flows through the same `Diagnostic` path as
+//! every other compiler error, without callers special-casing `mos-bib`.
 
 use std::fmt;
+use std::path::PathBuf;
+
+use mos_core::{CoreError, Diagnostic, SourceSpan, codes};
 
 /// What went wrong while parsing BibTeX. Paired with a byte offset inside a
 /// [`BibParseError`].
@@ -117,6 +121,29 @@ impl BibParseError {
     pub fn line_col(&self, src: &str) -> (usize, usize) {
         mos_core::linecol(src, self.offset)
     }
+
+    /// Convert this error into a `mos-core` [`Diagnostic`] anchored in `file`.
+    ///
+    /// The diagnostic carries the `MOS0043` code and a zero-width
+    /// [`SourceSpan`] at [`offset`](Self::offset), so a malformed `.bib`
+    /// reported here renders through the standard compiler pipeline. The
+    /// infallible `From<BibParseError> for CoreError` conversion is the
+    /// span-less equivalent for boundaries without a source path.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_bib::parse_bibtex;
+    ///
+    /// let err = parse_bibtex("oops").unwrap_err();
+    /// let diagnostic = err.to_diagnostic("refs.bib");
+    /// assert_eq!(diagnostic.def().code().to_string(), "MOS0043");
+    /// ```
+    #[must_use]
+    pub fn to_diagnostic(&self, file: impl Into<PathBuf>) -> Diagnostic {
+        let span = SourceSpan::new(file.into(), self.offset, self.offset);
+        Diagnostic::simple(&codes::MOS0043, Some(span), self.kind.message())
+    }
 }
 
 impl fmt::Display for BibParseError {
@@ -131,3 +158,33 @@ impl fmt::Display for BibParseError {
 }
 
 impl std::error::Error for BibParseError {}
+
+impl From<BibParseError> for CoreError {
+    fn from(err: BibParseError) -> Self {
+        // No source path at this boundary, so the diagnostic keeps the message
+        // (which includes the byte offset) but carries no span.
+        Self::Diagnostic(Box::new(Diagnostic::simple(
+            &codes::MOS0043,
+            None,
+            err.to_string(),
+        )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse_bibtex;
+
+    #[test]
+    fn from_bib_parse_error_yields_core_diagnostic() {
+        let err = parse_bibtex("nope").expect_err("malformed input should be rejected");
+        // Exhaustive match (no catch-all panic): the wrong variant yields an
+        // empty code so the assertion fails with a clear diff.
+        let code = match CoreError::from(err) {
+            CoreError::Diagnostic(diagnostic) => diagnostic.def().code().to_string(),
+            CoreError::Unimplemented(_) => String::new(),
+        };
+        assert_eq!(code, "MOS0043");
+    }
+}
