@@ -298,8 +298,11 @@ example.
 - [ ] Resolve citation keys.
 - [x] Define bibliography source directive (`#bibliography("refs.bib")`).
 - [ ] Load bibliography databases. *(Source path is parsed, resolved against the source directory,
-      and preserved on a `Bibliography` node; reading and parsing the database is BibTeX import.)*
-- [ ] Import BibTeX.
+      and preserved on a `Bibliography` node; the `mos-bib` BibTeX parser can read a `.bib` string,
+      but reading the declared file from disk and wiring it in is still pending.)*
+- [x] Import BibTeX. *(Minimal record parser in `mos-bib`: entry type, citation key, and
+      braced/quoted/bare string fields into typed records. Strings only; no resolution or
+      rendering.)*
 - [ ] Import BibLaTeX.
 - [ ] Support CSL styles.
 - [ ] Render numeric citations.

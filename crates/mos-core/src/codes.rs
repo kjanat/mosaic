@@ -397,6 +397,9 @@ define_codes! {
     /// Malformed citation group; treated as literal text.
     MOS0039 = 39, Warning, Syntax, "malformed-citation", "mos-parse",
         "syntax: malformed citation group; treated as text";
+    /// BibTeX database could not be parsed (`mos-bib`).
+    MOS0043 = 43, Error, Syntax, "bibtex-parse-failed", "mos-bib",
+        "syntax: BibTeX database could not be parsed";
 
     // ── semantic (mos-eval) ───────────────────────────────────────────
     /// Unknown `#set` target (only `page`, `text`, `document`, `image`).
