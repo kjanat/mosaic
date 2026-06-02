@@ -145,3 +145,77 @@ impl From<CslParseError> for CoreError {
         )))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_covers_error_kinds() {
+        let cases = [
+            (
+                CslParseErrorKind::MalformedXml("bad token".to_owned()),
+                "CSL parse error at byte 7: malformed XML: bad token",
+            ),
+            (
+                CslParseErrorKind::UnexpectedRoot("not-style".to_owned()),
+                "CSL parse error at byte 7: expected a <style> root element, found <not-style>",
+            ),
+            (
+                CslParseErrorKind::MissingVersion,
+                "CSL parse error at byte 7: <style> is missing the required `version` attribute",
+            ),
+            (
+                CslParseErrorKind::MissingClass,
+                "CSL parse error at byte 7: <style> is missing the required `class` attribute",
+            ),
+            (
+                CslParseErrorKind::UnknownClass("weird".to_owned()),
+                "CSL parse error at byte 7: unknown style class `weird` (expected `in-text` or `note`)",
+            ),
+            (
+                CslParseErrorKind::MissingMacroName,
+                "CSL parse error at byte 7: <macro> is missing the required `name` attribute",
+            ),
+            (
+                CslParseErrorKind::MissingLayout,
+                "CSL parse error at byte 7: <citation>/<bibliography> is missing the required <layout>",
+            ),
+            (
+                CslParseErrorKind::TextWithoutSource,
+                "CSL parse error at byte 7: <text> must select a variable, macro, term, or value",
+            ),
+            (
+                CslParseErrorKind::UnsupportedElement("magic".to_owned()),
+                "CSL parse error at byte 7: unsupported CSL element <magic>",
+            ),
+        ];
+
+        for (kind, expected) in cases {
+            assert_eq!(CslParseError::new(kind, 7).to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn error_carries_offset_line_col_and_diagnostic() {
+        let src = "<style version=\"1.0\" class=\"in-text\">\n  <citation/>\n</style>";
+        let err = crate::parse_style(src).expect_err("citation without layout");
+        assert_eq!(err.kind(), &CslParseErrorKind::MissingLayout);
+        assert_eq!(err.line_col(src), (2, 3));
+
+        let diagnostic = err.to_diagnostic("style.csl");
+        assert_eq!(diagnostic.def().code().to_string(), "MOS0044");
+        let span = diagnostic.span().expect("diagnostic should carry a span");
+        assert_eq!(span.start, err.offset());
+    }
+
+    #[test]
+    fn from_error_yields_core_diagnostic() {
+        let err = CslParseError::new(CslParseErrorKind::MissingClass, 3);
+        let code = match CoreError::from(err) {
+            CoreError::Diagnostic(diagnostic) => diagnostic.def().code().to_string(),
+            CoreError::Unimplemented(_) => String::new(),
+        };
+        assert_eq!(code, "MOS0044");
+    }
+}

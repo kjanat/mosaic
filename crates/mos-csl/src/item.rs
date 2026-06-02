@@ -368,3 +368,63 @@ impl Item {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vocab_helpers_round_trip_known_values_and_reject_unknowns() {
+        assert_eq!(ItemType::ArticleJournal.as_str(), "article-journal");
+        assert_eq!(ItemType::from_csl("book"), Some(ItemType::Book));
+        assert_eq!(ItemType::from_csl("unknown"), None);
+        assert_eq!(ItemType::Webpage.to_string(), "webpage");
+
+        assert_eq!(StandardVariable::Doi.as_str(), "DOI");
+        assert_eq!(
+            StandardVariable::from_csl("container-title"),
+            Some(StandardVariable::ContainerTitle)
+        );
+        assert_eq!(StandardVariable::from_csl("doi"), None);
+        assert_eq!(StandardVariable::Url.to_string(), "URL");
+
+        assert_eq!(NumberVariable::from_csl("page"), Some(NumberVariable::Page));
+        assert_eq!(NumberVariable::from_csl("pages"), None);
+        assert_eq!(NumberVariable::Volume.to_string(), "volume");
+
+        assert_eq!(DateVariable::from_csl("issued"), Some(DateVariable::Issued));
+        assert_eq!(DateVariable::from_csl("published"), None);
+        assert_eq!(DateVariable::Accessed.to_string(), "accessed");
+
+        assert_eq!(NameVariable::from_csl("author"), Some(NameVariable::Author));
+        assert_eq!(NameVariable::from_csl("authors"), None);
+        assert_eq!(NameVariable::Translator.to_string(), "translator");
+    }
+
+    #[test]
+    fn constructors_create_precise_item_values() {
+        let literal = Name::literal("Mosaic Team");
+        assert_eq!(literal.literal.as_deref(), Some("Mosaic Team"));
+        assert_eq!(literal.family, None);
+
+        let person = Name::person("Lovelace", "Ada");
+        assert_eq!(person.family.as_deref(), Some("Lovelace"));
+        assert_eq!(person.given.as_deref(), Some("Ada"));
+
+        let year = Date::year(1843);
+        assert_eq!(year.start.year, Some(1843));
+        assert_eq!(year.literal, None);
+
+        let literal_date = Date::literal("forthcoming");
+        assert_eq!(literal_date.literal.as_deref(), Some("forthcoming"));
+        assert_eq!(literal_date.start.year, None);
+
+        let default_item = Item::default();
+        assert_eq!(default_item.item_type, ItemType::Document);
+        assert!(default_item.standard.is_empty());
+
+        let article = Item::new("ada1843", ItemType::ArticleJournal);
+        assert_eq!(article.id, "ada1843");
+        assert_eq!(article.item_type, ItemType::ArticleJournal);
+    }
+}

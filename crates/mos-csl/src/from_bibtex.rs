@@ -216,4 +216,214 @@ mod tests {
             Some(&Date::literal("in press"))
         );
     }
+
+    #[test]
+    fn maps_bibtex_entry_type_groups() {
+        let cases = [
+            ("article", ItemType::ArticleJournal),
+            ("book", ItemType::Book),
+            ("proceedings", ItemType::Book),
+            ("booklet", ItemType::Pamphlet),
+            ("inbook", ItemType::Chapter),
+            ("incollection", ItemType::Chapter),
+            ("conference", ItemType::PaperConference),
+            ("inproceedings", ItemType::PaperConference),
+            ("manual", ItemType::Report),
+            ("techreport", ItemType::Report),
+            ("mastersthesis", ItemType::Thesis),
+            ("phdthesis", ItemType::Thesis),
+            ("thesis", ItemType::Thesis),
+            ("unpublished", ItemType::Manuscript),
+            ("online", ItemType::Webpage),
+            ("electronic", ItemType::Webpage),
+            ("misc", ItemType::Document),
+        ];
+
+        for (entry_type, expected) in cases {
+            let item = item_from_bib_entry(&entry(entry_type, "k", &[]));
+            assert_eq!(item.item_type, expected, "entry type: {entry_type}");
+        }
+    }
+
+    #[test]
+    fn maps_standard_and_number_field_groups() {
+        let bib_entry = entry(
+            "book",
+            "k",
+            &[
+                ("title", "Title"),
+                ("booktitle", "Container"),
+                ("publisher", "Publisher"),
+                ("school", "School"),
+                ("institution", "Institution"),
+                ("address", "Place"),
+                ("series", "Series"),
+                ("note", "Note"),
+                ("abstract", "Abstract"),
+                ("keywords", "Keywords"),
+                ("doi", "10.0/demo"),
+                ("url", "https://example.invalid"),
+                ("isbn", "ISBN"),
+                ("issn", "ISSN"),
+                ("language", "en"),
+                ("volume", "2"),
+                ("number", "4"),
+                ("pages", "10-20"),
+                ("edition", "3"),
+                ("chapter", "7"),
+            ],
+        );
+        let item = item_from_bib_entry(&bib_entry);
+
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::Title)
+                .map(String::as_str),
+            Some("Title")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::ContainerTitle)
+                .map(String::as_str),
+            Some("Container")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::Publisher)
+                .map(String::as_str),
+            Some("School")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::PublisherPlace)
+                .map(String::as_str),
+            Some("Place")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::CollectionTitle)
+                .map(String::as_str),
+            Some("Series")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::Note)
+                .map(String::as_str),
+            Some("Note")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::Abstract)
+                .map(String::as_str),
+            Some("Abstract")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::Keyword)
+                .map(String::as_str),
+            Some("Keywords")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::Doi)
+                .map(String::as_str),
+            Some("10.0/demo")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::Url)
+                .map(String::as_str),
+            Some("https://example.invalid")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::Isbn)
+                .map(String::as_str),
+            Some("ISBN")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::Issn)
+                .map(String::as_str),
+            Some("ISSN")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::Language)
+                .map(String::as_str),
+            Some("en")
+        );
+
+        assert_eq!(
+            item.number.get(&NumberVariable::Volume).map(String::as_str),
+            Some("2")
+        );
+        assert_eq!(
+            item.number.get(&NumberVariable::Issue).map(String::as_str),
+            Some("4")
+        );
+        assert_eq!(
+            item.number.get(&NumberVariable::Page).map(String::as_str),
+            Some("10-20")
+        );
+        assert_eq!(
+            item.number
+                .get(&NumberVariable::Edition)
+                .map(String::as_str),
+            Some("3")
+        );
+        assert_eq!(
+            item.number
+                .get(&NumberVariable::ChapterNumber)
+                .map(String::as_str),
+            Some("7")
+        );
+    }
+
+    #[test]
+    fn maps_editors_and_skips_empty_name_tokens() {
+        let bib_entry = entry(
+            "book",
+            "k",
+            &[
+                ("author", " Ada Lovelace and  and Turing, Alan "),
+                ("editor", "Knuth, Donald"),
+            ],
+        );
+        let item = item_from_bib_entry(&bib_entry);
+        assert_eq!(
+            item.name.get(&NameVariable::Author),
+            Some(&vec![
+                Name::literal("Ada Lovelace"),
+                Name::person("Turing", "Alan")
+            ])
+        );
+        assert_eq!(
+            item.name.get(&NameVariable::Editor),
+            Some(&vec![Name::person("Knuth", "Donald")])
+        );
+    }
+
+    #[test]
+    fn maps_whole_bibliography_by_key() {
+        let bibliography = Bibliography {
+            entries: [
+                ("a".to_owned(), entry("article", "a", &[("title", "First")])),
+                ("b".to_owned(), entry("book", "b", &[("title", "Second")])),
+            ]
+            .into_iter()
+            .collect(),
+        };
+
+        let library = library_from_bibliography(&bibliography);
+        assert_eq!(library.len(), 2);
+        assert_eq!(
+            library.get("a").map(|item| item.item_type),
+            Some(ItemType::ArticleJournal)
+        );
+        assert_eq!(
+            library.get("b").map(|item| item.item_type),
+            Some(ItemType::Book)
+        );
+    }
 }
