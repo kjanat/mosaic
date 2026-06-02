@@ -23,10 +23,11 @@ use crate::record::{BibEntry, Bibliography};
 
 /// Parse `input` as a minimal BibTeX database.
 ///
-/// Returns a [`Bibliography`] whose entries are keyed by citation key. On a
-/// duplicate citation key the last entry in source order wins. Parsing stops
-/// at the first malformed entry and returns a [`BibParseError`] pinpointing
-/// the byte offset; well-formed input never panics.
+/// Returns a [`Bibliography`] whose entries are keyed by citation key. A
+/// duplicate citation key is rejected so later resolver work can report it
+/// before any source-location context is lost. Parsing stops at the first
+/// malformed entry and returns a [`BibParseError`] pinpointing the byte offset;
+/// well-formed input never panics.
 ///
 /// # Errors
 ///
@@ -51,11 +52,27 @@ pub fn parse_bibtex(input: &str) -> Result<Bibliography, BibParseError> {
     let mut entries = BTreeMap::new();
     parser.skip_whitespace();
     while !parser.at_end() {
-        let entry = parser.parse_entry()?;
-        entries.insert(entry.key.clone(), entry);
+        let parsed = parser.parse_entry()?;
+        if entries.contains_key(&parsed.entry.key) {
+            return Err(BibParseError::new(
+                BibParseErrorKind::DuplicateKey,
+                parsed.key_offset,
+            ));
+        }
+        entries.insert(parsed.entry.key.clone(), parsed.entry);
         parser.skip_whitespace();
     }
     Ok(Bibliography { entries })
+}
+
+struct ParsedEntry {
+    entry: BibEntry,
+    key_offset: usize,
+}
+
+struct ParsedKey {
+    text: String,
+    offset: usize,
 }
 
 /// A byte cursor over the BibTeX source. All structural delimiters
@@ -135,7 +152,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_entry(&mut self) -> Result<BibEntry, BibParseError> {
+    fn parse_entry(&mut self) -> Result<ParsedEntry, BibParseError> {
         self.expect_byte(b'@', BibParseErrorKind::ExpectedAt)?;
         self.skip_whitespace();
         let entry_type = self
@@ -156,16 +173,19 @@ impl<'a> Parser<'a> {
             Some(_) => return Err(self.error_here(BibParseErrorKind::ExpectedCommaOrCloseBrace)),
             None => return Err(self.error_here(BibParseErrorKind::UnterminatedEntry)),
         }
-        Ok(BibEntry {
-            entry_type,
-            key,
-            fields,
+        Ok(ParsedEntry {
+            entry: BibEntry {
+                entry_type,
+                key: key.text,
+                fields,
+            },
+            key_offset: key.offset,
         })
     }
 
     /// A citation key runs verbatim until a structural delimiter or
     /// whitespace. It must be non-empty.
-    fn parse_key(&mut self) -> Result<String, BibParseError> {
+    fn parse_key(&mut self) -> Result<ParsedKey, BibParseError> {
         let start = self.pos;
         while let Some(b) = self.peek() {
             if is_key_byte(b) {
@@ -177,7 +197,10 @@ impl<'a> Parser<'a> {
         if self.pos == start {
             return Err(self.error_here(BibParseErrorKind::ExpectedKey));
         }
-        Ok(self.src[start..self.pos].to_owned())
+        Ok(ParsedKey {
+            text: self.src[start..self.pos].to_owned(),
+            offset: start,
+        })
     }
 
     /// Parse the comma-separated field list up to and including the closing
@@ -258,17 +281,31 @@ impl<'a> Parser<'a> {
         Err(self.error_at(open_offset, BibParseErrorKind::UnterminatedValue))
     }
 
-    /// Capture a `"..."` value, reading to the next `"`. Braces inside are
-    /// not tracked; this is the documented minimal limitation.
+    /// Capture a `"..."` value, reading to the next unescaped `"` outside
+    /// braced TeX groups. This still stores raw text: the brace tracking only
+    /// keeps common quoted TeX accents like `{\"o}` from ending the value.
     fn parse_quoted(&mut self) -> Result<String, BibParseError> {
         let open_offset = self.pos;
         self.bump(); // consume opening '"'
         let content_start = self.pos;
+        let mut depth = 0_usize;
         while let Some(b) = self.peek() {
-            if b == b'"' {
-                let value = self.src[content_start..self.pos].to_owned();
-                self.bump(); // consume closing '"'
-                return Ok(value);
+            match b {
+                b'\\' => {
+                    self.bump();
+                    if !self.at_end() {
+                        self.bump();
+                    }
+                    continue;
+                }
+                b'{' => depth += 1,
+                b'}' if depth > 0 => depth -= 1,
+                b'"' if depth == 0 => {
+                    let value = self.src[content_start..self.pos].to_owned();
+                    self.bump(); // consume closing '"'
+                    return Ok(value);
+                }
+                _ => {}
             }
             self.bump();
         }

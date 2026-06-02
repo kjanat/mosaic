@@ -33,6 +33,8 @@ pub enum BibParseErrorKind {
     ExpectedEquals,
     /// `=` must be followed by a `{...}`, `"..."`, or bare value.
     ExpectedValue,
+    /// A citation key was declared more than once in the same BibTeX input.
+    DuplicateKey,
     /// A field value must be followed by `,` or the closing `}`.
     ExpectedCommaOrCloseBrace,
     /// The entry ended (a `}` was expected) before the input did.
@@ -53,6 +55,7 @@ impl BibParseErrorKind {
             Self::ExpectedFieldName => "expected a field name",
             Self::ExpectedEquals => "expected '=' after the field name",
             Self::ExpectedValue => "expected a field value",
+            Self::DuplicateKey => "duplicate citation key",
             Self::ExpectedCommaOrCloseBrace => "expected ',' or '}'",
             Self::UnterminatedEntry => "unterminated entry: expected '}' before end of input",
             Self::UnterminatedValue => "unterminated value: missing closing '}' or '\"'",
@@ -105,8 +108,9 @@ impl BibParseError {
     /// The 1-based `(line, column)` of this error within `src`.
     ///
     /// `src` must be the input passed to [`parse_bibtex`](crate::parse_bibtex);
-    /// columns count Unicode scalar values. This is the bridge to a future
-    /// `mos-core` `Diagnostic`.
+    /// columns count Unicode scalar values. Use [`to_diagnostic`](Self::to_diagnostic)
+    /// or `From<BibParseError> for CoreError` to bridge into `mos-core`
+    /// diagnostics.
     ///
     /// # Examples
     ///

@@ -14,8 +14,8 @@ a full bibliography engine; styling, resolution, and rendering are separate conc
 - `Bibliography { entries: BTreeMap<String, BibEntry> }` — parsed entries keyed by citation key.
 - `BibEntry { entry_type: String, key: String, fields: BTreeMap<String, String> }` — one
   `@type{...}` record.
-- `BibParseError` / `BibParseErrorKind` — a local, recoverable parse error carrying a byte offset
-  (with a `line_col` helper that bridges to `mos-core` diagnostics).
+- `BibParseError` / `BibParseErrorKind` — a local, recoverable parse error carrying a byte offset;
+  `to_diagnostic` and `From<BibParseError> for CoreError` bridge into `mos-core` diagnostics.
 - `Citation { key: String }` — a document-body citation reference.
 
 ```rust
@@ -31,20 +31,20 @@ assert_eq!(entry.fields["year"], "1984");
 
 ## What the parser accepts
 
-- One or more `@type{key, field = value, ...}` entries (any entry type, e.g. `@article`), separated
+- Zero or more `@type{key, field = value, ...}` entries (any entry type, e.g. `@article`), separated
   by whitespace.
 - Field values as `{braced}`, `"quoted"`, or bare tokens (e.g. `year = 1984`).
 - Comma-separated fields, with an optional trailing comma before the closing `}`.
 - **Case handling:** entry types and field names are normalized to lowercase (BibTeX treats them
   case-insensitively); citation keys are preserved verbatim (keys are case-sensitive).
 - **Ordering:** entries and fields are stored in `BTreeMap`s, so iteration is deterministic (sorted)
-  and stable across runs. On a duplicate citation key the last entry wins; likewise for a repeated
-  field name within an entry.
+  and stable across runs. Duplicate citation keys are rejected; repeated field names within an entry
+  keep the last value.
 - Brace values balance nested `{}` by naive counting, so `{The {LaTeX} Companion}` is captured
   whole. Value text is stored **verbatim** (no decoding).
 - Panic-free, useful errors for malformed input: a missing `@`, entry type, `{`, citation key, `=`,
-  or value; an unterminated brace/quote value; or a missing separator. Each `BibParseError` carries
-  the byte offset where it was detected.
+  or value; a duplicate citation key; an unterminated brace/quote value; or a missing separator.
+  Each `BibParseError` carries the byte offset where it was detected.
 
 ## Boundary
 

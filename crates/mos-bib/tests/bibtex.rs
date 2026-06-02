@@ -50,6 +50,27 @@ fn accepts_quoted_values() {
 }
 
 #[test]
+fn quoted_values_keep_tex_accents_verbatim() {
+    let bib =
+        parse_bibtex(r#"@article{k, title = "Schr{\"o}dinger"}"#).expect("input should parse");
+    let entry = bib.entries.get("k").expect("entry present");
+    assert_eq!(
+        entry.fields.get("title").map(String::as_str),
+        Some(r#"Schr{\"o}dinger"#)
+    );
+}
+
+#[test]
+fn quoted_values_keep_escaped_quotes_verbatim() {
+    let bib = parse_bibtex(r#"@article{k, title = "He said \"hi\""}"#).expect("input should parse");
+    let entry = bib.entries.get("k").expect("entry present");
+    assert_eq!(
+        entry.fields.get("title").map(String::as_str),
+        Some(r#"He said \"hi\""#)
+    );
+}
+
+#[test]
 fn accepts_mixed_quote_and_brace_values() {
     let bib = parse_bibtex(r#"@article{k, title = {Braced}, author = "Quoted"}"#)
         .expect("input should parse");
@@ -174,15 +195,10 @@ fn empty_input_yields_empty_bibliography() {
 }
 
 #[test]
-fn duplicate_key_keeps_last_entry() {
-    let bib = parse_bibtex("@article{k, title = {First}}@article{k, title = {Second}}")
-        .expect("input should parse");
-    assert_eq!(bib.entries.len(), 1);
-    let entry = bib.entries.get("k").expect("entry present");
-    assert_eq!(
-        entry.fields.get("title").map(String::as_str),
-        Some("Second")
-    );
+fn duplicate_key_is_rejected() {
+    let err = parse_bibtex("@article{k, title = {First}}@article{k, title = {Second}}")
+        .expect_err("duplicate key should be rejected");
+    assert_eq!(err.kind(), BibParseErrorKind::DuplicateKey);
 }
 
 #[test]

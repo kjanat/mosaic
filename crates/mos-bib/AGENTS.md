@@ -9,12 +9,14 @@ citation resolution, styling, sorting, or rendering, and no wiring into the comp
 
 Implemented:
 
-- `parse_bibtex(&str) -> Result<Bibliography, BibParseError>`: one or more `@type{...}` entries.
+- `parse_bibtex(&str) -> Result<Bibliography, BibParseError>`: zero or more `@type{...}` entries.
 - Values as `{braced}` (naive nested-brace balancing), `"quoted"`, or bare tokens (`year = 1984`),
   stored verbatim.
 - Lowercased entry types and field names; verbatim, case-sensitive citation keys.
-- Deterministic ordering via `BTreeMap` for both entries and fields; last duplicate wins.
-- Panic-free recovery: `BibParseError` carries a byte offset plus a `line_col` bridge.
+- Deterministic ordering via `BTreeMap` for both entries and fields; duplicate keys error, repeated
+  fields keep the last value.
+- Panic-free recovery: `BibParseError` carries a byte offset and bridges via `to_diagnostic` /
+  `From<BibParseError> for CoreError`.
 
 Not implemented:
 
