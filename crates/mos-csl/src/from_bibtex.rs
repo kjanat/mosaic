@@ -7,9 +7,9 @@
 //!
 //! Name handling is intentionally minimal: `author`/`editor` are split on
 //! whitespace-delimited `and` tokens, and per name a `Last, First` comma form
-//! becomes family/given — everything else is kept as a name
-//! [`literal`](Name::literal). Full BibTeX name parsing (von/Jr particles) and
-//! `month` handling are future refinements.
+//! or `First Last` form becomes family/given. Single-token names are kept as a
+//! [`literal`](Name::literal). Full BibTeX name parsing (protected institutional
+//! names, von/Jr particles) and `month` handling are future refinements.
 
 use std::collections::BTreeMap;
 
@@ -24,7 +24,7 @@ use crate::item::{
 pub fn item_from_bib_entry(entry: &BibEntry) -> Item {
     let mut item = Item::new(entry.key.clone(), item_type_for(&entry.entry_type));
     for (field, value) in &entry.fields {
-        apply_field(&mut item, field, value);
+        apply_field(&mut item, &entry.entry_type, field, value);
     }
     item
 }
@@ -56,12 +56,13 @@ fn item_type_for(entry_type: &str) -> ItemType {
 }
 
 /// Place one recognised BibTeX field onto the item; drop unknown fields.
-fn apply_field(item: &mut Item, field: &str, value: &str) {
+fn apply_field(item: &mut Item, entry_type: &str, field: &str, value: &str) {
     // Recognised string ("standard") fields, grouped by their CSL target.
     let standard = match field {
         "title" => Some(StandardVariable::Title),
         "journal" | "booktitle" => Some(StandardVariable::ContainerTitle),
         "publisher" | "school" | "institution" => Some(StandardVariable::Publisher),
+        "address" if is_conference_entry(entry_type) => Some(StandardVariable::EventPlace),
         "address" => Some(StandardVariable::PublisherPlace),
         "series" => Some(StandardVariable::CollectionTitle),
         "note" => Some(StandardVariable::Note),
@@ -82,6 +83,7 @@ fn apply_field(item: &mut Item, field: &str, value: &str) {
     // Recognised number fields.
     let number = match field {
         "volume" => Some(NumberVariable::Volume),
+        "number" if is_report_entry(entry_type) => Some(NumberVariable::Number),
         "number" => Some(NumberVariable::Issue),
         "pages" => Some(NumberVariable::Page),
         "edition" => Some(NumberVariable::Edition),
@@ -106,6 +108,14 @@ fn apply_field(item: &mut Item, field: &str, value: &str) {
         }
         _ => {}
     }
+}
+
+fn is_conference_entry(entry_type: &str) -> bool {
+    matches!(entry_type, "conference" | "inproceedings")
+}
+
+fn is_report_entry(entry_type: &str) -> bool {
+    matches!(entry_type, "manual" | "techreport")
 }
 
 /// Split a BibTeX name list on whitespace-delimited `and` tokens.
@@ -141,10 +151,18 @@ fn push_name(names: &mut Vec<Name>, token: &str) {
     }
 }
 
-/// A `Last, First` comma form becomes family/given; anything else is a literal.
+/// `Last, First` and `First Last` forms become family/given; single-token names
+/// stay literal because `mos-bib` does not preserve institutional bracing yet.
 fn parse_one_name(token: &str) -> Name {
     match token.split_once(',') {
         Some((family, given)) => Name::person(family.trim(), given.trim()),
+        None => parse_name_without_comma(token),
+    }
+}
+
+fn parse_name_without_comma(token: &str) -> Name {
+    match token.rsplit_once(char::is_whitespace) {
+        Some((given, family)) => Name::person(family.trim(), given.trim()),
         None => Name::literal(token),
     }
 }
@@ -219,7 +237,7 @@ mod tests {
             .expect("authors present");
         assert_eq!(authors.len(), 2);
         assert_eq!(authors[0], Name::person("Knuth", "Donald E."));
-        assert_eq!(authors[1], Name::literal("Ada Lovelace"));
+        assert_eq!(authors[1], Name::person("Lovelace", "Ada"));
     }
 
     #[test]
@@ -236,7 +254,7 @@ mod tests {
             .expect("authors present");
         assert_eq!(authors.len(), 2);
         assert_eq!(authors[0], Name::person("Knuth", "Donald E."));
-        assert_eq!(authors[1], Name::literal("Ada Lovelace"));
+        assert_eq!(authors[1], Name::person("Lovelace", "Ada"));
     }
 
     #[test]
@@ -422,6 +440,32 @@ mod tests {
     }
 
     #[test]
+    fn maps_report_number_to_number_not_issue() {
+        let item = item_from_bib_entry(&entry("techreport", "k", &[("number", "TR-7")]));
+        assert_eq!(
+            item.number.get(&NumberVariable::Number).map(String::as_str),
+            Some("TR-7")
+        );
+        assert!(!item.number.contains_key(&NumberVariable::Issue));
+    }
+
+    #[test]
+    fn maps_conference_address_to_event_place() {
+        let item = item_from_bib_entry(&entry("inproceedings", "k", &[("address", "Paris")]));
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::EventPlace)
+                .map(String::as_str),
+            Some("Paris")
+        );
+        assert!(
+            !item
+                .standard
+                .contains_key(&StandardVariable::PublisherPlace)
+        );
+    }
+
+    #[test]
     fn maps_editors_and_skips_empty_name_tokens() {
         let bib_entry = entry(
             "book",
@@ -435,7 +479,7 @@ mod tests {
         assert_eq!(
             item.name.get(&NameVariable::Author),
             Some(&vec![
-                Name::literal("Ada Lovelace"),
+                Name::person("Lovelace", "Ada"),
                 Name::person("Turing", "Alan")
             ])
         );
@@ -465,6 +509,15 @@ mod tests {
         assert_eq!(
             library.get("b").map(|item| item.item_type),
             Some(ItemType::Book)
+        );
+    }
+
+    #[test]
+    fn keeps_single_token_names_literal() {
+        let item = item_from_bib_entry(&entry("book", "k", &[("author", "Plato")]));
+        assert_eq!(
+            item.name.get(&NameVariable::Author),
+            Some(&vec![Name::literal("Plato")])
         );
     }
 }
