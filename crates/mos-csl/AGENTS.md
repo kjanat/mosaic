@@ -17,13 +17,14 @@ Implemented:
 - BibTeX mapping (`from_bibtex.rs`): infallible `item_from_bib_entry` / `library_from_bibliography`.
 - Style parser (`parser.rs` + `style.rs`): `parse_style(&str) -> Result<Style, CslParseError>`, a
   read-only `roxmltree` DOM walk into the `Style` AST; local error bridges to `MOS0044`. It retains
-  selected rendering options for future processing, but does not evaluate them.
+  selected rendering options, dependent-style info links, name-part formatting, and raw in-style
+  locale blocks for future processing, but does not evaluate them.
 
 Not implemented:
 
 - The CSL processor: style evaluation, formatting, sorting, disambiguation, name ordering, terms,
   ordinals, date rendering.
-- Locale files / locale fallback; in-style `<locale>` is skipped.
+- Locale files / locale fallback; retained in-style `<locale>` blocks are not interpreted.
 - Full BibTeX name parsing (protected institutional names, particles/suffixes); `month` mapping.
 - Disk I/O and any `mos-eval`/layout/PDF/LSP integration.
 
@@ -46,8 +47,8 @@ Not implemented:
   (`MOS0044`) via `to_diagnostic` / `From`. Do not change the signature to return `CoreError`.
 - Use `BTreeMap` and ordered enums so output and tests stay deterministic.
 - Dispatch the parser on element *local* names (namespace-tolerant). Retain modelled rendering
-  options as raw strings; ignore other unmodelled attributes; error on unknown rendering elements;
-  skip in-style `<locale>`.
+  options as raw strings; retain in-style `<locale>` as raw XML; ignore other unmodelled attributes;
+  error on unknown rendering elements.
 - Tests return `()` and use `expect`/`expect_err` — the workspace enables
   `clippy::panic_in_result_fn`, so `Result`-returning tests with `assert!` are clippy errors.
 

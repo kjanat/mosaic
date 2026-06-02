@@ -13,9 +13,9 @@ use roxmltree::{Document, Node};
 use crate::error::{CslParseError, CslParseErrorKind};
 use crate::style::{
     Bibliography, BibliographyOptions, Branch, Choose, Citation, CitationOptions, Common,
-    Conditions, DateElement, DatePart, Element, EtAl, Group, Info, Label, Layout, Match,
-    NameElement, NameOptions, Names, Number, SortKey, SortKeyOptions, SortTarget, Style,
-    StyleClass, StyleOptions, Text, TextSource,
+    Conditions, DateElement, DatePart, Element, EtAl, Group, Info, InfoCategory, InfoContributor,
+    InfoLink, Label, Layout, LocaleBlock, Match, NameElement, NameOptions, NamePart, Names, Number,
+    SortKey, SortKeyOptions, SortTarget, Style, StyleClass, StyleOptions, Text, TextSource,
 };
 
 /// Parse `input` as a CSL 1.0.2 style.
@@ -75,6 +75,7 @@ pub fn parse_style(input: &str) -> Result<Style, CslParseError> {
     let mut citation = None;
     let mut bibliography = None;
     let mut macros = BTreeMap::new();
+    let mut locales = Vec::new();
 
     for child in child_elements(root) {
         match child.tag_name().name() {
@@ -87,8 +88,7 @@ pub fn parse_style(input: &str) -> Result<Style, CslParseError> {
                     .ok_or_else(|| err_at(child, CslParseErrorKind::MissingMacroName))?;
                 macros.insert(name.to_owned(), parse_elements(child)?);
             }
-            // In-style locale data is not parsed in this slice.
-            "locale" => {}
+            "locale" => locales.push(parse_locale(child, input)),
             other => {
                 return Err(err_at(
                     child,
@@ -107,6 +107,7 @@ pub fn parse_style(input: &str) -> Result<Style, CslParseError> {
         citation,
         bibliography,
         macros,
+        locales,
     })
 }
 
@@ -116,11 +117,57 @@ fn parse_info(node: Node<'_, '_>) -> Info {
         match child.tag_name().name() {
             "id" => info.id = child.text().map(str::to_owned),
             "title" => info.title = child.text().map(str::to_owned),
-            // Other <info> children (author, link, updated, …) are ignored.
+            "link" => info.links.push(parse_info_link(child)),
+            "category" => info.categories.push(parse_info_category(child)),
+            "author" => info.authors.push(parse_info_contributor(child)),
+            "contributor" => info.contributors.push(parse_info_contributor(child)),
+            "updated" => info.updated = child.text().map(str::to_owned),
+            "issn" => {
+                if let Some(text) = child.text() {
+                    info.issn.push(text.to_owned());
+                }
+            }
+            // Other <info> children are ignored.
             _ => {}
         }
     }
     info
+}
+
+fn parse_info_link(node: Node<'_, '_>) -> InfoLink {
+    InfoLink {
+        rel: attr(node, "rel"),
+        href: attr(node, "href"),
+        media_type: attr(node, "type"),
+    }
+}
+
+fn parse_info_category(node: Node<'_, '_>) -> InfoCategory {
+    InfoCategory {
+        citation_format: attr(node, "citation-format"),
+        field: attr(node, "field"),
+    }
+}
+
+fn parse_info_contributor(node: Node<'_, '_>) -> InfoContributor {
+    let mut contributor = InfoContributor::default();
+    for child in child_elements(node) {
+        match child.tag_name().name() {
+            "name" => contributor.name = child.text().map(str::to_owned),
+            "uri" => contributor.uri = child.text().map(str::to_owned),
+            "email" => contributor.email = child.text().map(str::to_owned),
+            _ => {}
+        }
+    }
+    contributor
+}
+
+fn parse_locale(node: Node<'_, '_>, input: &str) -> LocaleBlock {
+    let xml = match input.get(node.range()) {
+        Some(text) => text.to_owned(),
+        None => String::new(),
+    };
+    LocaleBlock { xml }
 }
 
 fn parse_citation(node: Node<'_, '_>) -> Result<Citation, CslParseError> {
@@ -281,12 +328,7 @@ fn parse_names(node: Node<'_, '_>) -> Result<Names, CslParseError> {
     for child in child_elements(node) {
         match child.tag_name().name() {
             "name" => {
-                name = Some(NameElement {
-                    form: attr(child, "form"),
-                    and: attr(child, "and"),
-                    options: parse_name_options(child),
-                    common: parse_common(child),
-                });
+                name = Some(parse_name_element(child));
             }
             "et-al" => {
                 et_al = Some(EtAl {
@@ -312,6 +354,26 @@ fn parse_names(node: Node<'_, '_>) -> Result<Names, CslParseError> {
         substitute,
         common: parse_common(node),
     })
+}
+
+fn parse_name_element(node: Node<'_, '_>) -> NameElement {
+    let mut parts = Vec::new();
+    for child in child_elements(node) {
+        if child.tag_name().name() == "name-part" {
+            parts.push(NamePart {
+                name: attr(child, "name"),
+                common: parse_common(child),
+            });
+        }
+    }
+
+    NameElement {
+        form: attr(node, "form"),
+        and: attr(node, "and"),
+        options: parse_name_options(node),
+        parts,
+        common: parse_common(node),
+    }
 }
 
 fn parse_label(node: Node<'_, '_>) -> Label {

@@ -118,7 +118,18 @@ fn rejects_an_unsupported_element() {
 fn parses_rendering_variants_sort_and_conditions() {
     let style = parse_style(
         r#"<style version="1.0" class="note" page-range-format="expanded" demote-non-dropping-particle="sort-only" initialize-with-hyphen="false">
-          <locale><terms><term name="page">p.</term></terms></locale>
+          <info>
+            <id>http://example.org/styles/dependent-demo</id>
+            <title>Dependent Demo</title>
+            <link rel="independent-parent" href="http://example.org/styles/parent" type="text/xml"/>
+            <category citation-format="author-date"/>
+            <category field="science"/>
+            <author><name>Style Author</name><uri>https://example.org/author</uri><email>a@example.org</email></author>
+            <contributor><name>Style Contributor</name></contributor>
+            <updated>2026-06-02T00:00:00Z</updated>
+            <issn>1234-5678</issn>
+          </info>
+          <locale xml:lang="en-US"><terms><term name="page">p.</term></terms></locale>
           <macro name="term-macro">
             <text term="editor" form="short" plural="true"/>
           </macro>
@@ -134,7 +145,9 @@ fn parses_rendering_variants_sort_and_conditions() {
                 <date-part name="year"/>
               </date>
               <names variable="author editor" delimiter=", ">
-                <name form="short" and="symbol" et-al-min="3" et-al-use-first="1" et-al-subsequent-min="4" et-al-subsequent-use-first="2" et-al-use-last="true" delimiter-precedes-et-al="always" delimiter-precedes-last="contextual" initialize="true" initialize-with=". " name-as-sort-order="first" sort-separator=", "/>
+                <name form="short" and="symbol" et-al-min="3" et-al-use-first="1" et-al-subsequent-min="4" et-al-subsequent-use-first="2" et-al-use-last="true" delimiter-precedes-et-al="always" delimiter-precedes-last="contextual" initialize="true" initialize-with=". " name-as-sort-order="first" sort-separator=", ">
+                  <name-part name="family" font-variant="small-caps"/>
+                </name>
                 <et-al term="et-al"/>
                 <label form="short" plural="contextual" strip-periods="true"/>
                 <substitute><text value="Anonymous"/></substitute>
@@ -167,7 +180,49 @@ fn parses_rendering_variants_sort_and_conditions() {
         style.options.initialize_with_hyphen.as_deref(),
         Some("false")
     );
-    assert_eq!(style.macros.len(), 1, "locale children should be skipped");
+    assert_eq!(
+        style.info.id.as_deref(),
+        Some("http://example.org/styles/dependent-demo")
+    );
+    assert_eq!(style.info.title.as_deref(), Some("Dependent Demo"));
+    assert_eq!(style.info.links.len(), 1);
+    assert_eq!(
+        style.info.links[0].rel.as_deref(),
+        Some("independent-parent")
+    );
+    assert_eq!(
+        style.info.links[0].href.as_deref(),
+        Some("http://example.org/styles/parent")
+    );
+    assert_eq!(style.info.links[0].media_type.as_deref(), Some("text/xml"));
+    assert_eq!(
+        style.info.categories[0].citation_format.as_deref(),
+        Some("author-date")
+    );
+    assert_eq!(style.info.categories[1].field.as_deref(), Some("science"));
+    assert_eq!(style.info.authors[0].name.as_deref(), Some("Style Author"));
+    assert_eq!(
+        style.info.authors[0].uri.as_deref(),
+        Some("https://example.org/author")
+    );
+    assert_eq!(
+        style.info.authors[0].email.as_deref(),
+        Some("a@example.org")
+    );
+    assert_eq!(
+        style.info.contributors[0].name.as_deref(),
+        Some("Style Contributor")
+    );
+    assert_eq!(style.info.updated.as_deref(), Some("2026-06-02T00:00:00Z"));
+    assert_eq!(style.info.issn, vec!["1234-5678".to_owned()]);
+    assert_eq!(style.macros.len(), 1);
+    assert_eq!(style.locales.len(), 1);
+    assert!(style.locales[0].xml.contains("xml:lang=\"en-US\""));
+    assert!(
+        style.locales[0]
+            .xml
+            .contains("<term name=\"page\">p.</term>")
+    );
     let macro_elements = style.macros.get("term-macro").expect("macro present");
     assert!(
         matches!(
@@ -298,6 +353,12 @@ fn parses_rendering_variants_sort_and_conditions() {
     assert_eq!(name.options.initialize_with.as_deref(), Some(". "));
     assert_eq!(name.options.name_as_sort_order.as_deref(), Some("first"));
     assert_eq!(name.options.sort_separator.as_deref(), Some(", "));
+    assert_eq!(name.parts.len(), 1);
+    assert_eq!(name.parts[0].name.as_deref(), Some("family"));
+    assert_eq!(
+        name.parts[0].common.font_variant.as_deref(),
+        Some("small-caps")
+    );
     assert_eq!(
         names.et_al.as_ref().and_then(|et_al| et_al.term.as_deref()),
         Some("et-al")

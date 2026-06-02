@@ -35,12 +35,15 @@ assert_eq!(style.class, StyleClass::InText);
 
 ## What the parser handles
 
-- The `<style>` tree: `class`/`version`/`default-locale`, `<info>` (`id`/`title`), `<macro>`
-  definitions, and `<citation>`/`<bibliography>` with their `<layout>` and `<sort>`.
+- The `<style>` tree: `class`/`version`/`default-locale`, `<info>` (`id`/`title`, dependent-style
+  links, categories, authors/contributors, `updated`, `issn`), retained raw in-style `<locale>`
+  blocks, `<macro>` definitions, and `<citation>`/`<bibliography>` with their `<layout>` and
+  `<sort>`.
 - Rendering elements `text`, `number`, `date` (+ `date-part`), `names` (+ `name`/`et-al`/`label`/
   `substitute`), `label`, `group`, and `choose` (+ `if`/`else-if`/`else`), with common attributes
-  (affixes, formatting, `delimiter`, `text-case`, …) and retained-but-not-evaluated style, citation,
-  bibliography, name, sort-key, date-part, and label rendering options.
+  (affixes, formatting, `delimiter`, `text-case`, …), `<name-part>` formatting, and
+  retained-but-not-evaluated style, citation, bibliography, name, sort-key, date-part, and label
+  rendering options.
 - Dispatch is on element local names, so the CSL XML namespace (or its absence) is tolerated.
 - Useful, panic-free errors: malformed XML, wrong root, missing `version`/`class`, unknown `class`,
   a `<macro>` without a `name`, a `<citation>`/`<bibliography>` without a `<layout>`, a `<text>`
@@ -59,7 +62,8 @@ These are distinct capabilities, not unfinished parts of this crate:
 - The CSL **processor**: evaluating retained style options against items to produce formatted
   citations or bibliographies — formatting, sorting, disambiguation, cite grouping/collapsing, name
   ordering, ordinals, term/date rendering.
-- Locale files (`locales-xx-XX.xml`) and locale fallback; in-style `<locale>` blocks are skipped.
+- Locale files (`locales-xx-XX.xml`) and locale fallback; in-style `<locale>` blocks are retained as
+  raw XML, not interpreted.
 - Full BibTeX name parsing (protected institutional names, von/Jr particles) in the mapping.
 - Reading `.csl`/`.bib` files from disk, and any `mos check` / `mos build` / layout / PDF / LSP
   wiring.
