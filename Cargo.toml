@@ -37,7 +37,7 @@ flate2                = "1.1"
 lopdf                 = "0.40"
 opener                = "0.8"
 pdf-writer            = "0.15"
-roxmltree             = "0.20"
+roxmltree             = "0.21"
 rustybuzz             = "0.20"
 serde_json            = "1"
 subsetter             = "0.2"
@@ -65,11 +65,10 @@ version  = "1"
 features = ["derive"]
 
 [workspace.lints.clippy]
-# Per the Clippy book, enabling the entire pedantic, nursery, or
-# restriction group is discouraged ("cherry-pick lints out of the
-# group"). The default-on groups (correctness/suspicious/style/
-# complexity/perf) keep their default levels; we add curated picks
-# below, alphabetised within each group.
+# Per the Clippy book, enabling the entire pedantic, nursery, or restriction group is discouraged
+# ("cherry-pick lints out of the group").
+# The default-on groups (correctness/suspicious/style/complexity/perf) keep their default levels;
+# we add curated picks below, alphabetised within each group.
 
 # --- pedantic cherry-picks ----------------------------------------
 cast_lossless                      = "warn"
