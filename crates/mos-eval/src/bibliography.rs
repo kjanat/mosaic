@@ -220,12 +220,6 @@ fn resolve_path(src_path: &str, source_file: &Path) -> PathBuf {
 /// exist in any parsed record set. Unknown citation keys emit `MOS0045` once
 /// per citation node and keep their visible placeholder text unchanged.
 pub(super) fn resolve_citations(document: &mut Document, diagnostics: &mut Vec<Diagnostic>) {
-    if !document
-        .nodes()
-        .any(|node| node.kind == NodeKind::Bibliography)
-    {
-        return;
-    }
     let bibliography = load_bibliography(document, diagnostics);
     let citation_ids: Vec<NodeId> = document
         .nodes()

@@ -911,11 +911,17 @@ mod tests {
         // with the bare key in the `key` attribute and a span that
         // covers the full `[@key]` source extent. The placeholder
         // `text` attribute mirrors the unresolved-reference pattern
-        // so layout still renders something visible before
-        // bibliography resolution exists.
+        // so layout still renders something visible before citation
+        // display rendering exists.
         let src = "see [@smith2024] here\n";
         let r = lower(src, &PathBuf::from("test.mos"));
-        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0045.code()),
+            "expected MOS0045 because no bibliography records are declared, got {:?}",
+            r.diagnostics
+        );
         let citation = r
             .document
             .nodes()
