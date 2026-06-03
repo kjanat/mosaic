@@ -216,9 +216,17 @@ fn resolve_path(src_path: &str, source_file: &Path) -> PathBuf {
     candidate
 }
 
-/// Load every declared bibliography source and mark citation nodes whose keys
-/// exist in any parsed record set. Unknown citation keys emit `MOS0045` once
-/// per citation node and keep their visible placeholder text unchanged.
+/// Load every declared bibliography source, mark citation nodes whose keys
+/// exist in any parsed record set, and rewrite their visible text to a
+/// numeric label assigned by first-use order. Unknown citation keys emit
+/// `MOS0045` once per citation node and keep their `[?key?]` placeholder.
+///
+/// Numbering is dense over *known* citations: a key consumes a number only
+/// when it resolves, and repeated uses of the same key reuse its first
+/// number. Unresolved keys never burn a slot, so `[1]`, `[2]`, ... always
+/// index real bibliography records. This is the numeric-placeholder slice
+/// (issue #67), not full CSL: no author-year styles, sorted output, or
+/// citation clusters.
 pub(super) fn resolve_citations(document: &mut Document, diagnostics: &mut Vec<Diagnostic>) {
     let bibliography = load_bibliography(document, diagnostics);
     let citation_ids: Vec<NodeId> = document
@@ -226,6 +234,12 @@ pub(super) fn resolve_citations(document: &mut Document, diagnostics: &mut Vec<D
         .filter(|node| node.kind == NodeKind::Citation)
         .map(|node| node.id)
         .collect();
+
+    // `nodes()` walks the `BTreeMap<NodeId, Node>` in `NodeId` order, which is
+    // the lowerer's allocation order -- i.e. document order. Collecting the ids
+    // above preserves that order, so the first new key encountered here is the
+    // document's first-cited key.
+    let mut numbers: BTreeMap<String, usize> = BTreeMap::new();
 
     for citation_id in citation_ids {
         let Some(node) = document.get(citation_id) else {
@@ -235,9 +249,13 @@ pub(super) fn resolve_citations(document: &mut Document, diagnostics: &mut Vec<D
             continue;
         };
         if bibliography.records.entries.contains_key(&key) {
+            let next_number = numbers.len() + 1;
+            let number = *numbers.entry(key).or_insert(next_number);
             if let Some(node) = document.get_mut(citation_id) {
                 node.attributes
                     .insert("resolved".to_owned(), AttrValue::Bool(true));
+                node.attributes
+                    .insert("text".to_owned(), AttrValue::Str(format!("[{number}]")));
             }
             continue;
         }

@@ -1154,8 +1154,8 @@ mod tests {
     #[test]
     fn known_citation_key_resolves_against_bibliography_records() {
         // A citation key declared in the parsed BibTeX source is marked
-        // resolved, but its visible placeholder text stays unchanged until
-        // the later citation-rendering slice assigns display numbers.
+        // resolved and its visible text is rewritten to its first-use
+        // numeric label `[1]` (issue #67).
         let dir = unique_temp_dir("citation-known");
         let bib = dir.join("refs.bib");
         std::fs::write(&bib, "@article{smith2024, title={Known}}\n").unwrap();
@@ -1179,8 +1179,8 @@ mod tests {
         );
         assert_eq!(
             citation.attributes.get("text"),
-            Some(&AttrValue::Str("[?smith2024?]".to_owned())),
-            "issue #65 must not implement citation placeholder rendering"
+            Some(&AttrValue::Str("[1]".to_owned())),
+            "a resolved citation renders its first-use numeric label"
         );
 
         let reference = r
@@ -1192,6 +1192,79 @@ mod tests {
             reference.attributes.get("text"),
             Some(&AttrValue::Str("1".to_owned())),
             "label references still resolve while citations are checked"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn repeated_known_citation_key_reuses_its_first_number() {
+        // Two citations to the same resolved key render the same numeric
+        // label -- a key is numbered once, on first use.
+        let dir = unique_temp_dir("citation-repeat");
+        let bib = dir.join("refs.bib");
+        std::fs::write(&bib, "@article{smith2024, title={Known}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let source_text =
+            "#bibliography(\"refs.bib\")\n\nsee [@smith2024] and again [@smith2024]\n";
+        std::fs::write(&source, source_text).unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+
+        let labels: Vec<Option<AttrValue>> = r
+            .document
+            .nodes()
+            .filter(|n| n.kind == NodeKind::Citation)
+            .map(|n| n.attributes.get("text").cloned())
+            .collect();
+        assert_eq!(
+            labels,
+            vec![
+                Some(AttrValue::Str("[1]".to_owned())),
+                Some(AttrValue::Str("[1]".to_owned())),
+            ],
+            "repeated key reuses its first-use number"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn distinct_known_citation_keys_number_by_first_use_order() {
+        // Distinct resolved keys are numbered by the order they are first
+        // cited, independent of their order in the BibTeX source, and a
+        // later repeat of an earlier key keeps that key's number.
+        let dir = unique_temp_dir("citation-order");
+        let bib = dir.join("refs.bib");
+        // `alpha` precedes `beta` in the database file...
+        std::fs::write(
+            &bib,
+            "@article{alpha, title={A}}\n@article{beta, title={B}}\n",
+        )
+        .unwrap();
+        let source = dir.join("main.mos");
+        // ...but `beta` is *cited* first, so beta -> [1] and alpha -> [2].
+        let source_text = "#bibliography(\"refs.bib\")\n\nsee [@beta] then [@alpha] and [@beta]\n";
+        std::fs::write(&source, source_text).unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+
+        let labels: Vec<Option<AttrValue>> = r
+            .document
+            .nodes()
+            .filter(|n| n.kind == NodeKind::Citation)
+            .map(|n| n.attributes.get("text").cloned())
+            .collect();
+        assert_eq!(
+            labels,
+            vec![
+                Some(AttrValue::Str("[1]".to_owned())),
+                Some(AttrValue::Str("[2]".to_owned())),
+                Some(AttrValue::Str("[1]".to_owned())),
+            ],
+            "numbering follows first citation, not bibliography source order"
         );
 
         std::fs::remove_dir_all(&dir).ok();

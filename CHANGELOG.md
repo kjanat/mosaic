@@ -14,6 +14,10 @@ All notable changes to this project will be documented here. The format is based
   rendering slice while keeping the visible `[?key?]` placeholder. Unknown keys now emit `MOS0045`,
   duplicate keys across bibliography sources emit `MOS0046`, and missing/unreadable/malformed
   bibliography sources suppress false missing-key diagnostics until the record set is complete.
+- Numeric citation rendering (https://github.com/kjanat/mosaic/issues/67): resolved `[@key]` markers
+  now render a bracketed number (`[1]`, `[2]`, ...) assigned by first-use order over known records.
+  Repeated citations to one key reuse its number, and unresolved keys keep the `[?key?]`
+  placeholder. Sorted bibliography-list rendering and CSL styles remain out of scope.
 
 ### Changed
 

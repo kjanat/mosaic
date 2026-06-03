@@ -38,8 +38,8 @@ Implemented now:
 - Lowerer/resolver: semantic `Document`, metadata, section numbering, labels/refs, single-key
   citations, bibliography source loading/key checks, images/figures, hard-break semantic nodes.
 - Bibliography foundations: `#bibliography("refs.bib")`, minimal BibTeX parsing, citation-key
-  resolution diagnostics, and CSL data/style parsing. Rendering citations/bibliographies is not
-  shipped yet.
+  resolution diagnostics, and CSL data/style parsing. Resolved `[@key]` markers render numeric
+  labels (`[1]`, `[2]`, ... by first-use order); bibliography-list rendering is not shipped yet.
 - Layout: greedy text flow, headings, paragraphs, lists, images, simple figures/captions, pages,
   paper/margin/style controls, Unicode/glyph fallback basics.
 - PDF: Base-14 metrics, bundled Noto Sans embedding/subsetting, ToUnicode, images, metadata,
@@ -135,8 +135,8 @@ Treat as aspirational/stub unless user asks:
 - Do not invent font shaping. Manifest says HarfBuzz/equivalent for a reason.
 - Do not treat Tree-sitter grammar as the compiler parser or shipped language truth.
 - Do not assume `crates/zed-mosaic` participates in workspace Cargo commands.
-- Do not claim bibliography rendering is shipped: citation keys resolve, but visible citation text
-  is still the placeholder until the next rendering slice.
+- Do not claim *bibliography-list* rendering is shipped: resolved `[@key]` markers now render
+  numeric labels (`[1]`, ...), but the sorted bibliography entry list is not rendered yet.
 
 ## COMMANDS
 
