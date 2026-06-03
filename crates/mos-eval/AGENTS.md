@@ -16,15 +16,18 @@ Implemented:
 - `#set` nodes for document/page/text/image settings.
 - Document metadata: title, author, language.
 - `#image` and `#figure` with PNG/JPEG decode and image attrs.
+- `#bibliography("refs.bib")` source nodes, BibTeX file loading via `mos-bib`, citation-key
+  resolution, `MOS0045` missing-key diagnostics, and `MOS0046` duplicate-key diagnostics across
+  declared bibliography sources.
 - Label index, duplicate label diagnostics, unknown reference diagnostics.
 - Section numbering; figure numbering with kind-aware `Figure N` references and stamped `Figure N:`
   caption labels; generic reference text rewrite and citation placeholder text.
 
 Not implemented yet:
 
-- User functions, `#let`, scripting, templates, bibliography resolution/rendering, citation
-  clusters, math/equation semantics, equation numbering, package resolution, full fixpoint over
-  layout/page references.
+- User functions, `#let`, scripting, templates, bibliography rendering, citation display numbering,
+  citation clusters, math/equation semantics, equation numbering, package resolution, full fixpoint
+  over layout/page references.
 
 ## WHERE TO LOOK
 
@@ -36,6 +39,7 @@ Not implemented yet:
 | Images        | `src/image.rs` + lowerer helpers | Decode, attrs, path resolution.                           |
 | Figures       | `lower_figure_directive`         | Image + caption semantic node.                            |
 | References    | `src/resolve.rs`                 | Label index, section/figure numbering, figure-aware refs. |
+| Bibliography  | `src/bibliography.rs`            | Source paths, `.bib` loading, citation-key diagnostics.   |
 | Unit coercion | length helpers                   | `em` depends on current text size.                        |
 
 ## CONVENTIONS
@@ -49,6 +53,10 @@ Not implemented yet:
   preserved `caption_source` rather than re-reading the already-stamped text (which would nest
   `Figure 1: Figure 1: …`).
 - Preserve diagnostics with useful spans; user input errors are not panics.
+- Citation key checks run even without declared bibliography sources; a missing key against an empty
+  complete record set is `MOS0045`. If any declared bibliography source is missing/unreadable/
+  malformed, suppress missing-key diagnostics to avoid false negatives from an incomplete record
+  set.
 - `current_text_size_pt` affects `em` conversion order. Be careful around `#set text(size: ...)`.
 
 ## STATUS WARNINGS
