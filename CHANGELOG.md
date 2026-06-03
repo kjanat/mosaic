@@ -2,9 +2,26 @@
 
 All notable changes to this project will be documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project follows
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html) but stays at `0.0.0` while pre-alpha.
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html) with `0.0.x` pre-alpha releases.
 
 ## [Unreleased]
+
+### Added
+
+- Citation-key resolution (https://github.com/kjanat/mosaic/issues/65): declared
+  `#bibliography("refs.bib")` sources are read during lowering, parsed with [`mos-bib`][mos-bib],
+  and checked against `[@key]` citations. Known citations are marked `resolved = true` for a later
+  rendering slice while keeping the visible `[?key?]` placeholder. Unknown keys now emit `MOS0045`,
+  duplicate keys across bibliography sources emit `MOS0046`, and missing/unreadable/malformed
+  bibliography sources suppress false missing-key diagnostics until the record set is complete.
+
+### Changed
+
+- Crate packages now use explicit include allowlists: ordinary crates inherit workspace defaults for
+  root licenses, README, examples, source, and tests, while data/build-script crates keep precise
+  root-anchored package lists. This keeps agent/project files out of future crates.io tarballs.
+
+## [0.0.1] - 2026-06-03
 
 ### Added
 
@@ -179,7 +196,8 @@ workflow.
   and semantic-token defaults.
 - An in-memory cache foundation ([`mos-cache`][mos-cache]) backed by a `HashMap`.
 
-[Unreleased]: https://github.com/kjanat/mosaic/compare/v0.0.0...HEAD
+[Unreleased]: https://github.com/kjanat/mosaic/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/kjanat/mosaic/compare/v0.0.0...v0.0.1
 [0.0.0]: https://github.com/kjanat/mosaic/releases/tag/v0.0.0
 
 <!-- other-link-definitions -->
