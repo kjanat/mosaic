@@ -3,9 +3,9 @@
 //! This is the *source boundary* only (manifest §4, MVP 4): the directive
 //! declares one bibliography database path, which is resolved relative to
 //! the current `.mos` source file and stashed on a
-//! [`NodeKind::Bibliography`] node so a later BibTeX-parsing slice can read
-//! it. Parsing `.bib` contents, resolving citation keys, and rendering the
-//! bibliography are explicitly out of scope here.
+//! [`NodeKind::Bibliography`] node. After lowering, citation keys are checked
+//! against the parsed BibTeX records from those declared sources. Rendering
+//! citation markers and bibliography entries is still a later slice.
 //!
 //! Diagnostics:
 //!
@@ -15,10 +15,14 @@
 //! - `MOS0015`: an unknown keyword argument was supplied.
 //! - `MOS0041`: the resolved path does not point to a file on disk
 //!   (a warning — the node is still emitted with its resolved path).
+//! - `MOS0045`: a citation key does not exist in a complete parsed bibliography set.
+//! - `MOS0046`: a citation key appears in more than one declared bibliography source.
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 
+use mos_bib::Bibliography;
 use mos_core::{
     AttrMap, AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, SourceSpan, StyleId, codes,
 };
@@ -210,4 +214,131 @@ fn resolve_path(src_path: &str, source_file: &Path) -> PathBuf {
         return parent.join(candidate);
     }
     candidate
+}
+
+/// Load every declared bibliography source and mark citation nodes whose keys
+/// exist in any parsed record set. Unknown citation keys emit `MOS0045` once
+/// per citation node and keep their visible placeholder text unchanged.
+pub(super) fn resolve_citations(document: &mut Document, diagnostics: &mut Vec<Diagnostic>) {
+    if !document
+        .nodes()
+        .any(|node| node.kind == NodeKind::Bibliography)
+    {
+        return;
+    }
+    let bibliography = load_bibliography(document, diagnostics);
+    let citation_ids: Vec<NodeId> = document
+        .nodes()
+        .filter(|node| node.kind == NodeKind::Citation)
+        .map(|node| node.id)
+        .collect();
+
+    for citation_id in citation_ids {
+        let Some(node) = document.get(citation_id) else {
+            continue;
+        };
+        let Some(AttrValue::Str(key)) = node.attributes.get("key").cloned() else {
+            continue;
+        };
+        if bibliography.records.entries.contains_key(&key) {
+            if let Some(node) = document.get_mut(citation_id) {
+                node.attributes
+                    .insert("resolved".to_owned(), AttrValue::Bool(true));
+            }
+            continue;
+        }
+        if !bibliography.complete {
+            continue;
+        }
+        diagnostics.push(
+            Diagnostic::simple(
+                &codes::MOS0045,
+                Some(node.span.clone()),
+                format!("unknown citation key `{key}` in bibliography records"),
+            )
+            .with_annotation(mos_core::DiagnosticAnnotation::Hint(
+                "declare the key in a `#bibliography(...)` BibTeX source".to_owned(),
+            )),
+        );
+    }
+}
+
+struct LoadedBibliography {
+    records: Bibliography,
+    complete: bool,
+}
+
+fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> LoadedBibliography {
+    let mut merged = Bibliography::default();
+    let mut origins: BTreeMap<String, (PathBuf, SourceSpan)> = BTreeMap::new();
+    let mut complete = true;
+    for node in document
+        .nodes()
+        .filter(|node| node.kind == NodeKind::Bibliography)
+    {
+        let Some(AttrValue::Str(path)) = node.attributes.get("resolved_path") else {
+            complete = false;
+            continue;
+        };
+        let path_buf = PathBuf::from(path);
+        if !path_buf.is_file() {
+            complete = false;
+            continue;
+        }
+        let source = match fs::read_to_string(&path_buf) {
+            Ok(source) => source,
+            Err(err) => {
+                complete = false;
+                diagnostics.push(Diagnostic::simple(
+                    &codes::MOS0041,
+                    Some(node.span.clone()),
+                    format!(
+                        "declared bibliography source `{}` could not be read: {err}",
+                        path_buf.display()
+                    ),
+                ));
+                continue;
+            }
+        };
+        match mos_bib::parse_bibtex(&source) {
+            Ok(parsed) => {
+                for (key, entry) in parsed.entries {
+                    if let Some((first_path, first_span)) = origins.get(&key) {
+                        diagnostics.push(
+                            Diagnostic::simple(
+                                &codes::MOS0046,
+                                Some(node.span.clone()),
+                                format!(
+                                    "duplicate citation key `{key}` in bibliography source `{}`",
+                                    path_buf.display()
+                                ),
+                            )
+                            .with_annotation(mos_core::DiagnosticAnnotation::Related {
+                                span: first_span.clone(),
+                                message: format!(
+                                    "first bibliography source for `{key}` was `{}`",
+                                    first_path.display()
+                                ),
+                            })
+                            .with_annotation(mos_core::DiagnosticAnnotation::Hint(
+                                "keep citation keys unique across all declared bibliography sources"
+                                    .to_owned(),
+                            )),
+                        );
+                    } else {
+                        origins.insert(key.clone(), (path_buf.clone(), node.span.clone()));
+                        merged.entries.insert(key, entry);
+                    }
+                }
+            }
+            Err(err) => {
+                complete = false;
+                diagnostics.push(err.to_diagnostic(path_buf));
+            }
+        }
+    }
+    LoadedBibliography {
+        records: merged,
+        complete,
+    }
 }

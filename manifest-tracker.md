@@ -182,7 +182,7 @@ example.
 - [ ] Resolve equation numbering.
 - [ ] Resolve table numbering.
 - [ ] Resolve theorem numbering.
-- [ ] Resolve citation keys.
+- [x] Resolve citation keys.
 - [x] Document the page-reference and layout-fixpoint boundary.
 - [ ] Add page-reference support.
 - [ ] Add internal fixpoint loop for layout-dependent values.
@@ -296,11 +296,11 @@ example.
 
 - [x] Define minimal single-key citation syntax (`[@key]`).
 - [x] Parse minimal single-key citations.
-- [ ] Resolve citation keys.
+- [x] Resolve citation keys.
 - [x] Define bibliography source directive (`#bibliography("refs.bib")`).
-- [ ] Load bibliography databases. *(Source path is parsed, resolved against the source directory,
-      and preserved on a `Bibliography` node; the `mos-bib` BibTeX parser can read a `.bib` string,
-      but reading the declared file from disk and wiring it in is still pending.)*
+- [x] Load bibliography databases. *(Declared `.bib` files are read during lowering, parsed with
+      `mos-bib`, and used to check `[@key]` citations. Citation/bibliography rendering is still
+      pending.)*
 - [x] Import BibTeX. *(Minimal record parser in `mos-bib`: entry type, citation key, and
       braced/quoted/bare string fields into typed records. Strings only; no resolution or
       rendering.)*

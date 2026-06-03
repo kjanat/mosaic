@@ -30,7 +30,7 @@ use mos_parse::{DirectiveKind, Item, RawBlockKind, SyntaxTree};
 
 pub use resolve::resolve;
 
-use bibliography::lower_bibliography_directive;
+use bibliography::{lower_bibliography_directive, resolve_citations};
 use image_lower::{lower_figure_directive, lower_image_directive};
 use inline::lower_inlines;
 use list::lower_list;
@@ -434,6 +434,7 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
 pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
     let mut lowered = Evaluator::new().evaluate(tree);
     let mut diagnostics = std::mem::take(&mut lowered.diagnostics);
+    resolve_citations(&mut lowered.document, &mut diagnostics);
     diagnostics.extend(resolve(&mut lowered.document));
     LowerResult {
         document: lowered.document,
@@ -1141,6 +1142,206 @@ mod tests {
             node.attributes.get("resolved_path"),
             Some(&AttrValue::Str(bib.to_string_lossy().into_owned()))
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn known_citation_key_resolves_against_bibliography_records() {
+        // A citation key declared in the parsed BibTeX source is marked
+        // resolved, but its visible placeholder text stays unchanged until
+        // the later citation-rendering slice assigns display numbers.
+        let dir = unique_temp_dir("citation-known");
+        let bib = dir.join("refs.bib");
+        std::fs::write(&bib, "@article{smith2024, title={Known}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let source_text =
+            "#bibliography(\"refs.bib\")\n\n= Intro <intro>\n\nsee [@smith2024] and @intro\n";
+        std::fs::write(&source, source_text).unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+
+        let citation = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Citation)
+            .expect("Citation node");
+        assert_eq!(
+            citation.attributes.get("resolved"),
+            Some(&AttrValue::Bool(true)),
+            "known key should be marked resolved for later rendering"
+        );
+        assert_eq!(
+            citation.attributes.get("text"),
+            Some(&AttrValue::Str("[?smith2024?]".to_owned())),
+            "issue #65 must not implement citation placeholder rendering"
+        );
+
+        let reference = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Reference)
+            .expect("Reference node");
+        assert_eq!(
+            reference.attributes.get("text"),
+            Some(&AttrValue::Str("1".to_owned())),
+            "label references still resolve while citations are checked"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn unknown_citation_key_emits_mos0045_with_source_span() {
+        let dir = unique_temp_dir("citation-unknown");
+        let bib = dir.join("refs.bib");
+        std::fs::write(&bib, "@article{known, title={Known}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let source_text = "#bibliography(\"refs.bib\")\n\nsee [@missing]\n";
+        std::fs::write(&source, source_text).unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        let missing: Vec<&Diagnostic> = r
+            .diagnostics
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0045.code())
+            .collect();
+        assert_eq!(
+            missing.len(),
+            1,
+            "expected one MOS0045, got {:?}",
+            r.diagnostics
+        );
+        let diagnostic = missing[0];
+        assert!(
+            diagnostic.message().contains("`missing`"),
+            "diagnostic should name missing citation key, got {:?}",
+            diagnostic.message()
+        );
+        assert_eq!(
+            diagnostic
+                .span()
+                .map(|span| &source_text[span.start..span.end]),
+            Some("[@missing]"),
+            "MOS0045 should point at the citation token"
+        );
+
+        let citation = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Citation)
+            .expect("Citation node");
+        assert_eq!(
+            citation.attributes.get("text"),
+            Some(&AttrValue::Str("[?missing?]".to_owned())),
+            "unknown citations keep visible placeholder text"
+        );
+        assert_eq!(citation.attributes.get("resolved"), None);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn multiple_unknown_citations_emit_deterministic_mos0045_diagnostics() {
+        let dir = unique_temp_dir("citation-multiple-unknown");
+        let bib = dir.join("refs.bib");
+        std::fs::write(&bib, "@article{known, title={Known}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let source_text = "#bibliography(\"refs.bib\")\n\nsee [@alpha] and [@beta]\n";
+        std::fs::write(&source, source_text).unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        let spans: Vec<&str> = r
+            .diagnostics
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0045.code())
+            .filter_map(|d| d.span().map(|span| &source_text[span.start..span.end]))
+            .collect();
+        assert_eq!(
+            spans,
+            vec!["[@alpha]", "[@beta]"],
+            "unknown citation diagnostics should follow document order"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn incomplete_bibliography_sources_do_not_emit_false_missing_citations() {
+        let dir = unique_temp_dir("citation-incomplete-bibliography");
+        let bib = dir.join("refs.bib");
+        std::fs::write(&bib, "@article{known, title={Known}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let source_text = "#bibliography(\"refs.bib\")\n#bibliography(\"missing.bib\")\n\nsee [@known] and [@maybe-in-missing]\n";
+        std::fs::write(&source, source_text).unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0041.code()),
+            "expected missing bibliography source warning, got {:?}",
+            r.diagnostics
+        );
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0045.code()),
+            "incomplete bibliography set must not produce false MOS0045 diagnostics"
+        );
+
+        let known = r
+            .document
+            .nodes()
+            .filter(|n| n.kind == NodeKind::Citation)
+            .find(|n| n.attributes.get("key") == Some(&AttrValue::Str("known".to_owned())))
+            .expect("known citation node");
+        assert_eq!(
+            known.attributes.get("resolved"),
+            Some(&AttrValue::Bool(true))
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn duplicate_citation_keys_across_bibliography_sources_emit_mos0046() {
+        let dir = unique_temp_dir("citation-duplicate-key");
+        let first = dir.join("first.bib");
+        let second = dir.join("second.bib");
+        std::fs::write(&first, "@article{dup, title={First}}\n").unwrap();
+        std::fs::write(&second, "@book{dup, title={Second}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let source_text =
+            "#bibliography(\"first.bib\")\n#bibliography(\"second.bib\")\n\nsee [@dup]\n";
+        std::fs::write(&source, source_text).unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        let duplicates: Vec<&Diagnostic> = r
+            .diagnostics
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0046.code())
+            .collect();
+        assert_eq!(
+            duplicates.len(),
+            1,
+            "expected one MOS0046, got {:?}",
+            r.diagnostics
+        );
+        let diagnostic = duplicates[0];
+        assert!(
+            diagnostic.message().contains("`dup`"),
+            "diagnostic should name duplicate citation key, got {:?}",
+            diagnostic.message()
+        );
+        assert_eq!(
+            diagnostic
+                .span()
+                .map(|span| &source_text[span.start..span.end]),
+            Some("#bibliography(\"second.bib\")"),
+            "duplicate should point at the later bibliography source"
+        );
+
         std::fs::remove_dir_all(&dir).ok();
     }
 
