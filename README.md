@@ -39,9 +39,11 @@ under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed
 - [x] `mos build` end-to-end — layout + PDF emission for the Base-14 core fonts and bundled Noto
       Sans, with PNG/JPEG raster images and figure captions (manifest §6 stages 5–9, §21.1);
 - [x] `mos-lsp` publishes current compiler diagnostics over stdio LSP on open/change;
-- [ ] HTML and EPUB backends, persistent incremental cache, bibliography resolution/rendering and
-      compiler integration, and richer LSP features — see MVP 1–6 in `manifest.md`. BibTeX/CSL
-      parser foundations exist, but they are not a shipped bibliography pipeline.
+- [ ] HTML and EPUB backends, persistent incremental cache, full bibliography rendering (sorted
+      entry lists, CSL styles) and compiler integration, and richer LSP features — see MVP 1–6 in
+      `manifest.md`. Citation keys resolve and resolved `[@key]` markers render numeric labels
+      (`[1]`, ...), but BibTeX/CSL foundations are not yet a shipped end-to-end bibliography
+      pipeline.
 
 Label and reference behavior is documented in
 [`docs/labels-and-references.md`](./docs/labels-and-references.md).

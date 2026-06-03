@@ -29,12 +29,11 @@ pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inlin
                 );
             }
             InlineKind::Citation => {
-                // Bibliography loading and rendering are out of scope
-                // for this slice (MVP 4). Record the bare key so a
-                // later resolver can rewrite the placeholder text once
-                // a bibliography database exists; until then layout
-                // renders `[?key?]` so the citation is visible in
-                // output the same way unresolved refs are.
+                // Record the bare key and a visible `[?key?]` fallback.
+                // `resolve_citations` rewrites this to a numeric label
+                // (`[1]`, ...) for keys found in a declared bibliography;
+                // unresolved keys keep `[?key?]` so the citation stays
+                // visible the same way unresolved refs are.
                 attributes.insert("key".to_owned(), AttrValue::Str(inline.text.clone()));
                 attributes.insert(
                     "text".to_owned(),

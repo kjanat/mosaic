@@ -299,8 +299,8 @@ example.
 - [x] Resolve citation keys.
 - [x] Define bibliography source directive (`#bibliography("refs.bib")`).
 - [x] Load bibliography databases. *(Declared `.bib` files are read during lowering, parsed with
-      `mos-bib`, and used to check `[@key]` citations. Citation/bibliography rendering is still
-      pending.)*
+      `mos-bib`, and used to check `[@key]` citations. Citation markers now render numeric labels;
+      bibliography list rendering is still pending.)*
 - [x] Import BibTeX. *(Minimal record parser in `mos-bib`: entry type, citation key, and
       braced/quoted/bare string fields into typed records. Strings only; no resolution or
       rendering.)*
@@ -308,7 +308,9 @@ example.
 - [ ] Support CSL styles. *(Foundation only: `mos-csl` has a CSL item data model, a BibTeX→CSL
       mapping, and a CSL 1.0.2 style **parser** into a typed AST; applying styles to render
       citations is not implemented.)*
-- [ ] Render numeric citations.
+- [x] Render numeric citations. *(Resolved `[@key]` markers render a bracketed number `[1]`, `[2]`,
+      ... assigned by first-use order over known records; unresolved keys keep `[?key?]`. Marker
+      text only — sorted bibliography output is not rendered yet.)*
 - [ ] Render author-year citations.
 - [ ] Render footnote citations.
 - [ ] Render citation clusters.
