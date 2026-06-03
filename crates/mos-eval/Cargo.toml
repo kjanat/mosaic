@@ -17,6 +17,7 @@ include.workspace      = true
 # turned off so we don't pull in TIFF, AVIF, WebP, etc. — image format
 # coverage beyond PNG/JPEG is a separate later slice.
 image.workspace     = true
+mos-bib.workspace   = true
 mos-core.workspace  = true
 mos-parse.workspace = true
 

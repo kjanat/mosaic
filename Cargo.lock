@@ -807,6 +807,7 @@ name = "mos-eval"
 version = "0.0.1"
 dependencies = [
  "image",
+ "mos-bib",
  "mos-core",
  "mos-parse",
 ]

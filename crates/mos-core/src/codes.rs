@@ -435,6 +435,12 @@ define_codes! {
     /// `#bibliography(...)` path declared more than once; first wins.
     MOS0042 = 42, Error, Semantic, "bibliography-duplicate-path", "mos-eval",
         "semantic: #bibliography path argument declared more than once";
+    /// `[@key]` citation to a bibliography record that does not exist.
+    MOS0045 = 45, Error, Semantic, "citation-missing", "mos-eval",
+        "semantic: citation key does not exist in bibliography records";
+    /// Citation key appears in more than one declared bibliography source.
+    MOS0046 = 46, Error, Semantic, "bibliography-duplicate-key", "mos-eval",
+        "semantic: citation key appears in more than one bibliography source";
 
     // ── filesystem / asset I/O ────────────────────────────────────────
     /// Image file cannot be read from disk.
