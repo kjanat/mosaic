@@ -8,14 +8,15 @@ not implemented yet.
 
 ## WHERE TO LOOK
 
-| Task             | Location                           | Notes                                                        |
-| ---------------- | ---------------------------------- | ------------------------------------------------------------ |
-| Cache API        | `src/lib.rs`                       | `Cache`, `CacheKey`, `InMemoryCache`.                        |
-| Dependency ids   | `src/dependency.rs`                | `DependencyId` / `DependencyKind`; identities only.          |
-| Path identity    | `src/dependency.rs`                | `ProjectPath` canonicalizes file paths (slash/`.`/`..`/NFC). |
-| Key source       | `mos-core`                         | `CacheKey` wraps `ContentHash`.                              |
-| Design boundary  | `docs/incremental-dependencies.md` | §3 maps types to the full sketch + what is deferred.         |
-| Future direction | `README.md`                        | Treat as intent unless code implements it.                   |
+| Task             | Location                           | Notes                                                         |
+| ---------------- | ---------------------------------- | ------------------------------------------------------------- |
+| Cache API        | `src/lib.rs`                       | `Cache`, `CacheKey`, `InMemoryCache`.                         |
+| Dependency ids   | `src/dependency.rs`                | `DependencyId` / `DependencyKind`; identities only.           |
+| Bib dependency   | `src/dependency.rs`                | `BibliographyDependency` = `Bibliography` id + `ContentHash`. |
+| Path identity    | `src/dependency.rs`                | `ProjectPath` canonicalizes file paths (slash/`.`/`..`/NFC).  |
+| Key source       | `mos-core`                         | `CacheKey` wraps `ContentHash`.                               |
+| Design boundary  | `docs/incremental-dependencies.md` | §3 maps types to the full sketch + what is deferred.          |
+| Future direction | `README.md`                        | Treat as intent unless code implements it.                    |
 
 ## CURRENT SLICE
 
@@ -26,8 +27,13 @@ not implemented yet.
 - Serialization, validation, and type meaning of bytes are caller responsibility.
 - `DependencyId` models four kinds: source/asset/bibliography files (checked canonical
   `ProjectPath`) and a label name (`String`). `ProjectPath` enforces the §3.1 canonical form so
-  equal logical inputs share one identity; invalid raw identities return `ProjectPathError`. No
-  hashing, no graph, not wired into `CacheKey`.
+  equal logical inputs share one identity; invalid raw identities return `ProjectPathError`. The id
+  carries no hashing, no graph, and is not wired into `CacheKey`.
+- `BibliographyDependency` pairs a `Bibliography` id with a `ContentHash` boundary (§4.1) — the
+  first content boundary built on a `DependencyId`. Construction guarantees the `Bibliography`
+  variant, so `path()`/`kind()` are infallible. The hash is caller-supplied (from
+  `mos_bib::bibliography_content_hash`); this crate stays free of `.bib` knowledge. Still no graph,
+  no `CacheKey` wiring.
 - Layout inputs are intentionally deferred: `StyleId` is defaulted (`0`) so it is not yet a real
   identity; wait for the `ParagraphInputHash` layout key (§4.4) before adding the kind.
 

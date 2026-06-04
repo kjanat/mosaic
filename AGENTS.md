@@ -40,6 +40,8 @@ Implemented now:
 - Bibliography foundations: `#bibliography("refs.bib")`, minimal BibTeX parsing, citation-key
   resolution diagnostics, and CSL data/style parsing. Resolved `[@key]` markers render numeric
   labels (`[1]`, `[2]`, ... by first-use order); bibliography-list rendering is not shipped yet.
+  Dependency tracking: `BibliographyDependency` pairs a `Bibliography` id with a content-hash
+  boundary (`mos_bib::bibliography_content_hash`); identity/boundary only, no cache graph yet.
 - Layout: greedy text flow, headings, paragraphs, lists, images, simple figures/captions, pages,
   paper/margin/style controls, Unicode/glyph fallback basics.
 - PDF: Base-14 metrics, bundled Noto Sans embedding/subsetting, ToUnicode, images, metadata,

@@ -18,6 +18,10 @@ Implemented:
   fields keep the last value.
 - Panic-free recovery: `BibParseError` carries a byte offset and bridges via `to_diagnostic` /
   `From<BibParseError> for CoreError`.
+- `bibliography_content_hash(&[u8]) -> ContentHash` (`src/content.rs`): the §4.1 source-hash
+  boundary specialized to `.bib` inputs (engine-version + domain-tag + raw bytes, length-framed,
+  FNV-1a-128 *interim* hasher). Deterministic, byte-for-byte, no filesystem inputs. Pairs with
+  `mos_cache::BibliographyDependency`. See `docs/incremental-dependencies.md` §4.1.
 
 Not implemented:
 
@@ -28,13 +32,14 @@ Not implemented:
 
 ## WHERE TO LOOK
 
-| Task         | Location          | Notes                                                   |
-| ------------ | ----------------- | ------------------------------------------------------- |
-| Public types | `src/record.rs`   | `Bibliography`, `BibEntry`, `Citation`.                 |
-| Error type   | `src/error.rs`    | `BibParseError` / `BibParseErrorKind`; offset/line_col. |
-| Parser       | `src/parser.rs`   | Hand-rolled recursive descent; grammar in module docs.  |
-| Facade       | `src/lib.rs`      | Module wiring and re-exports only.                      |
-| Tests        | `tests/bibtex.rs` | Black-box, against the public API.                      |
+| Task         | Location          | Notes                                                    |
+| ------------ | ----------------- | -------------------------------------------------------- |
+| Public types | `src/record.rs`   | `Bibliography`, `BibEntry`, `Citation`.                  |
+| Error type   | `src/error.rs`    | `BibParseError` / `BibParseErrorKind`; offset/line_col.  |
+| Parser       | `src/parser.rs`   | Hand-rolled recursive descent; grammar in module docs.   |
+| Content hash | `src/content.rs`  | `bibliography_content_hash`; §4.1 boundary, interim FNV. |
+| Facade       | `src/lib.rs`      | Module wiring and re-exports only.                       |
+| Tests        | `tests/bibtex.rs` | Black-box, against the public API.                       |
 
 ## CONVENTIONS
 

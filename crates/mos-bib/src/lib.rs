@@ -41,10 +41,12 @@
     html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
 )]
 
+mod content;
 mod error;
 mod parser;
 mod record;
 
+pub use content::bibliography_content_hash;
 pub use error::{BibParseError, BibParseErrorKind};
 pub use parser::parse_bibtex;
 pub use record::{BibEntry, Bibliography, Citation};

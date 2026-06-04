@@ -1,7 +1,11 @@
 //! Incremental build cache (manifest §7, §32).
 //!
-//! The dependency graph (`DepNode`) and content-addressed cache live
-//! here. The MVP 5 implementation will persist to `.mos-cache/`.
+//! Today this crate holds the typed dependency-identity vocabulary
+//! ([`DependencyId`] / [`DependencyKind`] / [`ProjectPath`], plus the
+//! [`BibliographyDependency`] content boundary) and a tiny in-memory byte
+//! [`Cache`]. The `DepNode` graph and the persistent content-addressed
+//! `.mos-cache/` are MVP 5 work, still design-side in
+//! `docs/incremental-dependencies.md` (§9).
 
 #![doc(
     html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
@@ -14,7 +18,9 @@ use mos_core::ContentHash;
 
 mod dependency;
 
-pub use dependency::{DependencyId, DependencyKind, ProjectPath, ProjectPathError};
+pub use dependency::{
+    BibliographyDependency, DependencyId, DependencyKind, ProjectPath, ProjectPathError,
+};
 
 /// A cache entry's address. Real keys include node, style, and width
 /// hashes (manifest §32). For now the type is opaque.

@@ -108,7 +108,10 @@ Deliberately **not** modelled yet:
   conflate every layout request under `StyleId(0)`, so it waits for the genuine key.
 - `LayoutOutput`, `Artifact` — output-side, not dependencies.
 
-The id/kind types carry no hashing and are not yet wired into `CacheKey`; that is the next slice.
+The id/kind types carry no hashing themselves. The first content boundary built on one has since
+landed for bibliography inputs — `BibliographyDependency` pairs a `Bibliography` id with a
+`ContentHash` (§4.1). None of these are wired into `CacheKey` or a `DepNode` graph yet; that is a
+later slice (§9.6).
 
 ### 3.1 `Source`
 
@@ -205,6 +208,37 @@ Out of inputs (must not affect the hash): mtime, inode, absolute path, owning us
 auto-conversion by the OS or the user's editor. If a future parser normalizes line endings or strips
 a BOM before lowering, that normalization must happen *before* the bytes are hashed and be stamped
 into `engine_version`.
+
+#### What has landed: bibliography content hash
+
+The first concrete `SourceHash` to ship is the bibliography boundary, because the `Bibliography`
+dependency kind is split out from `Source` in §3 expressly so `.bib` inputs hash on their own
+boundary. `mos_bib::bibliography_content_hash(&[u8]) -> mos_core::ContentHash` implements exactly
+the `SourceHash` shape above, specialized to `source_kind = bibliography`:
+
+```text
+BibliographyContentHash = H(
+    engine_version,               // CARGO_PKG_VERSION; bumping it invalidates (§5 rule 2)
+    domain_tag,                   // "mos-bib/bibliography-source/v1" — separates this boundary
+    file_bytes                    // raw bytes as read, byte-for-byte (no NFC / line-ending / BOM)
+)
+```
+
+It honors the determinism rules: byte-for-byte input (§4.1), `engine_version` stamped (§5 rule 2),
+no filesystem-derived data, and a fixed `u64`-width length prefix per field so the hash is identical
+on 32- and 64-bit targets. `H` is currently **FNV-1a over 128 bits** — fully specified, portable,
+and deterministic, unlike the randomly-seeded `SipHash` §4 rules out. This is an *interim* hasher:
+the construction may be replaced with BLAKE3-truncated-to-128 (the note's preference) by the §9.4
+source/asset hashing slice without changing the `&[u8] -> ContentHash` signature; the stamped
+`engine_version` absorbs the resulting value change. FNV is not collision-hardened, and no shipped
+path yet depends on adversarial collision resistance.
+
+`mos-cache` pairs this content boundary with the path identity as
+`BibliographyDependency { DependencyId::Bibliography(ProjectPath), ContentHash }` (§3): the id is
+the cache slot, the content hash is the staleness check. `mos-cache` stays free of
+bibliography-format knowledge — the caller (`mos-eval`, which reads the `.bib` and depends on both
+crates) supplies the hash. Neither type is wired into `CacheKey` or a `DepNode` graph yet; that
+remains §9.6.
 
 ### 4.2 Semantic node hash
 
@@ -404,6 +438,14 @@ describes under *Layout* and *Page Reflow And Fixpoints*:
   `FigureInputHash`, which flips the figure box — without touching the image asset's hash. The
   list-of-figures entry depends on the figure's resolved number/page, so it follows the reference
   pathway above.
+- **Invalidate citation data on bibliography edits.** Each declared `.bib` source has a
+  `BibliographyDependency`: a `Bibliography` id (the cache slot) plus a `BibliographyContentHash`
+  (§4.1, the staleness check). Editing a `.bib`'s bytes flips its content hash, so the engine can
+  see that the source changed and recompute only the citation-resolution work that consumed it —
+  parsed records, key-existence checks, and the downstream `ReferenceInputHash` of any `[@key]` that
+  resolved against it — while sources whose hash is unchanged stay cached. Moving or renaming the
+  file changes the id (a different slot) rather than the hash. Today this is the identity/boundary
+  pair only; the dependency graph that consumes it is §9.6.
 - **Report what changed.** Because every artifact has a typed `DepId` and an `output_hash`, the
   engine can diff hashes and produce the "Reused 842/917 semantic nodes" output style from manifest
   §8.
