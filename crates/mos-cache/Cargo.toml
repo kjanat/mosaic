@@ -13,7 +13,8 @@ categories.workspace   = true
 include.workspace      = true
 
 [dependencies]
-mos-core.workspace = true
+mos-core.workspace              = true
+unicode-normalization.workspace = true
 
 [lints]
 workspace = true

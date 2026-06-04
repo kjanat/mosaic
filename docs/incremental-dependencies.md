@@ -20,8 +20,10 @@ Before paragraph-, figure-, or reference-level invalidation can ship we need a s
 - *what bytes* feed each hash,
 - *what must never* feed any hash if rebuilds are to stay deterministic.
 
-This note fixes that vocabulary. It does not add new public APIs to the workspace; type sketches
-below are illustrative and live in this document until a concrete crate slice needs them.
+This note fixes that vocabulary. The identity types for the categories with a real identity today
+have landed (`mos_cache::{DependencyId, DependencyKind, ProjectPath}`, see §3); the remaining
+categories, the hash boundaries, the dependency graph, and any `CacheKey` wiring are still sketches
+that live in this document until a concrete crate slice needs them.
 
 ## 2. Truth ground today
 
@@ -79,21 +81,31 @@ identity today*:
 
 | `DependencyKind` | Identity (payload) | Sketch category                                                        |
 | ---------------- | ------------------ | ---------------------------------------------------------------------- |
-| `SourceFile`     | project path       | `Source`                                                               |
-| `Asset`          | project path       | `Asset`                                                                |
-| `Bibliography`   | project path       | `Source` (`.bib`) — split out because §4 hashes it on its own boundary |
+| `SourceFile`     | `ProjectPath`      | `Source`                                                               |
+| `Asset`          | `ProjectPath`      | `Asset`                                                                |
+| `Bibliography`   | `ProjectPath`      | `Source` (`.bib`) — split out because §4 hashes it on its own boundary |
 | `Label`          | reference name     | `Reference` (name only; target binding lives in the hash, §3.6)        |
-| `LayoutInput`    | `StyleId`          | `LayoutInput`                                                          |
 
 Naming follows the workspace convention (`NodeId`, `StyleId`, `CacheKey`): the types spell out
-`Dependency…` rather than the `Dep…` shorthand the prose uses. Payloads are inline strong types
-(`PathBuf` / `String` / `StyleId`) under the variant tag — no wrapper newtypes — so illegal
-combinations stay unrepresentable without ceremony.
+`Dependency…` rather than the `Dep…` shorthand the prose uses. The label payload is an inline
+`String` under the variant tag — the tag already prevents mixing it with a path, so no wrapper is
+needed. File payloads, by contrast, use the `ProjectPath` newtype, which *earns* its wrapper: it
+canonicalizes the path on construction (fold `\`→`/`, drop `.`/empty segments, resolve `..`,
+NFC-normalize per §3.1) so `./a.mos`, `a.mos`, and `a\b\..\a.mos` collapse to one identity. Without
+that, raw paths would hand out distinct ids for the same logical input and the determinism the cache
+relies on would be a lie.
 
-`Package`, `Node`, `Style`, `LayoutOutput`, and `Artifact` are **not** modelled yet: their
-identities are still defaulted (`NodeId`/`StyleId` are monotonic or zero) or output-side. They
-graduate from sketch to type once they have a real scheme (see §9). The id/kind types carry no
-hashing and are not yet wired into `CacheKey`; that is the next slice.
+Deliberately **not** modelled yet:
+
+- `Package`, `Node`, `Style` — their identities are still defaulted (`NodeId` is monotonic,
+  `StyleId` is `0` everywhere), so an id over them would collide unrelated inputs. They graduate
+  once they have a real scheme (see §9).
+- `LayoutInput` — there is no real layout key until paragraph hashing lands (`ParagraphInputHash`,
+  §4.4, folds node + style + width + font set). Keying it on the defaulted `StyleId` alone would
+  conflate every layout request under `StyleId(0)`, so it waits for the genuine key.
+- `LayoutOutput`, `Artifact` — output-side, not dependencies.
+
+The id/kind types carry no hashing and are not yet wired into `CacheKey`; that is the next slice.
 
 ### 3.1 `Source`
 

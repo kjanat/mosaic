@@ -321,7 +321,7 @@ example.
 ## Incremental Builds And Cache
 
 - [x] Document dependency ID categories and hash boundaries.
-- [ ] Introduce dependency ID and dependency kind Rust types.
+- [x] Introduce dependency ID and dependency kind Rust types.
 - [ ] Track every computed artifact dependency.
 - [ ] Track paragraph layout dependencies:
   - [ ] paragraph text

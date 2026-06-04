@@ -3,18 +3,19 @@
 ## OVERVIEW
 
 `mos-cache` is a tiny cache trait plus in-memory byte map, and the typed dependency-identity
-vocabulary (`DependencyId` / `DependencyKind`). Persistent incremental builds are not implemented
-yet.
+vocabulary (`DependencyId` / `DependencyKind` / `ProjectPath`). Persistent incremental builds are
+not implemented yet.
 
 ## WHERE TO LOOK
 
-| Task             | Location                           | Notes                                                          |
-| ---------------- | ---------------------------------- | -------------------------------------------------------------- |
-| Cache API        | `src/lib.rs`                       | `Cache`, `CacheKey`, `InMemoryCache`.                          |
-| Dependency ids   | `src/dependency.rs`                | `DependencyId` / `DependencyKind`; identities only.            |
-| Key source       | `mos-core`                         | `CacheKey` wraps `ContentHash`; `LayoutInput` wraps `StyleId`. |
-| Design boundary  | `docs/incremental-dependencies.md` | §3 maps types to the full sketch + what is deferred.           |
-| Future direction | `README.md`                        | Treat as intent unless code implements it.                     |
+| Task             | Location                           | Notes                                                        |
+| ---------------- | ---------------------------------- | ------------------------------------------------------------ |
+| Cache API        | `src/lib.rs`                       | `Cache`, `CacheKey`, `InMemoryCache`.                        |
+| Dependency ids   | `src/dependency.rs`                | `DependencyId` / `DependencyKind`; identities only.          |
+| Path identity    | `src/dependency.rs`                | `ProjectPath` canonicalizes file paths (slash/`.`/`..`/NFC). |
+| Key source       | `mos-core`                         | `CacheKey` wraps `ContentHash`.                              |
+| Design boundary  | `docs/incremental-dependencies.md` | §3 maps types to the full sketch + what is deferred.         |
+| Future direction | `README.md`                        | Treat as intent unless code implements it.                   |
 
 ## CURRENT SLICE
 
@@ -23,9 +24,11 @@ yet.
 - `Cache` stores and returns `Vec<u8>` payloads.
 - `InMemoryCache` uses a `HashMap` and clones payloads on `get`.
 - Serialization, validation, and type meaning of bytes are caller responsibility.
-- `DependencyId` models five kinds (source/asset/bibliography file paths, label name, layout
-  `StyleId`). Payloads are inline strong types under the variant tag — no wrapper newtypes. No
-  hashing, no graph, not wired into `CacheKey`.
+- `DependencyId` models four kinds: source/asset/bibliography files (canonical `ProjectPath`) and a
+  label name (`String`). `ProjectPath` enforces the §3.1 canonical form so equal logical inputs
+  share one identity. No hashing, no graph, not wired into `CacheKey`.
+- Layout inputs are intentionally deferred: `StyleId` is defaulted (`0`) so it is not yet a real
+  identity; wait for the `ParagraphInputHash` layout key (§4.4) before adding the kind.
 
 ## BOUNDARY RULES
 
@@ -39,4 +42,5 @@ yet.
 - Do not add filesystem writes or global cache state casually.
 - Do not wire into `mos build` unless implementing the full behavior slice.
 - Do not model `DependencyId` kinds whose identity is still defaulted (`Node`, `Style` bundles,
-  packages). Add a variant only when it has a real, stable identity scheme.
+  layout inputs keyed on bare `StyleId`, packages). Add a variant only when it has a real, stable
+  identity scheme.

@@ -784,6 +784,7 @@ name = "mos-cache"
 version = "0.0.1"
 dependencies = [
  "mos-core",
+ "unicode-normalization",
 ]
 
 [[package]]

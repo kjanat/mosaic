@@ -11,11 +11,14 @@
 //!
 //! # Scope
 //!
-//! Only inputs with a *real identity today* are modelled: file-backed inputs
-//! (their project-relative path) and labels (their reference name). Categories
-//! the design note sketches but cannot yet identify — `Node`, `Style` bundles,
-//! resolved references, packages — are deferred until they have a stable
-//! identity scheme, rather than modelled as defaulted placeholders.
+//! Only inputs with a *real, stable identity today* are modelled: file-backed
+//! inputs (their canonical project path, see [`ProjectPath`]) and labels (their
+//! reference name). Categories the design note sketches but cannot yet identify
+//! deterministically — `Node` and `Style` bundles (their ids are still
+//! defaulted), packages, layout *inputs* (no real layout key until paragraph
+//! hashing lands, §4.4), and layout *outputs* — are deferred until they have a
+//! genuine identity scheme, rather than modelled as placeholders that would
+//! collide.
 //!
 //! # What is intentionally not modelled yet
 //!
@@ -30,9 +33,8 @@
 //! [`Display`]: core::fmt::Display
 
 use std::fmt;
-use std::path::{Path, PathBuf};
 
-use mos_core::StyleId;
+use unicode_normalization::UnicodeNormalization;
 
 /// The category of a build dependency.
 ///
@@ -58,8 +60,6 @@ pub enum DependencyKind {
     Bibliography,
     /// A resolved label that references resolve against.
     Label,
-    /// A layout input, identified by the resolved style bundle it belongs to.
-    LayoutInput,
 }
 
 impl DependencyKind {
@@ -75,7 +75,7 @@ impl DependencyKind {
     /// use mos_cache::DependencyKind;
     ///
     /// assert_eq!(DependencyKind::SourceFile.as_str(), "source");
-    /// assert_eq!(DependencyKind::LayoutInput.as_str(), "layout");
+    /// assert_eq!(DependencyKind::Label.as_str(), "label");
     /// ```
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -84,7 +84,6 @@ impl DependencyKind {
             Self::Asset => "asset",
             Self::Bibliography => "bibliography",
             Self::Label => "label",
-            Self::LayoutInput => "layout",
         }
     }
 }
@@ -95,18 +94,108 @@ impl fmt::Display for DependencyKind {
     }
 }
 
+/// A canonical, project-relative resource path used as a file dependency's
+/// identity.
+///
+/// The stored string *is* the identity, in canonical form:
+///
+/// - backslashes folded to `/` (so `a\b` and `a/b` agree across platforms),
+/// - `.` and empty segments dropped, `..` resolved lexically,
+/// - each segment NFC-normalized.
+///
+/// So `./a.mos`, `a.mos`, and `dir\..\a.mos` all yield the same `ProjectPath` —
+/// which is exactly what makes a file [`DependencyId`] deterministic for the
+/// same logical input (design note §3.1).
+///
+/// Normalization is **lexical only**: it never touches the filesystem, so it
+/// cannot turn a relative path absolute or leak machine layout into the
+/// identity. Supplying a project-relative path is the caller's contract; an
+/// absolute path stays absolute and simply forms a different identity.
+///
+/// # Examples
+///
+/// ```
+/// use mos_cache::ProjectPath;
+///
+/// assert_eq!(ProjectPath::new("./ch/../ch/intro.mos").as_str(), "ch/intro.mos");
+/// assert_eq!(ProjectPath::new(r"figures\logo.png").as_str(), "figures/logo.png");
+/// ```
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub struct ProjectPath(String);
+
+impl ProjectPath {
+    /// Canonicalize a project-relative path into a [`ProjectPath`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_cache::ProjectPath;
+    ///
+    /// // Decomposed "é" (e + combining acute) folds to the composed form.
+    /// assert_eq!(ProjectPath::new("e\u{0301}.bib"), ProjectPath::new("\u{00e9}.bib"));
+    /// ```
+    pub fn new(path: impl AsRef<str>) -> Self {
+        Self(normalize(path.as_ref()))
+    }
+
+    /// The canonical path string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_cache::ProjectPath;
+    ///
+    /// assert_eq!(ProjectPath::new("a//b/").as_str(), "a/b");
+    /// ```
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ProjectPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Lexically canonicalize a project path: fold `\` to `/`, drop `.`/empty
+/// segments, resolve `..`, and NFC-normalize. No filesystem access.
+fn normalize(input: &str) -> String {
+    let forward = input.replace('\\', "/");
+    let is_absolute = forward.starts_with('/');
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in forward.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => match segments.last() {
+                // Pop a real parent segment.
+                Some(&last) if last != ".." => {
+                    segments.pop();
+                }
+                // Relative path climbing past its start keeps the `..`;
+                // an absolute path at root simply drops it.
+                _ if !is_absolute => segments.push(".."),
+                _ => {}
+            },
+            other => segments.push(other),
+        }
+    }
+    let body: String = segments.join("/").nfc().collect();
+    if is_absolute {
+        format!("/{body}")
+    } else {
+        body
+    }
+}
+
 /// A typed, deterministic identity for one build dependency.
 ///
 /// Each variant carries the payload appropriate to its [`DependencyKind`], so
-/// mismatched combinations (a bibliography id holding a style, say) cannot be
-/// constructed. The payloads are strong types already — a [`PathBuf`] for file
-/// inputs, a label name, a [`StyleId`] — so no extra wrappers are needed; the
-/// variant tag supplies the role. The derived [`Eq`]/[`Ord`]/[`Hash`] make ids
-/// usable as keys in deterministic maps and sets; [`Display`] gives a stable
-/// `kind:payload` view for logs and debugging.
-///
-/// File-input path normalization (absolute vs relative, separator casing) is
-/// the caller's responsibility — equal ids must come from equal payloads.
+/// mismatched combinations cannot be constructed. File inputs use the canonical
+/// [`ProjectPath`]; labels use their name. The derived [`Eq`]/[`Ord`]/[`Hash`]
+/// make ids usable as keys in deterministic maps and sets; [`Display`] gives a
+/// stable `kind:payload` view for logs and debugging.
 ///
 /// [`Display`]: core::fmt::Display
 ///
@@ -115,27 +204,22 @@ impl fmt::Display for DependencyKind {
 /// ```
 /// use mos_cache::{DependencyId, DependencyKind};
 ///
-/// let bib = DependencyId::bibliography("refs.bib");
+/// let bib = DependencyId::bibliography("./refs.bib");
 ///
 /// assert_eq!(bib.kind(), DependencyKind::Bibliography);
 /// assert_eq!(bib.to_string(), "bibliography:refs.bib");
-/// assert_eq!(bib.path(), Some(std::path::Path::new("refs.bib")));
+/// assert_eq!(bib.path().map(|p| p.as_str()), Some("refs.bib"));
 /// ```
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum DependencyId {
-    /// A `.mos` source file, identified by its path.
-    SourceFile(PathBuf),
-    /// A referenced asset (such as an image), identified by its path.
-    Asset(PathBuf),
-    /// A bibliography input (such as a `.bib` file), identified by its path.
-    Bibliography(PathBuf),
+    /// A `.mos` source file, identified by its canonical project path.
+    SourceFile(ProjectPath),
+    /// A referenced asset (such as an image), identified by its canonical path.
+    Asset(ProjectPath),
+    /// A bibliography input (such as a `.bib` file), by its canonical path.
+    Bibliography(ProjectPath),
     /// A resolved label, identified by its reference name.
     Label(String),
-    /// A layout input, identified by its resolved style bundle.
-    ///
-    /// `StyleId` is defaulted everywhere today; this is the reserved slot the
-    /// future style resolver and page geometry will key off.
-    LayoutInput(StyleId),
 }
 
 impl DependencyId {
@@ -148,8 +232,8 @@ impl DependencyId {
     ///
     /// assert_eq!(DependencyId::source_file("a.mos").to_string(), "source:a.mos");
     /// ```
-    pub fn source_file(path: impl Into<PathBuf>) -> Self {
-        Self::SourceFile(path.into())
+    pub fn source_file(path: impl AsRef<str>) -> Self {
+        Self::SourceFile(ProjectPath::new(path))
     }
 
     /// An asset dependency, such as an image.
@@ -161,8 +245,8 @@ impl DependencyId {
     ///
     /// assert_eq!(DependencyId::asset("logo.png").to_string(), "asset:logo.png");
     /// ```
-    pub fn asset(path: impl Into<PathBuf>) -> Self {
-        Self::Asset(path.into())
+    pub fn asset(path: impl AsRef<str>) -> Self {
+        Self::Asset(ProjectPath::new(path))
     }
 
     /// A bibliography-input dependency, such as a `.bib` file.
@@ -174,8 +258,8 @@ impl DependencyId {
     ///
     /// assert_eq!(DependencyId::bibliography("refs.bib").to_string(), "bibliography:refs.bib");
     /// ```
-    pub fn bibliography(path: impl Into<PathBuf>) -> Self {
-        Self::Bibliography(path.into())
+    pub fn bibliography(path: impl AsRef<str>) -> Self {
+        Self::Bibliography(ProjectPath::new(path))
     }
 
     /// A label dependency.
@@ -189,21 +273,6 @@ impl DependencyId {
     /// ```
     pub fn label(name: impl Into<String>) -> Self {
         Self::Label(name.into())
-    }
-
-    /// A layout-input dependency for a resolved style bundle.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use mos_cache::DependencyId;
-    /// use mos_core::StyleId;
-    ///
-    /// assert_eq!(DependencyId::layout_input(StyleId(2)).to_string(), "layout:style#2");
-    /// ```
-    #[must_use]
-    pub const fn layout_input(style: StyleId) -> Self {
-        Self::LayoutInput(style)
     }
 
     /// The [`DependencyKind`] this id belongs to.
@@ -222,11 +291,10 @@ impl DependencyId {
             Self::Asset(_) => DependencyKind::Asset,
             Self::Bibliography(_) => DependencyKind::Bibliography,
             Self::Label(_) => DependencyKind::Label,
-            Self::LayoutInput(_) => DependencyKind::LayoutInput,
         }
     }
 
-    /// The path of a file-backed dependency, or [`None`] for non-file kinds.
+    /// The canonical path of a file-backed dependency, or [`None`] for labels.
     ///
     /// Covers the [`SourceFile`](Self::SourceFile), [`Asset`](Self::Asset), and
     /// [`Bibliography`](Self::Bibliography) variants uniformly.
@@ -234,36 +302,31 @@ impl DependencyId {
     /// # Examples
     ///
     /// ```
-    /// use std::path::Path;
-    ///
     /// use mos_cache::DependencyId;
-    /// use mos_core::StyleId;
     ///
-    /// assert_eq!(DependencyId::asset("logo.png").path(), Some(Path::new("logo.png")));
+    /// assert_eq!(DependencyId::asset("logo.png").path().map(|p| p.as_str()), Some("logo.png"));
     /// assert_eq!(DependencyId::label("eq-1").path(), None);
-    /// assert_eq!(DependencyId::layout_input(StyleId(0)).path(), None);
     /// ```
     #[must_use]
-    pub fn path(&self) -> Option<&Path> {
+    pub const fn path(&self) -> Option<&ProjectPath> {
         match self {
             Self::SourceFile(path) | Self::Asset(path) | Self::Bibliography(path) => Some(path),
-            Self::Label(_) | Self::LayoutInput(_) => None,
+            Self::Label(_) => None,
         }
     }
 }
 
 impl fmt::Display for DependencyId {
-    /// Renders a stable `kind:payload` view. Paths use lossy display, so this
-    /// is a debug/log form — equality and hashing use the exact payloads, not
-    /// this string.
+    /// Renders a stable `kind:payload` view. Equality and hashing use the exact
+    /// payloads, which this string faithfully reflects for file paths (already
+    /// canonical) and labels.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:", self.kind())?;
         match self {
             Self::SourceFile(path) | Self::Asset(path) | Self::Bibliography(path) => {
-                write!(f, "{}", path.display())
+                f.write_str(path.as_str())
             }
             Self::Label(name) => f.write_str(name),
-            Self::LayoutInput(style) => write!(f, "style#{}", style.0),
         }
     }
 }
@@ -271,11 +334,8 @@ impl fmt::Display for DependencyId {
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeSet, HashSet};
-    use std::path::Path;
 
-    use mos_core::StyleId;
-
-    use super::{DependencyId, DependencyKind};
+    use super::{DependencyId, DependencyKind, ProjectPath};
 
     #[test]
     fn kind_matches_variant() {
@@ -290,10 +350,6 @@ mod tests {
                 DependencyKind::Bibliography,
             ),
             (DependencyId::label("a"), DependencyKind::Label),
-            (
-                DependencyId::layout_input(StyleId(1)),
-                DependencyKind::LayoutInput,
-            ),
         ];
         for (id, kind) in cases {
             assert_eq!(id.kind(), kind);
@@ -318,28 +374,55 @@ mod tests {
             DependencyId::label("eq-euler").to_string(),
             "label:eq-euler"
         );
-        assert_eq!(
-            DependencyId::layout_input(StyleId(3)).to_string(),
-            "layout:style#3"
-        );
     }
 
     #[test]
     fn path_covers_file_variants_only() {
         assert_eq!(
-            DependencyId::source_file("a.mos").path(),
-            Some(Path::new("a.mos"))
+            DependencyId::source_file("a.mos")
+                .path()
+                .map(ProjectPath::as_str),
+            Some("a.mos")
         );
         assert_eq!(
-            DependencyId::asset("a.png").path(),
-            Some(Path::new("a.png"))
+            DependencyId::asset("a.png").path().map(ProjectPath::as_str),
+            Some("a.png")
         );
         assert_eq!(
-            DependencyId::bibliography("a.bib").path(),
-            Some(Path::new("a.bib"))
+            DependencyId::bibliography("a.bib")
+                .path()
+                .map(ProjectPath::as_str),
+            Some("a.bib")
         );
         assert_eq!(DependencyId::label("a").path(), None);
-        assert_eq!(DependencyId::layout_input(StyleId(0)).path(), None);
+    }
+
+    #[test]
+    fn canonical_paths_collapse_to_one_identity() {
+        let canonical = DependencyId::source_file("ch/intro.mos");
+        for variant in [
+            "./ch/intro.mos",
+            "ch/./intro.mos",
+            "ch/../ch/intro.mos",
+            r"ch\intro.mos",
+        ] {
+            assert_eq!(DependencyId::source_file(variant), canonical, "{variant}");
+        }
+    }
+
+    #[test]
+    fn nfc_variants_share_one_identity() {
+        // Decomposed vs composed "é" must hash and compare equal.
+        assert_eq!(
+            DependencyId::bibliography("e\u{0301}.bib"),
+            DependencyId::bibliography("\u{00e9}.bib")
+        );
+    }
+
+    #[test]
+    fn relative_climb_is_preserved_absolute_root_is_clamped() {
+        assert_eq!(ProjectPath::new("a/../../b").as_str(), "../b");
+        assert_eq!(ProjectPath::new("/a/../../b").as_str(), "/b");
     }
 
     #[test]
@@ -347,10 +430,6 @@ mod tests {
         assert_eq!(
             DependencyId::bibliography("refs.bib"),
             DependencyId::bibliography("refs.bib")
-        );
-        assert_eq!(
-            DependencyId::layout_input(StyleId(2)),
-            DependencyId::layout_input(StyleId(2))
         );
     }
 
@@ -383,7 +462,6 @@ mod tests {
             DependencyKind::Asset,
             DependencyKind::Bibliography,
             DependencyKind::Label,
-            DependencyKind::LayoutInput,
         ] {
             assert_eq!(kind.to_string(), kind.as_str());
         }
