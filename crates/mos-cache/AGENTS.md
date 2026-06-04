@@ -19,14 +19,15 @@ not implemented yet.
 
 ## CURRENT SLICE
 
-- Depends only on `mos-core`.
+- Depends on `mos-core` and `unicode-normalization`.
 - `CacheKey` is opaque and currently wraps `ContentHash`.
 - `Cache` stores and returns `Vec<u8>` payloads.
 - `InMemoryCache` uses a `HashMap` and clones payloads on `get`.
 - Serialization, validation, and type meaning of bytes are caller responsibility.
-- `DependencyId` models four kinds: source/asset/bibliography files (canonical `ProjectPath`) and a
-  label name (`String`). `ProjectPath` enforces the §3.1 canonical form so equal logical inputs
-  share one identity. No hashing, no graph, not wired into `CacheKey`.
+- `DependencyId` models four kinds: source/asset/bibliography files (checked canonical
+  `ProjectPath`) and a label name (`String`). `ProjectPath` enforces the §3.1 canonical form so
+  equal logical inputs share one identity; invalid raw identities return `ProjectPathError`. No
+  hashing, no graph, not wired into `CacheKey`.
 - Layout inputs are intentionally deferred: `StyleId` is defaulted (`0`) so it is not yet a real
   identity; wait for the `ParagraphInputHash` layout key (§4.4) before adding the kind.
 

@@ -19,12 +19,13 @@ All notable changes to this project will be documented here. The format is based
   Repeated citations to one key reuse its number, and unresolved keys keep the `[?key?]`
   placeholder. Sorted bibliography-list rendering and CSL styles remain out of scope.
 - Typed dependency identities (https://github.com/kjanat/mosaic/issues/64): [`mos-cache`][mos-cache]
-  now exports `DependencyId`, `DependencyKind`, and `ProjectPath` — deterministic identities for the
-  build inputs that have a real identity today (source/asset/bibliography files and labels).
-  `ProjectPath` canonicalizes file paths (fold `\`→`/`, drop `.`/empty segments, resolve `..`,
-  NFC-normalize) so equal logical inputs share one id. Identities only: no content hashing,
-  dependency graph, or `CacheKey` wiring yet, and layout-input/node/style kinds wait for real
-  identity schemes.
+  now exports `DependencyId`, `DependencyKind`, `ProjectPath`, and `ProjectPathError` —
+  deterministic identities for the build inputs that have a real identity today
+  (source/asset/bibliography files and labels). `ProjectPath` canonicalizes project-relative file
+  paths (fold `\`→`/`, drop `.`/empty segments, resolve `..`, NFC-normalize) so equal logical inputs
+  share one id and rejects empty, raw absolute, drive-prefixed, or project-escaping identities.
+  Identities only: no content hashing, dependency graph, or `CacheKey` wiring yet, and
+  layout-input/node/style kinds wait for real identity schemes.
 
 ### Changed
 

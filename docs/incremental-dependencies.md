@@ -75,9 +75,9 @@ DepId ::=
 #### What has landed: `DependencyId` / `DependencyKind`
 
 The first concrete slice (`crates/mos-cache/src/dependency.rs`) introduces
-[`DependencyId`](../crates/mos-cache/src/dependency.rs) and `DependencyKind` as real public types.
-It **deliberately models a subset** of the sketch above — only the categories that have a *stable
-identity today*:
+[`DependencyId`](../crates/mos-cache/src/dependency.rs), `DependencyKind`, `ProjectPath`, and
+`ProjectPathError` as real public types. It **deliberately models a subset** of the sketch above —
+only the categories that have a *stable identity today*:
 
 | `DependencyKind` | Identity (payload) | Sketch category                                                        |
 | ---------------- | ------------------ | ---------------------------------------------------------------------- |
@@ -89,9 +89,12 @@ identity today*:
 Naming follows the workspace convention (`NodeId`, `StyleId`, `CacheKey`): the types spell out
 `Dependency…` rather than the `Dep…` shorthand the prose uses. The label payload is an inline
 `String` under the variant tag — the tag already prevents mixing it with a path, so no wrapper is
-needed. File payloads, by contrast, use the `ProjectPath` newtype, which *earns* its wrapper: it
-canonicalizes the path on construction (fold `\`→`/`, drop `.`/empty segments, resolve `..`,
-NFC-normalize per §3.1) so `./a.mos`, `a.mos`, and `a\b\..\a.mos` collapse to one identity. Without
+needed. File payloads, by contrast, use the checked `ProjectPath` newtype, which *earns* its
+wrapper: it canonicalizes the path on construction (fold `\`→`/`, drop `.`/empty segments, resolve
+`..`, NFC-normalize per §3.1) so `./a.mos`, `a.mos`, and `a\b\..\b/a.mos` collapse to one identity.
+Empty paths, raw absolute paths, drive-prefixed paths, and paths that escape above the project root
+are rejected with `ProjectPathError`. Absolute filesystem paths remain valid at outer I/O
+boundaries, but they must be made project-relative before they become dependency identities. Without
 that, raw paths would hand out distinct ids for the same logical input and the determinism the cache
 relies on would be a lie.
 

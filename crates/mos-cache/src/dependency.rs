@@ -36,6 +36,32 @@ use std::fmt;
 
 use unicode_normalization::UnicodeNormalization;
 
+/// Error returned when a path cannot be used as a project-relative dependency
+/// identity.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum ProjectPathError {
+    /// The path has no dependency identity after normalization.
+    Empty,
+    /// The path is absolute or carries a platform root/drive prefix.
+    Absolute,
+    /// The path climbs above the project root.
+    ParentEscape,
+}
+
+impl fmt::Display for ProjectPathError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => f.write_str("project path is empty"),
+            Self::Absolute => {
+                f.write_str("project path must be relative; make absolute paths relative first")
+            }
+            Self::ParentEscape => f.write_str("project path must not escape the project root"),
+        }
+    }
+}
+
+impl std::error::Error for ProjectPathError {}
+
 /// The category of a build dependency.
 ///
 /// This is the coarse axis — "what kind of thing changed" — independent of the
@@ -103,28 +129,35 @@ impl fmt::Display for DependencyKind {
 /// - `.` and empty segments dropped, `..` resolved lexically,
 /// - each segment NFC-normalized.
 ///
-/// So `./a.mos`, `a.mos`, and `dir\..\a.mos` all yield the same `ProjectPath` —
-/// which is exactly what makes a file [`DependencyId`] deterministic for the
-/// same logical input (design note §3.1).
+/// So `./a.mos`, `a.mos`, and `dir\..\dir/a.mos` all yield the same
+/// `ProjectPath` — which is exactly what makes a file [`DependencyId`]
+/// deterministic for the same logical input (design note §3.1).
 ///
 /// Normalization is **lexical only**: it never touches the filesystem, so it
 /// cannot turn a relative path absolute or leak machine layout into the
-/// identity. Supplying a project-relative path is the caller's contract; an
-/// absolute path stays absolute and simply forms a different identity.
+/// identity. Absolute filesystem paths are valid inputs at outer boundaries,
+/// but they must be made project-relative before becoming a `ProjectPath`.
 ///
 /// # Examples
 ///
 /// ```
 /// use mos_cache::ProjectPath;
 ///
-/// assert_eq!(ProjectPath::new("./ch/../ch/intro.mos").as_str(), "ch/intro.mos");
-/// assert_eq!(ProjectPath::new(r"figures\logo.png").as_str(), "figures/logo.png");
+/// assert_eq!(
+///     ProjectPath::new("./ch/../ch/intro.mos").map(|path| path.as_str().to_owned()),
+///     Ok("ch/intro.mos".to_owned())
+/// );
+/// assert_eq!(
+///     ProjectPath::new(r"figures\logo.png").map(|path| path.as_str().to_owned()),
+///     Ok("figures/logo.png".to_owned())
+/// );
 /// ```
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct ProjectPath(String);
 
 impl ProjectPath {
-    /// Canonicalize a project-relative path into a [`ProjectPath`].
+    /// Canonicalize a project-relative path into a [`ProjectPath`]. Absolute
+    /// paths must be relativized against the project root before calling this.
     ///
     /// # Examples
     ///
@@ -134,8 +167,8 @@ impl ProjectPath {
     /// // Decomposed "é" (e + combining acute) folds to the composed form.
     /// assert_eq!(ProjectPath::new("e\u{0301}.bib"), ProjectPath::new("\u{00e9}.bib"));
     /// ```
-    pub fn new(path: impl AsRef<str>) -> Self {
-        Self(normalize(path.as_ref()))
+    pub fn new(path: impl AsRef<str>) -> Result<Self, ProjectPathError> {
+        normalize(path.as_ref()).map(Self)
     }
 
     /// The canonical path string.
@@ -145,7 +178,10 @@ impl ProjectPath {
     /// ```
     /// use mos_cache::ProjectPath;
     ///
-    /// assert_eq!(ProjectPath::new("a//b/").as_str(), "a/b");
+    /// assert_eq!(
+    ///     ProjectPath::new("a//b/").map(|path| path.as_str().to_owned()),
+    ///     Ok("a/b".to_owned())
+    /// );
     /// ```
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -159,11 +195,16 @@ impl fmt::Display for ProjectPath {
     }
 }
 
-/// Lexically canonicalize a project path: fold `\` to `/`, drop `.`/empty
-/// segments, resolve `..`, and NFC-normalize. No filesystem access.
-fn normalize(input: &str) -> String {
+/// Lexically canonicalize a project-relative path: fold `\` to `/`, drop
+/// `.`/empty segments, resolve `..`, and NFC-normalize. No filesystem access.
+fn normalize(input: &str) -> Result<String, ProjectPathError> {
     let forward = input.replace('\\', "/");
-    let is_absolute = forward.starts_with('/');
+    if forward.is_empty() {
+        return Err(ProjectPathError::Empty);
+    }
+    if forward.starts_with('/') || starts_with_windows_drive(&forward) {
+        return Err(ProjectPathError::Absolute);
+    }
     let mut segments: Vec<&str> = Vec::new();
     for segment in forward.split('/') {
         match segment {
@@ -173,20 +214,24 @@ fn normalize(input: &str) -> String {
                 Some(&last) if last != ".." => {
                     segments.pop();
                 }
-                // Relative path climbing past its start keeps the `..`;
-                // an absolute path at root simply drops it.
-                _ if !is_absolute => segments.push(".."),
-                _ => {}
+                _ => return Err(ProjectPathError::ParentEscape),
             },
             other => segments.push(other),
         }
     }
     let body: String = segments.join("/").nfc().collect();
-    if is_absolute {
-        format!("/{body}")
-    } else {
-        body
+    if body.is_empty() {
+        return Err(ProjectPathError::Empty);
     }
+    Ok(body)
+}
+
+fn starts_with_windows_drive(path: &str) -> bool {
+    let mut chars = path.chars();
+    matches!(
+        (chars.next(), chars.next()),
+        (Some(letter), Some(':')) if letter.is_ascii_alphabetic()
+    )
 }
 
 /// A typed, deterministic identity for one build dependency.
@@ -204,11 +249,14 @@ fn normalize(input: &str) -> String {
 /// ```
 /// use mos_cache::{DependencyId, DependencyKind};
 ///
-/// let bib = DependencyId::bibliography("./refs.bib");
+/// # fn main() -> Result<(), mos_cache::ProjectPathError> {
+/// let bib = DependencyId::bibliography("./refs.bib")?;
 ///
 /// assert_eq!(bib.kind(), DependencyKind::Bibliography);
 /// assert_eq!(bib.to_string(), "bibliography:refs.bib");
 /// assert_eq!(bib.path().map(|p| p.as_str()), Some("refs.bib"));
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum DependencyId {
@@ -230,10 +278,13 @@ impl DependencyId {
     /// ```
     /// use mos_cache::DependencyId;
     ///
-    /// assert_eq!(DependencyId::source_file("a.mos").to_string(), "source:a.mos");
+    /// # fn main() -> Result<(), mos_cache::ProjectPathError> {
+    /// assert_eq!(DependencyId::source_file("a.mos")?.to_string(), "source:a.mos");
+    /// # Ok(())
+    /// # }
     /// ```
-    pub fn source_file(path: impl AsRef<str>) -> Self {
-        Self::SourceFile(ProjectPath::new(path))
+    pub fn source_file(path: impl AsRef<str>) -> Result<Self, ProjectPathError> {
+        ProjectPath::new(path).map(Self::SourceFile)
     }
 
     /// An asset dependency, such as an image.
@@ -243,10 +294,13 @@ impl DependencyId {
     /// ```
     /// use mos_cache::DependencyId;
     ///
-    /// assert_eq!(DependencyId::asset("logo.png").to_string(), "asset:logo.png");
+    /// # fn main() -> Result<(), mos_cache::ProjectPathError> {
+    /// assert_eq!(DependencyId::asset("logo.png")?.to_string(), "asset:logo.png");
+    /// # Ok(())
+    /// # }
     /// ```
-    pub fn asset(path: impl AsRef<str>) -> Self {
-        Self::Asset(ProjectPath::new(path))
+    pub fn asset(path: impl AsRef<str>) -> Result<Self, ProjectPathError> {
+        ProjectPath::new(path).map(Self::Asset)
     }
 
     /// A bibliography-input dependency, such as a `.bib` file.
@@ -256,10 +310,13 @@ impl DependencyId {
     /// ```
     /// use mos_cache::DependencyId;
     ///
-    /// assert_eq!(DependencyId::bibliography("refs.bib").to_string(), "bibliography:refs.bib");
+    /// # fn main() -> Result<(), mos_cache::ProjectPathError> {
+    /// assert_eq!(DependencyId::bibliography("refs.bib")?.to_string(), "bibliography:refs.bib");
+    /// # Ok(())
+    /// # }
     /// ```
-    pub fn bibliography(path: impl AsRef<str>) -> Self {
-        Self::Bibliography(ProjectPath::new(path))
+    pub fn bibliography(path: impl AsRef<str>) -> Result<Self, ProjectPathError> {
+        ProjectPath::new(path).map(Self::Bibliography)
     }
 
     /// A label dependency.
@@ -271,6 +328,7 @@ impl DependencyId {
     ///
     /// assert_eq!(DependencyId::label("eq-1").to_string(), "label:eq-1");
     /// ```
+    #[must_use]
     pub fn label(name: impl Into<String>) -> Self {
         Self::Label(name.into())
     }
@@ -282,7 +340,10 @@ impl DependencyId {
     /// ```
     /// use mos_cache::{DependencyId, DependencyKind};
     ///
-    /// assert_eq!(DependencyId::asset("x.png").kind(), DependencyKind::Asset);
+    /// # fn main() -> Result<(), mos_cache::ProjectPathError> {
+    /// assert_eq!(DependencyId::asset("x.png")?.kind(), DependencyKind::Asset);
+    /// # Ok(())
+    /// # }
     /// ```
     #[must_use]
     pub const fn kind(&self) -> DependencyKind {
@@ -304,8 +365,11 @@ impl DependencyId {
     /// ```
     /// use mos_cache::DependencyId;
     ///
-    /// assert_eq!(DependencyId::asset("logo.png").path().map(|p| p.as_str()), Some("logo.png"));
+    /// # fn main() -> Result<(), mos_cache::ProjectPathError> {
+    /// assert_eq!(DependencyId::asset("logo.png")?.path().map(|p| p.as_str()), Some("logo.png"));
     /// assert_eq!(DependencyId::label("eq-1").path(), None);
+    /// # Ok(())
+    /// # }
     /// ```
     #[must_use]
     pub const fn path(&self) -> Option<&ProjectPath> {
@@ -335,40 +399,60 @@ impl fmt::Display for DependencyId {
 mod tests {
     use std::collections::{BTreeSet, HashSet};
 
-    use super::{DependencyId, DependencyKind, ProjectPath};
+    use super::{DependencyId, DependencyKind, ProjectPath, ProjectPathError};
+
+    fn id_text(id: Result<DependencyId, ProjectPathError>) -> Result<String, ProjectPathError> {
+        id.map(|id| id.to_string())
+    }
+
+    fn id_path_text(
+        id: Result<DependencyId, ProjectPathError>,
+    ) -> Result<Option<String>, ProjectPathError> {
+        id.map(|id| id.path().map(ProjectPath::as_str).map(str::to_owned))
+    }
+
+    fn path_text(path: Result<ProjectPath, ProjectPathError>) -> Result<String, ProjectPathError> {
+        path.map(|path| path.as_str().to_owned())
+    }
 
     #[test]
     fn kind_matches_variant() {
         let cases = [
             (
-                DependencyId::source_file("a.mos"),
-                DependencyKind::SourceFile,
+                DependencyId::source_file("a.mos").map(|id| id.kind()),
+                Ok(DependencyKind::SourceFile),
             ),
-            (DependencyId::asset("a.png"), DependencyKind::Asset),
             (
-                DependencyId::bibliography("a.bib"),
-                DependencyKind::Bibliography,
+                DependencyId::asset("a.png").map(|id| id.kind()),
+                Ok(DependencyKind::Asset),
             ),
-            (DependencyId::label("a"), DependencyKind::Label),
+            (
+                DependencyId::bibliography("a.bib").map(|id| id.kind()),
+                Ok(DependencyKind::Bibliography),
+            ),
+            (
+                Ok(DependencyId::label("a").kind()),
+                Ok(DependencyKind::Label),
+            ),
         ];
-        for (id, kind) in cases {
-            assert_eq!(id.kind(), kind);
+        for (actual, expected) in cases {
+            assert_eq!(actual, expected);
         }
     }
 
     #[test]
     fn display_is_stable_per_kind() {
         assert_eq!(
-            DependencyId::source_file("ch/intro.mos").to_string(),
-            "source:ch/intro.mos"
+            id_text(DependencyId::source_file("ch/intro.mos")),
+            Ok("source:ch/intro.mos".to_owned())
         );
         assert_eq!(
-            DependencyId::asset("logo.png").to_string(),
-            "asset:logo.png"
+            id_text(DependencyId::asset("logo.png")),
+            Ok("asset:logo.png".to_owned())
         );
         assert_eq!(
-            DependencyId::bibliography("refs.bib").to_string(),
-            "bibliography:refs.bib"
+            id_text(DependencyId::bibliography("refs.bib")),
+            Ok("bibliography:refs.bib".to_owned())
         );
         assert_eq!(
             DependencyId::label("eq-euler").to_string(),
@@ -379,20 +463,16 @@ mod tests {
     #[test]
     fn path_covers_file_variants_only() {
         assert_eq!(
-            DependencyId::source_file("a.mos")
-                .path()
-                .map(ProjectPath::as_str),
-            Some("a.mos")
+            id_path_text(DependencyId::source_file("a.mos")),
+            Ok(Some("a.mos".to_owned()))
         );
         assert_eq!(
-            DependencyId::asset("a.png").path().map(ProjectPath::as_str),
-            Some("a.png")
+            id_path_text(DependencyId::asset("a.png")),
+            Ok(Some("a.png".to_owned()))
         );
         assert_eq!(
-            DependencyId::bibliography("a.bib")
-                .path()
-                .map(ProjectPath::as_str),
-            Some("a.bib")
+            id_path_text(DependencyId::bibliography("a.bib")),
+            Ok(Some("a.bib".to_owned()))
         );
         assert_eq!(DependencyId::label("a").path(), None);
     }
@@ -420,9 +500,25 @@ mod tests {
     }
 
     #[test]
-    fn relative_climb_is_preserved_absolute_root_is_clamped() {
-        assert_eq!(ProjectPath::new("a/../../b").as_str(), "../b");
-        assert_eq!(ProjectPath::new("/a/../../b").as_str(), "/b");
+    fn invalid_project_paths_are_rejected() {
+        assert_eq!(ProjectPath::new(""), Err(ProjectPathError::Empty));
+        assert_eq!(ProjectPath::new("."), Err(ProjectPathError::Empty));
+        assert_eq!(ProjectPath::new("a/.."), Err(ProjectPathError::Empty));
+        assert_eq!(
+            ProjectPath::new("../b"),
+            Err(ProjectPathError::ParentEscape)
+        );
+        assert_eq!(
+            ProjectPath::new("a/../../b"),
+            Err(ProjectPathError::ParentEscape)
+        );
+        assert_eq!(ProjectPath::new("/a/b"), Err(ProjectPathError::Absolute));
+        assert_eq!(ProjectPath::new(r"C:\a\b"), Err(ProjectPathError::Absolute));
+    }
+
+    #[test]
+    fn canonical_path_text_is_available() {
+        assert_eq!(path_text(ProjectPath::new("a//b/")), Ok("a/b".to_owned()));
     }
 
     #[test]
