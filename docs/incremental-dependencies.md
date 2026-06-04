@@ -70,6 +70,31 @@ DepId ::=
     | Artifact(ArtifactKey)       // emitted PDF/HTML/EPUB chunk
 ```
 
+#### What has landed: `DependencyId` / `DependencyKind`
+
+The first concrete slice (`crates/mos-cache/src/dependency.rs`) introduces
+[`DependencyId`](../crates/mos-cache/src/dependency.rs) and `DependencyKind` as real public types.
+It **deliberately models a subset** of the sketch above — only the categories that have a *stable
+identity today*:
+
+| `DependencyKind` | Identity (payload) | Sketch category                                                        |
+| ---------------- | ------------------ | ---------------------------------------------------------------------- |
+| `SourceFile`     | project path       | `Source`                                                               |
+| `Asset`          | project path       | `Asset`                                                                |
+| `Bibliography`   | project path       | `Source` (`.bib`) — split out because §4 hashes it on its own boundary |
+| `Label`          | reference name     | `Reference` (name only; target binding lives in the hash, §3.6)        |
+| `LayoutInput`    | `StyleId`          | `LayoutInput`                                                          |
+
+Naming follows the workspace convention (`NodeId`, `StyleId`, `CacheKey`): the types spell out
+`Dependency…` rather than the `Dep…` shorthand the prose uses. Payloads are inline strong types
+(`PathBuf` / `String` / `StyleId`) under the variant tag — no wrapper newtypes — so illegal
+combinations stay unrepresentable without ceremony.
+
+`Package`, `Node`, `Style`, `LayoutOutput`, and `Artifact` are **not** modelled yet: their
+identities are still defaulted (`NodeId`/`StyleId` are monotonic or zero) or output-side. They
+graduate from sketch to type once they have a real scheme (see §9). The id/kind types carry no
+hashing and are not yet wired into `CacheKey`; that is the next slice.
+
 ### 3.1 `Source`
 
 Identity: project-relative path, NFC-normalized, forward-slashed. Identity is path-shaped, not
@@ -378,8 +403,9 @@ Explicitly *not* designed here:
 - Watch-mode loop and CLI surface (`mos watch`, `mos graph`, `mos profile`).
 - Float solver and Knuth-Plass; those produce `LayoutOutput` shapes whose hashing this document
   already permits, but the algorithms themselves are MVP 2+.
-- Concrete public Rust types in `mos-cache` or `mos-core`. The sketches above stay in this document
-  until a code slice needs them.
+- The `DepNode` graph, hashing, and any wiring into `CacheKey`. The landed `DependencyId` /
+  `DependencyKind` types (§3) are *identities only*; the remaining sketch categories and the graph
+  stay design-side until §9 lands them.
 
 ## 9. Concrete follow-up issue candidates
 
@@ -403,8 +429,9 @@ when it is ready to start:
    `AssetHash` per §4.1 and §4.3 with the agreed engine-version stamping. No public `DepId` yet.
 5. *Layout-dimension quantization helper.* A small `i32`-of-1/64-pt newtype used wherever layout
    currently passes `f32` widths into anything hash-bound. Lives in `mos-layout`.
-6. *`DepNode` graph in `mos-cache` (in-memory only).* Introduce the `DepId`/`DepKind`/`DepNode`
-   types from §3 and wire them into the in-memory cache key. No persistence.
+6. *`DepNode` graph in `mos-cache` (in-memory only).* The id/kind types landed as `DependencyId` /
+   `DependencyKind` (§3); the remaining work is the `DepNode` graph over them and wiring into the
+   in-memory cache key. No persistence.
 7. *Paragraph layout cache (in-memory).* Add `ParagraphCacheKey` and store one `LayoutOutput` per
    key in `InMemoryCache`. Measure reuse on the existing examples.
 8. *Page boundary signature plus `PageInputHash` / `PageOutputHash`.* Introduce the small struct

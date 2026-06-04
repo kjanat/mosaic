@@ -12,6 +12,10 @@ use std::collections::HashMap;
 
 use mos_core::ContentHash;
 
+mod dependency;
+
+pub use dependency::{DependencyId, DependencyKind};
+
 /// A cache entry's address. Real keys include node, style, and width
 /// hashes (manifest §32). For now the type is opaque.
 ///
