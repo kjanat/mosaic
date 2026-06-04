@@ -43,7 +43,9 @@ Not implemented:
 
 ## CONVENTIONS
 
-- Keep the public API small: `parse_bibtex` plus the record/error types.
+- Keep the public API small: `crates/mos-bib/src/lib.rs` intentionally exposes `parse_bibtex`,
+  `bibliography_content_hash`, and the record/error types — nothing more. Add a re-export only when
+  a new slice genuinely warrants it.
 - `parse_bibtex` returns the local `BibParseError` (issue #66), but it bridges into the standard
   diagnostics surface via `BibParseError::to_diagnostic` and `From<BibParseError> for CoreError`
   (code `MOS0043`). Keep the local type as the parser entry point; don't change `parse_bibtex` to
