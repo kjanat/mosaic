@@ -18,6 +18,10 @@ Implemented:
   fields keep the last value.
 - Panic-free recovery: `BibParseError` carries a byte offset and bridges via `to_diagnostic` /
   `From<BibParseError> for CoreError`.
+- `bibliography_content_hash(&[u8]) -> ContentHash` (`src/content.rs`): the §4.1 source-hash
+  boundary specialized to `.bib` inputs (engine-version + domain-tag + raw bytes, length-framed,
+  FNV-1a-128 *interim* hasher). Deterministic, byte-for-byte, no filesystem inputs. Pairs with
+  `mos_cache::BibliographyDependency`. See `docs/incremental-dependencies.md` §4.1.
 
 Not implemented:
 
@@ -28,17 +32,20 @@ Not implemented:
 
 ## WHERE TO LOOK
 
-| Task         | Location          | Notes                                                   |
-| ------------ | ----------------- | ------------------------------------------------------- |
-| Public types | `src/record.rs`   | `Bibliography`, `BibEntry`, `Citation`.                 |
-| Error type   | `src/error.rs`    | `BibParseError` / `BibParseErrorKind`; offset/line_col. |
-| Parser       | `src/parser.rs`   | Hand-rolled recursive descent; grammar in module docs.  |
-| Facade       | `src/lib.rs`      | Module wiring and re-exports only.                      |
-| Tests        | `tests/bibtex.rs` | Black-box, against the public API.                      |
+| Task         | Location          | Notes                                                    |
+| ------------ | ----------------- | -------------------------------------------------------- |
+| Public types | `src/record.rs`   | `Bibliography`, `BibEntry`, `Citation`.                  |
+| Error type   | `src/error.rs`    | `BibParseError` / `BibParseErrorKind`; offset/line_col.  |
+| Parser       | `src/parser.rs`   | Hand-rolled recursive descent; grammar in module docs.   |
+| Content hash | `src/content.rs`  | `bibliography_content_hash`; §4.1 boundary, interim FNV. |
+| Facade       | `src/lib.rs`      | Module wiring and re-exports only.                       |
+| Tests        | `tests/bibtex.rs` | Black-box, against the public API.                       |
 
 ## CONVENTIONS
 
-- Keep the public API small: `parse_bibtex` plus the record/error types.
+- Keep the public API small: `crates/mos-bib/src/lib.rs` intentionally exposes `parse_bibtex`,
+  `bibliography_content_hash`, and the record/error types — nothing more. Add a re-export only when
+  a new slice genuinely warrants it.
 - `parse_bibtex` returns the local `BibParseError` (issue #66), but it bridges into the standard
   diagnostics surface via `BibParseError::to_diagnostic` and `From<BibParseError> for CoreError`
   (code `MOS0043`). Keep the local type as the parser entry point; don't change `parse_bibtex` to

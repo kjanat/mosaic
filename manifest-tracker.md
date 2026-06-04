@@ -315,7 +315,9 @@ example.
 - [ ] Render footnote citations.
 - [ ] Render citation clusters.
 - [ ] Render sorted bibliographies.
-- [ ] Track bibliography dependencies.
+- [x] Track bibliography dependencies. *(`BibliographyDependency` pairs a `Bibliography` id with a
+      `ContentHash` boundary; `mos_bib::bibliography_content_hash` hashes the raw `.bib` bytes
+      (§4.1). Identity/boundary only — no `DepNode` graph or `CacheKey` wiring yet.)*
 - [ ] Keep `mos-bib` stub docs honest until real support lands.
 
 ## Incremental Builds And Cache

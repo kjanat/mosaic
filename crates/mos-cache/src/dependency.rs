@@ -22,9 +22,12 @@
 //!
 //! # What is intentionally not modelled yet
 //!
-//! - **Content boundaries.** An id names a dependency; it does not hash the
-//!   bytes behind it. Bibliography content hashing arrives with its own slice,
-//!   built on [`DependencyId::bibliography`].
+//! - **Content boundaries.** A [`DependencyId`] names a dependency; it does not
+//!   hash the bytes behind it. For bibliography inputs that pairing has landed
+//!   as [`BibliographyDependency`], which couples a
+//!   [`DependencyId::bibliography`] identity with a [`ContentHash`] boundary
+//!   (the bytes are hashed by `mos_bib::bibliography_content_hash`). Other
+//!   categories still carry identity only.
 //! - **Serialization format.** [`DependencyId`] derives [`Eq`]/[`Ord`]/[`Hash`]
 //!   so it can key in-memory maps and sets deterministically. The byte-exact
 //!   on-disk form is deferred to the persistent-cache slice; [`Display`] is a
@@ -34,6 +37,7 @@
 
 use std::fmt;
 
+use mos_core::ContentHash;
 use unicode_normalization::UnicodeNormalization;
 
 /// Error returned when a path cannot be used as a project-relative dependency
@@ -395,11 +399,167 @@ impl fmt::Display for DependencyId {
     }
 }
 
+/// A bibliography input paired with its content-hash boundary.
+///
+/// [`DependencyId::Bibliography`] answers *which* `.bib` file this is (its
+/// canonical [`ProjectPath`]); the paired [`ContentHash`] answers *what was in
+/// it* at build time. Together they are what a future incremental engine needs
+/// to decide that cached citation data is stale: the id is the cache slot, the
+/// content hash is the staleness check (design note §4.1, §7).
+///
+/// Construction guarantees the id is always the [`Bibliography`] variant, so a
+/// `BibliographyDependency` cannot be built over a source/asset/label identity
+/// by mistake — [`path`] and [`kind`] are therefore infallible.
+///
+/// The content hash is supplied by the caller rather than computed here, which
+/// keeps `mos-cache` free of any bibliography-format knowledge. Produce it from
+/// the source bytes with `mos_bib::bibliography_content_hash`; `mos-eval` (which
+/// reads the `.bib` and already depends on both crates) is the natural wiring
+/// point.
+///
+/// [`Bibliography`]: DependencyId::Bibliography
+/// [`path`]: BibliographyDependency::path
+/// [`kind`]: BibliographyDependency::kind
+///
+/// # Examples
+///
+/// ```
+/// use mos_cache::{BibliographyDependency, DependencyId, DependencyKind};
+/// use mos_core::ContentHash;
+///
+/// # fn main() -> Result<(), mos_cache::ProjectPathError> {
+/// // The content hash would come from `mos_bib::bibliography_content_hash`.
+/// let dep = BibliographyDependency::new("./refs.bib", ContentHash(0x1234))?;
+///
+/// assert_eq!(dep.kind(), DependencyKind::Bibliography);
+/// assert_eq!(dep.id(), DependencyId::bibliography("refs.bib")?);
+/// assert_eq!(dep.path().as_str(), "refs.bib");
+/// assert_eq!(dep.content(), ContentHash(0x1234));
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub struct BibliographyDependency {
+    path: ProjectPath,
+    content: ContentHash,
+}
+
+impl BibliographyDependency {
+    /// Pair a bibliography source `path` with the `content` hash of its bytes.
+    ///
+    /// The path is canonicalized into a [`ProjectPath`] (§3.1), so logically
+    /// equal paths yield equal dependencies; an invalid path returns
+    /// [`ProjectPathError`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_cache::BibliographyDependency;
+    /// use mos_core::ContentHash;
+    ///
+    /// // `./ch/../refs.bib` and `refs.bib` canonicalize to one identity.
+    /// assert_eq!(
+    ///     BibliographyDependency::new("./ch/../refs.bib", ContentHash(7)),
+    ///     BibliographyDependency::new("refs.bib", ContentHash(7)),
+    /// );
+    /// ```
+    pub fn new(path: impl AsRef<str>, content: ContentHash) -> Result<Self, ProjectPathError> {
+        ProjectPath::new(path).map(|path| Self { path, content })
+    }
+
+    /// The typed dependency identity (always the [`Bibliography`] variant).
+    ///
+    /// [`Bibliography`]: DependencyId::Bibliography
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_cache::{BibliographyDependency, DependencyId};
+    /// use mos_core::ContentHash;
+    ///
+    /// # fn main() -> Result<(), mos_cache::ProjectPathError> {
+    /// let dep = BibliographyDependency::new("refs.bib", ContentHash(1))?;
+    /// assert_eq!(dep.id(), DependencyId::bibliography("refs.bib")?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn id(&self) -> DependencyId {
+        DependencyId::Bibliography(self.path.clone())
+    }
+
+    /// The canonical project path of the bibliography source.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_cache::BibliographyDependency;
+    /// use mos_core::ContentHash;
+    ///
+    /// # fn main() -> Result<(), mos_cache::ProjectPathError> {
+    /// assert_eq!(
+    ///     BibliographyDependency::new("refs.bib", ContentHash(1))?.path().as_str(),
+    ///     "refs.bib",
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub const fn path(&self) -> &ProjectPath {
+        &self.path
+    }
+
+    /// The content-hash boundary of the source bytes at build time.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_cache::BibliographyDependency;
+    /// use mos_core::ContentHash;
+    ///
+    /// # fn main() -> Result<(), mos_cache::ProjectPathError> {
+    /// assert_eq!(
+    ///     BibliographyDependency::new("refs.bib", ContentHash(42))?.content(),
+    ///     ContentHash(42),
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub const fn content(&self) -> ContentHash {
+        self.content
+    }
+
+    /// The [`DependencyKind`] of this dependency: always
+    /// [`Bibliography`](DependencyKind::Bibliography).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_cache::{BibliographyDependency, DependencyKind};
+    /// use mos_core::ContentHash;
+    ///
+    /// # fn main() -> Result<(), mos_cache::ProjectPathError> {
+    /// let dep = BibliographyDependency::new("refs.bib", ContentHash(1))?;
+    /// assert_eq!(dep.kind(), DependencyKind::Bibliography);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub const fn kind(&self) -> DependencyKind {
+        DependencyKind::Bibliography
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeSet, HashSet};
 
-    use super::{DependencyId, DependencyKind, ProjectPath, ProjectPathError};
+    use mos_core::ContentHash;
+
+    use super::{
+        BibliographyDependency, DependencyId, DependencyKind, ProjectPath, ProjectPathError,
+    };
 
     fn id_text(id: Result<DependencyId, ProjectPathError>) -> Result<String, ProjectPathError> {
         id.map(|id| id.to_string())
@@ -561,5 +721,101 @@ mod tests {
         ] {
             assert_eq!(kind.to_string(), kind.as_str());
         }
+    }
+
+    #[test]
+    fn bibliography_dependency_is_always_bibliography_kind() {
+        let dep = BibliographyDependency::new("refs.bib", ContentHash(1));
+        assert_eq!(dep.map(|dep| dep.kind()), Ok(DependencyKind::Bibliography));
+    }
+
+    #[test]
+    fn bibliography_dependency_id_round_trips_to_bibliography_variant() {
+        assert_eq!(
+            BibliographyDependency::new("refs.bib", ContentHash(1)).map(|dep| dep.id()),
+            DependencyId::bibliography("refs.bib"),
+        );
+    }
+
+    #[test]
+    fn bibliography_dependency_exposes_path_and_content() {
+        let dep = BibliographyDependency::new("ch/refs.bib", ContentHash(0x99));
+        assert_eq!(
+            dep.as_ref().map(|dep| dep.path().as_str().to_owned()),
+            Ok("ch/refs.bib".to_owned()),
+        );
+        assert_eq!(dep.map(|dep| dep.content()), Ok(ContentHash(0x99)));
+    }
+
+    #[test]
+    fn equal_path_and_content_produce_equal_dependencies() {
+        // Path canonicalization is inherited from `ProjectPath`.
+        assert_eq!(
+            BibliographyDependency::new("./ch/../refs.bib", ContentHash(7)),
+            BibliographyDependency::new("refs.bib", ContentHash(7)),
+        );
+    }
+
+    #[test]
+    fn differing_content_or_path_makes_dependencies_differ() {
+        // Same path, different content boundary: not equal.
+        assert_ne!(
+            BibliographyDependency::new("refs.bib", ContentHash(1)),
+            BibliographyDependency::new("refs.bib", ContentHash(2)),
+        );
+        // Same content, different path: not equal.
+        assert_ne!(
+            BibliographyDependency::new("a.bib", ContentHash(1)),
+            BibliographyDependency::new("b.bib", ContentHash(1)),
+        );
+    }
+
+    #[test]
+    fn bibliography_dependencies_are_hashable_and_orderable() {
+        let built: Result<Vec<_>, _> = [
+            ("refs.bib", ContentHash(1)),
+            ("refs.bib", ContentHash(1)), // exact duplicate of the first
+            ("refs.bib", ContentHash(2)), // same path, distinct content boundary
+            ("b.bib", ContentHash(1)),
+            ("a.bib", ContentHash(1)),
+        ]
+        .into_iter()
+        .map(|(path, content)| BibliographyDependency::new(path, content))
+        .collect();
+
+        // HashSet dedups by value: 5 inputs, one exact duplicate -> 4 unique.
+        let unique = built
+            .as_ref()
+            .map(|deps| deps.iter().cloned().collect::<HashSet<_>>().len());
+        assert_eq!(unique, Ok(4));
+
+        // BTreeSet exercises Ord and yields a deterministic order, sorted by
+        // (path, content). Project the full key so the content tie-break is
+        // actually asserted: the two refs.bib entries must order 1 before 2.
+        let ordered = built.as_ref().map(|deps| {
+            deps.iter()
+                .cloned()
+                .collect::<BTreeSet<_>>()
+                .iter()
+                .map(|dep| (dep.path().as_str().to_owned(), dep.content()))
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            ordered,
+            Ok(vec![
+                ("a.bib".to_owned(), ContentHash(1)),
+                ("b.bib".to_owned(), ContentHash(1)),
+                ("refs.bib".to_owned(), ContentHash(1)),
+                ("refs.bib".to_owned(), ContentHash(2)),
+            ])
+        );
+    }
+
+    #[test]
+    fn invalid_path_is_rejected() {
+        assert_eq!(
+            BibliographyDependency::new("../escape.bib", ContentHash(1)),
+            Err(ProjectPathError::ParentEscape),
+        );
     }
 }
