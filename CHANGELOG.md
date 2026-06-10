@@ -26,6 +26,15 @@ All notable changes to this project will be documented here. The format is based
   share one id and rejects empty, raw absolute, drive-prefixed, or project-escaping identities.
   Identities only: no content hashing, dependency graph, or `CacheKey` wiring yet, and
   layout-input/node/style kinds wait for real identity schemes.
+- Bibliography file dependencies (https://github.com/kjanat/mosaic/issues/69): the first content
+  boundary built on those identities. [`mos-bib`][mos-bib] now exports `bibliography_content_hash`,
+  the source-hash boundary specialized to `.bib` (engine version + domain tag + raw bytes,
+  byte-for-byte, length-framed; interim FNV-1a-128, documented swappable to BLAKE3 without an API
+  change), and [`mos-cache`][mos-cache] adds `BibliographyDependency`, pairing a `Bibliography` id
+  with that content hash so a future incremental build can tell when citation data changed.
+  Construction guarantees the bibliography variant (so `path()`/`kind()` are infallible), the hash
+  is caller-supplied (no new crate dependency edge), and it stays identity/boundary only — no
+  dependency graph, `CacheKey` wiring, or persistent cache yet.
 
 ### Changed
 
