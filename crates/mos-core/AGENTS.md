@@ -7,14 +7,15 @@ shared errors. Higher crates depend on it; it depends on none of them.
 
 ## WHERE TO LOOK
 
-| Task             | Location        | Notes                                           |
-| ---------------- | --------------- | ----------------------------------------------- |
-| Document graph   | `Document`      | Allocation, parent/child links, traversal.      |
-| Semantic nodes   | `NodeKind`      | Includes future variants; not support map.      |
-| Attributes       | `AttrValue`     | Flexible semantic contract.                     |
-| Diagnostics      | `Diagnostic`    | Source spans, severity, and `Suggestion` fixes. |
-| User errors      | `CoreError`     | Shared result path.                             |
-| Source positions | `linecol` tests | Unicode byte offset behavior.                   |
+| Task             | Location        | Notes                                                                                      |
+| ---------------- | --------------- | ------------------------------------------------------------------------------------------ |
+| Document graph   | `Document`      | Allocation, parent/child links, traversal.                                                 |
+| Semantic nodes   | `NodeKind`      | Includes future variants; not support map.                                                 |
+| Attributes       | `AttrValue`     | Flexible semantic contract.                                                                |
+| Diagnostics      | `Diagnostic`    | Source spans, severity, and `Suggestion` fixes.                                            |
+| User errors      | `CoreError`     | Shared result path.                                                                        |
+| Source positions | `linecol` tests | Unicode byte offset behavior.                                                              |
+| Content hashing  | `src/hash.rs`   | `ContentHasher`: engine-stamped, length-framed FNV-1a-128 boundary hasher (interim, §9.4). |
 
 ## CONVENTIONS
 

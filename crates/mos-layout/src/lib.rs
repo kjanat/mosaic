@@ -13,6 +13,7 @@
     html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
 )]
 
+pub use boundary::{PageBoundarySignature, PageGraphSignature};
 use mos_fonts::nfc_text;
 pub use mos_fonts::{
     Base14Font, EmbeddedFontId, Font, FontFamily, ShapedGlyph, WordSubRun, ascent, descent,
@@ -30,6 +31,7 @@ use support::{blank_page, expand_tabs, read_level, read_str_attr};
 use types::BODY_LEADING;
 use word::{ShyBreak, Word, WordItem, split_soft_hyphens, try_shy_break, word_clusters};
 
+mod boundary;
 mod image;
 mod list;
 mod style;
@@ -834,6 +836,44 @@ mod tests {
             "expected pagination, got {} page(s)",
             result.graph.pages.len()
         );
+    }
+
+    #[test]
+    fn page_boundary_signatures_are_stable_and_change_with_pagination() {
+        fn lay_out(word_count: usize) -> LayoutResult {
+            let mut doc = Document::new(PathBuf::from("test.mos"));
+            let mut text = String::new();
+            for i in 0..word_count {
+                text.push_str(&format!("word{i} "));
+            }
+            make_paragraph(&mut doc, text.trim());
+            LayoutEngine::new().layout(&doc)
+        }
+
+        // Deterministic for unchanged input: the same document laid out twice
+        // signs identically and diverges nowhere.
+        let first = lay_out(1500);
+        let again = lay_out(1500);
+        assert!(first.graph.pages.len() >= 2, "expected a multi-page layout");
+        assert_eq!(
+            first.page_boundary_signatures(),
+            again.page_boundary_signatures(),
+        );
+        assert_eq!(
+            first
+                .page_boundary_signatures()
+                .first_divergence(&again.page_boundary_signatures()),
+            None,
+        );
+
+        // Appending copy reflows pagination, so the signatures must diverge at
+        // some page.
+        let longer = lay_out(1540);
+        let base_sig = first.page_boundary_signatures();
+        let longer_sig = longer.page_boundary_signatures();
+        assert_ne!(base_sig, longer_sig);
+        assert!(longer_sig.pages().len() >= base_sig.pages().len());
+        assert!(base_sig.first_divergence(&longer_sig).is_some());
     }
 
     #[test]
