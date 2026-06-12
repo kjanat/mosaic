@@ -14,9 +14,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub mod codes;
+mod hash;
 mod sink;
 
 pub use codes::{DiagnosticCategory, DiagnosticCode, DiagnosticDef};
+pub use hash::ContentHasher;
 pub use sink::{CollectingSink, DiagnosticAbort, DiagnosticResult, DiagnosticSink};
 
 /// Stable identifier for a document node.

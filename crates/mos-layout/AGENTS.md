@@ -23,17 +23,18 @@ Not implemented here yet:
 
 ## WHERE TO LOOK
 
-| Task             | Location                   | Notes                                             |
-| ---------------- | -------------------------- | ------------------------------------------------- |
-| Public types     | `src/lib.rs` top section   | `PageStyle`, `TextStyle`, `PageGraph`, `TextRun`. |
-| Entry point      | `LayoutEngine::layout`     | Root node dispatch.                               |
-| `#set` page/text | `resolve_styles` helpers   | Invalid values warn and keep prior style.         |
-| Mutable engine   | `LayoutState`              | Cursor, pages, styles, pending list marker.       |
-| Images           | `layout_image`             | Sizing, page breaks, image placement.             |
-| Figures          | `layout_figure`            | Dry-run measurement must match real flow.         |
-| Lists            | `layout_list`              | Nesting, marker gutter, pending marker restore.   |
-| Text flow        | `flow_words`, `flush_line` | Core wrapping and pagination behavior.            |
-| Word/break items | `src/word.rs`              | `Word`, `WordItem`, `split_soft_hyphens`.         |
+| Task             | Location                   | Notes                                                                                     |
+| ---------------- | -------------------------- | ----------------------------------------------------------------------------------------- |
+| Public types     | `src/lib.rs` top section   | `PageStyle`, `TextStyle`, `PageGraph`, `TextRun`.                                         |
+| Page signatures  | `src/boundary.rs`          | `PageBoundarySignature`/`PageGraphSignature`; §4.5 `PageOutputHash` + `first_divergence`. |
+| Entry point      | `LayoutEngine::layout`     | Root node dispatch.                                                                       |
+| `#set` page/text | `resolve_styles` helpers   | Invalid values warn and keep prior style.                                                 |
+| Mutable engine   | `LayoutState`              | Cursor, pages, styles, pending list marker.                                               |
+| Images           | `layout_image`             | Sizing, page breaks, image placement.                                                     |
+| Figures          | `layout_figure`            | Dry-run measurement must match real flow.                                                 |
+| Lists            | `layout_list`              | Nesting, marker gutter, pending marker restore.                                           |
+| Text flow        | `flow_words`, `flush_line` | Core wrapping and pagination behavior.                                                    |
+| Word/break items | `src/word.rs`              | `Word`, `WordItem`, `split_soft_hyphens`.                                                 |
 
 ## CONVENTIONS
 

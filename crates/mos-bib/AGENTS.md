@@ -19,8 +19,9 @@ Implemented:
 - Panic-free recovery: `BibParseError` carries a byte offset and bridges via `to_diagnostic` /
   `From<BibParseError> for CoreError`.
 - `bibliography_content_hash(&[u8]) -> ContentHash` (`src/content.rs`): the §4.1 source-hash
-  boundary specialized to `.bib` inputs (engine-version + domain-tag + raw bytes, length-framed,
-  FNV-1a-128 *interim* hasher). Deterministic, byte-for-byte, no filesystem inputs. Pairs with
+  boundary specialized to `.bib` inputs — supplies the domain tag + raw bytes to
+  `mos_core::ContentHasher` (the shared, engine-stamped, length-framed FNV-1a-128 interim hasher).
+  Deterministic, byte-for-byte, no filesystem inputs. Pairs with
   `mos_cache::BibliographyDependency`. See `docs/incremental-dependencies.md` §4.1.
 
 Not implemented:

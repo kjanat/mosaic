@@ -35,6 +35,19 @@ All notable changes to this project will be documented here. The format is based
   Construction guarantees the bibliography variant (so `path()`/`kind()` are infallible), the hash
   is caller-supplied (no new crate dependency edge), and it stays identity/boundary only — no
   dependency graph, `CacheKey` wiring, or persistent cache yet.
+- Page boundary signatures (https://github.com/kjanat/mosaic/issues/70): [`mos-layout`][mos-layout]
+  now exposes `PageBoundarySignature` (per page) and `PageGraphSignature` (the ordered per-page
+  list, via `PageGraphSignature::of_graph` / `LayoutResult::page_boundary_signatures`) — the §4.5
+  `PageOutputHash` reduced to today's layout primitives. Each page folds its number, the quantized
+  page box, and ordered runs (quantized position/size, a backend-neutral font identity, text) and
+  image placements (intrinsic pixel dimensions + quantized rectangle); shaped glyphs, decoded
+  pixels, absolute paths, PDF resource names, and encounter-order image ids are excluded for
+  determinism and locality. `first_divergence` reports the first page index where two graphs differ,
+  i.e. where pagination changed. Comparison only — no reflow loop or cache wiring yet.
+- Shared content hasher: [`mos-core`][mos-core] now exports `ContentHasher`, the engine-stamped,
+  length-framed FNV-1a-128 boundary hasher (interim, swappable per the incremental-dependencies §9.4
+  slice). [`mos-bib`][mos-bib]'s `bibliography_content_hash` and the new page signatures both build
+  on it instead of re-deriving FNV; bibliography hash values are unchanged.
 
 ### Changed
 
@@ -230,9 +243,11 @@ workflow.
 [ex:linebreaks]: examples/linebreaks/
 [mos-bib]: crates/mos-bib/
 [mos-cache]: crates/mos-cache/
+[mos-core]: crates/mos-core/
 [mos-csl]: crates/mos-csl/
 [mos-eval]: crates/mos-eval/
 [mos-eval:resolve.rs]: crates/mos-eval/src/resolve.rs
+[mos-layout]: crates/mos-layout/
 [mos-lsp]: crates/mos-lsp/
 [mos-parse]: crates/mos-parse/
 [mos-pdf]: crates/mos-pdf/

@@ -356,7 +356,10 @@ example.
 ## Page Reflow And Fixpoints
 
 - [ ] Add page graph as a first-class output of layout.
-- [ ] Store page boundary signatures.
+- [x] Store page boundary signatures. *(`mos-layout` exposes `PageBoundarySignature` /
+      `PageGraphSignature` — the §4.5 `PageOutputHash` over current primitives, with
+      `first_divergence` to locate where pagination changed. Comparison only; no reflow loop or
+      cache wiring yet.)*
 - [ ] Reflow from first changed page.
 - [ ] Recompute pages until boundary state matches old build.
 - [ ] Reuse remaining pages after convergence.

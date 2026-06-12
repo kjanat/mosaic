@@ -375,6 +375,28 @@ Usage:
 Boundary signatures are hashed rather than stored verbatim so equality checks stay cheap and so the
 same boundary state from a different build path collides correctly.
 
+#### What has landed: page boundary signatures
+
+`mos-layout` now exposes `PageBoundarySignature` (per page) and `PageGraphSignature` (the ordered
+per-page list), with `PageGraphSignature::of_graph` / `LayoutResult::page_boundary_signatures`. This
+is the `PageOutputHash` above ("did the laid-out page actually change?") reduced to the layout
+primitives that exist today: each page folds its number, quantized page box, and ordered text runs
+(quantized position + size, a backend-neutral font identity, text + any `/ActualText`) and image
+placements (intrinsic pixel dimensions + quantized rectangle), via [`mos_core::ContentHasher`]
+(§9.4). Run/image counts are folded so insertions shift the digest.
+`PageGraphSignature::first_divergence` returns the first page index whose signature differs, i.e.
+*where* pagination changed — the seam reflow (manifest §33) will key off.
+
+Excluded per §5 and the §4.2/§4.3 carve-outs: shaped glyphs (derived from text + font + shaper); a
+font's PDF resource name (`F1`.., a backend emitter slot layout must not depend on — a neutral font
+identity is folded instead); decoded image pixels (`rgb8`, an asset-content concern);
+`resolved_path` (an absolute path, §5 rule 1); and the encounter-order `handle.id` (folding it would
+churn unrelated pages' signatures when an image is added earlier, breaking the locality
+`first_divergence` provides). It is identity/comparison only — no `PageInputHash`, no `DepNode`
+graph, no `CacheKey` wiring, and no reflow loop yet (those remain §9.6/§9.8).
+
+[`mos_core::ContentHasher`]: ../crates/mos-core/src/hash.rs
+
 ## 5. Determinism expectations
 
 These are the rules a future implementation must follow for the boundaries above to be sound.
@@ -415,6 +437,14 @@ This applies to `width_pt`, `available_width_pt`, `margin_pt`, `size_pt`, and an
 layout-input length. It does *not* apply to `f32`s that only live inside an output box (e.g. the
 exact baseline of a glyph); those go through whichever encoding `LayoutOutputHash` uses.
 
+What landed (page boundary signatures, §4.5): the implementation snaps to the same 1/64-pt grid via
+`(pt * 64).round()` but folds the **canonical `f32` bit pattern** of that integral count rather than
+an `i32`. The two are equivalent for hashing — for the sub-`2^24` magnitudes layout produces, the
+integral count is represented exactly by `f32`, so the same grid cell yields the same bits — and it
+avoids a float-to-int cast the workspace clippy set denies (`cast_possible_truncation`). The §9.5
+quantization newtype can adopt the `i32` form later; because the engine version stamps the encoding,
+that switch invalidates cleanly rather than silently.
+
 ## 7. How this supports later invalidation
 
 The boundaries above give the future engine enough structure to do the work `manifest-tracker.md`
@@ -428,7 +458,10 @@ describes under *Layout* and *Page Reflow And Fixpoints*:
 - **Reflow only affected pages.** Page reflow consumes page-boundary signatures (manifest §33).
   `PageInputHash` (§4.5) is the cache lookup key; `PageOutputHash` is the convergence digest the
   reflow loop compares against the next page's incoming boundary. Downstream pages whose incoming
-  boundary matches an old outgoing boundary are reused wholesale.
+  boundary matches an old outgoing boundary are reused wholesale. The output-side digest has landed
+  as `PageBoundarySignature`/`PageGraphSignature` (§4.5): comparing two graph signatures already
+  answers "did pagination change, and at which page?", which is the seam the reflow loop keys off
+  once the cache and `PageInputHash` side are built.
 - **Update only affected references.** A reference's `ReferenceInputHash` changes iff its target
   node, target number, or target page changes. Re-resolution stays a local edit on the dependency
   graph.
