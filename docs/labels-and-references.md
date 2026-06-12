@@ -126,6 +126,28 @@ A figure reference renders kind-aware as `Figure` followed by the figure's docum
 same `Figure N:` label is also prefixed to the figure's caption. Sections render as a bare number;
 only generic targets fall back to the bare label.
 
+### Page references: `@page(label)`
+
+`@page(label)` references the **printed page number** of a labelled target, as opposed to the
+target's section or figure number:
+
+```mos
+See section @intro on page @page(intro).
+```
+
+Unlike a section or figure number — which the resolver computes from document order — a page number
+is only known after layout. Resolving it therefore runs through a bounded resolve↔layout fixpoint
+(tracked by issue #72). **That fixpoint is not implemented yet:** this slice parses `@page(label)`,
+models it as a distinct semantic node, and exposes the layout-side label→page map the resolver will
+consume, but the reference is left unresolved for now and renders the `?label?` placeholder (the
+same fallback an unknown reference shows). Only a well-formed `@page(label)` — the identifier `page`
+immediately followed by `(`, a label, and `)` — is a page reference; a bare `@page` is still an
+ordinary reference to a label named `page`.
+
+> Compatibility note: before this slice, `@page(intro)` parsed as a reference to a label `page`
+> followed by the literal text `(intro)`. It now parses as a single page reference. This is a
+> deliberate change while the language is pre-alpha.
+
 ### Unknown references (`MOS0033`)
 
 If a reference names a label that does not exist, it is an error,

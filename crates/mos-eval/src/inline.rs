@@ -14,6 +14,7 @@ pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inlin
             InlineKind::BoldItalic => NodeKind::BoldItalic,
             InlineKind::Code => NodeKind::Raw,
             InlineKind::Reference => NodeKind::Reference,
+            InlineKind::PageReference => NodeKind::PageReference,
             InlineKind::Citation => NodeKind::Citation,
             InlineKind::HardBreak => NodeKind::HardBreak,
         };
@@ -22,6 +23,17 @@ pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inlin
             InlineKind::Reference => {
                 // Pre-resolve placeholder text: resolver overwrites this on success;
                 // unresolved refs still render visible `?label?` text.
+                attributes.insert("label".to_owned(), AttrValue::Str(inline.text.clone()));
+                attributes.insert(
+                    "text".to_owned(),
+                    AttrValue::Str(format!("?{}?", inline.text)),
+                );
+            }
+            InlineKind::PageReference => {
+                // Same placeholder shape as a cross-reference: the label is
+                // recorded and `?label?` stays visible until the resolve↔layout
+                // fixpoint (issue #72) rewrites it to the target's page number.
+                // This slice models the node but does not resolve it.
                 attributes.insert("label".to_owned(), AttrValue::Str(inline.text.clone()));
                 attributes.insert(
                     "text".to_owned(),

@@ -219,6 +219,15 @@ pub enum InlineKind {
     /// [`Inline::text`] payload is the bare label name (no leading
     /// `@`); the resolver rewrites it to the target's resolved text.
     Reference,
+    /// `@page(label)` — a reference to the printed *page number* of a
+    /// labelled target. The [`Inline::text`] payload is the bare label name
+    /// (the `page(` wrapper and `)` stripped). Distinct from
+    /// [`Reference`](Self::Reference), which resolves to the target's section
+    /// or figure number; a page reference resolves to where the target lands,
+    /// which is only known after layout. Resolution runs through the
+    /// resolve↔layout fixpoint (issue #72); this slice parses and models the
+    /// reference but leaves it unresolved (placeholder text).
+    PageReference,
     /// `[@key]` — a citation to a bibliography entry. The
     /// [`Inline::text`] payload is the bare citation key (no leading
     /// `[@` or trailing `]`); bibliography loading and rendering are

@@ -184,7 +184,11 @@ example.
 - [ ] Resolve theorem numbering.
 - [x] Resolve citation keys.
 - [x] Document the page-reference and layout-fixpoint boundary.
-- [ ] Add page-reference support.
+- [ ] Add page-reference support. *(Foundation landed: `@page(label)` parses to
+      `InlineKind::PageReference`, lowers to `NodeKind::PageReference`, and
+      `LayoutResult.label_pages` maps each label to its start page. Resolving the reference to a
+      page number — the resolve↔layout fixpoint — is still pending, so `@page(label)` renders a
+      placeholder.)*
 - [ ] Add internal fixpoint loop for layout-dependent values.
 - [ ] Add stable node IDs derived from durable inputs.
 - [ ] Add content hashes for semantic nodes.

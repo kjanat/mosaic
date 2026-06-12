@@ -102,6 +102,13 @@ pub enum NodeKind {
     Table,
     Citation,
     Reference,
+    /// A `@page(label)` reference to the printed page number of a labelled
+    /// target. Distinct from [`Reference`](Self::Reference) (which resolves to
+    /// a section/figure number): a page reference resolves to where the target
+    /// lands, which is only known after layout, via the resolve↔layout fixpoint
+    /// (issue #72). Carries a `label` attribute and placeholder `text`; layout
+    /// renders the `text` attribute like any inline run.
+    PageReference,
     Theorem,
     Footnote,
     Bibliography,

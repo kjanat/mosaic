@@ -44,6 +44,10 @@ impl LayoutState {
             self.start_new_page();
         }
 
+        // Page settled for this image; bind any labels waiting on first
+        // content (e.g. a labelled `#figure` whose first child is the image).
+        self.bind_pending_labels();
+
         let x = self.page.margin_pt + (column_w - render_w) * 0.5;
         self.current_page.images.push(ImagePlacement {
             handle,

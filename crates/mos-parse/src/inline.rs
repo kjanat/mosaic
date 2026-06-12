@@ -258,6 +258,40 @@ impl Parser<'_> {
             if c == b'@' {
                 let id_end = scan_label_chars(bytes, i + 1);
                 if id_end > i + 1 {
+                    // `@page(label)` — a page reference. Only a *well-formed*
+                    // `@page(` + label + `)` takes this branch; anything else
+                    // (`@page` alone, an unterminated `@page(`, `@pages`) falls
+                    // through to the ordinary `@label` reference path below.
+                    if &slice[i + 1..id_end] == "page"
+                        && id_end < bytes.len()
+                        && bytes[id_end] == b'('
+                    {
+                        let label_start = id_end + 1;
+                        let label_end = scan_label_chars(bytes, label_start);
+                        if label_end > label_start
+                            && label_end < bytes.len()
+                            && bytes[label_end] == b')'
+                        {
+                            self.flush_styled_text_with_pending(
+                                &mut out,
+                                slice,
+                                base,
+                                text_start,
+                                i,
+                                style,
+                                &mut pending,
+                                &mut pending_source_start,
+                            );
+                            out.push(Inline {
+                                kind: InlineKind::PageReference,
+                                text: slice[label_start..label_end].to_owned(),
+                                span: self.span(base + i, base + label_end + 1),
+                            });
+                            i = label_end + 1;
+                            text_start = i;
+                            continue;
+                        }
+                    }
                     self.flush_styled_text_with_pending(
                         &mut out,
                         slice,

@@ -647,6 +647,59 @@ mod tests {
     }
 
     #[test]
+    fn at_page_produces_page_reference_inline() {
+        let r = parse_str("see @page(fig:wells) now\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let kinds: Vec<InlineKind> = inlines.iter().map(|i| i.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                InlineKind::Text,
+                InlineKind::PageReference,
+                InlineKind::Text
+            ]
+        );
+        let page_ref = inlines
+            .iter()
+            .find(|i| i.kind == InlineKind::PageReference)
+            .unwrap();
+        // The `page(` wrapper and `)` are stripped; payload is the bare label.
+        assert_eq!(page_ref.text, "fig:wells");
+    }
+
+    #[test]
+    fn malformed_at_page_falls_back_to_ordinary_reference() {
+        // `@page` with no `(label)` is just a cross-reference to a label named
+        // "page" — the page-reference branch only fires for a well-formed
+        // `@page(label)`.
+        let r = parse_str("see @page now\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert!(
+            inlines
+                .iter()
+                .any(|i| i.kind == InlineKind::Reference && i.text == "page")
+        );
+        assert!(!inlines.iter().any(|i| i.kind == InlineKind::PageReference));
+    }
+
+    #[test]
+    fn unterminated_at_page_paren_is_not_a_page_reference() {
+        // `@page(` without a closing `)` after a label must not be swallowed as
+        // a page reference; it falls back to the `@page` reference plus literal.
+        let r = parse_str("see @page(oops now\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert!(!inlines.iter().any(|i| i.kind == InlineKind::PageReference));
+        assert!(
+            inlines
+                .iter()
+                .any(|i| i.kind == InlineKind::Reference && i.text == "page")
+        );
+    }
+
+    #[test]
     fn stray_at_warns_and_stays_text() {
         let r = parse_str("an @ symbol\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
