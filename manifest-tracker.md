@@ -184,12 +184,12 @@ example.
 - [ ] Resolve theorem numbering.
 - [x] Resolve citation keys.
 - [x] Document the page-reference and layout-fixpoint boundary.
-- [ ] Add page-reference support. *(Foundation landed: `@page(label)` parses to
-      `InlineKind::PageReference`, lowers to `NodeKind::PageReference`, and
-      `LayoutResult.label_pages` maps each label to its start page. Resolving the reference to a
-      page number — the resolve↔layout fixpoint — is still pending, so `@page(label)` renders a
-      placeholder.)*
-- [ ] Add internal fixpoint loop for layout-dependent values.
+- [x] Add page-reference support. *(`@page(label)` renders the target's printed page number,
+      resolved by `mos build` through the resolve↔layout fixpoint. Undeclared labels are `MOS0033`
+      at check time; non-convergence is `MOS0047`.)*
+- [x] Add internal fixpoint loop for layout-dependent values. *(`resolve_page_reference_fixpoint`
+      iterates layout until the label→page map stabilizes; cap + oscillation detection emit
+      `MOS0047`. Currently drives page references; other layout-dependent values reuse it later.)*
 - [ ] Add stable node IDs derived from durable inputs.
 - [ ] Add content hashes for semantic nodes.
 
@@ -368,7 +368,7 @@ example.
 - [ ] Recompute pages until boundary state matches old build.
 - [ ] Reuse remaining pages after convergence.
 - [ ] Resolve layout-dependent values through a fixpoint:
-  - [ ] page references
+  - [x] page references
   - [ ] table of contents page numbers
   - [ ] list of figures page numbers
   - [ ] list of tables page numbers

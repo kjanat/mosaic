@@ -24,6 +24,12 @@ use mos_core::{
     linecol,
 };
 
+/// Cap on resolve↔layout rounds for page references before the engine gives up
+/// and reports `MOS0047` (issue #72). Stable documents settle in one or two
+/// rounds; the cap bounds pathological oscillation so the build always
+/// terminates.
+const MAX_PAGE_FIXPOINT_ITERATIONS: u32 = 8;
+
 #[derive(Parser, Debug)]
 #[command(
     name = "mos",
@@ -257,10 +263,35 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
+    // Resolve `@page(...)` references by iterating layout until the page
+    // numbers stabilize (issue #72). Each round lays the document out and feeds
+    // the resulting label→page map back into the resolver; layout is the
+    // injected closure so the fixpoint logic itself lives in `mos-eval`. A
+    // document with no page references settles in one round.
+    let mut document = result.document;
+    let (page_outcome, layout) = mos_eval::resolve_page_reference_fixpoint(
+        &mut document,
+        |doc| {
+            let layout = mos_layout::LayoutEngine::new().layout(doc);
+            (layout.label_pages.clone(), layout)
+        },
+        MAX_PAGE_FIXPOINT_ITERATIONS,
+    );
+    if let mos_eval::PageFixpointOutcome::NotConverged { iterations } = page_outcome {
+        let _ = sink.emit(Diagnostic::simple(
+            &mos_core::codes::MOS0047,
+            None,
+            format!(
+                "page references did not converge after {iterations} layout iterations; \
+                 using the last computed page numbers"
+            ),
+        ));
+    }
+
     // Layout can produce real errors (MOS0017 unknown paper, MOS0023
     // geometrically invalid margin/leading). Don't ship a PDF with
-    // broken config under a success exit code.
-    let layout = mos_layout::LayoutEngine::new().layout(&result.document);
+    // broken config under a success exit code. Only the final layout's
+    // diagnostics are rendered, so iterating does not duplicate them.
     sink.render_all(layout.diagnostics);
     if sink.had_error() {
         return ExitCode::FAILURE;

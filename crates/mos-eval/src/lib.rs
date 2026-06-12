@@ -16,6 +16,7 @@ mod image;
 mod image_lower;
 mod inline;
 mod list;
+mod pageref;
 mod resolve;
 mod set;
 mod set_schema;
@@ -28,6 +29,7 @@ use mos_core::{
 };
 use mos_parse::{DirectiveKind, Item, RawBlockKind, SyntaxTree};
 
+pub use pageref::{PageFixpointOutcome, resolve_page_reference_fixpoint, resolve_page_references};
 pub use resolve::resolve;
 
 use bibliography::{lower_bibliography_directive, resolve_citations};
@@ -912,8 +914,12 @@ mod tests {
         // placeholder (the unresolved-reference pattern). This slice models the
         // node but does not resolve it — page resolution is the resolve↔layout
         // fixpoint (issue #72) — so it must NOT be folded into the cross-
-        // reference machinery and the placeholder must survive lowering.
-        let r = lower("See @page(intro) here.\n", &PathBuf::from("test.mos"));
+        // reference machinery and the placeholder must survive lowering. The
+        // label is declared so the lower-time validation stays quiet here.
+        let r = lower(
+            "= Intro <intro>\n\nSee @page(intro) here.\n",
+            &PathBuf::from("test.mos"),
+        );
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
 
         let page_ref = r
@@ -932,6 +938,30 @@ mod tests {
         );
         // A page reference is its own kind, not an `@label` cross-reference.
         assert!(!r.document.nodes().any(|n| n.kind == NodeKind::Reference));
+    }
+
+    #[test]
+    fn undeclared_page_reference_label_emits_mos0033() {
+        // An undeclared label in `@page(...)` is a lower-time error, exactly
+        // like a bad `@ref` — `mos check` reports it without laying out.
+        let r = lower("See @page(missing) here.\n", &PathBuf::from("test.mos"));
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0033.code()),
+            "{:?}",
+            r.diagnostics
+        );
+        // The placeholder survives so the page reference stays visible.
+        let page_ref = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::PageReference)
+            .expect("PageReference node");
+        assert_eq!(
+            page_ref.attributes.get("text"),
+            Some(&AttrValue::Str("?missing?".to_owned())),
+        );
     }
 
     #[test]

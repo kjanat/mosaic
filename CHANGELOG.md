@@ -8,15 +8,17 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
-- Page-reference foundations (https://github.com/kjanat/mosaic/issues/72): `@page(label)` now parses
-  to a distinct [`mos-parse`][mos-parse] `InlineKind::PageReference` and lowers to a
-  [`mos-core`][mos-core] `NodeKind::PageReference` carrying the bare label and a `?label?`
-  placeholder, and [`mos-layout`][mos-layout]'s `LayoutResult` exposes a `label_pages` map (label →
-  1-based start page, bound to where each labelled block's first content lands, after any page
-  break). This is the parser + semantic model + layout-side map only: resolving a page reference to
-  its target's printed page number runs through a resolve↔layout fixpoint that is not implemented
-  yet, so `@page(label)` currently renders the placeholder. A bare `@page` stays an ordinary
-  reference; only a well-formed `@page(label)` is a page reference.
+- Page references (https://github.com/kjanat/mosaic/issues/72): `@page(label)` renders the **printed
+  page number** of a labelled target. It parses to a distinct [`mos-parse`][mos-parse]
+  `InlineKind::PageReference`, lowers to a [`mos-core`][mos-core] `NodeKind::PageReference`, and is
+  resolved by `mos build` through a **bounded resolve↔layout fixpoint**:
+  [`mos-layout`][mos-layout]'s `LayoutResult` exposes a `label_pages` map (label → 1-based start
+  page), and [`mos-eval`][mos-eval]'s `resolve_page_reference_fixpoint` lays out, rewrites each page
+  reference from that map, and re-lays-out until the page numbers stabilize. Non-convergence stops
+  at an iteration cap and emits `MOS0047` (warning), keeping the last computed numbers. An
+  undeclared `@page` label is `MOS0033` at check time, like a bad `@ref`. A bare `@page` stays an
+  ordinary reference; only a well-formed `@page(label)` is a page reference (a pre-alpha change:
+  `@page(x)` previously parsed as a `page` reference plus literal `(x)`).
 
 - Citation-key resolution (https://github.com/kjanat/mosaic/issues/65): declared
   `#bibliography("refs.bib")` sources are read during lowering, parsed with [`mos-bib`][mos-bib],

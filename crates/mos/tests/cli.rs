@@ -247,6 +247,48 @@ fn build_renders_section_numbers_and_resolves_references() {
 }
 
 #[test]
+fn build_resolves_page_references_to_page_numbers() {
+    // End-to-end #72: `@page(label)` renders the target's printed page number,
+    // resolved through the resolve↔layout fixpoint. The intro lands on page 1,
+    // so the rendered run is `(1)` — section numbers render as `(1.)`, so this
+    // does not collide — and the `?intro?` placeholder must be gone.
+    let dir = temp_dir("mos-build-pageref");
+    write_file(
+        dir.path(),
+        "main.mos",
+        "#set text(font: \"Helvetica\")\n\
+         = Intro <intro>\n\nSee the intro on page @page(intro).\n",
+    );
+    let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+
+    let pdf_path = dir.path().join("build").join("main.pdf");
+    let bytes = std::fs::read(&pdf_path).expect("pdf written");
+    let doc = lopdf::Document::load_mem(&bytes).expect("lopdf parse");
+    let mut combined: Vec<u8> = Vec::new();
+    for &page_id in doc.get_pages().values() {
+        combined.extend(doc.get_page_content(page_id).expect("content"));
+    }
+    let has = |needle: &[u8]| combined.windows(needle.len()).any(|w| w == needle);
+    assert!(has(b"(1)"), "expected resolved page number `1` run");
+    assert!(
+        !has(b"(?intro?)"),
+        "page reference left unresolved in PDF stream"
+    );
+}
+
+#[test]
+fn check_reports_unknown_page_reference_label() {
+    // An undeclared label in `@page(...)` is MOS0033 at check time, without
+    // laying the document out — same as a bad `@ref`.
+    let dir = temp_dir("mos-check-pageref-mos0033");
+    write_file(dir.path(), "main.mos", "see page @page(no:such)\n");
+    let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
+    assert_eq!(code, 1);
+    assert!(stderr.contains("error[MOS0033]"), "stderr={stderr:?}");
+}
+
+#[test]
 fn check_reports_unknown_label() {
     // MOS0033 surfaces through `mos check` so editor integration sees
     // unresolved references without having to drive the build.
