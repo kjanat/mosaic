@@ -25,6 +25,8 @@ pub use types::{
     PageGraph, PageStyle, TextRun, TextStyle,
 };
 
+use std::collections::BTreeMap;
+
 use mos_core::{AttrValue, Diagnostic, Document, Node, NodeKind};
 use style::resolve_styles;
 use support::{blank_page, expand_tabs, read_level, read_str_attr};
@@ -119,6 +121,10 @@ impl LayoutEngine {
             let Some(node) = document.get(*child_id) else {
                 continue;
             };
+            // Queue this block's label (if any) so it binds to the page its
+            // first content actually lands on (issue #72), not the page the
+            // cursor happens to sit on before a break.
+            state.queue_label(node);
             match node.kind {
                 NodeKind::Section => state.layout_heading(document, node),
                 NodeKind::Paragraph => state.layout_paragraph(document, node),
@@ -137,6 +143,11 @@ impl LayoutEngine {
                     // on forward-compatible input.
                 }
             }
+            // This block is fully laid out. Any label still queued belongs to a
+            // block that emitted no content (an empty paragraph, an unsupported
+            // kind, a `#set` block); drop it so it never binds to a later
+            // block's page (issue #72).
+            state.discard_unbound_labels();
         }
         state.finish()
     }
@@ -168,6 +179,13 @@ struct LayoutState {
     /// `current_left_pt` on the first line of each item. Cleared by
     /// `flush_line` once the marker is committed to a page.
     pending_marker: Option<PendingMarker>,
+    /// Labels of blocks dispatched but not yet committed to a page. Bound
+    /// to the page their first content lands on (issue #72) — see
+    /// [`LayoutState::bind_pending_labels`].
+    pending_labels: Vec<String>,
+    /// Built result of label → 1-based start page. Emitted into the
+    /// [`PageGraph`] by [`LayoutState::finish`].
+    label_pages: BTreeMap<String, u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -194,6 +212,40 @@ impl LayoutState {
             image_handles: Vec::new(),
             current_left_pt: page.margin_pt,
             pending_marker: None,
+            pending_labels: Vec::new(),
+            label_pages: BTreeMap::new(),
+        }
+    }
+
+    /// Queue a block's `label` attribute (if present) for binding to the
+    /// page its first content commits to (issue #72).
+    fn queue_label(&mut self, node: &Node) {
+        if let Some(AttrValue::Str(label)) = node.attributes.get("label") {
+            self.pending_labels.push(label.clone());
+        }
+    }
+
+    /// Drop labels still queued after a block finished laying out. The block
+    /// (or its label) committed no content, so the label has no page; clearing
+    /// it keeps a labelled no-content block out of `label_pages` instead of
+    /// letting its label leak onto the next block that does emit content. Only
+    /// the just-dispatched block's label can be queued here, since
+    /// [`queue_label`](Self::queue_label) runs once per top-level block.
+    fn discard_unbound_labels(&mut self) {
+        self.pending_labels.clear();
+    }
+
+    /// Bind every queued label to the current page. Called at each
+    /// first-content-commit site *after* its page-break check, so a label
+    /// maps to where its target actually lands. First placement wins
+    /// (`or_insert`), matching the resolver's first-occurrence label rule.
+    fn bind_pending_labels(&mut self) {
+        if self.pending_labels.is_empty() {
+            return;
+        }
+        let page = self.current_page.number;
+        for label in self.pending_labels.drain(..) {
+            self.label_pages.entry(label).or_insert(page);
         }
     }
 
@@ -215,6 +267,7 @@ impl LayoutState {
                 images: self.image_handles,
             },
             diagnostics: self.diagnostics,
+            label_pages: self.label_pages,
         }
     }
 
@@ -575,6 +628,10 @@ impl LayoutState {
             self.cursor_y = self.page.margin_pt + max_ascent;
         }
 
+        // The page is now settled for this line; bind any labels waiting on
+        // their first content to it (issue #72).
+        self.bind_pending_labels();
+
         // Marker (`•` / `1.` …) is drawn in the gutter to the left of
         // `current_left_pt` once the baseline is locked. Consumed on
         // emit so subsequent wrapped lines of the same item don't
@@ -777,6 +834,25 @@ mod tests {
         id
     }
 
+    fn make_labelled_paragraph(doc: &mut Document, text: &str, label: &str) -> NodeId {
+        let mut attrs = AttrMap::new();
+        attrs.insert("label".to_owned(), AttrValue::Str(label.to_owned()));
+        let id = doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Paragraph,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: attrs,
+            },
+        );
+        alloc_inline(doc, id, NodeKind::Text, text);
+        id
+    }
+
     fn make_raw_block(doc: &mut Document, text: &str) -> NodeId {
         let mut attrs = AttrMap::new();
         attrs.insert("raw.kind".to_owned(), AttrValue::Str("code".to_owned()));
@@ -874,6 +950,90 @@ mod tests {
         assert_ne!(base_sig, longer_sig);
         assert!(longer_sig.pages().len() >= base_sig.pages().len());
         assert!(base_sig.first_divergence(&longer_sig).is_some());
+    }
+
+    #[test]
+    fn label_pages_maps_a_first_block_to_page_one() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_labelled_paragraph(&mut doc, "Introduction", "intro");
+        let result = LayoutEngine::new().layout(&doc);
+        assert_eq!(result.label_pages.get("intro").copied(), Some(1));
+    }
+
+    #[test]
+    fn label_pages_records_the_start_page_after_a_break() {
+        // A page-filling paragraph, then a labelled paragraph with a unique
+        // word. The label must bind to the page its content actually lands on
+        // (post-break), not the page the cursor sat on before the break.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let mut filler = String::new();
+        for i in 0..1500 {
+            filler.push_str(&format!("word{i} "));
+        }
+        make_paragraph(&mut doc, filler.trim());
+        make_labelled_paragraph(&mut doc, "ZZUNIQUE", "tail");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(
+            result.graph.pages.len() >= 2,
+            "expected a multi-page layout"
+        );
+
+        let recorded = result.label_pages.get("tail").copied();
+        // Cross-check: the recorded page is exactly the page whose runs contain
+        // the labelled paragraph's text.
+        let actual = result
+            .graph
+            .pages
+            .iter()
+            .find(|page| page.runs.iter().any(|run| run.text == "ZZUNIQUE"))
+            .map(|page| page.number);
+        assert_eq!(recorded, actual);
+        assert!(recorded.is_some_and(|page| page >= 2), "{recorded:?}");
+    }
+
+    #[test]
+    fn label_pages_omits_unlabelled_blocks_and_keeps_first_occurrence() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_paragraph(&mut doc, "unlabelled");
+        make_labelled_paragraph(&mut doc, "first", "dup");
+        make_labelled_paragraph(&mut doc, "second", "dup");
+        let result = LayoutEngine::new().layout(&doc);
+        // One entry per distinct label; the unlabelled block contributes none.
+        assert_eq!(result.label_pages.len(), 1);
+        assert_eq!(result.label_pages.get("dup").copied(), Some(1));
+    }
+
+    #[test]
+    fn label_pages_omits_a_labelled_block_that_emits_no_content() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        // A labelled empty paragraph commits no content (no words to flush)...
+        make_labelled_paragraph(&mut doc, "", "ghost");
+        // ...as does a labelled unsupported block (Table is ignored in MVP 0).
+        let mut table_attrs = AttrMap::new();
+        table_attrs.insert("label".to_owned(), AttrValue::Str("phantom".to_owned()));
+        doc.alloc_child(
+            doc.root,
+            Node {
+                id: NodeId::default(),
+                kind: NodeKind::Table,
+                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
+                content_hash: ContentHash::default(),
+                style_id: StyleId::default(),
+                children: Vec::new(),
+                attributes: table_attrs,
+            },
+        );
+        // ...then a normal labelled paragraph that does.
+        make_labelled_paragraph(&mut doc, "real text", "real");
+
+        let result = LayoutEngine::new().layout(&doc);
+        // No-content labels must not leak onto a later block's page: they are
+        // simply absent. Only the real paragraph maps, to its own page.
+        assert!(!result.label_pages.contains_key("ghost"));
+        assert!(!result.label_pages.contains_key("phantom"));
+        assert_eq!(result.label_pages.get("real").copied(), Some(1));
+        assert_eq!(result.label_pages.len(), 1);
     }
 
     #[test]

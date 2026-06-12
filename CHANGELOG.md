@@ -8,6 +8,16 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Page-reference foundations (https://github.com/kjanat/mosaic/issues/72): `@page(label)` now parses
+  to a distinct [`mos-parse`][mos-parse] `InlineKind::PageReference` and lowers to a
+  [`mos-core`][mos-core] `NodeKind::PageReference` carrying the bare label and a `?label?`
+  placeholder, and [`mos-layout`][mos-layout]'s `LayoutResult` exposes a `label_pages` map (label →
+  1-based start page, bound to where each labelled block's first content lands, after any page
+  break). This is the parser + semantic model + layout-side map only: resolving a page reference to
+  its target's printed page number runs through a resolve↔layout fixpoint that is not implemented
+  yet, so `@page(label)` currently renders the placeholder. A bare `@page` stays an ordinary
+  reference; only a well-formed `@page(label)` is a page reference.
+
 - Citation-key resolution (https://github.com/kjanat/mosaic/issues/65): declared
   `#bibliography("refs.bib")` sources are read during lowering, parsed with [`mos-bib`][mos-bib],
   and checked against `[@key]` citations. Known citations are marked `resolved = true` for a later

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use mos_core::Diagnostic;
@@ -167,4 +168,16 @@ pub struct PageGraph {
 pub struct LayoutResult {
     pub graph: PageGraph,
     pub diagnostics: Vec<Diagnostic>,
+    /// Map from a declared label to the 1-based number of the page its
+    /// target first lands on (issue #72). Built during layout as each
+    /// labelled block commits its first content; first placement wins, so a
+    /// label on a block that spans pages maps to its *start* page, and a
+    /// labelled block that produced no content is absent.
+    ///
+    /// This is the layout-side half of page-reference resolution: the
+    /// resolve↔layout fixpoint feeds this map back into the resolver so
+    /// `@page(label)` can render the target's printed page number. It lives on
+    /// the result rather than the [`PageGraph`] because it feeds the resolver,
+    /// not the PDF backend, which consumes only `graph`.
+    pub label_pages: BTreeMap<String, u32>,
 }

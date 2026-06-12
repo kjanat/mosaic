@@ -906,6 +906,52 @@ mod tests {
     }
 
     #[test]
+    fn page_reference_lowers_to_inert_page_reference_node() {
+        // `@page(label)` reaches the semantic model as a distinct
+        // `NodeKind::PageReference` carrying the bare label and a `?label?`
+        // placeholder (the unresolved-reference pattern). This slice models the
+        // node but does not resolve it — page resolution is the resolve↔layout
+        // fixpoint (issue #72) — so it must NOT be folded into the cross-
+        // reference machinery and the placeholder must survive lowering.
+        let r = lower("See @page(intro) here.\n", &PathBuf::from("test.mos"));
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+
+        let page_ref = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::PageReference)
+            .expect("PageReference node");
+        assert_eq!(
+            page_ref.attributes.get("label"),
+            Some(&AttrValue::Str("intro".to_owned())),
+        );
+        assert_eq!(
+            page_ref.attributes.get("text"),
+            Some(&AttrValue::Str("?intro?".to_owned())),
+            "unresolved page references keep a visible placeholder",
+        );
+        // A page reference is its own kind, not an `@label` cross-reference.
+        assert!(!r.document.nodes().any(|n| n.kind == NodeKind::Reference));
+    }
+
+    #[test]
+    fn page_reference_to_a_declared_label_is_not_a_duplicate_declaration() {
+        // A page reference *consumes* a label; it must not be mistaken for a
+        // second declaration of `intro`, which would wrongly emit MOS0030.
+        let r = lower(
+            "= Intro <intro>\n\nSee @page(intro) here.\n",
+            &PathBuf::from("test.mos"),
+        );
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0030.code()),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
     fn citation_lowers_to_citation_node_with_key_and_span() {
         // `[@key]` must reach the semantic model as `NodeKind::Citation`
         // with the bare key in the `key` attribute and a span that

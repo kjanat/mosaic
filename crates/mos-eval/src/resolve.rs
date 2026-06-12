@@ -314,7 +314,7 @@ fn classify_target(node: &mos_core::Node) -> LabelTargetKind {
 fn declared_labels(document: &Document) -> BTreeSet<String> {
     document
         .nodes()
-        .filter(|node| node.kind != NodeKind::Reference)
+        .filter(|node| !matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
         .filter_map(|node| match node.attributes.get("label") {
             Some(AttrValue::Str(label)) => Some(label.clone()),
             _ => None,
@@ -350,10 +350,10 @@ fn build_label_index(
     let mut occupied_labels = declared_labels(document);
     let mut index: BTreeMap<String, LabelTarget> = BTreeMap::new();
     for node in document.nodes() {
-        // References *consume* labels; only blocks declare them.
-        // Treating a `@ref`'s `label` attribute as a declaration would
-        // shadow the real target.
-        if node.kind == NodeKind::Reference {
+        // References *consume* labels; only blocks declare them. Treating a
+        // `@ref` or `@page(ref)`'s `label` attribute as a declaration would
+        // shadow the real target (and falsely trip the duplicate-label check).
+        if matches!(node.kind, NodeKind::Reference | NodeKind::PageReference) {
             continue;
         }
         let Some(AttrValue::Str(label)) = node.attributes.get("label") else {

@@ -27,6 +27,7 @@ Not implemented here yet:
 | ---------------- | -------------------------- | ----------------------------------------------------------------------------------------- |
 | Public types     | `src/lib.rs` top section   | `PageStyle`, `TextStyle`, `PageGraph`, `TextRun`.                                         |
 | Page signatures  | `src/boundary.rs`          | `PageBoundarySignature`/`PageGraphSignature`; §4.5 `PageOutputHash` + `first_divergence`. |
+| Label → page map | `LayoutResult.label_pages` | label → start page; bound via `pending_labels`/`bind_pending_labels` (issue #72).         |
 | Entry point      | `LayoutEngine::layout`     | Root node dispatch.                                                                       |
 | `#set` page/text | `resolve_styles` helpers   | Invalid values warn and keep prior style.                                                 |
 | Mutable engine   | `LayoutState`              | Cursor, pages, styles, pending list marker.                                               |
