@@ -513,10 +513,18 @@ async function pullRequest(repo: RepositoryDefaults, number: number): Promise<Js
 async function issueByNumber(repo: RepositoryDefaults, number: number): Promise<JsonRecord | null> {
 	const query = `query($owner: String!, $repo: String!, $number: Int!) {
     repository(owner: $owner, name: $repo) {
-      issue(number: $number) { number title state url }
+      issueOrPullRequest(number: $number) {
+        __typename
+        ... on Issue { number title state url }
+      }
     }
   }`;
-	return issueNode(await githubGraphql(query, { owner: repo.owner, repo: repo.repository, number }), number);
+	const repository = repositoryNode(await githubGraphql(query, { owner: repo.owner, repo: repo.repository, number }));
+	const issue = recordValue(repository, 'issueOrPullRequest');
+	if (issue === null || stringField(issue, '__typename') !== 'Issue') {
+		return null;
+	}
+	return issue;
 }
 
 function mentionedIssueNumbers(pr: JsonRecord): ReadonlyArray<number> {
