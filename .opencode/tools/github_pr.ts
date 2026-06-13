@@ -46,6 +46,7 @@ type IssueSummary = {
 	state: string;
 	url: string;
 	source: string;
+	fields: ReadonlyArray<ProjectItemFieldValue>;
 };
 
 type Classification = {
@@ -344,6 +345,7 @@ function summarizeIssue(issue: JsonRecord, source: string): IssueSummary {
 		state: stringField(issue, 'state') ?? '',
 		url: stringField(issue, 'url') ?? '',
 		source,
+		fields: projectFieldsFromContent(issue),
 	};
 }
 
@@ -398,6 +400,14 @@ function projectItemFieldValues(item: JsonRecord): ReadonlyArray<ProjectItemFiel
 		}
 		return [{ name, value: itemValue, type: stringField(value, '__typename') ?? '' }];
 	});
+}
+
+function projectFieldsFromContent(content: JsonRecord): ReadonlyArray<ProjectItemFieldValue> {
+	return nodeList(recordValue(content, 'projectItems')).flatMap(projectItemFieldValues);
+}
+
+function projectFieldValue(fields: ReadonlyArray<ProjectItemFieldValue>, name: string): string | null {
+	return fields.find((field) => field.name === name)?.value ?? null;
 }
 
 function projectItems(pr: JsonRecord): ReadonlyArray<JsonRecord> {
@@ -465,7 +475,40 @@ async function pullRequest(repo: RepositoryDefaults, number: number): Promise<Js
         author { login }
         labels(first: 20) { nodes { name } }
         statusCheckRollup { state }
-        closingIssuesReferences(first: 20) { nodes { number title state url } }
+        closingIssuesReferences(first: 20) {
+          nodes {
+            number title state url
+            projectItems(first: 8) {
+              nodes {
+                fieldValues(first: 50) {
+                  nodes {
+                    __typename
+                    ... on ProjectV2ItemFieldTextValue {
+                      text
+                      field { ... on ProjectV2FieldCommon { name } }
+                    }
+                    ... on ProjectV2ItemFieldSingleSelectValue {
+                      name
+                      field { ... on ProjectV2FieldCommon { name } }
+                    }
+                    ... on ProjectV2ItemFieldIterationValue {
+                      title
+                      field { ... on ProjectV2FieldCommon { name } }
+                    }
+                    ... on ProjectV2ItemFieldNumberValue {
+                      number
+                      field { ... on ProjectV2FieldCommon { name } }
+                    }
+                    ... on ProjectV2ItemFieldDateValue {
+                      date
+                      field { ... on ProjectV2FieldCommon { name } }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
         projectItems(first: 20) {
           nodes {
             id type createdAt updatedAt
@@ -515,7 +558,38 @@ async function issueByNumber(repo: RepositoryDefaults, number: number): Promise<
     repository(owner: $owner, name: $repo) {
       issueOrPullRequest(number: $number) {
         __typename
-        ... on Issue { number title state url }
+        ... on Issue {
+          number title state url
+          projectItems(first: 8) {
+            nodes {
+              fieldValues(first: 50) {
+                nodes {
+                  __typename
+                  ... on ProjectV2ItemFieldTextValue {
+                    text
+                    field { ... on ProjectV2FieldCommon { name } }
+                  }
+                  ... on ProjectV2ItemFieldSingleSelectValue {
+                    name
+                    field { ... on ProjectV2FieldCommon { name } }
+                  }
+                  ... on ProjectV2ItemFieldIterationValue {
+                    title
+                    field { ... on ProjectV2FieldCommon { name } }
+                  }
+                  ... on ProjectV2ItemFieldNumberValue {
+                    number
+                    field { ... on ProjectV2FieldCommon { name } }
+                  }
+                  ... on ProjectV2ItemFieldDateValue {
+                    date
+                    field { ... on ProjectV2FieldCommon { name } }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   }`;
@@ -569,6 +643,14 @@ function pathScore(paths: ReadonlyArray<string>, matcher: (path: string) => bool
 
 function chooseArea(paths: ReadonlyArray<string>, title: string): string {
 	const titleKey = title.toLowerCase();
+	if (titleKey.includes('@page') || titleKey.includes('page-reference') || titleKey.includes('fixpoint')) {
+		return 'Page Reflow/Fixpoints';
+	}
+	if (
+		titleKey.includes('lsp') || titleKey.includes('textdocument/definition') || titleKey.includes('go-to-definition')
+	) {
+		return 'Editor/LSP';
+	}
 	const scores: ReadonlyArray<[string, number]> = [
 		['CLI', pathScore(paths, (path) => path.includes('crates/mos/src') || path.includes('crates/mos/'))],
 		['Core', pathScore(paths, (path) => path.includes('mos-core'))],
@@ -635,9 +717,17 @@ function chooseArea(paths: ReadonlyArray<string>, title: string): string {
 			pathScore(paths, (path) => path.includes('template') || path.includes('script') || path.includes('style')),
 		],
 	];
-	const best = scores.reduce((winner, candidate) => candidate[1] > winner[1] ? candidate : winner, ['Core', 0]);
+	const nonDocumentationScores = scores.filter(([area]) => area !== 'Docs/Tracker');
+	const best = nonDocumentationScores.reduce(
+		(winner, candidate) => candidate[1] > winner[1] ? candidate : winner,
+		['Core', 0],
+	);
 	if (best[1] > 0) {
 		return best[0];
+	}
+	const docsScore = scores.find(([area]) => area === 'Docs/Tracker')?.[1] ?? 0;
+	if (docsScore > 0) {
+		return 'Docs/Tracker';
 	}
 	if (titleKey.includes('doc')) {
 		return 'Docs/Tracker';
@@ -687,7 +777,28 @@ function choosePriority(title: string, area: string): string {
 	return 'P2';
 }
 
-function classifyPullRequest(pr: JsonRecord): Classification {
+function projectClassification(
+	base: Classification,
+	fields: ReadonlyArray<ProjectItemFieldValue>,
+	source: string,
+): Classification | null {
+	const area = projectFieldValue(fields, 'Area');
+	const type = projectFieldValue(fields, 'Type');
+	const size = projectFieldValue(fields, 'Size');
+	const priority = projectFieldValue(fields, 'Priority');
+	if (area === null && type === null && size === null && priority === null) {
+		return null;
+	}
+	return {
+		area: area ?? base.area,
+		type: type ?? base.type,
+		size: size ?? base.size,
+		priority: priority ?? base.priority,
+		reason: `${source}; fallback heuristic: ${base.reason}`,
+	};
+}
+
+function classifyPullRequest(pr: JsonRecord, issues: ReadonlyArray<IssueSummary> = []): Classification {
 	const paths = filePaths(pr);
 	const title = stringField(pr, 'title') ?? '';
 	const summary = summarizePullRequest(pr);
@@ -698,7 +809,22 @@ function classifyPullRequest(pr: JsonRecord): Classification {
 	const reason = `${summary.changedFiles} file(s), +${summary.additions}/-${summary.deletions}; primary paths: ${
 		paths.slice(0, 5).join(', ') || 'none'
 	}`;
-	return { area, type, size, priority, reason };
+	const base = { area, type, size, priority, reason };
+	const prClassification = projectClassification(base, projectFieldsFromContent(pr), 'Project fields from PR card');
+	if (prClassification !== null) {
+		return prClassification;
+	}
+	for (const issue of issues) {
+		const issueClassification = projectClassification(
+			base,
+			issue.fields,
+			`Project fields from linked issue #${issue.number}`,
+		);
+		if (issueClassification !== null) {
+			return issueClassification;
+		}
+	}
+	return base;
 }
 
 export const list_open = tool({
@@ -772,11 +898,14 @@ export const classify = tool({
 	async execute(args) {
 		try {
 			const repo = defaults(args.owner, args.repository);
+			const pr = await pullRequest(repo, args.pr);
+			const issues = await relatedIssues(repo, pr);
 			return success({
 				repository: repo,
 				pr: args.pr,
-				classification: classifyPullRequest(await pullRequest(repo, args.pr)),
+				classification: classifyPullRequest(pr, issues),
 				phase: phaseGuidance(),
+				relatedIssues: issues,
 			});
 		} catch (error) {
 			return failure('github_pr_classify', error);
@@ -796,8 +925,8 @@ export const triage = tool({
 			const repo = defaults(args.owner, args.repository);
 			const pr = await pullRequest(repo, args.pr);
 			const summary = summarizePullRequest(pr);
-			const classification = classifyPullRequest(pr);
 			const issues = await relatedIssues(repo, pr);
+			const classification = classifyPullRequest(pr, issues);
 			return success({
 				repository: repo,
 				pullRequest: summary,
