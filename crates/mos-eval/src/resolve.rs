@@ -98,6 +98,7 @@ pub fn resolve(document: &mut Document) -> Vec<Diagnostic> {
     number_sections(document);
     number_figures(document);
     let labels = build_label_index(document, &mut diagnostics);
+    validate_page_references(document, &labels, &mut diagnostics);
 
     for _ in 0..MAX_FIXPOINT_ITERATIONS {
         let changed = rewrite_references(document, &labels, &mut diagnostics);
@@ -107,6 +108,42 @@ pub fn resolve(document: &mut Document) -> Vec<Diagnostic> {
     }
 
     diagnostics
+}
+
+/// Report an undeclared label in a `@page(label)` reference as `MOS0033`,
+/// mirroring the `@label` cross-reference check. A page reference resolves to a
+/// page *number* later, through the layout fixpoint (issue #72), but an unknown
+/// *label* is a lower-time error exactly like a bad `@ref` — and catching it
+/// here means `mos check` reports it without needing to lay the document out.
+fn validate_page_references(
+    document: &Document,
+    labels: &BTreeMap<String, LabelTarget>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for node in document
+        .nodes()
+        .filter(|node| node.kind == NodeKind::PageReference)
+    {
+        let Some(AttrValue::Str(label)) = node.attributes.get("label") else {
+            continue;
+        };
+        if labels.contains_key(label) {
+            continue;
+        }
+        let mut diagnostic = Diagnostic::simple(
+            &codes::MOS0033,
+            None,
+            format!("unknown label `{label}` in `@page` reference"),
+        )
+        .with_span(node.span.clone());
+        if let Some(candidate) = nearest_label(label, labels) {
+            diagnostic = diagnostic.with_suggestion(Suggestion::new(
+                node.span.clone(),
+                format!("@page({candidate})"),
+            ));
+        }
+        diagnostics.push(diagnostic);
+    }
 }
 
 /// Walk the document depth-first and assign hierarchical numbers to

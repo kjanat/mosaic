@@ -463,6 +463,10 @@ define_codes! {
     /// Image reached layout without decoded pixels; skipped on the page.
     MOS0035 = 35, Warning, Layout, "image-skipped-no-pixels", "mos-layout",
         "layout: image reached layout without decoded pixels; skipped";
+    /// `@page(...)` references did not converge to stable page numbers within
+    /// the iteration cap; the last computed numbers are used.
+    MOS0047 = 47, Warning, Layout, "page-fixpoint-nonconvergence", "mos-eval",
+        "layout: page references did not converge; last computed page numbers used";
 
     // ── text / fonts / shaping ────────────────────────────────────────
     /// Unknown font family; falling back to bundled Noto Sans.

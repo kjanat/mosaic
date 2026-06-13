@@ -22,13 +22,13 @@ Parsed/stubbed:
 
 ## WHERE TO LOOK
 
-| Task             | Location          | Notes                                 |
-| ---------------- | ----------------- | ------------------------------------- |
-| Command wiring   | `src/main.rs`     | Clap types and command dispatch.      |
-| Entry resolution | `collect_entries` | Files, dirs, project manifests.       |
-| Check pipeline   | `run_check`       | Parse/lower/diagnostic exit behavior. |
-| Build pipeline   | `run_build`       | Layout/PDF path and `--open`.         |
-| Black-box tests  | `tests/cli.rs`    | Real binary via `CARGO_BIN_EXE_mos`.  |
+| Task             | Location          | Notes                                                                 |
+| ---------------- | ----------------- | --------------------------------------------------------------------- |
+| Command wiring   | `src/main.rs`     | Clap types and command dispatch.                                      |
+| Entry resolution | `collect_entries` | Files, dirs, project manifests.                                       |
+| Check pipeline   | `run_check`       | Parse/lower/diagnostic exit behavior.                                 |
+| Build pipeline   | `run_build`       | Layout/PDF path, `--open`, `@page` resolve↔layout fixpoint (MOS0047). |
+| Black-box tests  | `tests/cli.rs`    | Real binary via `CARGO_BIN_EXE_mos`.                                  |
 
 ## CONVENTIONS
 

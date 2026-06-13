@@ -76,11 +76,12 @@ codes use the next free integer.
 
 ### Layout
 
-| Code    | Slug                    | Default severity | Owner crate | Summary                                                      |
-| ------- | ----------------------- | ---------------- | ----------- | ------------------------------------------------------------ |
-| MOS0017 | paper-size-unknown      | Error            | mos-layout  | layout: unknown paper size                                   |
-| MOS0023 | geometry-breaks-page    | Error            | mos-layout  | layout: value breaks page geometry; previous value retained  |
-| MOS0035 | image-skipped-no-pixels | Warning          | mos-layout  | layout: image reached layout without decoded pixels; skipped |
+| Code    | Slug                         | Default severity | Owner crate | Summary                                                                   |
+| ------- | ---------------------------- | ---------------- | ----------- | ------------------------------------------------------------------------- |
+| MOS0017 | paper-size-unknown           | Error            | mos-layout  | layout: unknown paper size                                                |
+| MOS0023 | geometry-breaks-page         | Error            | mos-layout  | layout: value breaks page geometry; previous value retained               |
+| MOS0035 | image-skipped-no-pixels      | Warning          | mos-layout  | layout: image reached layout without decoded pixels; skipped              |
+| MOS0047 | page-fixpoint-nonconvergence | Warning          | mos-eval    | layout: page references did not converge; last computed page numbers used |
 
 ### Text
 

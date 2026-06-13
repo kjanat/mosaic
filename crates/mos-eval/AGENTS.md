@@ -31,17 +31,17 @@ Not implemented yet:
 
 ## WHERE TO LOOK
 
-| Task          | Location                         | Notes                                                                                                |
-| ------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Entry point   | `Evaluator::evaluate`            | Dispatch from syntax items.                                                                          |
-| Public helper | `lower`                          | Parse result to `LowerResult`.                                                                       |
-| `#set` schema | `src/set_schema.rs`              | Supported targets and args.                                                                          |
-| Images        | `src/image.rs` + lowerer helpers | Decode, attrs, path resolution.                                                                      |
-| Figures       | `lower_figure_directive`         | Image + caption semantic node.                                                                       |
-| References    | `src/resolve.rs`                 | Label index, section/figure numbering, figure-aware refs.                                            |
-| Page refs     | `src/inline.rs`                  | `@page(label)` → inert `NodeKind::PageReference` (label + `?label?`); resolver skips it (issue #72). |
-| Bibliography  | `src/bibliography.rs`            | Source paths, `.bib` loading, citation-key diagnostics.                                              |
-| Unit coercion | length helpers                   | `em` depends on current text size.                                                                   |
+| Task          | Location                         | Notes                                                                                                                                      |
+| ------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Entry point   | `Evaluator::evaluate`            | Dispatch from syntax items.                                                                                                                |
+| Public helper | `lower`                          | Parse result to `LowerResult`.                                                                                                             |
+| `#set` schema | `src/set_schema.rs`              | Supported targets and args.                                                                                                                |
+| Images        | `src/image.rs` + lowerer helpers | Decode, attrs, path resolution.                                                                                                            |
+| Figures       | `lower_figure_directive`         | Image + caption semantic node.                                                                                                             |
+| References    | `src/resolve.rs`                 | Label index, section/figure numbering, figure-aware refs.                                                                                  |
+| Page refs     | `src/pageref.rs`                 | `@page(label)`: `resolve_page_references` + `resolve_page_reference_fixpoint` (injected layout); undeclared-label MOS0033 in `resolve.rs`. |
+| Bibliography  | `src/bibliography.rs`            | Source paths, `.bib` loading, citation-key diagnostics.                                                                                    |
+| Unit coercion | length helpers                   | `em` depends on current text size.                                                                                                         |
 
 ## CONVENTIONS
 

@@ -136,17 +136,28 @@ See section @intro on page @page(intro).
 ```
 
 Unlike a section or figure number — which the resolver computes from document order — a page number
-is only known after layout. Resolving it therefore runs through a bounded resolve↔layout fixpoint
-(tracked by issue #72). **That fixpoint is not implemented yet:** this slice parses `@page(label)`,
-models it as a distinct semantic node, and exposes the layout-side label→page map the resolver will
-consume, but the reference is left unresolved for now and renders the `?label?` placeholder (the
-same fallback an unknown reference shows). Only a well-formed `@page(label)` — the identifier `page`
-immediately followed by `(`, a label, and `)` — is a page reference; a bare `@page` is still an
-ordinary reference to a label named `page`.
+is only known after layout, because a page reference's own width can shift where its target lands.
+`mos build` therefore resolves page references through a **bounded resolve↔layout fixpoint**: it
+lays the document out, feeds the resulting label→page map back into the resolver to rewrite each
+`@page(...)` to its target's page number, and re-lays-out, repeating until the page numbers stop
+changing. Stable documents settle in one or two rounds.
 
-> Compatibility note: before this slice, `@page(intro)` parsed as a reference to a label `page`
-> followed by the literal text `(intro)`. It now parses as a single page reference. This is a
-> deliberate change while the language is pre-alpha.
+If the page numbers never stabilize — a pathological case where resolving a reference keeps shifting
+its target across a page boundary — the engine stops at an iteration cap and emits
+[`MOS0047`](./diagnostic-codes.md) (a warning), keeping the last computed numbers so the build still
+produces output.
+
+Only a well-formed `@page(label)` — the identifier `page` immediately followed by `(`, a label, and
+`)` — is a page reference; a bare `@page` is still an ordinary reference to a label named `page`. An
+**undeclared** label in `@page(...)` is reported as [`MOS0033`](./diagnostic-codes.md) at check
+time, exactly like a bad `@ref`, so `mos check` catches it without laying the document out.
+
+> Note: page references are resolved by `mos build` (which lays out). `mos check` validates the
+> label but does not compute page numbers, since it does not run layout.
+
+> Compatibility note: before page references existed, `@page(intro)` parsed as a reference to a
+> label `page` followed by the literal text `(intro)`. It now parses as a single page reference.
+> This is a deliberate change while the language is pre-alpha.
 
 ### Unknown references (`MOS0033`)
 
