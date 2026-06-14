@@ -634,7 +634,14 @@ async function relatedIssues(repo: RepositoryDefaults, pr: JsonRecord): Promise<
 			byNumber.set(number, summarizeIssue(issue, 'body mention'));
 		}
 	}
-	return [...byNumber.values()].sort((left, right) => left.number - right.number);
+	return [...byNumber.values()].sort((left, right) => {
+		const sourceOrder = issueSourceRank(left.source) - issueSourceRank(right.source);
+		return sourceOrder === 0 ? left.number - right.number : sourceOrder;
+	});
+}
+
+function issueSourceRank(source: string): number {
+	return source === 'closing reference' ? 0 : 1;
 }
 
 function pathScore(paths: ReadonlyArray<string>, matcher: (path: string) => boolean): number {
