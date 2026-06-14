@@ -481,6 +481,52 @@ mod tests {
     }
 
     #[test]
+    fn lowerer_stamps_paired_label_span_covering_the_label_token() {
+        // Contract `mos-lsp` go-to-definition depends on (#101, hardened by
+        // #103): a labelled declaration carries BOTH `label_span.start` and
+        // `label_span.end` as `Int`s spanning exactly the label token, so the
+        // LSP can target `<intro>` rather than the whole heading. If the
+        // lowerer ever stamps one attribute without the other — or stops
+        // stamping them — `definition.rs`'s safe fallback would silently widen
+        // the definition range with no test catching it. This locks the pair.
+        let src = "= Intro <intro>\n";
+        let r = lower(src, &PathBuf::from("test.mos"));
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+
+        let section = r
+            .document
+            .nodes()
+            .find(|node| {
+                node.kind == NodeKind::Section
+                    && node.attributes.get("label") == Some(&AttrValue::Str("intro".to_owned()))
+            })
+            .expect("a Section node carrying label `intro`");
+
+        let (Some(&AttrValue::Int(start)), Some(&AttrValue::Int(end))) = (
+            section.attributes.get(LABEL_SPAN_START_ATTR),
+            section.attributes.get(LABEL_SPAN_END_ATTR),
+        ) else {
+            panic!(
+                "expected paired Int `label_span.*` attrs, got {:?} / {:?}",
+                section.attributes.get(LABEL_SPAN_START_ATTR),
+                section.attributes.get(LABEL_SPAN_END_ATTR),
+            );
+        };
+
+        let start = usize::try_from(start).expect("label_span.start fits usize");
+        let end = usize::try_from(end).expect("label_span.end fits usize");
+        assert!(
+            start <= end,
+            "label span start {start} must not exceed end {end}"
+        );
+        assert_eq!(
+            src.get(start..end),
+            Some("intro"),
+            "label span must cover exactly the `intro` token, not the whole heading"
+        );
+    }
+
+    #[test]
     fn lowers_heading_and_paragraph() {
         let r = lower(
             "= Hello\n\nbody *italic* text\n",
