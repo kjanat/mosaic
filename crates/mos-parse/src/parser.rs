@@ -796,6 +796,22 @@ mod tests {
     }
 
     #[test]
+    fn figure_directive_carries_numbering_controls() {
+        // `numbered: false` arrives as a bare ident, `supplement:` as a
+        // string. The parser carries them as ordinary keyed args; the eval
+        // layer (issue #76) interprets them.
+        let r = parse_str("#figure(image: \"scan.png\", numbered: false, supplement: \"Plate\")\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(name, "figure");
+        assert_eq!(args.len(), 3);
+        assert_eq!(args[1].key(), Some("numbered"));
+        assert_eq!(args[1].value(), &SetValue::Ident("false".to_owned()));
+        assert_eq!(args[2].key(), Some("supplement"));
+        assert_eq!(args[2].value(), &SetValue::Str("Plate".to_owned()));
+    }
+
+    #[test]
     fn figure_directive_positional_path() {
         // Pins the `#figure("…")` spelling the directive grammar
         // advertises — the eval layer treats the first positional arg

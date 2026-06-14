@@ -59,6 +59,29 @@ A figure or image node is only created if its image actually loads. If the image
 validation fails, no image/figure node is produced, so its label is absent; a later `@that-label`
 can then also report [`MOS0033`](#unknown-references-mos0033).
 
+#### Figure numbering controls
+
+By default every `#figure` is auto-numbered `Figure 1`, `Figure 2`, … in document order, and that
+`Figure N:` label is prefixed to its caption. Two arguments adjust this per figure:
+
+- `numbered: false` opts a figure **out** of numbering. It carries no number, its caption keeps no
+  `Figure N:` prefix, and — by the counter rule — it does **not** advance the figure counter, so the
+  numbered figures around it stay contiguous (`1`, `2`, `3`, …). A reference to a skipped figure has
+  no number to show and renders as its bare label, like an `#image` reference.
+- `supplement: "Plate"` replaces the `Figure` supplement word in both the caption (`Plate 1: …`) and
+  references (`Plate 1`). It does not change numbering — the figure still counts.
+
+```mos
+#figure(image: "logo.png", numbered: false)
+
+#figure(image: "map.png", caption: "The site.", supplement: "Plate", label: "fig:site")
+```
+
+Numbering stays deterministic from document order: there is no way to set an explicit number
+(`numbered:` is a boolean, not a count). For an inherently unnumbered graphic, prefer `#image`,
+which never participates in figure numbering at all; reserve `#figure` for captioned/numbered floats
+and use `numbered: false` only when a captioned float should opt out of the counter.
+
 ### Label identifiers
 
 The reference scanner reads an `@`-label as a run of characters from `A-Z a-z 0-9 _ - : .`. The
@@ -115,16 +138,19 @@ See @intro and @fig:demo here.
 
 What the reference is rewritten to depends on the target:
 
-| Target                         | Reference renders as                   |
-| ------------------------------ | -------------------------------------- |
-| Heading (section)              | the section number, e.g. `1`, `1.2`    |
-| `#figure` (label)              | `Figure` + the number, e.g. `Figure 1` |
-| Paragraph, raw block, `#image` | the bare label, e.g. `note`            |
+| Target                             | Reference renders as                            |
+| ---------------------------------- | ----------------------------------------------- |
+| Heading (section)                  | the section number, e.g. `1`, `1.2`             |
+| `#figure` (label)                  | supplement + number, e.g. `Figure 1`, `Plate 1` |
+| `#figure(numbered: false)` (label) | the bare label, e.g. `fig:site`                 |
+| Paragraph, raw block, `#image`     | the bare label, e.g. `note`                     |
 
-A figure reference renders kind-aware as `Figure` followed by the figure's document-order number
-(e.g. `Figure 1`), joined with a non-breaking space so the label never wraps off its number. The
-same `Figure N:` label is also prefixed to the figure's caption. Sections render as a bare number;
-only generic targets fall back to the bare label.
+A numbered figure reference renders kind-aware as its supplement word followed by the figure's
+document-order number (`Figure 1` by default, or the custom `supplement:` word — see
+[Figure numbering controls](#figure-numbering-controls)), joined with a non-breaking space so the
+label never wraps off its number. The same `{supplement} N:` label is also prefixed to the figure's
+caption. Sections render as a bare number; generic targets — and figures opted out of numbering —
+fall back to the bare label.
 
 ### Page references: `@page(label)`
 
@@ -202,8 +228,9 @@ warning[MOS0036]: stray `@` is not followed by a label identifier; treated as te
   `Figure N` text and sections to a bare number, but there is no equation/table/theorem numbering or
   reference text yet. The remaining kind-aware rendering is future work (manifest-tracker.md →
   Semantic Model And Resolver → "Make reference text kind-aware").
-- **Localized labels.** The figure supplement is hard-coded English (`Figure`), as is the `:`
-  caption separator; selecting them from the document language (cf. LaTeX babel `\figurename`, Typst
+- **Localized labels.** The default figure supplement is hard-coded English (`Figure`), as is the
+  `:` caption separator. A figure can override the word per-call with `supplement:`, but selecting
+  the default automatically from the document language (cf. LaTeX babel `\figurename`, Typst
   `text(lang: …)`) is future work.
 
 ## Related

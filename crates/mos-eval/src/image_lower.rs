@@ -65,6 +65,11 @@ pub(super) fn lower_figure_directive(
     let mut image_args: Vec<SetArg> = Vec::new();
     let mut caption: Option<(String, SourceSpan)> = None;
     let mut figure_label: Option<(String, SourceSpan)> = None;
+    // Numbering controls (issue #76). `numbered: false` opts a figure out
+    // of the auto `Figure N` counter; `supplement: "Plate"` swaps the
+    // supplement word. Both default to the standard numbered `#figure`.
+    let mut numbered: Option<bool> = None;
+    let mut supplement: Option<String> = None;
     for arg in args {
         match arg {
             // A leading positional string is the same shorthand
@@ -111,10 +116,34 @@ pub(super) fn lower_figure_directive(
                         .with_span(value_span.clone()),
                     ),
                 },
+                // `numbered: false` skips the auto `Figure N` counter for
+                // this figure; `true` is the default. The value is a bare
+                // ident (`SetValue::Ident`), not a string.
+                "numbered" => match value {
+                    SetValue::Ident(word) if word == "true" => numbered = Some(true),
+                    SetValue::Ident(word) if word == "false" => numbered = Some(false),
+                    _ => diagnostics.push(
+                        Diagnostic::simple(&codes::MOS0020, None,
+                            "`#figure(numbered: ...)` expects `true` or `false`",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
+                // `supplement: "Plate"` replaces the "Figure" supplement
+                // word in both the caption and references to this figure.
+                "supplement" => match value {
+                    SetValue::Str(s) => supplement = Some(s.clone()),
+                    _ => diagnostics.push(
+                        Diagnostic::simple(&codes::MOS0020, None,
+                            "`#figure(supplement: ...)` expects a string",
+                        )
+                        .with_span(value_span.clone()),
+                    ),
+                },
                 _ => diagnostics.push(
                     Diagnostic::simple(&codes::MOS0015, None,
                         format!(
-                            "unknown argument `{key}` for `#figure` (valid: image, caption, alt, width, height, label)"
+                            "unknown argument `{key}` for `#figure` (valid: image, caption, alt, width, height, label, numbered, supplement)"
                         ),
                     )
                     .with_span(key_span.clone()),
@@ -134,6 +163,13 @@ pub(super) fn lower_figure_directive(
     let mut figure_attrs: AttrMap = BTreeMap::new();
     if let Some((label, label_span)) = figure_label {
         insert_label_attributes(&mut figure_attrs, &label, Some(&label_span));
+    }
+    // Only the non-default opt-out is recorded; absence means "numbered".
+    if numbered == Some(false) {
+        figure_attrs.insert("numbered".to_owned(), AttrValue::Bool(false));
+    }
+    if let Some(supp) = supplement {
+        figure_attrs.insert("supplement".to_owned(), AttrValue::Str(supp));
     }
     let figure_id = document.alloc_child(
         root,
