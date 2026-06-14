@@ -28,7 +28,7 @@ use crate::diagnostics::{LspPosition, LspRange, span_to_range};
 /// This is the un-cached entry point, kept for callers (and tests) that
 /// hold only a source string. The server answers live requests through
 /// [`definition_range_in`] instead, reusing a [`Document`] cached per edit
-/// (see [`crate::cache::LoweringCache`]) rather than re-lowering on every
+/// by the crate's lowering cache rather than re-lowering on every
 /// `textDocument/definition`.
 ///
 /// Returns `None` when the cursor is not on a reference, the referenced
