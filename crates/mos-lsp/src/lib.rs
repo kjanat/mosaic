@@ -2,8 +2,9 @@
 //!
 //! The current slice publishes the same parse / lower / resolve
 //! diagnostics that `mos check` renders, but over the Language Server
-//! Protocol so editors can show them inline. Future slices add
-//! go-to-definition for labels, citation autocomplete, source ↔ PDF
+//! Protocol so editors can show them inline, and answers
+//! `textDocument/definition` to jump from an `@label` reference to its
+//! declaration. Future slices add citation autocomplete, source ↔ PDF
 //! sync, and live preview. MVP 6.
 
 #![doc(
@@ -11,9 +12,11 @@
     html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
 )]
 
+mod definition;
 mod diagnostics;
 mod server;
 
+pub use definition::{definition_range, position_to_byte};
 pub use diagnostics::{
     LspDiagnostic, LspPosition, LspRange, byte_to_position, diagnostics_for_document,
     path_from_uri, span_to_range,

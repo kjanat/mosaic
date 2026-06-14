@@ -8,6 +8,14 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- LSP go-to-definition (https://github.com/kjanat/mosaic/issues/71): [`mos-lsp`][mos-lsp] now
+  advertises `definitionProvider` and answers `textDocument/definition`. A cursor on an `@label` or
+  `@page(label)` reference resolves to the source range of the label's declaration; an undeclared
+  label or a cursor off any reference returns `null` (no error). When a label is declared more than
+  once, the definition points at the **first** declaration — the same one the resolver keeps and
+  reports its "first declaration is here" note against. Single-document only: no workspace index, no
+  rename, no source/PDF sync.
+
 - Page references (https://github.com/kjanat/mosaic/issues/72): `@page(label)` renders the **printed
   page number** of a labelled target. It parses to a distinct [`mos-parse`][mos-parse]
   `InlineKind::PageReference`, lowers to a [`mos-core`][mos-core] `NodeKind::PageReference`, and is

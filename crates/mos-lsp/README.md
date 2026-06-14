@@ -11,12 +11,17 @@ non-goals stays unbuilt.
 - Library API: `mos_lsp::run() -> mos_lsp::Result<()>`.
 - `run()` drives a stdio LSP server over JSON-RPC 2.0 framed with `Content-Length` headers.
 - Implemented requests/notifications: `initialize`, `initialized`, `shutdown`, `exit`,
-  `textDocument/didOpen`, `textDocument/didChange` (full sync), `textDocument/didClose`.
+  `textDocument/didOpen`, `textDocument/didChange` (full sync), `textDocument/didClose`,
+  `textDocument/definition`.
 - After every open/change the server sends `textDocument/publishDiagnostics` with the compiler
   diagnostics for that document; close clears them.
+- `textDocument/definition` resolves a cursor on an `@label` / `@page(label)` reference to a single
+  `Location` covering the label's first declaration; an undeclared label or a cursor off any
+  reference returns `null` (not an error). Lookups are single-document, so the result reuses the
+  request URI.
 - Unknown requests get a JSON-RPC `MethodNotFound` (-32601); unknown notifications are dropped.
-- Advertised capabilities are intentionally narrow: full text sync and UTF-16 position encoding.
-  Pull diagnostics are not advertised.
+- Advertised capabilities are intentionally narrow: full text sync, UTF-16 position encoding, and
+  `definitionProvider`. Pull diagnostics are not advertised.
 - Binary: `mos-lsp`, defined in `Cargo.toml`, calls `mos_lsp::run()`.
 
 ### Manual smoke test
@@ -61,7 +66,9 @@ Automated coverage for the same path lives in
 
 `mos-lsp` is the thin protocol boundary around compiler services. Diagnostic messages, codes, and
 spans come from `mos-core` / `mos-parse` / `mos-eval`; this crate only re-shapes them into LSP
-positions and dispatches JSON-RPC.
+positions and dispatches JSON-RPC. Go-to-definition follows the same rule: it walks the lowered
+`mos-eval` `Document` (label declarations and reference spans) and translates spans to LSP ranges,
+mirroring the resolver's first-declaration-wins index rather than reimplementing label policy.
 
 Compiler phase ownership stays elsewhere:
 
@@ -73,7 +80,8 @@ Compiler phase ownership stays elsewhere:
 
 ## Known Non-Goals Today
 
-- No completion, hover, go-to-definition, formatting, code actions, or rename.
+- No completion, hover, formatting, code actions, or rename. Go-to-definition for `@label`
+  references is the one navigation request implemented.
 - No incremental document sync — `didChange` replaces the buffer wholesale.
 - No source-to-PDF sync or live preview.
 - No incremental cache or workspace indexing.
