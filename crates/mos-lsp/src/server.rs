@@ -11,7 +11,8 @@ use std::io::{self, BufRead, BufReader, Write};
 
 use serde_json::{Value, json};
 
-use crate::definition::definition_range;
+use crate::cache::LoweringCache;
+use crate::definition::definition_range_in;
 use crate::diagnostics::{LspDiagnostic, LspPosition, diagnostics_for_document, path_from_uri};
 
 /// Errors surfaced by the LSP server runtime. Compiler diagnostics
@@ -71,6 +72,9 @@ pub fn serve<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> Result<()>
 #[derive(Default, Debug)]
 struct ServerState {
     documents: HashMap<String, String>,
+    /// Memoised `mos-eval` lowerings, reused across `textDocument/definition`
+    /// requests and dropped whenever a document's source changes or closes.
+    lowerings: LoweringCache,
 }
 
 /// Process a single decoded LSP message. Returns `Ok(true)` if the
@@ -107,6 +111,8 @@ fn handle_message<W: Write>(
                 let uri = uri.to_owned();
                 let text = text.to_owned();
                 state.documents.insert(uri.clone(), text);
+                // A re-open replaces the source; drop any prior lowering.
+                state.lowerings.invalidate(&uri);
                 publish_diagnostics(writer, &uri, &state.documents[&uri])?;
             }
             Ok(false)
@@ -122,6 +128,8 @@ fn handle_message<W: Write>(
                 .map(str::to_owned);
             if let (Some(uri), Some(text)) = (uri, new_text) {
                 state.documents.insert(uri.clone(), text);
+                // The edit invalidates the cached lowering for this URI.
+                state.lowerings.invalidate(&uri);
                 publish_diagnostics(writer, &uri, &state.documents[&uri])?;
             }
             Ok(false)
@@ -133,6 +141,7 @@ fn handle_message<W: Write>(
             {
                 let uri = uri.to_owned();
                 state.documents.remove(&uri);
+                state.lowerings.invalidate(&uri);
                 // Clear stale squigglies in the editor.
                 clear_diagnostics(writer, &uri)?;
             }
@@ -178,21 +187,29 @@ fn initialize_result() -> Value {
 /// The target always lives in the requested document — the server holds
 /// one source per URI and lowers it in isolation — so the response
 /// reuses the request URI verbatim.
-fn definition_result(state: &ServerState, message: &Value) -> Value {
+fn definition_result(state: &mut ServerState, message: &Value) -> Value {
     let Some(uri) = message
         .pointer("/params/textDocument/uri")
         .and_then(Value::as_str)
     else {
         return Value::Null;
     };
-    let Some(src) = state.documents.get(uri) else {
-        return Value::Null;
-    };
     let Some(position) = read_position(message) else {
         return Value::Null;
     };
+    // Disjoint field borrows: `documents` (read) and `lowerings` (lower on a
+    // cache miss) are separate fields, so the source can be handed to the
+    // cache while it populates without aliasing.
+    let ServerState {
+        documents,
+        lowerings,
+    } = state;
+    let Some(src) = documents.get(uri) else {
+        return Value::Null;
+    };
     let path = path_from_uri(uri);
-    match definition_range(&path, src, position) {
+    let lowered = lowerings.get_or_lower(uri, src, &path);
+    match definition_range_in(&lowered.document, &path, src, position) {
         Some(range) => json!({ "uri": uri, "range": range }),
         None => Value::Null,
     }
@@ -598,6 +615,88 @@ mod tests {
             .expect("definition response");
         assert_eq!(reply.pointer("/result/uri"), Some(&json!(uri)));
         assert_eq!(reply.pointer("/result/range/start/line"), Some(&json!(0)));
+    }
+
+    #[test]
+    fn definition_reflects_source_after_did_change() {
+        // The lowering cache must not outlive an edit. We resolve `@intro`
+        // once (priming the cache), then `didChange` pushes the `<intro>`
+        // declaration down a line. A second definition request must land on
+        // the *new* declaration line — a stale cache would still report the
+        // original line 0.
+        let uri = "file:///virtual/main.mos";
+        let before = "= Intro <intro>\n\nSee @intro here.\n";
+        let after = "\n= Intro <intro>\n\nSee @intro here.\n";
+        let before_cursor = before.find("@intro").map_or(0, |at| at + 2);
+        let after_cursor = after.find("@intro").map_or(0, |at| at + 2);
+        let before_pos = byte_to_position(before, before_cursor);
+        let after_pos = byte_to_position(after, after_cursor);
+
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": "mosaic",
+                    "version": 1,
+                    "text": before,
+                },
+            },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 20,
+            "method": "textDocument/definition",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": before_pos.line, "character": before_pos.character },
+            },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": { "uri": uri, "version": 2 },
+                "contentChanges": [{ "text": after }],
+            },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 21,
+            "method": "textDocument/definition",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": after_pos.line, "character": after_pos.character },
+            },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        let first = messages
+            .iter()
+            .find(|m| m.get("id") == Some(&json!(20)))
+            .expect("first definition response");
+        assert_eq!(
+            first.pointer("/result/range/start/line"),
+            Some(&json!(0)),
+            "before the edit, the declaration is on line 0"
+        );
+        let second = messages
+            .iter()
+            .find(|m| m.get("id") == Some(&json!(21)))
+            .expect("second definition response");
+        assert_eq!(
+            second.pointer("/result/range/start/line"),
+            Some(&json!(1)),
+            "after the edit, the declaration moved to line 1; a stale cache \
+             would still report line 0"
+        );
     }
 
     #[test]

@@ -71,6 +71,14 @@ All notable changes to this project will be documented here. The format is based
 
 ### Changed
 
+- LSP go-to-definition no longer re-lowers on every request
+  (https://github.com/kjanat/mosaic/issues/102): [`mos-lsp`][mos-lsp] now memoises each open
+  document's [`mos-eval`][mos-eval] lowering in an in-memory per-URI cache and reuses it across
+  `textDocument/definition` requests. The cache is invalidated whenever the document's source
+  changes (`didOpen` re-open / `didChange`) or the document closes, so a cached lowering is always
+  derived from the current source — behavior is unchanged, only the repeated parse + lower per
+  request is gone. The boundary stays thin: the cache only memoises `mos_eval::lower`, it owns no
+  parse/lower policy, and it is ready to back future requests (hover, rename) once those land.
 - Crate packages now use explicit include allowlists: ordinary crates inherit workspace defaults for
   root licenses, README, examples, source, and tests, while data/build-script crates keep precise
   root-anchored package lists. This keeps agent/project files out of future crates.io tarballs.
