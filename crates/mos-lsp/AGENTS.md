@@ -2,8 +2,9 @@
 
 ## OVERVIEW
 
-`mos-lsp` is a thin stdio LSP server for compiler diagnostics only. Tiny protocol cave around real
-compiler services.
+`mos-lsp` is a thin stdio LSP server: it publishes compiler diagnostics and answers
+`textDocument/definition` for `@label` references. Tiny protocol cave around real compiler services
+— it re-shapes their output into LSP, never owns parse/lower/resolve policy.
 
 ## WHERE TO LOOK
 
