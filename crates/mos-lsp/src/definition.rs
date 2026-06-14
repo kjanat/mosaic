@@ -23,7 +23,13 @@ use mos_core::{AttrValue, Document, NodeKind, SourceSpan};
 use crate::diagnostics::{LspPosition, LspRange, span_to_range};
 
 /// Resolve the reference under `position` to the LSP range of its
-/// label's first declaration.
+/// label's first declaration, lowering `src` on the spot.
+///
+/// This is the un-cached entry point, kept for callers (and tests) that
+/// hold only a source string. The server answers live requests through
+/// [`definition_range_in`] instead, reusing a [`Document`] cached per edit
+/// (see [`crate::cache::LoweringCache`]) rather than re-lowering on every
+/// `textDocument/definition`.
 ///
 /// Returns `None` when the cursor is not on a reference, the referenced
 /// label is undeclared, or (defensively) the declaration lives in a
@@ -31,10 +37,27 @@ use crate::diagnostics::{LspPosition, LspRange, span_to_range};
 /// single-document lowering but keeps the contract explicit.
 #[must_use]
 pub fn definition_range(file: &Path, src: &str, position: LspPosition) -> Option<LspRange> {
-    let offset = position_to_byte(src, position);
     let lowered = mos_eval::lower(src, file);
-    let label = reference_label_at(&lowered.document, file, offset)?;
-    let span = first_declaration_span(&lowered.document, &label)?;
+    definition_range_in(&lowered.document, file, src, position)
+}
+
+/// Resolve the reference under `position` against an already-lowered
+/// `document`, returning the LSP range of its label's first declaration.
+///
+/// The caller supplies the [`Document`] (from a cache or a fresh lowering)
+/// alongside the `src` it was lowered from — `src` is needed only to map
+/// byte offsets to UTF-16 positions, the document carries the spans. Same
+/// `None` contract as [`definition_range`].
+#[must_use]
+pub fn definition_range_in(
+    document: &Document,
+    file: &Path,
+    src: &str,
+    position: LspPosition,
+) -> Option<LspRange> {
+    let offset = position_to_byte(src, position);
+    let label = reference_label_at(document, file, offset)?;
+    let span = first_declaration_span(document, &label)?;
     (span.file == file).then(|| span_to_range(src, &span))
 }
 

@@ -8,13 +8,14 @@
 
 ## WHERE TO LOOK
 
-| Task              | Location             | Notes                                                 |
-| ----------------- | -------------------- | ----------------------------------------------------- |
-| Server loop       | `src/server.rs`      | JSON-RPC framing, state, request dispatch.            |
-| LSP diagnostics   | `src/diagnostics.rs` | Compiler diagnostic to LSP range conversion.          |
-| Go-to-definition  | `src/definition.rs`  | `@label` reference → declaration span; position↔byte. |
-| Binary entry      | `src/main.rs`        | Calls `mos_lsp::run()`.                               |
-| Behavior contract | `README.md`          | Current supported messages and non-goals.             |
+| Task              | Location             | Notes                                                   |
+| ----------------- | -------------------- | ------------------------------------------------------- |
+| Server loop       | `src/server.rs`      | JSON-RPC framing, state, request dispatch.              |
+| LSP diagnostics   | `src/diagnostics.rs` | Compiler diagnostic to LSP range conversion.            |
+| Go-to-definition  | `src/definition.rs`  | `@label` reference → declaration span; position↔byte.   |
+| Lowering cache    | `src/cache.rs`       | Per-URI memo of `mos_eval::lower`; invalidated on edit. |
+| Binary entry      | `src/main.rs`        | Calls `mos_lsp::run()`.                                 |
+| Behavior contract | `README.md`          | Current supported messages and non-goals.               |
 
 ## CURRENT SLICE
 
@@ -24,6 +25,8 @@
 - Answers `textDocument/definition`: cursor on `@label` / `@page(label)` → label's first declaration
   span as a `Location`; undeclared label or cursor off a reference → `null`.
 - Unknown requests return JSON-RPC `MethodNotFound`; unknown notifications drop.
+- Caches each open document's `mos-eval` lowering (`src/cache.rs`) and reuses it for
+  `textDocument/definition` instead of re-lowering per request; invalidated on open/change/close.
 - Advertises UTF-16 position encoding, full text sync, and `definitionProvider`.
 
 ## BOUNDARY RULES
