@@ -54,21 +54,45 @@ fn reference_label_at(document: &Document, file: &Path, offset: usize) -> Option
         })
 }
 
-/// The span of the first block declaring `label`, in document order.
+/// The declaration span of the first block declaring `label`, in
+/// document order.
 ///
 /// `nodes()` yields the arena in allocation order, which the lowerer
 /// fills in source order, so `find` returns the first declaration —
 /// matching the resolver's first-wins rule. References are excluded
 /// because they also carry a `label` attribute (the target they point
 /// at), and treating one as a declaration would shadow the real block.
+///
+/// The returned span is the label *token* (`intro` in `= Intro <intro>`)
+/// when the lowerer stamped one, so go-to-definition lands the caret on
+/// the declaration itself rather than the whole heading/figure block. It
+/// falls back to the block span only when no label-token span is
+/// recorded.
 fn first_declaration_span(document: &Document, label: &str) -> Option<SourceSpan> {
-    document
+    let node = document
         .nodes()
         .filter(|node| !matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
         .find(|node| {
             matches!(node.attributes.get("label"), Some(AttrValue::Str(declared)) if declared == label)
-        })
-        .map(|node| node.span.clone())
+        })?;
+    Some(label_token_span(node).unwrap_or_else(|| node.span.clone()))
+}
+
+/// The source span of a declaration's label token, read from the
+/// `label_span.start` / `label_span.end` attributes the `mos-eval`
+/// lowerer stamps (the same span the resolver targets for its MOS0030
+/// rename fix-it). `None` when the attributes are absent or malformed,
+/// letting the caller fall back to the block span.
+fn label_token_span(node: &mos_core::Node) -> Option<SourceSpan> {
+    let start = match node.attributes.get("label_span.start") {
+        Some(AttrValue::Int(value)) => usize::try_from(*value).ok()?,
+        _ => return None,
+    };
+    let end = match node.attributes.get("label_span.end") {
+        Some(AttrValue::Int(value)) => usize::try_from(*value).ok()?,
+        _ => return None,
+    };
+    (start <= end).then(|| SourceSpan::new(node.span.file.clone(), start, end))
 }
 
 /// Whether `span` covers `offset`. The end is exclusive: a cursor
@@ -175,10 +199,29 @@ mod tests {
         let at = src.find("@intro").expect("reference present");
         let position = byte_position(src, at + 2);
         let range = definition_range(&file, src, position).expect("definition resolved");
-        // The declaration is the heading on line 0.
+        // The declaration's label token sits on the heading line 0.
         assert_eq!(range.start.line, 0);
-        // The range must cover the heading, not collapse to a point.
+        // The range must be non-empty, not collapse to a point.
         assert!(range.end.character > range.start.character || range.end.line > range.start.line);
+    }
+
+    #[test]
+    fn definition_targets_the_label_token_not_the_whole_block() {
+        // Issue #71 acceptance: `@intro` jumps to the `<intro>` label
+        // declaration, not the whole `= Intro <intro>` heading. The label
+        // token is the identifier `intro` between the angle brackets, so
+        // the returned range must cover exactly those bytes.
+        let file = PathBuf::from("/virtual/main.mos");
+        let src = "= Intro <intro>\n\nSee @intro here.\n";
+        let reference = src.find("@intro").expect("reference present");
+        let range = definition_range(&file, src, byte_position(src, reference + 2))
+            .expect("definition resolved");
+
+        // `<intro>` opens at the `<`; the token itself starts one byte in.
+        let token_start = src.find("<intro>").expect("label present") + 1;
+        let token_end = token_start + "intro".len();
+        assert_eq!(range.start, byte_position(src, token_start));
+        assert_eq!(range.end, byte_position(src, token_end));
     }
 
     #[test]
