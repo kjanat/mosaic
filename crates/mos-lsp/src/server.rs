@@ -11,7 +11,8 @@ use std::io::{self, BufRead, BufReader, Write};
 
 use serde_json::{Value, json};
 
-use crate::diagnostics::{LspDiagnostic, diagnostics_for_document, path_from_uri};
+use crate::definition::definition_range;
+use crate::diagnostics::{LspDiagnostic, LspPosition, diagnostics_for_document, path_from_uri};
 
 /// Errors surfaced by the LSP server runtime. Compiler diagnostics
 /// flow over the wire instead — they are never represented here.
@@ -92,6 +93,10 @@ fn handle_message<W: Write>(
             Ok(false)
         }
         (Some("exit"), _) => Ok(true),
+        (Some("textDocument/definition"), Some(id)) => {
+            write_response(writer, id, &definition_result(state, message))?;
+            Ok(false)
+        }
         (Some("textDocument/didOpen"), _) => {
             if let Some(doc) = message.pointer("/params/textDocument")
                 && let (Some(uri), Some(text)) = (
@@ -155,11 +160,58 @@ fn initialize_result() -> Value {
             // sync lands when more than diagnostics is on the table.
             "textDocumentSync": 1,
             "positionEncoding": "utf-16",
+            // Go-to-definition for `@label` references (issue #71).
+            "definitionProvider": true,
         },
         "serverInfo": {
             "name": "mos-lsp",
             "version": env!("CARGO_PKG_VERSION"),
         },
+    })
+}
+
+/// Build the `textDocument/definition` response for `message`: a single
+/// LSP `Location` pointing at the referenced label's declaration, or
+/// `null` when the request names no open document, carries no position,
+/// the cursor is not on a reference, or the label is undeclared.
+///
+/// The target always lives in the requested document — the server holds
+/// one source per URI and lowers it in isolation — so the response
+/// reuses the request URI verbatim.
+fn definition_result(state: &ServerState, message: &Value) -> Value {
+    let Some(uri) = message
+        .pointer("/params/textDocument/uri")
+        .and_then(Value::as_str)
+    else {
+        return Value::Null;
+    };
+    let Some(src) = state.documents.get(uri) else {
+        return Value::Null;
+    };
+    let Some(position) = read_position(message) else {
+        return Value::Null;
+    };
+    let path = path_from_uri(uri);
+    match definition_range(&path, src, position) {
+        Some(range) => json!({ "uri": uri, "range": range }),
+        None => Value::Null,
+    }
+}
+
+/// Extract the zero-based `position` (`line`, UTF-16 `character`) from a
+/// request's params. Out-of-`u32`-range values clamp to `u32::MAX`,
+/// which [`definition_range`] then resolves to end-of-document — a
+/// harmless "no definition here" rather than a panic.
+fn read_position(message: &Value) -> Option<LspPosition> {
+    let line = message
+        .pointer("/params/position/line")
+        .and_then(Value::as_u64)?;
+    let character = message
+        .pointer("/params/position/character")
+        .and_then(Value::as_u64)?;
+    Some(LspPosition {
+        line: u32::try_from(line).unwrap_or(u32::MAX),
+        character: u32::try_from(character).unwrap_or(u32::MAX),
     })
 }
 
@@ -266,6 +318,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
+    use crate::diagnostics::byte_to_position;
 
     fn frame(value: &Value) -> Vec<u8> {
         frame_with_header(value, "Content-Length")
@@ -457,10 +510,12 @@ mod tests {
     #[test]
     fn unknown_request_returns_method_not_found() {
         let mut input: Vec<u8> = Vec::new();
+        // `textDocument/hover` is not implemented — an unhandled request
+        // must still get a MethodNotFound reply so the client doesn't hang.
         input.extend(frame(&json!({
             "jsonrpc": "2.0",
             "id": 7,
-            "method": "textDocument/definition",
+            "method": "textDocument/hover",
             "params": {},
         })));
         input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
@@ -473,5 +528,120 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].get("id"), Some(&json!(7)));
         assert_eq!(messages[0].pointer("/error/code"), Some(&json!(-32601)));
+    }
+
+    #[test]
+    fn initialize_advertises_definition_provider() {
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {},
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        let capabilities = messages
+            .first()
+            .and_then(|m| m.pointer("/result/capabilities"))
+            .expect("initialize response with capabilities");
+        assert_eq!(capabilities.get("definitionProvider"), Some(&json!(true)));
+    }
+
+    #[test]
+    fn definition_request_returns_label_declaration_location() {
+        // An `@intro` reference on line 2 resolves to the `= Intro <intro>`
+        // heading on line 0. The cursor sits inside the reference token.
+        let uri = "file:///virtual/main.mos";
+        let src = "= Intro <intro>\n\nSee @intro here.\n";
+        let cursor = src.find("@intro").map_or(0, |at| at + 2);
+        let position = byte_to_position(src, cursor);
+
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": "mosaic",
+                    "version": 1,
+                    "text": src,
+                },
+            },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "textDocument/definition",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": position.line, "character": position.character },
+            },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        // didOpen publishes diagnostics; the definition reply carries id 9.
+        let reply = messages
+            .iter()
+            .find(|m| m.get("id") == Some(&json!(9)))
+            .expect("definition response");
+        assert_eq!(reply.pointer("/result/uri"), Some(&json!(uri)));
+        assert_eq!(reply.pointer("/result/range/start/line"), Some(&json!(0)));
+    }
+
+    #[test]
+    fn definition_on_unknown_label_returns_null() {
+        let uri = "file:///virtual/main.mos";
+        let src = "See @nope here.\n";
+        let cursor = src.find("@nope").map_or(0, |at| at + 1);
+        let position = byte_to_position(src, cursor);
+
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": "mosaic",
+                    "version": 1,
+                    "text": src,
+                },
+            },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "textDocument/definition",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": position.line, "character": position.character },
+            },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        let reply = messages
+            .iter()
+            .find(|m| m.get("id") == Some(&json!(10)))
+            .expect("definition response");
+        // Unknown label → JSON-RPC result is null (not an error).
+        assert_eq!(reply.get("result"), Some(&Value::Null));
+        assert!(reply.get("error").is_none());
     }
 }

@@ -11,9 +11,11 @@
     html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
 )]
 
+mod definition;
 mod diagnostics;
 mod server;
 
+pub use definition::{definition_range, position_to_byte};
 pub use diagnostics::{
     LspDiagnostic, LspPosition, LspRange, byte_to_position, diagnostics_for_document,
     path_from_uri, span_to_range,

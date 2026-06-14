@@ -76,7 +76,8 @@ example.
   - [x] citation placeholder nodes
   - [x] raster image directives
   - [x] simple figure directives
-- [x] `mos-lsp` publishes parse/lower/resolve diagnostics for opened and changed documents.
+- [x] `mos-lsp` publishes parse/lower/resolve diagnostics for opened and changed documents, and
+      resolves `textDocument/definition` for `@label` references to their declaration site.
 - [x] Layout supports:
   - [x] greedy text flow
   - [x] headings
@@ -424,7 +425,7 @@ example.
 - [ ] Preserve comments and meaningful trivia.
 - [ ] Complete [`mos-lsp`] beyond the current entry point.
 - [x] Publish diagnostics over LSP.
-- [ ] Add go-to-definition for labels.
+- [x] Add go-to-definition for labels.
 - [ ] Add rename label.
 - [ ] Add citation autocomplete.
 - [ ] Add figure preview.

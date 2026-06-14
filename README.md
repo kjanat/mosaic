@@ -38,7 +38,8 @@ under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed
       carets;
 - [x] `mos build` end-to-end — layout + PDF emission for the Base-14 core fonts and bundled Noto
       Sans, with PNG/JPEG raster images and figure captions (manifest §6 stages 5–9, §21.1);
-- [x] `mos-lsp` publishes current compiler diagnostics over stdio LSP on open/change;
+- [x] `mos-lsp` publishes current compiler diagnostics over stdio LSP on open/change, and answers
+      `textDocument/definition` for `@label` references (jump to the label's declaration);
 - [ ] HTML and EPUB backends, persistent incremental cache, full bibliography rendering (sorted
       entry lists, CSL styles) and compiler integration, and richer LSP features — see MVP 1–6 in
       `manifest.md`. Citation keys resolve and resolved `[@key]` markers render numeric labels

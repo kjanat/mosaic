@@ -1,0 +1,217 @@
+//! `textDocument/definition` for `@label` cross-references (issue #71).
+//!
+//! Given a cursor position, this resolves a reference (`@label` or
+//! `@page(label)`) under the cursor to the source range of the label's
+//! *declaration*. The lookup deliberately mirrors the compiler's own
+//! `build_label_index` in `mos-eval`:
+//!
+//! - only blocks declare labels; [`NodeKind::Reference`] /
+//!   [`NodeKind::PageReference`] nodes *consume* them, so they are
+//!   skipped when scanning for the declaration site;
+//! - **first declaration wins** — a label declared twice (a MOS0030
+//!   error) resolves to its first occurrence, the same one the resolver
+//!   keeps and points its "first declaration is here" note at.
+//!
+//! Scope is single-document: there is no workspace index, so a
+//! definition always lands in the file the request names. Rename,
+//! source/PDF sync, and generated labels (issue #31) are out of scope.
+
+use std::path::Path;
+
+use mos_core::{AttrValue, Document, NodeKind, SourceSpan};
+
+use crate::diagnostics::{LspPosition, LspRange, span_to_range};
+
+/// Resolve the reference under `position` to the LSP range of its
+/// label's first declaration.
+///
+/// Returns `None` when the cursor is not on a reference, the referenced
+/// label is undeclared, or (defensively) the declaration lives in a
+/// different file than the request — which cannot happen for a
+/// single-document lowering but keeps the contract explicit.
+#[must_use]
+pub fn definition_range(file: &Path, src: &str, position: LspPosition) -> Option<LspRange> {
+    let offset = position_to_byte(src, position);
+    let lowered = mos_eval::lower(src, file);
+    let label = reference_label_at(&lowered.document, file, offset)?;
+    let span = first_declaration_span(&lowered.document, &label)?;
+    (span.file == file).then(|| span_to_range(src, &span))
+}
+
+/// The label consumed by the narrowest reference node whose span covers
+/// `offset`, or `None` if the cursor sits on no reference. Narrowest
+/// wins so that, in the unlikely event reference spans ever nest, the
+/// innermost one is selected.
+fn reference_label_at(document: &Document, file: &Path, offset: usize) -> Option<String> {
+    document
+        .nodes()
+        .filter(|node| matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
+        .filter(|node| node.span.file == file && span_contains(&node.span, offset))
+        .min_by_key(|node| node.span.end.saturating_sub(node.span.start))
+        .and_then(|node| match node.attributes.get("label") {
+            Some(AttrValue::Str(label)) => Some(label.clone()),
+            _ => None,
+        })
+}
+
+/// The span of the first block declaring `label`, in document order.
+///
+/// `nodes()` yields the arena in allocation order, which the lowerer
+/// fills in source order, so `find` returns the first declaration —
+/// matching the resolver's first-wins rule. References are excluded
+/// because they also carry a `label` attribute (the target they point
+/// at), and treating one as a declaration would shadow the real block.
+fn first_declaration_span(document: &Document, label: &str) -> Option<SourceSpan> {
+    document
+        .nodes()
+        .filter(|node| !matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
+        .find(|node| {
+            matches!(node.attributes.get("label"), Some(AttrValue::Str(declared)) if declared == label)
+        })
+        .map(|node| node.span.clone())
+}
+
+/// Whether `span` covers `offset`. The end is exclusive: a cursor
+/// resting just past the final byte of `@intro` is treated as off the
+/// token, matching how editors place the caret inside the identifier
+/// when invoking go-to-definition.
+const fn span_contains(span: &SourceSpan, offset: usize) -> bool {
+    span.start <= offset && offset < span.end
+}
+
+/// Convert an LSP [`LspPosition`] (zero-based line, UTF-16 `character`)
+/// into a byte offset inside `src`. The inverse of
+/// [`byte_to_position`](crate::diagnostics::byte_to_position).
+///
+/// Positions beyond the end of a line clamp to the line's terminating
+/// newline; positions beyond the last line clamp to `src.len()`. A
+/// `character` that would land inside a surrogate pair rounds up to the
+/// following code-point boundary, so the returned offset is always a
+/// valid `char` boundary.
+#[must_use]
+pub fn position_to_byte(src: &str, position: LspPosition) -> usize {
+    let Some(line_start) = line_start_offset(src, position.line) else {
+        return src.len();
+    };
+    let mut utf16: u32 = 0;
+    for (byte_in_line, ch) in src[line_start..].char_indices() {
+        if ch == '\n' || utf16 >= position.character {
+            return line_start + byte_in_line;
+        }
+        utf16 = utf16.saturating_add(u32::try_from(ch.len_utf16()).unwrap_or(0));
+    }
+    src.len()
+}
+
+/// Byte offset of the start of `line` (zero-based). `None` if the
+/// document has no such line, signalling a clamp to end-of-document.
+fn line_start_offset(src: &str, line: u32) -> Option<usize> {
+    if line == 0 {
+        return Some(0);
+    }
+    let mut seen: u32 = 0;
+    for (i, byte) in src.bytes().enumerate() {
+        if byte == b'\n' {
+            seen = seen.saturating_add(1);
+            if seen == line {
+                return Some(i + 1);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
+    )]
+
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn position(line: u32, character: u32) -> LspPosition {
+        LspPosition { line, character }
+    }
+
+    #[test]
+    fn position_to_byte_inverts_byte_to_position() {
+        use crate::diagnostics::byte_to_position;
+        let src = "= µ字 <intro>\nsee @intro\n";
+        for offset in 0..=src.len() {
+            if !src.is_char_boundary(offset) {
+                continue;
+            }
+            let round_tripped = position_to_byte(src, byte_to_position(src, offset));
+            assert_eq!(
+                round_tripped, offset,
+                "byte {offset} did not round-trip (got {round_tripped})"
+            );
+        }
+    }
+
+    #[test]
+    fn position_past_line_end_clamps_to_newline() {
+        let src = "ab\ncd\n";
+        // Column 99 on line 0 clamps to the newline after `ab` (byte 2).
+        assert_eq!(position_to_byte(src, position(0, 99)), 2);
+    }
+
+    #[test]
+    fn position_past_last_line_clamps_to_end() {
+        let src = "ab\ncd";
+        assert_eq!(position_to_byte(src, position(9, 0)), src.len());
+    }
+
+    #[test]
+    fn resolves_reference_to_section_declaration() {
+        let file = PathBuf::from("/virtual/main.mos");
+        let src = "= Intro <intro>\n\nSee @intro here.\n";
+        // Cursor inside the `@intro` reference on line 2.
+        let at = src.find("@intro").expect("reference present");
+        let position = byte_position(src, at + 2);
+        let range = definition_range(&file, src, position).expect("definition resolved");
+        // The declaration is the heading on line 0.
+        assert_eq!(range.start.line, 0);
+        // The range must cover the heading, not collapse to a point.
+        assert!(range.end.character > range.start.character || range.end.line > range.start.line);
+    }
+
+    #[test]
+    fn unknown_label_resolves_to_nothing() {
+        let file = PathBuf::from("/virtual/main.mos");
+        let src = "See @nope here.\n";
+        let at = src.find("@nope").expect("reference present");
+        assert!(definition_range(&file, src, byte_position(src, at + 1)).is_none());
+    }
+
+    #[test]
+    fn cursor_off_any_reference_resolves_to_nothing() {
+        let file = PathBuf::from("/virtual/main.mos");
+        let src = "= Intro <intro>\n\nSee @intro here.\n";
+        // Column 0 of the heading line is plain text, not a reference.
+        assert!(definition_range(&file, src, position(0, 0)).is_none());
+    }
+
+    #[test]
+    fn duplicate_label_resolves_to_first_declaration() {
+        let file = PathBuf::from("/virtual/main.mos");
+        let src = "= First <dup>\n\n= Second <dup>\n\nSee @dup here.\n";
+        let at = src.find("@dup").expect("reference present");
+        let range =
+            definition_range(&file, src, byte_position(src, at + 2)).expect("definition resolved");
+        // First declaration is the line-0 heading, not the line-2 one.
+        assert_eq!(range.start.line, 0);
+    }
+
+    /// Build an [`LspPosition`] for `offset` via the production
+    /// byte→position mapping, so reference tests address the cursor the
+    /// same way an editor would.
+    fn byte_position(src: &str, offset: usize) -> LspPosition {
+        crate::diagnostics::byte_to_position(src, offset)
+    }
+}

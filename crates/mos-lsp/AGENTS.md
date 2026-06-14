@@ -7,20 +7,23 @@ compiler services.
 
 ## WHERE TO LOOK
 
-| Task              | Location             | Notes                                        |
-| ----------------- | -------------------- | -------------------------------------------- |
-| Server loop       | `src/server.rs`      | JSON-RPC framing, state, request dispatch.   |
-| LSP diagnostics   | `src/diagnostics.rs` | Compiler diagnostic to LSP range conversion. |
-| Binary entry      | `src/main.rs`        | Calls `mos_lsp::run()`.                      |
-| Behavior contract | `README.md`          | Current supported messages and non-goals.    |
+| Task              | Location             | Notes                                                 |
+| ----------------- | -------------------- | ----------------------------------------------------- |
+| Server loop       | `src/server.rs`      | JSON-RPC framing, state, request dispatch.            |
+| LSP diagnostics   | `src/diagnostics.rs` | Compiler diagnostic to LSP range conversion.          |
+| Go-to-definition  | `src/definition.rs`  | `@label` reference → declaration span; position↔byte. |
+| Binary entry      | `src/main.rs`        | Calls `mos_lsp::run()`.                               |
+| Behavior contract | `README.md`          | Current supported messages and non-goals.             |
 
 ## CURRENT SLICE
 
 - Handles `initialize`, `initialized`, `shutdown`, `exit`.
 - Handles full-sync `textDocument/didOpen`, `didChange`, `didClose`.
 - Publishes parse/lower/resolve diagnostics after open/change; close clears diagnostics.
+- Answers `textDocument/definition`: cursor on `@label` / `@page(label)` → label's first declaration
+  span as a `Location`; undeclared label or cursor off a reference → `null`.
 - Unknown requests return JSON-RPC `MethodNotFound`; unknown notifications drop.
-- Advertises UTF-16 position encoding and full text sync only.
+- Advertises UTF-16 position encoding, full text sync, and `definitionProvider`.
 
 ## BOUNDARY RULES
 
@@ -32,7 +35,9 @@ compiler services.
 ## ANTI-PATTERNS
 
 - Do not advertise `diagnosticProvider` until pull diagnostics are implemented.
-- Do not add completion, hover, definition, formatting, code actions, rename, workspace index, or
-  preview sync by manifesto gravity.
+- Do not add completion, hover, formatting, code actions, rename, workspace index, or preview sync
+  by manifesto gravity. (Go-to-definition for `@label` references is shipped; rename is still out.)
+- Go-to-definition stays single-document and read-only: walk the lowered `Document`, mirror the
+  resolver's first-declaration-wins rule, do not build a workspace index or cross-file label map.
 - Do not treat byte offsets as LSP columns; positions are UTF-16.
 - Do not make LSP own parse/lower/resolve policy.
