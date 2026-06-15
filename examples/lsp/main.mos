@@ -1,0 +1,76 @@
+#set document(
+  title: "Language Server Feature Tour",
+  author: "Mosaic contributors",
+  language: "en",
+)
+
+#set page(
+  paper: "A4",
+  margin: 24mm,
+  numbering: "bottom-center",
+)
+
+#set text(
+  font: "Noto Sans",
+  size: 11pt,
+  leading: 1.35,
+)
+
+#bibliography("refs.bib")
+
+= Introduction <intro>
+
+This document is a guided tour of `mos-lsp`, the Mosaic language server. It is
+also an ordinary document: the headings are numbered and the prose cross-links
+to them. Section @features lists what the server can do, section @setup covers
+installation, and the closing remarks sit in section @conclusion on page
+@page(conclusion).
+
+Each cross-reference above prints as a number in the PDF, but in the `.mos`
+source it is a live `@label` reference. That duality is the whole point: readers
+of the PDF get clean section numbers, while an editor wired to `mos-lsp` can
+navigate and rename the same references in the source.
+
+= Language server features <features>
+
+`mos-lsp` ships three capabilities today:
+
+- Diagnostics surface compiler errors as you edit.
+- Go-to-definition jumps from a reference to the heading that declares its label.
+- Rename rewrites a label's declaration and every reference together.
+
+Citations resolve too: the nod to the classic typesetting manual [@knuth1984]
+and the bibliography-style reference [@patashnik1988] print as numbered markers.
+
+== Go-to-definition <gotodef>
+
+Go-to-definition jumps from a reference to the heading that declares its label.
+This section demonstrates it on itself: it holds a live reference to its own
+heading — section @gotodef — which the PDF prints as the number you see. In the
+source that token is `@gotodef`; put the cursor on it and run go-to-definition to
+land on this heading's `<gotodef>` label.
+
+== Rename <rename>
+
+Rename rewrites a label's declaration and every reference to it in one edit. This
+heading declares the `<rename>` label, and the cross-link here —
+section @rename — is a reference to it. Rename either the declaration or this reference,
+and both change together, in view, without scrolling away from this section.
+
+== Diagnostics <diagnostics>
+
+To watch diagnostics appear, introduce an error in the source: point a reference
+at a label that does not exist, or cite an unknown bibliography key. `mos-lsp`
+reports the problem inline; undo to clear it.
+
+= Setup <setup>
+
+Install the server so it lands on `PATH` — run `cargo mosils` from the
+workspace — then open this project in your editor. Section @intro has the
+overview and section @conclusion has the final check.
+
+= Conclusion <conclusion>
+
+If go-to-definition reached this heading from a reference, rename swept a label
+cleanly, and the page printed for section @conclusion matches where you are
+reading, the language server is wired correctly.

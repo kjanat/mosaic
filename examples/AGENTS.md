@@ -17,14 +17,15 @@ examples/<name>/
 
 ## WHERE TO LOOK
 
-| Example      | Exercises                                                            |
-| ------------ | -------------------------------------------------------------------- |
-| `code`       | Inline code, multiline inline code, long-bracket `#pre`/`#code`.     |
-| `hello`      | Noto Sans embedding, Unicode text, bold/italic, lists, image figure. |
-| `linebreaks` | NBSP, hard line breaks, and greedy soft-hyphen breaks.               |
-| `lists`      | Ordered/unordered lists, nesting, hanging indent, marker behavior.   |
-| `math`       | Base-14 Helvetica, `/Differences`, math-ish glyph copy/paste.        |
-| `polish`     | Extended Latin diacritics through embedded Noto Sans path.           |
+| Example      | Exercises                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------ |
+| `code`       | Inline code, multiline inline code, long-bracket `#pre`/`#code`.                                 |
+| `hello`      | Noto Sans embedding, Unicode text, bold/italic, lists, image figure.                             |
+| `linebreaks` | NBSP, hard line breaks, and greedy soft-hyphen breaks.                                           |
+| `lists`      | Ordered/unordered lists, nesting, hanging indent, marker behavior.                               |
+| `lsp`        | `mos-lsp` demo: heading labels, `@label` / `@page(label)` refs, `[@key]` citations + `refs.bib`. |
+| `math`       | Base-14 Helvetica, `/Differences`, math-ish glyph copy/paste.                                    |
+| `polish`     | Extended Latin diacritics through embedded Noto Sans path.                                       |
 
 ## CONVENTIONS
 

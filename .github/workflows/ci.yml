@@ -36,7 +36,7 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with: { components: "rustfmt, clippy" }
+        with: { components: "rustfmt, clippy", targets: wasm32-wasip2 }
 
       - uses: Swatinem/rust-cache@v2
 
@@ -66,6 +66,10 @@ jobs:
 
       - name: doc
         run: cargo dw
+
+      # Workspace-excluded crate; check it explicitly so LSP wiring can't silently regress.
+      - name: check zed extension
+        run: cargo check --manifest-path crates/zed-mosaic/Cargo.toml --target wasm32-wasip2
 
   msrv:
     name: build on MSRV

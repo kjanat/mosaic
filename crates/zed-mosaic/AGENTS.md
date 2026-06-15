@@ -9,8 +9,8 @@ workspace on purpose.
 
 ```text
 zed-mosaic/
-├── extension.toml              # Zed extension manifest and pinned grammar
-├── src/lib.rs                  # tiny extension registration
+├── extension.toml              # Zed extension manifest, pinned grammar, `mos-lsp` language server
+├── src/lib.rs                  # extension registration + `mos-lsp` language server spawn
 ├── languages/mosaic/*.scm      # copied Tree-sitter queries for Zed
 ├── languages/mosaic/config.toml
 └── languages/mosaic/tasks.json # editor tasks around `mos build`
@@ -18,13 +18,14 @@ zed-mosaic/
 
 ## WHERE TO LOOK
 
-| Task             | Location                        | Notes                                    |
-| ---------------- | ------------------------------- | ---------------------------------------- |
-| Extension config | `extension.toml`                | Grammar repo/rev/path pin.               |
-| Rust entry       | `src/lib.rs`                    | `register_extension!` only.              |
-| Query copies     | `languages/mosaic/*.scm`        | Generated from Tree-sitter query source. |
-| Canonical query  | `../tree-sitter-mosaic/queries` | Source of truth.                         |
-| Sync command     | root `justfile`                 | `just sync-zed-queries`.                 |
+| Task             | Location                        | Notes                                       |
+| ---------------- | ------------------------------- | ------------------------------------------- |
+| Extension config | `extension.toml`                | Grammar pin + `[language_servers.mos-lsp]`. |
+| Rust entry       | `src/lib.rs`                    | Registration + `mos-lsp` spawn/discovery.   |
+| Language server  | `../mos-lsp/`                   | Source of truth; extension only spawns it.  |
+| Query copies     | `languages/mosaic/*.scm`        | Generated from Tree-sitter query source.    |
+| Canonical query  | `../tree-sitter-mosaic/queries` | Source of truth.                            |
+| Sync command     | root `justfile`                 | `just sync-zed-queries`.                    |
 
 ## CONVENTIONS
 
@@ -33,6 +34,11 @@ zed-mosaic/
 - Sync skips `locals.scm` and `tags.scm`; Zed does not load them under those names.
 - Generated/local artifacts stay untracked: `*.wasm`, `grammars/`, `target/`, `Cargo.lock`.
 - Keep grammar source in `tree-sitter-mosaic`, not here.
+- `mos-lsp` binary discovery in `src/lib.rs`: settings `binary.path` → `mos-lsp` on `PATH`. Keep
+  this order; surface a clear error when nothing resolves.
+- Verify the crate (it is workspace-excluded) with:
+  `cargo check --manifest-path crates/zed-mosaic/Cargo.toml --target wasm32-wasip2`. CI runs the
+  same check. Install the server for live testing with `cargo mosils`.
 
 ## ANTI-PATTERNS
 
