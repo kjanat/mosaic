@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 use crate::cache::LoweringCache;
 use crate::definition::definition_range_in;
 use crate::diagnostics::{LspDiagnostic, LspPosition, diagnostics_from_result, path_from_uri};
+use crate::rename::rename_ranges;
 
 /// Errors surfaced by the LSP server runtime. Compiler diagnostics
 /// flow over the wire instead — they are never represented here.
@@ -103,6 +104,10 @@ fn handle_message<W: Write>(
             write_response(writer, id, &definition_result(state, message))?;
             Ok(false)
         }
+        (Some("textDocument/rename"), Some(id)) => {
+            write_response(writer, id, &rename_result(state, message))?;
+            Ok(false)
+        }
         (Some("textDocument/didOpen"), _) => {
             if let Some(doc) = message.pointer("/params/textDocument")
                 && let (Some(uri), Some(text)) = (
@@ -175,6 +180,8 @@ fn initialize_result() -> Value {
             "positionEncoding": "utf-16",
             // Go-to-definition for `@label` references (issue #71).
             "definitionProvider": true,
+            // Rename a label across its declaration and references.
+            "renameProvider": true,
         },
         "serverInfo": {
             "name": "mos-lsp",
@@ -242,6 +249,42 @@ fn with_lowering<T>(
         lowerings.store(uri, fresh);
     }
     Some(result)
+}
+
+/// Build the `textDocument/rename` response: a `WorkspaceEdit` rewriting the
+/// label under the cursor — its first declaration's token and every reference
+/// — to the request's `newName`. Returns `null` when the cursor is not on a
+/// label, the request omits a position or new name, or names no open document.
+///
+/// Single-document: every edit lands in the request URI, so the
+/// `WorkspaceEdit` carries one `changes` entry keyed by that URI.
+fn rename_result(state: &mut ServerState, message: &Value) -> Value {
+    let Some(uri) = message
+        .pointer("/params/textDocument/uri")
+        .and_then(Value::as_str)
+    else {
+        return Value::Null;
+    };
+    let Some(position) = read_position(message) else {
+        return Value::Null;
+    };
+    let Some(new_name) = message.pointer("/params/newName").and_then(Value::as_str) else {
+        return Value::Null;
+    };
+    let ranges = with_lowering(state, uri, |lowered, path, src| {
+        rename_ranges(&lowered.document, path, src, position)
+    });
+    // Outer `None`: unknown URI. Inner `None`: cursor not on a renameable label.
+    let Some(Some(ranges)) = ranges else {
+        return Value::Null;
+    };
+    let edits: Vec<Value> = ranges
+        .iter()
+        .map(|range| json!({ "range": range, "newText": new_name }))
+        .collect();
+    let mut changes = serde_json::Map::new();
+    changes.insert(uri.to_owned(), Value::Array(edits));
+    json!({ "changes": Value::Object(changes) })
 }
 
 /// Extract the zero-based `position` (`line`, UTF-16 `character`) from a
@@ -614,6 +657,109 @@ mod tests {
             .and_then(|m| m.pointer("/result/capabilities"))
             .expect("initialize response with capabilities");
         assert_eq!(capabilities.get("definitionProvider"), Some(&json!(true)));
+        assert_eq!(capabilities.get("renameProvider"), Some(&json!(true)));
+    }
+
+    #[test]
+    fn rename_request_returns_workspace_edit_for_all_occurrences() {
+        // `@intro` (and the declaration) rename to `outro`. The response is a
+        // WorkspaceEdit whose single `changes` entry lists one edit per
+        // occurrence — declaration token + reference — each replacing the
+        // identifier text with the new name.
+        let uri = "file:///virtual/main.mos";
+        let src = "= Intro <intro>\n\nSee @intro here.\n";
+        let cursor = src.find("@intro").map_or(0, |at| at + 2);
+        let position = byte_to_position(src, cursor);
+
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "mosaic", "version": 1, "text": src,
+            } },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 40,
+            "method": "textDocument/rename",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": position.line, "character": position.character },
+                "newName": "outro",
+            },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        let reply = messages
+            .iter()
+            .find(|m| m.get("id") == Some(&json!(40)))
+            .expect("rename response");
+        let edits = reply
+            .pointer("/result/changes")
+            .and_then(|changes| changes.get(uri))
+            .and_then(Value::as_array)
+            .expect("changes for the request URI");
+        assert_eq!(
+            edits.len(),
+            2,
+            "declaration token + one reference: {edits:?}"
+        );
+        assert!(
+            edits
+                .iter()
+                .all(|e| e.get("newText").and_then(Value::as_str) == Some("outro")),
+            "every edit rewrites to the new name"
+        );
+        // The declaration token edit targets line 0, columns 9..14 (`intro`).
+        assert!(
+            edits
+                .iter()
+                .any(|e| e.pointer("/range/start/line") == Some(&json!(0))),
+            "an edit lands on the declaration line"
+        );
+    }
+
+    #[test]
+    fn rename_off_any_label_returns_null() {
+        let uri = "file:///virtual/main.mos";
+        let src = "= Intro <intro>\n\nplain text\n";
+        // Line 2 column 0 is plain paragraph text, not a label.
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "mosaic", "version": 1, "text": src,
+            } },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 41,
+            "method": "textDocument/rename",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": 2, "character": 0 },
+                "newName": "x",
+            },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        let reply = messages
+            .iter()
+            .find(|m| m.get("id") == Some(&json!(41)))
+            .expect("rename response");
+        assert_eq!(reply.get("result"), Some(&Value::Null));
     }
 
     #[test]

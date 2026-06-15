@@ -8,6 +8,15 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- LSP label rename: [`mos-lsp`][mos-lsp] now advertises `renameProvider` and answers
+  `textDocument/rename`. A cursor on a label — either a declaration's `<label>` token or an `@label`
+  / `@page(label)` reference — renames it across the document: the response is a `WorkspaceEdit`
+  rewriting the **first** declaration's token and every reference to the request's `newName`. Each
+  edit covers only the identifier, never the `@` sigil, the `<>` brackets, or the `@page(`…`)`
+  delimiters. First-declaration-wins (a duplicate later declaration is left untouched, matching the
+  resolver); a cursor off any label returns `null`. Single-document — no workspace/cross-file
+  rename, no `prepareRename`, and the new name is not validated.
+
 - Figure numbering controls (https://github.com/kjanat/mosaic/issues/76): `#figure` gains two
   per-figure arguments interpreted by [`mos-eval`][mos-eval]. `numbered: false` opts a figure out of
   the auto `Figure N` counter — it carries no number, its caption keeps no `Figure N:` prefix, and

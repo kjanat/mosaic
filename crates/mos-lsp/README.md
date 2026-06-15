@@ -12,16 +12,22 @@ non-goals stays unbuilt.
 - `run()` drives a stdio LSP server over JSON-RPC 2.0 framed with `Content-Length` headers.
 - Implemented requests/notifications: `initialize`, `initialized`, `shutdown`, `exit`,
   `textDocument/didOpen`, `textDocument/didChange` (full sync), `textDocument/didClose`,
-  `textDocument/definition`.
+  `textDocument/definition`, `textDocument/rename`.
 - After every open/change the server sends `textDocument/publishDiagnostics` with the compiler
   diagnostics for that document; close clears them.
 - `textDocument/definition` resolves a cursor on an `@label` / `@page(label)` reference to a single
   `Location` covering the label's first declaration; an undeclared label or a cursor off any
   reference returns `null` (not an error). Lookups are single-document, so the result reuses the
   request URI.
+- `textDocument/rename` rewrites the label under the cursor — its **first** declaration's token and
+  every `@label` / `@page(label)` reference — to the request's `newName`, returning a
+  `WorkspaceEdit` whose single `changes` entry is keyed by the request URI. Each edit covers only
+  the identifier (never the `@` sigil, the `<>` brackets, or the `@page(`…`)` delimiters). A cursor
+  off any label returns `null`. Single-document, first-declaration-wins (a duplicate later
+  declaration is left untouched); the new name is not validated.
 - Unknown requests get a JSON-RPC `MethodNotFound` (-32601); unknown notifications are dropped.
-- Advertised capabilities are intentionally narrow: full text sync, UTF-16 position encoding, and
-  `definitionProvider`. Pull diagnostics are not advertised.
+- Advertised capabilities are intentionally narrow: full text sync, UTF-16 position encoding,
+  `definitionProvider`, and `renameProvider`. Pull diagnostics are not advertised.
 - Binary: `mos-lsp`, defined in `Cargo.toml`, calls `mos_lsp::run()`.
 
 ### Manual smoke test
@@ -96,8 +102,9 @@ Compiler phase ownership stays elsewhere:
 
 ## Known Non-Goals Today
 
-- No completion, hover, formatting, code actions, or rename. Go-to-definition for `@label`
-  references is the one navigation request implemented.
+- No completion, hover, formatting, or code actions. Navigation/editing is limited to
+  go-to-definition and label rename for `@label` references — both single-document. Rename does no
+  cross-file work, no `prepareRename` validation, and no new-name checking.
 - No incremental document sync — `didChange` replaces the buffer wholesale.
 - No source-to-PDF sync or live preview.
 - No persistent or cross-session compilation cache, and no workspace indexing. The only caching is
