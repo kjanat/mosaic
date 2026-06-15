@@ -39,11 +39,29 @@ const bundledNodeGyp = join(
 	'node-gyp.js',
 );
 
-function runNodeGyp(cwd) {
+// Locate a `node-gyp.js` to run with the current node binary, in order of
+// preference: the copy bundled with npm (present on most Unix node installs),
+// then the `node-gyp` dev dependency resolved from this package. The bundled
+// path uses npm's Unix layout (`<prefix>/lib/node_modules/npm`), which does
+// not exist on Windows, so the dev-dependency fallback is what makes a fresh
+// `bun install` succeed there.
+function resolveNodeGyp() {
 	if (existsSync(bundledNodeGyp)) {
-		execFileSync(process.execPath, [bundledNodeGyp, 'rebuild'], { cwd, stdio: 'inherit' });
+		return bundledNodeGyp;
+	}
+	try {
+		return require.resolve('node-gyp/bin/node-gyp.js');
+	} catch {
+		return null;
+	}
+}
+
+function runNodeGyp(cwd) {
+	const nodeGyp = resolveNodeGyp();
+	if (nodeGyp) {
+		execFileSync(process.execPath, [nodeGyp, 'rebuild'], { cwd, stdio: 'inherit' });
 	} else {
-		// Fall back to a PATH-resolved node-gyp if the bundled copy moved.
+		// Last resort: a PATH-resolved node-gyp.
 		execFileSync('node-gyp', ['rebuild'], { cwd, stdio: 'inherit' });
 	}
 }
