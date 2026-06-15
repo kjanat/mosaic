@@ -45,10 +45,16 @@ sizes, or leading values produce warnings, not hard errors.
 ## Resolution Behavior
 
 - Sections receive hierarchical `number` attributes such as `1`, `1.1`, and `2`.
-- Figures receive flat `number` attributes such as `1`, `2`, and `3`.
-- References to figures render as kind-aware `Figure N` text.
-- Captioned figures get a visible `Figure N: ...` prefix stamped onto the caption text, preserving
-  the original caption source so repeated resolution is idempotent.
+- Numbered figures receive flat `number` attributes such as `1`, `2`, and `3`.
+  `#figure(numbered:
+  false)` opts out: no number, no caption prefix, and the skip does not advance
+  the counter, so the remaining figures stay contiguous.
+- References to numbered figures render as kind-aware `Figure N` text — or `{supplement} N` for a
+  custom `#figure(supplement: "Plate")`, or just `N` when `supplement: ""`/`none`. A reference to a
+  skipped figure renders its bare label.
+- Captioned numbered figures get a visible `Figure N: ...` prefix (custom supplement / number-only
+  honored) stamped onto the caption text, preserving the original caption source so repeated
+  resolution is idempotent.
 - Any non-reference node with a `label` attribute can be a reference target.
 - Duplicate labels emit `MOS0030`; the first declaration wins.
 - Unknown references emit `MOS0033`; placeholder text remains visible in output.

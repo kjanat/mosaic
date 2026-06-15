@@ -5,10 +5,13 @@
 //! 1. Assigns hierarchical `number` attributes to every [`NodeKind::Section`]
 //!    (`"1"`, `"1.1"`, `"1.2"`, `"2"`), keyed off the existing `level`
 //!    attribute.
-//! 2. Assigns flat document-order `number` attributes to every
+//! 2. Assigns flat document-order `number` attributes to every numbered
 //!    [`NodeKind::Figure`] (`"1"`, `"2"`, `"3"`) and stamps a visible
-//!    `"Figure N: …"` supplement label onto each captioned figure.
-//!    Figures are not hierarchical, so the counter never resets.
+//!    `"{supplement} N: …"` label onto each captioned figure. Figures are
+//!    not hierarchical, so the counter never resets. A figure can opt out
+//!    with `numbered: false` (skipped: no number, no caption prefix, does
+//!    not advance the counter) or swap its supplement word with
+//!    `supplement: "…"` (issue #76).
 //! 3. Builds a `label → LabelTarget` index from every block carrying a
 //!    `label` attribute, then rewrites each [`NodeKind::Reference`]'s
 //!    `text` attribute to its target's resolved string.
@@ -16,10 +19,10 @@
 //! The label index is *typed*: each entry records what kind of thing
 //! the label points at (section, figure, or generic block). A section
 //! reference renders as its bare hierarchical number (`"1.2"`); a figure
-//! reference renders kind-aware as `"Figure {n}"` from the figure's flat
-//! document-order number. Generic targets (paragraphs, raw blocks,
-//! images, …) carry no counter and render as the bare label, matching
-//! prior behavior.
+//! reference renders kind-aware as `"{supplement} {n}"` (`"Figure 1"` by
+//! default) from the figure's flat document-order number. Generic targets
+//! (paragraphs, raw blocks, images, skipped figures, …) carry no counter
+//! and render as the bare label, matching prior behavior.
 //!
 //! Diagnostics:
 //!
@@ -73,8 +76,12 @@ enum LabelTargetKind {
     /// `"1.2"`).
     Section { number: String },
     /// Captioned figure with its resolved flat document-order number
-    /// (e.g. `"3"`). References render kind-aware as `"Figure 3"`.
-    Figure { number: String },
+    /// (e.g. `"3"`) and supplement word (`"Figure"` by default, or a
+    /// custom `#figure(supplement: …)`). References render kind-aware as
+    /// `"{supplement} {number}"` (e.g. `"Figure 3"`, `"Plate 3"`). A
+    /// skipped (`numbered: false`) figure carries an empty number and
+    /// renders as its bare label instead.
+    Figure { number: String, supplement: String },
     /// Anything else carrying a label (paragraph, raw block, image, …).
     Generic,
 }
@@ -214,11 +221,19 @@ fn section_order(document: &Document) -> Vec<(mos_core::NodeId, u8)> {
 /// instead of nesting `"Figure 1: Figure 1: …"`, and stays correct when a
 /// figure is re-numbered, because the source never carries a stale counter.
 fn number_figures(document: &mut Document) {
-    for (index, figure_id) in nodes_of_kind(document, NodeKind::Figure)
-        .into_iter()
-        .enumerate()
-    {
-        let number = (index + 1).to_string();
+    // Counter advances only for numbered figures, so `#figure(numbered:
+    // false)` figures neither consume a number nor leave a gap — the
+    // numbered figures stay contiguous (1, 2, 3, …). This is the documented
+    // skip rule (issue #76).
+    let mut counter: usize = 0;
+    for figure_id in nodes_of_kind(document, NodeKind::Figure) {
+        // Read the per-figure controls before taking a `get_mut` borrow.
+        let Some((numbered, supplement)) = document
+            .get(figure_id)
+            .map(|node| (figure_is_numbered(node), figure_supplement_attr(node)))
+        else {
+            continue;
+        };
         // Resolve the caption's *source* text before mutating: `get`
         // borrows the document immutably, but the writes below need
         // `get_mut`. Prefer the preserved `caption_source`; fall back to
@@ -232,20 +247,44 @@ fn number_figures(document: &mut Document) {
                 .map(|source| (text_id, source))
         });
 
-        if let Some(node) = document.get_mut(figure_id) {
-            node.attributes
-                .insert("number".to_owned(), AttrValue::Str(number.clone()));
-        }
-
-        if let Some((text_id, caption_source)) = caption {
-            let labelled = format!("{}\u{00A0}{number}: {caption_source}", figure_supplement());
-            if let Some(node) = document.get_mut(text_id) {
-                // Stash the pre-label caption so later passes re-derive the
-                // label from the original instead of the stamped text.
+        if numbered {
+            counter += 1;
+            let number = counter.to_string();
+            if let Some(node) = document.get_mut(figure_id) {
                 node.attributes
-                    .insert("caption_source".to_owned(), AttrValue::Str(caption_source));
+                    .insert("number".to_owned(), AttrValue::Str(number.clone()));
+            }
+            if let Some((text_id, caption_source)) = caption {
+                let labelled = format!(
+                    "{}: {caption_source}",
+                    figure_label_prefix(&supplement, &number)
+                );
+                if let Some(node) = document.get_mut(text_id) {
+                    // Stash the pre-label caption so later passes re-derive
+                    // the label from the original instead of the stamped text.
+                    node.attributes
+                        .insert("caption_source".to_owned(), AttrValue::Str(caption_source));
+                    node.attributes
+                        .insert("text".to_owned(), AttrValue::Str(labelled));
+                }
+            }
+        } else {
+            // Skipped figure: carry no number, and restore the caption to its
+            // unprefixed source. Restoring (rather than just not stamping)
+            // keeps the pass idempotent if a figure toggles numbered→skipped
+            // across reruns, undoing any previously stamped `Figure N:`.
+            if let Some(node) = document.get_mut(figure_id) {
+                node.attributes.remove("number");
+            }
+            if let Some((text_id, caption_source)) = caption
+                && let Some(node) = document.get_mut(text_id)
+            {
+                node.attributes.insert(
+                    "caption_source".to_owned(),
+                    AttrValue::Str(caption_source.clone()),
+                );
                 node.attributes
-                    .insert("text".to_owned(), AttrValue::Str(labelled));
+                    .insert("text".to_owned(), AttrValue::Str(caption_source));
             }
         }
     }
@@ -318,6 +357,42 @@ fn figure_supplement() -> &'static str {
     "Figure"
 }
 
+/// Whether a figure participates in the auto `Figure N` counter. A figure
+/// opts out with `#figure(numbered: false)` (issue #76), recorded by the
+/// lowerer as a `numbered = false` attribute; absence means numbered.
+fn figure_is_numbered(node: &mos_core::Node) -> bool {
+    !matches!(
+        node.attributes.get("numbered"),
+        Some(AttrValue::Bool(false))
+    )
+}
+
+/// The supplement word for a figure's caption and its references. An
+/// explicit `#figure(supplement: …)` value wins — **including the empty
+/// string** (`supplement: ""` / `supplement: none`), which means "number
+/// only, no word" (the "no visible prefix" form). Only an *absent*
+/// supplement falls back to the localized [`figure_supplement`] default
+/// (`"Figure"`).
+fn figure_supplement_attr(node: &mos_core::Node) -> String {
+    match node.attributes.get("supplement") {
+        Some(AttrValue::Str(s)) => s.clone(),
+        _ => figure_supplement().to_owned(),
+    }
+}
+
+/// Join a figure's supplement word and number into the cohesive label
+/// token used in both captions and references — `"Figure\u{00A0}1"`,
+/// non-breaking so the word never wraps off its number. An empty
+/// supplement renders the number alone (`"1"`), with no word and no
+/// leading space.
+fn figure_label_prefix(supplement: &str, number: &str) -> String {
+    if supplement.is_empty() {
+        number.to_owned()
+    } else {
+        format!("{supplement}\u{00A0}{number}")
+    }
+}
+
 /// Read a node's resolved `number` attribute, or an empty string if it
 /// has none. Both section and figure numbering stash their counter
 /// there before the label index is built; an empty result means the
@@ -339,6 +414,7 @@ fn classify_target(node: &mos_core::Node) -> LabelTargetKind {
         },
         NodeKind::Figure => LabelTargetKind::Figure {
             number: captured_number(node),
+            supplement: figure_supplement_attr(node),
         },
         _ => LabelTargetKind::Generic,
     }
@@ -461,8 +537,8 @@ fn label_span(node: &mos_core::Node) -> Option<SourceSpan> {
 fn render_target(target: &LabelTarget, label: &str) -> String {
     match &target.kind {
         LabelTargetKind::Section { number } if !number.is_empty() => number.clone(),
-        LabelTargetKind::Figure { number } if !number.is_empty() => {
-            format!("{}\u{00A0}{number}", figure_supplement())
+        LabelTargetKind::Figure { number, supplement } if !number.is_empty() => {
+            figure_label_prefix(supplement, number)
         }
         // A numbered target carrying an empty number is a resolver/lowerer
         // bug; fall back to the label name so the output stays readable.
@@ -1107,7 +1183,8 @@ mod tests {
         assert_eq!(
             doc.get(figure_id).map(classify_target),
             Some(LabelTargetKind::Figure {
-                number: "3".to_owned()
+                number: "3".to_owned(),
+                supplement: "Figure".to_owned(),
             })
         );
 
@@ -1161,7 +1238,8 @@ mod tests {
         assert_eq!(
             index.get("fig:one").map(|target| &target.kind),
             Some(&LabelTargetKind::Figure {
-                number: "1".to_owned()
+                number: "1".to_owned(),
+                supplement: "Figure".to_owned(),
             })
         );
 
@@ -1188,6 +1266,173 @@ mod tests {
             read_str_attr(&doc, caption_text, "text"),
             Some("Figure\u{00A0}1: A plot.".to_owned()),
             "the caption is prefixed with the non-breaking `Figure N: ` label"
+        );
+    }
+
+    #[test]
+    fn skipped_figure_omits_label_and_does_not_advance_counter() {
+        // `#figure(numbered: false)` opts out of numbering (issue #76): no
+        // `number` attribute, no `Figure N:` caption prefix, and — the
+        // documented counter rule — the skip does not advance the counter,
+        // so a later numbered figure is still "Figure 1", not "Figure 2".
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let (skipped, skipped_caption) =
+            make_captioned_figure(&mut doc, Some("fig:skip"), "Decorative.");
+        if let Some(node) = doc.get_mut(skipped) {
+            node.attributes
+                .insert("numbered".to_owned(), AttrValue::Bool(false));
+        }
+        let (numbered, numbered_caption) =
+            make_captioned_figure(&mut doc, Some("fig:num"), "A plot.");
+
+        let diags = resolve(&mut doc);
+        assert!(diags.is_empty(), "{diags:?}");
+
+        assert_eq!(
+            node_number(&doc, skipped),
+            "",
+            "a skipped figure carries no number"
+        );
+        assert_eq!(
+            read_str_attr(&doc, skipped_caption, "text"),
+            Some("Decorative.".to_owned()),
+            "a skipped figure's caption keeps no `Figure N:` prefix"
+        );
+        assert_eq!(
+            node_number(&doc, numbered),
+            "1",
+            "the skipped figure must not consume or gap the counter"
+        );
+        assert_eq!(
+            read_str_attr(&doc, numbered_caption, "text"),
+            Some("Figure\u{00A0}1: A plot.".to_owned())
+        );
+    }
+
+    #[test]
+    fn custom_supplement_renders_in_caption_and_reference() {
+        // `#figure(supplement: "Plate")` swaps the supplement word in both
+        // the stamped caption and any reference to the figure (issue #76).
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let (figure, caption_text) = make_captioned_figure(&mut doc, Some("fig:plate"), "A map.");
+        if let Some(node) = doc.get_mut(figure) {
+            node.attributes
+                .insert("supplement".to_owned(), AttrValue::Str("Plate".to_owned()));
+        }
+        let ref_id = doc.alloc_child(
+            doc.root,
+            mos_core::Node {
+                id: mos_core::NodeId::default(),
+                kind: NodeKind::Reference,
+                span: SourceSpan::placeholder(doc.file.clone()),
+                content_hash: mos_core::ContentHash::default(),
+                style_id: mos_core::StyleId::default(),
+                children: Vec::new(),
+                attributes: {
+                    let mut a = mos_core::AttrMap::new();
+                    a.insert("label".to_owned(), AttrValue::Str("fig:plate".to_owned()));
+                    a.insert("text".to_owned(), AttrValue::Str("?fig:plate?".to_owned()));
+                    a
+                },
+            },
+        );
+
+        let diags = resolve(&mut doc);
+        assert!(diags.is_empty(), "{diags:?}");
+
+        assert_eq!(
+            read_str_attr(&doc, caption_text, "text"),
+            Some("Plate\u{00A0}1: A map.".to_owned()),
+            "the caption uses the custom supplement word"
+        );
+        assert_eq!(
+            doc.get(ref_id).and_then(|r| r.attributes.get("text")),
+            Some(&AttrValue::Str("Plate\u{00A0}1".to_owned())),
+            "a reference renders the custom supplement, not `Figure`"
+        );
+    }
+
+    #[test]
+    fn empty_supplement_renders_number_only() {
+        // `#figure(supplement: "")` / `supplement: none` keeps the figure
+        // numbered but drops the supplement word: the caption and any
+        // reference show the number alone — the "no visible prefix" form
+        // (issue #76). Distinct from `numbered: false`, which drops the
+        // number entirely.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let (figure, caption_text) = make_captioned_figure(&mut doc, Some("fig:plain"), "A chart.");
+        if let Some(node) = doc.get_mut(figure) {
+            node.attributes
+                .insert("supplement".to_owned(), AttrValue::Str(String::new()));
+        }
+        let ref_id = doc.alloc_child(
+            doc.root,
+            mos_core::Node {
+                id: mos_core::NodeId::default(),
+                kind: NodeKind::Reference,
+                span: SourceSpan::placeholder(doc.file.clone()),
+                content_hash: mos_core::ContentHash::default(),
+                style_id: mos_core::StyleId::default(),
+                children: Vec::new(),
+                attributes: {
+                    let mut a = mos_core::AttrMap::new();
+                    a.insert("label".to_owned(), AttrValue::Str("fig:plain".to_owned()));
+                    a.insert("text".to_owned(), AttrValue::Str("?fig:plain?".to_owned()));
+                    a
+                },
+            },
+        );
+
+        let diags = resolve(&mut doc);
+        assert!(diags.is_empty(), "{diags:?}");
+
+        assert_eq!(
+            read_str_attr(&doc, caption_text, "text"),
+            Some("1: A chart.".to_owned()),
+            "an empty supplement renders the number with no word and no leading space"
+        );
+        assert_eq!(
+            doc.get(ref_id).and_then(|r| r.attributes.get("text")),
+            Some(&AttrValue::Str("1".to_owned())),
+            "a reference to a number-only figure renders just the number"
+        );
+    }
+
+    #[test]
+    fn reference_to_skipped_figure_renders_bare_label() {
+        // A reference to a `numbered: false` figure has no number to show,
+        // so it falls back to the bare label name — like an image reference.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let figure = make_node(&mut doc, NodeKind::Figure, Some("fig:skip"), None);
+        if let Some(node) = doc.get_mut(figure) {
+            node.attributes
+                .insert("numbered".to_owned(), AttrValue::Bool(false));
+        }
+        let ref_id = doc.alloc_child(
+            doc.root,
+            mos_core::Node {
+                id: mos_core::NodeId::default(),
+                kind: NodeKind::Reference,
+                span: SourceSpan::placeholder(doc.file.clone()),
+                content_hash: mos_core::ContentHash::default(),
+                style_id: mos_core::StyleId::default(),
+                children: Vec::new(),
+                attributes: {
+                    let mut a = mos_core::AttrMap::new();
+                    a.insert("label".to_owned(), AttrValue::Str("fig:skip".to_owned()));
+                    a.insert("text".to_owned(), AttrValue::Str("?fig:skip?".to_owned()));
+                    a
+                },
+            },
+        );
+
+        let diags = resolve(&mut doc);
+        assert!(diags.is_empty(), "{diags:?}");
+
+        assert_eq!(
+            doc.get(ref_id).and_then(|r| r.attributes.get("text")),
+            Some(&AttrValue::Str("fig:skip".to_owned())),
+            "a reference to a skipped figure renders the bare label"
         );
     }
 
