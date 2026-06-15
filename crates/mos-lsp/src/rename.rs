@@ -72,45 +72,68 @@ pub fn rename_ranges(
 }
 
 /// The label spelled at `offset`, whether the cursor sits inside a reference
-/// or inside a declaration's label token. References are checked first (and
-/// narrowest-wins, mirroring [`crate::definition`]); a declaration is matched
-/// only when `offset` lands inside its stamped label-token span.
+/// or inside a declaration's label token.
+///
+/// The hit-test matches exactly the bytes a rename would *edit*, never more:
+///
+/// - references are tested against their **identifier** sub-span (the same
+///   range [`reference_identifier_span`] returns), so a cursor on the `@`
+///   sigil, the `@page(` prefix, or the closing `)` is *not* on the label;
+/// - a declaration matches only when `offset` lands inside its stamped
+///   label-token span **and** that declaration is the *canonical* (first)
+///   one for the label. A cursor on a duplicate later `<dup>` returns `None`
+///   rather than renaming the first declaration out from under the cursor.
+///
+/// References win over declarations (and narrowest reference wins), mirroring
+/// [`crate::definition`].
 fn label_under_cursor(document: &Document, file: &Path, offset: usize) -> Option<String> {
     let on_reference = document
         .nodes()
         .filter(|node| matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
-        .filter(|node| node.span.file == file && span_contains(&node.span, offset))
-        .min_by_key(|node| node.span.end.saturating_sub(node.span.start))
-        .and_then(|node| str_attr(node, "label"));
+        .filter(|node| node.span.file == file)
+        .filter_map(|node| reference_identifier_span(node).map(|span| (node, span)))
+        .filter(|(_, span)| span_contains(span, offset))
+        .min_by_key(|(_, span)| span.end.saturating_sub(span.start))
+        .and_then(|(node, _)| str_attr(node, "label"));
     if on_reference.is_some() {
         return on_reference;
     }
 
-    document
+    let declaration = document
         .nodes()
         .filter(|node| !matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
         .find(|node| {
             declaration_label_token(node)
                 .is_some_and(|span| span.file == file && span_contains(&span, offset))
-        })
-        .and_then(|node| str_attr(node, "label"))
+        })?;
+    let label = str_attr(declaration, "label")?;
+    // Only the canonical first declaration may drive the rename.
+    let canonical = first_declaration_node(document, file, &label)?;
+    (canonical.id == declaration.id).then_some(label)
 }
 
-/// The label-token span of the first block declaring `label`, in document
-/// order — the same first-declaration-wins target [`crate::definition`]
-/// resolves to. `None` when no declaration carries a stamped label span (so
-/// there is nothing safe to rewrite).
-fn first_declaration_label_token(
-    document: &Document,
+/// The first block declaring `label`, in document order — the canonical
+/// declaration the resolver resolves references to (first-declaration-wins).
+fn first_declaration_node<'doc>(
+    document: &'doc Document,
     file: &Path,
     label: &str,
-) -> Option<SourceSpan> {
+) -> Option<&'doc mos_core::Node> {
     document
         .nodes()
         .filter(|node| !matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
         .filter(|node| node.span.file == file)
         .find(|node| str_attr(node, "label").as_deref() == Some(label))
-        .and_then(declaration_label_token)
+}
+
+/// The label-token span of the canonical first declaration of `label`. `None`
+/// when it carries no stamped label span (so there is nothing safe to rewrite).
+fn first_declaration_label_token(
+    document: &Document,
+    file: &Path,
+    label: &str,
+) -> Option<SourceSpan> {
+    first_declaration_node(document, file, label).and_then(declaration_label_token)
 }
 
 /// A declaration's label-token span, read from the `label_span.start` /
@@ -258,5 +281,51 @@ mod tests {
         let lowered = mos_eval::lower(src, &file);
         // Column 0 of the heading is the `=` glyph, not a label.
         assert!(rename_ranges(&lowered.document, &file, src, at(src, 0)).is_none());
+    }
+
+    #[test]
+    fn cursor_on_reference_sigil_or_delimiters_yields_nothing() {
+        // The hit-test must match only the editable identifier, never the
+        // surrounding syntax — otherwise a cursor on `@`, inside `@page(`, or
+        // on the closing `)` would rename a label whose `@`/parens it can't
+        // actually edit.
+        let src = "= Intro <intro>\n\nSee @intro and @page(intro).\n";
+        let reference = src.find("@intro").expect("reference");
+        assert!(
+            ranges(src, reference).is_empty(),
+            "cursor on the `@` sigil is not on the label"
+        );
+
+        let page = src.find("@page(intro)").expect("page reference");
+        assert!(
+            ranges(src, page + 2).is_empty(),
+            "cursor inside the `@page(` prefix is not on the label"
+        );
+        let closing = page + "@page(intro".len();
+        assert_eq!(&src[closing..=closing], ")", "offset points at the `)`");
+        assert!(
+            ranges(src, closing).is_empty(),
+            "cursor on the closing `)` is not on the label"
+        );
+    }
+
+    #[test]
+    fn cursor_on_duplicate_declaration_yields_nothing() {
+        // Renaming may only be driven from the canonical first declaration: a
+        // cursor on the duplicate later `<dup>` returns nothing rather than
+        // silently editing the first token instead of the one under the cursor.
+        let src = "= First <dup>\n\n= Second <dup>\n\nSee @dup here.\n";
+        let second = src.rfind("<dup>").expect("second declaration") + 1;
+        assert!(
+            ranges(src, second).is_empty(),
+            "cursor on a duplicate declaration must not rename the canonical one"
+        );
+        // The canonical first declaration still drives the rename.
+        let first = src.find("<dup>").expect("first declaration") + 1;
+        assert_eq!(
+            ranges(src, first).len(),
+            2,
+            "canonical declaration token + the reference"
+        );
     }
 }
