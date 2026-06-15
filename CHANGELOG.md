@@ -99,7 +99,10 @@ All notable changes to this project will be documented here. The format is based
   `PageReference` nodes as the same `label_span.start` / `label_span.end` attributes declarations
   carry. [`mos-lsp`][mos-lsp] label rename now reads that span directly instead of re-deriving the
   editable range from reference-node span geometry, removing a latent coupling to parser span
-  conventions. No behavior change — rename edits are identical.
+  conventions. No intended behavior change for ordinary references; this additionally fixes latent
+  range drift for **styled** references (e.g. `*@intro*`), whose node span the parser widens to the
+  emphasis delimiters — the old geometry then produced an off-by-the-delimiters rename range, while
+  the stamped identifier span is exact.
 
 - LSP diagnostics and go-to-definition now share one lowering per edit
   (https://github.com/kjanat/mosaic/issues/106): publishing diagnostics on `didOpen` / `didChange`

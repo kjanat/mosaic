@@ -306,4 +306,28 @@ mod tests {
             "canonical declaration token + the reference"
         );
     }
+
+    #[test]
+    fn renames_styled_reference_to_identifier_only() {
+        // A reference inside emphasis: the parser widens the reference node's
+        // span to the `*…*` delimiters, but the stamped `label_span` still
+        // covers exactly the identifier. Rename must edit `intro`, never
+        // `@intro*` — this is the latent range drift #116 removed by reading
+        // the stamped span instead of deriving from node-span geometry.
+        let src = "= Intro <intro>\n\nSee *@intro* now.\n";
+        let cursor = src.find("@intro").expect("reference") + 2;
+        let found = ranges(src, cursor);
+        assert_eq!(
+            found.len(),
+            2,
+            "decl token + the styled reference: {found:?}"
+        );
+        for range in &found {
+            assert_eq!(
+                ranged(src, range),
+                "intro",
+                "edit covers only the identifier, not the `@` or the `*` delimiters"
+            );
+        }
+    }
 }
