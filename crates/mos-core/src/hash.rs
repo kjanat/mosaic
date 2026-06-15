@@ -30,7 +30,19 @@
 //! change hash *values*, which the stamped engine version absorbs. FNV is not
 //! collision-hardened; nothing yet relies on adversarial collision resistance.
 
-use crate::ContentHash;
+/// Opaque content / dependency hash.
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::ContentHash;
+///
+/// let hash = ContentHash::default();
+///
+/// assert_eq!(hash.0, 0);
+/// ```
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
+pub struct ContentHash(pub u128);
 
 /// Engine version stamped into every hash (§5 rule 2).
 const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -173,8 +185,7 @@ impl Default for ContentHasher {
 
 #[cfg(test)]
 mod tests {
-    use super::ContentHasher;
-    use crate::ContentHash;
+    use super::{ContentHash, ContentHasher};
 
     #[test]
     fn same_fields_hash_equal() {
