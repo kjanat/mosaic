@@ -205,7 +205,8 @@ example.
   - [x] `mos-core` `Suggestion` payload (source span + replacement) with `Diagnostic` storage,
         builder, and accessor
   - [x] Emit structured suggestions from duplicate-label diagnostics (#52)
-  - [ ] Render suggestions in CLI and LSP output
+  - [x] Render suggestions in CLI diagnostics (#109)
+  - [ ] Render suggestions in LSP output/code actions (#113)
 - [ ] Add layout warnings.
 - [ ] Add float placement diagnostics.
 - [ ] Add performance diagnostics.

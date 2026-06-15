@@ -21,7 +21,7 @@ use std::process::{Command as ProcessCommand, ExitCode};
 use clap::{Parser, Subcommand};
 use mos_core::{
     Diagnostic, DiagnosticAnnotation, DiagnosticResult, DiagnosticSink, Severity, SourceSpan,
-    linecol,
+    Suggestion, linecol,
 };
 
 /// Cap on resolve↔layout rounds for page references before the engine gives up
@@ -540,6 +540,49 @@ fn render_diagnostic(diag: &Diagnostic, src: &str) {
             DiagnosticAnnotation::Hint(message) => eprintln!("  hint: {message}"),
         }
     }
+    for suggestion in diag.suggestions() {
+        render_suggestion(src, suggestion);
+    }
+}
+
+fn render_suggestion(src: &str, suggestion: &Suggestion) {
+    eprintln!("  help: {}", suggestion_help(src, suggestion));
+}
+
+fn suggestion_help(src: &str, suggestion: &Suggestion) -> String {
+    let (line, col) = linecol(src, suggestion.span.start);
+    let file = suggestion.span.file.display();
+    // The deletion arm carries an empty replacement, so the replacement text
+    // is formatted only in the arms that actually print it.
+    match suggestion_text(src, &suggestion.span) {
+        Some("") => {
+            let replacement = display_edit_text(&suggestion.replacement);
+            format!("insert `{replacement}` at {file}:{line}:{col}")
+        }
+        Some(text) if suggestion.replacement.is_empty() => {
+            let text = display_edit_text(text);
+            format!("delete `{text}` at {file}:{line}:{col}")
+        }
+        Some(text) => {
+            let text = display_edit_text(text);
+            let replacement = display_edit_text(&suggestion.replacement);
+            format!("replace `{text}` with `{replacement}` at {file}:{line}:{col}")
+        }
+        None => {
+            let replacement = display_edit_text(&suggestion.replacement);
+            format!("replace text with `{replacement}` at {file}:{line}:{col}")
+        }
+    }
+}
+
+fn suggestion_text<'a>(src: &'a str, span: &SourceSpan) -> Option<&'a str> {
+    let start = clamp_to_char_boundary(src, span.start.min(src.len()));
+    let end = clamp_to_char_boundary(src, span.end.min(src.len()));
+    src.get(start..end)
+}
+
+fn display_edit_text(text: &str) -> String {
+    text.escape_debug().to_string()
 }
 
 fn clamp_to_char_boundary(src: &str, mut offset: usize) -> usize {
@@ -584,7 +627,11 @@ fn render_span_caret(src: &str, span: &SourceSpan) {
 
 #[cfg(test)]
 mod tests {
-    use super::PdfOpen;
+    use std::path::PathBuf;
+
+    use mos_core::{SourceSpan, Suggestion};
+
+    use super::{PdfOpen, suggestion_help};
 
     #[test]
     fn pdf_open_from_cli_distinguishes_absent_default_and_program() {
@@ -601,5 +648,40 @@ mod tests {
             PdfOpen::from_cli(&program),
             PdfOpen::Program("zathura")
         ));
+    }
+
+    #[test]
+    fn suggestion_help_formats_replace_delete_insert_and_stale_spans() {
+        let file = PathBuf::from("main.mos");
+        let src = "see @bad\n";
+
+        assert_eq!(
+            suggestion_help(
+                src,
+                &Suggestion::new(SourceSpan::new(file.clone(), 4, 8), "@good")
+            ),
+            "replace `@bad` with `@good` at main.mos:1:5"
+        );
+        assert_eq!(
+            suggestion_help(
+                src,
+                &Suggestion::new(SourceSpan::new(file.clone(), 4, 8), "")
+            ),
+            "delete `@bad` at main.mos:1:5"
+        );
+        assert_eq!(
+            suggestion_help(
+                src,
+                &Suggestion::new(SourceSpan::new(file.clone(), src.len(), src.len()), "!")
+            ),
+            "insert `!` at main.mos:2:1"
+        );
+        assert_eq!(
+            suggestion_help(
+                src,
+                &Suggestion::new(SourceSpan::new(file, src.len() + 10, src.len() + 20), "!")
+            ),
+            "insert `!` at main.mos:2:1"
+        );
     }
 }
