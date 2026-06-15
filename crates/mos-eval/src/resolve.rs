@@ -255,7 +255,10 @@ fn number_figures(document: &mut Document) {
                     .insert("number".to_owned(), AttrValue::Str(number.clone()));
             }
             if let Some((text_id, caption_source)) = caption {
-                let labelled = format!("{supplement}\u{00A0}{number}: {caption_source}");
+                let labelled = format!(
+                    "{}: {caption_source}",
+                    figure_label_prefix(&supplement, &number)
+                );
                 if let Some(node) = document.get_mut(text_id) {
                     // Stash the pre-label caption so later passes re-derive
                     // the label from the original instead of the stamped text.
@@ -364,13 +367,29 @@ fn figure_is_numbered(node: &mos_core::Node) -> bool {
     )
 }
 
-/// The supplement word for a figure's caption and its references — the
-/// custom `#figure(supplement: "Plate")` value when set and non-empty,
-/// otherwise the localized [`figure_supplement`] default (`"Figure"`).
+/// The supplement word for a figure's caption and its references. An
+/// explicit `#figure(supplement: …)` value wins — **including the empty
+/// string** (`supplement: ""` / `supplement: none`), which means "number
+/// only, no word" (the "no visible prefix" form). Only an *absent*
+/// supplement falls back to the localized [`figure_supplement`] default
+/// (`"Figure"`).
 fn figure_supplement_attr(node: &mos_core::Node) -> String {
     match node.attributes.get("supplement") {
-        Some(AttrValue::Str(s)) if !s.is_empty() => s.clone(),
+        Some(AttrValue::Str(s)) => s.clone(),
         _ => figure_supplement().to_owned(),
+    }
+}
+
+/// Join a figure's supplement word and number into the cohesive label
+/// token used in both captions and references — `"Figure\u{00A0}1"`,
+/// non-breaking so the word never wraps off its number. An empty
+/// supplement renders the number alone (`"1"`), with no word and no
+/// leading space.
+fn figure_label_prefix(supplement: &str, number: &str) -> String {
+    if supplement.is_empty() {
+        number.to_owned()
+    } else {
+        format!("{supplement}\u{00A0}{number}")
     }
 }
 
@@ -519,7 +538,7 @@ fn render_target(target: &LabelTarget, label: &str) -> String {
     match &target.kind {
         LabelTargetKind::Section { number } if !number.is_empty() => number.clone(),
         LabelTargetKind::Figure { number, supplement } if !number.is_empty() => {
-            format!("{supplement}\u{00A0}{number}")
+            figure_label_prefix(supplement, number)
         }
         // A numbered target carrying an empty number is a resolver/lowerer
         // bug; fall back to the label name so the output stays readable.
@@ -1330,6 +1349,52 @@ mod tests {
             doc.get(ref_id).and_then(|r| r.attributes.get("text")),
             Some(&AttrValue::Str("Plate\u{00A0}1".to_owned())),
             "a reference renders the custom supplement, not `Figure`"
+        );
+    }
+
+    #[test]
+    fn empty_supplement_renders_number_only() {
+        // `#figure(supplement: "")` / `supplement: none` keeps the figure
+        // numbered but drops the supplement word: the caption and any
+        // reference show the number alone — the "no visible prefix" form
+        // (issue #76). Distinct from `numbered: false`, which drops the
+        // number entirely.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let (figure, caption_text) = make_captioned_figure(&mut doc, Some("fig:plain"), "A chart.");
+        if let Some(node) = doc.get_mut(figure) {
+            node.attributes
+                .insert("supplement".to_owned(), AttrValue::Str(String::new()));
+        }
+        let ref_id = doc.alloc_child(
+            doc.root,
+            mos_core::Node {
+                id: mos_core::NodeId::default(),
+                kind: NodeKind::Reference,
+                span: SourceSpan::placeholder(doc.file.clone()),
+                content_hash: mos_core::ContentHash::default(),
+                style_id: mos_core::StyleId::default(),
+                children: Vec::new(),
+                attributes: {
+                    let mut a = mos_core::AttrMap::new();
+                    a.insert("label".to_owned(), AttrValue::Str("fig:plain".to_owned()));
+                    a.insert("text".to_owned(), AttrValue::Str("?fig:plain?".to_owned()));
+                    a
+                },
+            },
+        );
+
+        let diags = resolve(&mut doc);
+        assert!(diags.is_empty(), "{diags:?}");
+
+        assert_eq!(
+            read_str_attr(&doc, caption_text, "text"),
+            Some("1: A chart.".to_owned()),
+            "an empty supplement renders the number with no word and no leading space"
+        );
+        assert_eq!(
+            doc.get(ref_id).and_then(|r| r.attributes.get("text")),
+            Some(&AttrValue::Str("1".to_owned())),
+            "a reference to a number-only figure renders just the number"
         );
     }
 

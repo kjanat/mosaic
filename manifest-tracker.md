@@ -254,6 +254,8 @@ example.
 - [x] Add figure numbering.
 - [x] Add figure references with figure-aware labels.
 - [x] Stamp numbered figure captions (`Figure N: …`).
+- [x] Add per-figure numbering controls: `numbered: false` (skip, no counter advance) and
+      `supplement: "Plate"` / `""` / `none` (custom or no supplement word).
 - [ ] Style figure caption labels distinctly (currently baked into caption text).
 - [ ] Localize the figure supplement and caption separator to the document language.
 - [ ] Add anchored float placement.

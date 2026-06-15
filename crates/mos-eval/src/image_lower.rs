@@ -131,11 +131,14 @@ pub(super) fn lower_figure_directive(
                 },
                 // `supplement: "Plate"` replaces the "Figure" supplement
                 // word in both the caption and references to this figure.
+                // `supplement: ""` or `supplement: none` drops the word
+                // entirely, rendering the number alone ("no visible prefix").
                 "supplement" => match value {
                     SetValue::Str(s) => supplement = Some(s.clone()),
+                    SetValue::Ident(word) if word == "none" => supplement = Some(String::new()),
                     _ => diagnostics.push(
                         Diagnostic::simple(&codes::MOS0020, None,
-                            "`#figure(supplement: ...)` expects a string",
+                            "`#figure(supplement: ...)` expects a string or `none`",
                         )
                         .with_span(value_span.clone()),
                     ),

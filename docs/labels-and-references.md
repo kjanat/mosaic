@@ -69,7 +69,10 @@ By default every `#figure` is auto-numbered `Figure 1`, `Figure 2`, … in docum
   numbered figures around it stay contiguous (`1`, `2`, `3`, …). A reference to a skipped figure has
   no number to show and renders as its bare label, like an `#image` reference.
 - `supplement: "Plate"` replaces the `Figure` supplement word in both the caption (`Plate 1: …`) and
-  references (`Plate 1`). It does not change numbering — the figure still counts.
+  references (`Plate 1`). It does not change numbering — the figure still counts. `supplement: ""`
+  (or `supplement: none`) drops the word entirely: the figure stays numbered but its caption and
+  references show the number alone (`1: …`, and `1`) — the "no visible prefix" form, distinct from
+  `numbered: false`, which drops the number itself.
 
 ```mos
 #figure(image: "logo.png", numbered: false)

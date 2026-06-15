@@ -14,9 +14,10 @@ All notable changes to this project will be documented here. The format is based
   (the documented counter rule) it does **not** advance the counter, so surrounding numbered figures
   stay contiguous; a reference to a skipped figure renders its bare label. `supplement: "Plate"`
   swaps the `Figure` supplement word in both the caption (`Plate 1: …`) and references (`Plate 1`)
-  while still numbering. Numbering stays deterministic from document order — `numbered:` is a
-  boolean, not an explicit count. Default `#figure` behavior is unchanged, and `#image` remains the
-  way to place an inherently unnumbered graphic. See
+  while still numbering; `supplement: ""` (or `supplement: none`) drops the word entirely, rendering
+  the number alone (`1: …`, `1`) for a "no visible prefix" caption. Numbering stays deterministic
+  from document order — `numbered:` is a boolean, not an explicit count. Default `#figure` behavior
+  is unchanged, and `#image` remains the way to place an inherently unnumbered graphic. See
   [`docs/labels-and-references.md`](docs/labels-and-references.md).
 
 - LSP go-to-definition (https://github.com/kjanat/mosaic/issues/71): [`mos-lsp`][mos-lsp] now
