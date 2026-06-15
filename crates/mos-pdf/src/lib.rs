@@ -115,12 +115,15 @@ pub fn emit(graph: &PageGraph, metadata: &PdfMetadata, out: &Path) -> Result<Vec
         std::fs::create_dir_all(parent).map_err(|err| {
             io_diagnostic(format!(
                 "could not create output directory `{}`: {err}",
-                parent.display()
+                mos_core::display_path(parent)
             ))
         })?;
     }
     std::fs::write(out, bytes).map_err(|err| {
-        io_diagnostic(format!("could not write PDF to `{}`: {err}", out.display()))
+        io_diagnostic(format!(
+            "could not write PDF to `{}`: {err}",
+            mos_core::display_path(out)
+        ))
     })?;
     Ok(diagnostics)
 }

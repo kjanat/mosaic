@@ -144,9 +144,13 @@ fn bytes_to_path(bytes: Vec<u8>) -> PathBuf {
 
 #[cfg(not(unix))]
 fn bytes_to_path(bytes: Vec<u8>) -> PathBuf {
-    // Non-unix targets only round-trip UTF-8 paths cleanly. Lossy
-    // decode keeps things deterministic for stray bytes.
-    let path = String::from_utf8_lossy(&bytes);
+    // Non-unix targets only round-trip UTF-8 paths cleanly. Consume the
+    // bytes as UTF-8, falling back to a lossy decode for stray bytes so the
+    // result stays deterministic.
+    let path = match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(err) => String::from_utf8_lossy(err.as_bytes()).into_owned(),
+    };
     PathBuf::from(windows_local_drive_path(&path).into_owned())
 }
 

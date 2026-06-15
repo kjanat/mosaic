@@ -21,7 +21,7 @@ use std::process::{Command as ProcessCommand, ExitCode};
 use clap::{Parser, Subcommand};
 use mos_core::{
     Diagnostic, DiagnosticAnnotation, DiagnosticResult, DiagnosticSink, Severity, SourceSpan,
-    Suggestion, linecol,
+    Suggestion, display_path, linecol,
 };
 
 /// Cap on resolve↔layout rounds for page references before the engine gives up
@@ -378,7 +378,7 @@ fn resolve_entry(command: &str, entry: &Path) -> Result<ResolvedEntry, ()> {
             }
         };
         return Ok(ResolvedEntry {
-            source: entry.join(manifest.project.entry),
+            source: mos_core::resolve_relative(entry, &manifest.project.entry),
             output_base: entry.to_path_buf(),
             output: match manifest.output.pdf.as_deref() {
                 Some(path) => Some(resolve_manifest_output(command, entry, path)?),
@@ -409,7 +409,7 @@ fn resolve_manifest_output(command: &str, project_dir: &Path, output: &str) -> R
         );
         return Err(());
     }
-    Ok(project_dir.join(output_path))
+    Ok(mos_core::resolve_relative(project_dir, output))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -458,17 +458,6 @@ fn open_pdf(path: &Path, request: PdfOpen<'_>) -> Result<(), String> {
             }
         }
     }
-}
-
-/// Render a path for user-facing output with forward slashes on every
-/// platform. On Windows, `PathBuf::join` mixes `/` (from shell-glob inputs
-/// like `examples/*`) with `\`, producing paths such as
-/// `examples/code\code.pdf`; normalizing the separator keeps CLI output
-/// consistent and matches the forward-slash paths the CLI tests assert. On
-/// Unix `MAIN_SEPARATOR` is already `/`, so this is a no-op.
-fn display_path(path: &Path) -> String {
-    path.to_string_lossy()
-        .replace(std::path::MAIN_SEPARATOR, "/")
 }
 
 /// A [`DiagnosticSink`] that renders each diagnostic to stderr as it

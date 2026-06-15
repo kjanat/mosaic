@@ -45,7 +45,7 @@ pub(super) fn lower_bibliography_directive(
     let Some(path) = bibliography_path(args, span, diagnostics) else {
         return;
     };
-    let resolved = resolve_path(&path, source_file);
+    let resolved = mos_core::resolve_source_path(&path, source_file);
     // The directive only *declares* the source in this slice, so a missing
     // file is a non-fatal warning rather than the hard error `#image(...)`
     // raises: the node is still emitted with its resolved path, and the
@@ -58,7 +58,7 @@ pub(super) fn lower_bibliography_directive(
                 None,
                 format!(
                     "declared bibliography source `{}` was not found",
-                    resolved.display()
+                    mos_core::display_path(&resolved)
                 ),
             )
             .with_span(span.clone()),
@@ -199,23 +199,6 @@ fn bibliography_path(
     Some(path)
 }
 
-/// Resolve `src_path` (as written in the source) relative to the `.mos`
-/// file currently being lowered. Mirrors the resolver in [`crate::image`];
-/// absolute paths pass through untouched, and a parentless source file
-/// (e.g. a bare `main.mos`) leaves the path relative to the cwd.
-fn resolve_path(src_path: &str, source_file: &Path) -> PathBuf {
-    let candidate = PathBuf::from(src_path);
-    if candidate.is_absolute() {
-        return candidate;
-    }
-    if let Some(parent) = source_file.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        return parent.join(candidate);
-    }
-    candidate
-}
-
 /// Load every declared bibliography source, mark citation nodes whose keys
 /// exist in any parsed record set, and rewrite their visible text to a
 /// numeric label assigned by first-use order. Unknown citation keys emit
@@ -316,7 +299,7 @@ fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> 
                     Some(node.span.clone()),
                     format!(
                         "declared bibliography source `{}` could not be read: {err}",
-                        path_buf.display()
+                        mos_core::display_path(&path_buf)
                     ),
                 ));
                 continue;
@@ -332,14 +315,14 @@ fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> 
                                 Some(node.span.clone()),
                                 format!(
                                     "duplicate citation key `{key}` in bibliography source `{}`",
-                                    path_buf.display()
+                                    mos_core::display_path(&path_buf)
                                 ),
                             )
                             .with_annotation(mos_core::DiagnosticAnnotation::Related {
                                 span: first_span.clone(),
                                 message: format!(
                                     "first bibliography source for `{key}` was `{}`",
-                                    first_path.display()
+                                    mos_core::display_path(first_path)
                                 ),
                             })
                             .with_annotation(mos_core::DiagnosticAnnotation::Hint(

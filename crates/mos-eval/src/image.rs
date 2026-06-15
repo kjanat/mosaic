@@ -43,13 +43,16 @@ pub(crate) fn load(
     source_file: &Path,
     call_span: &SourceSpan,
 ) -> Result<(PathBuf, DecodedImage), Box<Diagnostic>> {
-    let resolved = resolve_path(src_path, source_file);
+    let resolved = mos_core::resolve_source_path(src_path, source_file);
     let bytes = std::fs::read(&resolved).map_err(|err| {
         Box::new(
             Diagnostic::simple(
                 &codes::MOS0012,
                 None,
-                format!("cannot read image `{}`: {err}", resolved.display()),
+                format!(
+                    "cannot read image `{}`: {err}",
+                    mos_core::display_path(&resolved)
+                ),
             )
             .with_span(call_span.clone()),
         )
@@ -59,7 +62,10 @@ pub(crate) fn load(
             Diagnostic::simple(
                 &codes::MOS0029,
                 None,
-                format!("cannot decode `{}`: {err}", resolved.display()),
+                format!(
+                    "cannot decode `{}`: {err}",
+                    mos_core::display_path(&resolved)
+                ),
             )
             .with_span(call_span.clone())
             .with_annotation(DiagnosticAnnotation::Note(
@@ -68,19 +74,6 @@ pub(crate) fn load(
         )
     })?;
     Ok((resolved, decoded))
-}
-
-fn resolve_path(src_path: &str, source_file: &Path) -> PathBuf {
-    let candidate = PathBuf::from(src_path);
-    if candidate.is_absolute() {
-        return candidate;
-    }
-    if let Some(parent) = source_file.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        return parent.join(candidate);
-    }
-    candidate
 }
 
 #[allow(
@@ -203,14 +196,14 @@ mod tests {
     #[test]
     fn resolve_relative_path_uses_source_parent() {
         let src = Path::new("/tmp/proj/main.mos");
-        let resolved = resolve_path("img/scan.png", src);
+        let resolved = mos_core::resolve_source_path("img/scan.png", src);
         assert_eq!(resolved, PathBuf::from("/tmp/proj/img/scan.png"));
     }
 
     #[test]
     fn resolve_absolute_path_passes_through() {
         let src = Path::new("/tmp/proj/main.mos");
-        let resolved = resolve_path("/abs/path.png", src);
+        let resolved = mos_core::resolve_source_path("/abs/path.png", src);
         assert_eq!(resolved, PathBuf::from("/abs/path.png"));
     }
 }

@@ -13,12 +13,17 @@
 //!    `/ToUnicode`).
 
 use std::error::Error;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use lopdf::{Document, Object};
 use mos_layout::{Base14Font, Font, Page, PageGraph, TextRun};
 use mos_pdf::PdfMetadata;
 
 type TestResult = Result<(), Box<dyn Error>>;
+
+/// Monotonic counter giving each [`render`] call a unique temp-file name.
+/// See the note in `render` for why a clock-based name is not enough.
+static RENDER_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Tiny `assert!`-shaped helper that returns `Err` instead of
 /// panicking, so the surrounding `-> TestResult` test bodies stay
@@ -53,11 +58,15 @@ fn render(face: Base14Font, text: &str) -> Result<Document, Box<dyn Error>> {
         }],
         images: Vec::new(),
     };
+    // Unique per call. `SystemTime::now()` is too coarse on some platforms
+    // (notably Windows, ~15 ms granularity) to disambiguate tests that render
+    // concurrently, so two threads could collide on one temp path and clobber
+    // each other's PDF mid-write — an intermittent failure. A process id plus a
+    // monotonic counter is collision-free without depending on clock resolution.
     let tmp = std::env::temp_dir().join(format!(
-        "mos-pdf-rt-{}.pdf",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos())
+        "mos-pdf-rt-{}-{}.pdf",
+        std::process::id(),
+        RENDER_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
     let diags =
         mos_pdf::emit(&graph, &PdfMetadata::default(), &tmp).map_err(|e| format!("emit: {e:?}"))?;
