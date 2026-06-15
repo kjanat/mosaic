@@ -11,10 +11,14 @@ const STATUS_OPTIONS = ['Backlog', 'Ready', 'In progress', 'In review', 'Done'] 
 const STATUS_FILTER_OPTIONS = ['all', ...STATUS_OPTIONS] as const;
 const STATUS_OPTIONAL_OPTIONS = ['none', ...STATUS_OPTIONS] as const;
 const PRIORITY_OPTIONS = ['P0', 'P1', 'P2'] as const;
+const PRIORITY_OPTIONAL_OPTIONS = ['none', ...PRIORITY_OPTIONS] as const;
 const SIZE_OPTIONS = ['XS', 'S', 'M', 'L', 'XL'] as const;
+const SIZE_OPTIONAL_OPTIONS = ['none', ...SIZE_OPTIONS] as const;
 const TYPE_OPTIONS = ['Plan', 'Idea', 'Task', 'Bug', 'Maintenance'] as const;
+const TYPE_OPTIONAL_OPTIONS = ['none', ...TYPE_OPTIONS] as const;
 const FIELD_TYPE_OPTIONS = ['TEXT', 'NUMBER', 'DATE', 'SINGLE_SELECT', 'ITERATION'] as const;
 const PHASE_OPTIONS = ['MVP 0', 'MVP 1', 'MVP 2', 'MVP 3', 'MVP 4', 'MVP 5', 'MVP 6', 'Later'] as const;
+const PHASE_OPTIONAL_OPTIONS = ['none', ...PHASE_OPTIONS] as const;
 const SPRINT_FILTER_OPTIONS = [
 	'Sprint 1',
 	'Sprint 2',
@@ -37,7 +41,7 @@ const SPRINT_OPTIONAL_OPTIONS = [
 ] as const;
 const SPRINT_SET_OPTIONS = [...SPRINT_OPTIONAL_OPTIONS, 'clear', 'unscheduled'] as const;
 const SINGLE_SELECT_FIELD_OPTIONS = ['Status', 'Priority', 'Area', 'Phase', 'Type', 'Size'] as const;
-const AREA_OPTIONS = [
+const AREA_FIELD_OPTIONS = [
 	'Bibliography',
 	'CI/Release',
 	'CLI',
@@ -61,7 +65,9 @@ const AREA_OPTIONS = [
 	'Testing',
 	'Tree-sitter',
 	'Zed',
-].join(', ');
+] as const;
+const AREA_OPTIONAL_OPTIONS = ['none', ...AREA_FIELD_OPTIONS] as const;
+const AREA_OPTIONS = AREA_FIELD_OPTIONS.join(', ');
 const PROJECT_FIELD_CHOICES = [
 	'Area',
 	'Estimate',
@@ -125,6 +131,14 @@ type ProjectField = {
 type ProjectOption = {
 	id: string;
 	name: string;
+};
+
+type CreatedIssueSummary = {
+	id: string;
+	number: number;
+	title: string;
+	url: string;
+	labels: ReadonlyArray<string>;
 };
 
 type IterationField = {
@@ -207,6 +221,10 @@ function readFile(path: string): string {
 
 function repositoryOwnerDefault(): string {
 	return repositoryFromGitConfig().owner;
+}
+
+function repositoryNameDefault(): string {
+	return repositoryFromGitConfig().repository;
 }
 
 function parseGitDir(text: string): string | null {
@@ -1129,6 +1147,102 @@ async function addIssueItem(projectIdValue: string, issueId: string): Promise<st
 	return id;
 }
 
+async function repositoryNodeId(repositoryDefaults: RepositoryDefaults): Promise<string> {
+	const query = `query($owner: String!, $name: String!) {
+    repository(owner: $owner, name: $name) { id }
+  }`;
+	const data = await githubGraphql(query, {
+		owner: repositoryDefaults.owner,
+		name: repositoryDefaults.repository,
+	});
+	const repository = recordValue(data, 'repository');
+	const id = repository === null ? null : stringField(repository, 'id');
+	if (id === null) {
+		throw new Error(`Repository ${repositoryDefaults.owner}/${repositoryDefaults.repository} did not return an id`);
+	}
+	return id;
+}
+
+async function labelNodeId(repositoryDefaults: RepositoryDefaults, label: string): Promise<string> {
+	const query = `query($owner: String!, $name: String!, $label: String!) {
+    repository(owner: $owner, name: $name) { label(name: $label) { id } }
+  }`;
+	const data = await githubGraphql(query, {
+		owner: repositoryDefaults.owner,
+		name: repositoryDefaults.repository,
+		label,
+	});
+	const repository = recordValue(data, 'repository');
+	const labelNode = repository === null ? null : recordValue(repository, 'label');
+	const id = labelNode === null ? null : stringField(labelNode, 'id');
+	if (id === null) {
+		throw new Error(`Label ${label} not found in ${repositoryDefaults.owner}/${repositoryDefaults.repository}`);
+	}
+	return id;
+}
+
+async function labelNodeIds(
+	repositoryDefaults: RepositoryDefaults,
+	labels: ReadonlyArray<string>,
+): Promise<ReadonlyArray<string>> {
+	return Promise.all(labels.map((label) => labelNodeId(repositoryDefaults, label)));
+}
+
+function issueLabelNames(issue: JsonRecord): ReadonlyArray<string> {
+	const labels = recordValue(issue, 'labels');
+	const nodes = labels === null ? [] : arrayField(labels, 'nodes').filter(isRecord);
+	return nodes.flatMap((node) => {
+		const name = stringField(node, 'name');
+		return name === null ? [] : [name];
+	});
+}
+
+async function createRepositoryIssue(
+	repositoryDefaults: RepositoryDefaults,
+	title: string,
+	body: string,
+	labels: ReadonlyArray<string>,
+): Promise<CreatedIssueSummary> {
+	const normalizedTitle = title.trim();
+	if (normalizedTitle === '') {
+		throw new Error('Issue title must be non-empty');
+	}
+	const [repositoryId, labelIds] = await Promise.all([
+		repositoryNodeId(repositoryDefaults),
+		labelNodeIds(repositoryDefaults, labels),
+	]);
+	const mutation = `mutation($repository: ID!, $title: String!, $body: String!, $labelIds: [ID!]) {
+    createIssue(input: { repositoryId: $repository, title: $title, body: $body, labelIds: $labelIds }) {
+      issue {
+        id
+        number
+        title
+        url
+        labels(first: 30) { nodes { name } }
+      }
+    }
+  }`;
+	const data = await githubGraphql(mutation, {
+		repository: repositoryId,
+		title: normalizedTitle,
+		body,
+		labelIds,
+	});
+	const payload = recordValue(data, 'createIssue');
+	const issue = payload === null ? null : recordValue(payload, 'issue');
+	if (issue === null) {
+		throw new Error('createIssue did not return an issue');
+	}
+	const id = stringField(issue, 'id');
+	const number = numberField(issue, 'number');
+	const createdTitle = stringField(issue, 'title');
+	const url = stringField(issue, 'url');
+	if (id === null || number === null || createdTitle === null || url === null) {
+		throw new Error('createIssue did not return issue id, number, title, and url');
+	}
+	return { id, number, title: createdTitle, url, labels: issueLabelNames(issue) };
+}
+
 function parseNumber(value: string): number {
 	const parsed = Number.parseFloat(value);
 	if (!Number.isFinite(parsed)) {
@@ -1432,6 +1546,89 @@ export const add_issue = tool({
 			return success({ project, repository, issue: args.issue, itemId, updates });
 		} catch (error) {
 			return failure('github_project_add_issue', error);
+		}
+	},
+});
+
+export const create_issue = tool({
+	description: 'Create a Mosaic GitHub issue, add it to Project 5, and set planning fields in one call.',
+	args: {
+		title: tool.schema.string().describe('Issue title.'),
+		body: tool.schema.string().default('').describe('Issue body in Markdown.'),
+		labels: tool.schema.string().default('').describe('Comma-separated repository label names to apply.'),
+		status: tool.schema.enum(STATUS_OPTIONAL_OPTIONS).default('none').describe('Optional project Status to set.'),
+		sprint: tool.schema.enum(SPRINT_OPTIONAL_OPTIONS).default('none').describe(
+			'Optional project Sprint title/id, current, or next.',
+		),
+		priority: tool.schema.enum(PRIORITY_OPTIONAL_OPTIONS).default('none').describe('Optional project Priority.'),
+		size: tool.schema.enum(SIZE_OPTIONAL_OPTIONS).default('none').describe('Optional project Size.'),
+		estimate: tool.schema.number().default(0).describe('Optional project Estimate, measured in hours. 0 means unset.'),
+		phase: tool.schema.enum(PHASE_OPTIONAL_OPTIONS).default('none').describe('Optional project Phase.'),
+		area: tool.schema.enum(AREA_OPTIONAL_OPTIONS).default('none').describe('Optional project Area.'),
+		type: tool.schema.enum(TYPE_OPTIONAL_OPTIONS).default('none').describe('Optional project Type.'),
+		claudeCode: tool.schema.string().default('').describe('Optional `claude-code` project field value.'),
+		repository: tool.schema.string().default(repositoryNameDefault()).describe('Repository name to create issue in.'),
+		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
+		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
+	},
+	async execute(args) {
+		try {
+			const project = defaults(args.owner, args.projectNumber);
+			const repository = repositoryDefaults(undefined, args.repository);
+			const issue = await createRepositoryIssue(repository, args.title, args.body, parseCsv(args.labels));
+			const projectIdValue = await projectId(project);
+			const itemId = await addIssueItem(projectIdValue, issue.id);
+			const fieldUpdates: Array<ProjectFieldUpdate> = [];
+
+			if (args.status !== 'none') {
+				fieldUpdates.push({ field: 'Status', value: args.status });
+			}
+			if (args.sprint !== 'none') {
+				fieldUpdates.push({ field: 'Sprint', value: args.sprint });
+			}
+			if (args.priority !== 'none') {
+				fieldUpdates.push({ field: 'Priority', value: args.priority });
+			}
+			if (args.size !== 'none') {
+				fieldUpdates.push({ field: 'Size', value: args.size });
+			}
+			if (args.estimate > 0) {
+				fieldUpdates.push({ field: 'Estimate', value: args.estimate.toString() });
+			}
+			if (args.phase !== 'none') {
+				fieldUpdates.push({ field: 'Phase', value: args.phase });
+			}
+			if (args.area !== 'none') {
+				fieldUpdates.push({ field: 'Area', value: args.area });
+			}
+			if (args.type !== 'none') {
+				fieldUpdates.push({ field: 'Type', value: args.type });
+			}
+			if (args.claudeCode.trim() !== '') {
+				fieldUpdates.push({ field: 'claude-code', value: args.claudeCode });
+			}
+
+			const target = { itemId, issue: 0, pr: 0 };
+			let item: unknown;
+			let appliedUpdates: ReadonlyArray<JsonRecord> = [];
+			if (fieldUpdates.length === 0) {
+				item = await projectItemByTarget(project, target);
+			} else {
+				const fieldResult = await setProjectFieldsForTarget(project, target, fieldUpdates);
+				item = fieldResult.item;
+				appliedUpdates = arrayField(fieldResult, 'updates').filter(isRecord);
+			}
+
+			return success({
+				project,
+				repository,
+				issue,
+				itemId,
+				item,
+				updates: [{ field: 'item', value: itemId }, ...appliedUpdates],
+			});
+		} catch (error) {
+			return failure('github_project_create_issue', error);
 		}
 	},
 });

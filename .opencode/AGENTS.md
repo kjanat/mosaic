@@ -6,13 +6,13 @@
 
 ## WHERE TO LOOK
 
-| Task          | Location                  | Notes                                  |
-| ------------- | ------------------------- | -------------------------------------- |
-| Root tooling  | `../package.json`         | Bun workspace, dprint, tombi, runner.  |
-| Package deps  | `package.json`            | Uses root catalog deps.                |
-| TS config     | `tsconfig.json`           | Strict, no emit.                       |
-| Project tools | `tools/github_project.ts` | GitHub Project 5 field/status helpers. |
-| PR tools      | `tools/github_pr.ts`      | PR classify/view/triage helpers.       |
+| Task          | Location                  | Notes                                                  |
+| ------------- | ------------------------- | ------------------------------------------------------ |
+| Root tooling  | `../package.json`         | Bun workspace, dprint, tombi, runner.                  |
+| Package deps  | `package.json`            | Uses root catalog deps.                                |
+| TS config     | `tsconfig.json`           | Strict, no emit.                                       |
+| Project tools | `tools/github_project.ts` | GitHub Project 5 issue creation, field/status helpers. |
+| PR tools      | `tools/github_pr.ts`      | PR classify/view/triage helpers.                       |
 
 ## TOOLING RULES
 
@@ -24,6 +24,8 @@
 - Defaults target Mosaic: owner `kjanat`, repo `mosaic`, Project 5.
 - Project fields/statuses/areas/phases are encoded in tool option lists;\
   keep them aligned with GitHub Project 5.
+- Use `github_project_create_issue` for managed planning work: it creates the issue, adds it to
+  Project 5, and sets status/sprint/priority/area/phase/type/size/estimate in one tool call.
 
 ## MUTATION CAUTION
 
