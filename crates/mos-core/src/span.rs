@@ -17,13 +17,21 @@ use std::path::PathBuf;
 ///
 /// let span = SourceSpan::new(PathBuf::from("main.mos"), 2, 8);
 ///
-/// assert_eq!(span.start, 2);
+/// assert_eq!(span.start(), 2);
 /// ```
+///
+/// `start` and `end` are private so the `start <= end` invariant cannot be
+/// violated after construction; read them through [`SourceSpan::start`],
+/// [`SourceSpan::end`], or [`SourceSpan::range`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceSpan {
+    /// The source file this range points into.
     pub file: PathBuf,
-    pub start: usize,
-    pub end: usize,
+    /// Byte offset of the first covered byte (inclusive).
+    start: usize,
+    /// Byte offset one past the last covered byte (exclusive); always
+    /// `>= start`.
+    end: usize,
 }
 
 impl SourceSpan {
@@ -38,11 +46,80 @@ impl SourceSpan {
     ///
     /// let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 9);
     ///
-    /// assert_eq!(span.end, 9);
+    /// assert_eq!(span.end(), 9);
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds if `start > end`; a backwards span is a
+    /// programmer error, never user input.
     #[must_use]
     pub fn new(file: PathBuf, start: usize, end: usize) -> Self {
+        debug_assert!(
+            start <= end,
+            "SourceSpan start ({start}) must not exceed end ({end})"
+        );
         Self { file, start, end }
+    }
+
+    /// Byte offset of the first covered byte (inclusive).
+    #[must_use]
+    pub const fn start(&self) -> usize {
+        self.start
+    }
+
+    /// Byte offset one past the last covered byte (exclusive); always
+    /// `>= start`.
+    #[must_use]
+    pub const fn end(&self) -> usize {
+        self.end
+    }
+
+    /// The covered byte range, ready to slice the source text it points into.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::SourceSpan;
+    ///
+    /// let src = "let x = 1;";
+    /// let span = SourceSpan::new(PathBuf::from("main.mos"), 4, 5);
+    ///
+    /// assert_eq!(&src[span.range()], "x");
+    /// ```
+    #[must_use]
+    pub fn range(&self) -> std::ops::Range<usize> {
+        self.start..self.end
+    }
+
+    /// Move the start of the span to `start`, preserving `start <= end`.
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds if `start` would exceed the current `end`.
+    pub fn set_start(&mut self, start: usize) {
+        debug_assert!(
+            start <= self.end,
+            "SourceSpan start ({start}) must not exceed end ({})",
+            self.end
+        );
+        self.start = start;
+    }
+
+    /// Move the end of the span to `end`, preserving `start <= end`.
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds if `end` would fall below the current `start`.
+    pub fn set_end(&mut self, end: usize) {
+        debug_assert!(
+            self.start <= end,
+            "SourceSpan end ({end}) must not fall below start ({})",
+            self.start
+        );
+        self.end = end;
     }
 
     /// A zero-length placeholder span anchored at the start of `file`.
@@ -56,7 +133,7 @@ impl SourceSpan {
     ///
     /// let span = SourceSpan::placeholder(PathBuf::from("main.mos"));
     ///
-    /// assert_eq!((span.start, span.end), (0, 0));
+    /// assert_eq!((span.start(), span.end()), (0, 0));
     /// ```
     #[must_use]
     pub fn placeholder(file: PathBuf) -> Self {

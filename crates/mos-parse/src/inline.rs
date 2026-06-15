@@ -501,9 +501,9 @@ fn delimiter_closes(delimiter: Delimiter, run_len: usize) -> bool {
 
 fn widen_span_to_delimiters(inlines: &mut [Inline], start: usize, end: usize) {
     if let Some(first) = inlines.first_mut() {
-        first.span.start = start;
+        first.span.set_start(start);
     }
     if let Some(last) = inlines.last_mut() {
-        last.span.end = end;
+        last.span.set_end(end);
     }
 }

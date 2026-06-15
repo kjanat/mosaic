@@ -46,7 +46,7 @@ fn insert_label_attributes(attributes: &mut AttrMap, label: &str, label_span: Op
     let Some(span) = label_span else {
         return;
     };
-    let (Ok(start), Ok(end)) = (i64::try_from(span.start), i64::try_from(span.end)) else {
+    let (Ok(start), Ok(end)) = (i64::try_from(span.start()), i64::try_from(span.end())) else {
         // AttrValue::Int is i64 while SourceSpan offsets are usize. If a future
         // source can exceed that range, omit the fix-it span instead of storing
         // a lossy edit location; the resolver will skip the unsafe suggestion.
@@ -1138,7 +1138,7 @@ mod tests {
             citation.attributes.get("text"),
             Some(&AttrValue::Str("[?smith2024?]".to_owned())),
         );
-        let span_text = &src[citation.span.start..citation.span.end];
+        let span_text = &src[citation.span.start()..citation.span.end()];
         assert_eq!(span_text, "[@smith2024]");
     }
 
@@ -1427,7 +1427,7 @@ mod tests {
         );
         assert_eq!(suggestions[0].replacement, "[@smith2024]");
         assert_eq!(
-            &source_text[suggestions[0].span.start..suggestions[0].span.end],
+            &source_text[suggestions[0].span.start()..suggestions[0].span.end()],
             "@smith2024",
             "the fix replaces the whole `@key` token, sigil included"
         );
@@ -1538,7 +1538,7 @@ mod tests {
         assert_eq!(
             diagnostic
                 .span()
-                .map(|span| &source_text[span.start..span.end]),
+                .map(|span| &source_text[span.start()..span.end()]),
             Some("[@missing]"),
             "MOS0045 should point at the citation token"
         );
@@ -1572,7 +1572,7 @@ mod tests {
             .diagnostics
             .iter()
             .filter(|d| d.def().code() == codes::MOS0045.code())
-            .filter_map(|d| d.span().map(|span| &source_text[span.start..span.end]))
+            .filter_map(|d| d.span().map(|span| &source_text[span.start()..span.end()]))
             .collect();
         assert_eq!(
             spans,
@@ -1654,7 +1654,7 @@ mod tests {
         assert_eq!(
             diagnostic
                 .span()
-                .map(|span| &source_text[span.start..span.end]),
+                .map(|span| &source_text[span.start()..span.end()]),
             Some("#bibliography(\"second.bib\")"),
             "duplicate should point at the later bibliography source"
         );
@@ -1762,7 +1762,7 @@ mod tests {
         assert_eq!(
             duplicate
                 .span()
-                .map(|span| &source_text[span.start..span.end]),
+                .map(|span| &source_text[span.start()..span.end()]),
             Some("\"second.bib\""),
             "duplicate path diagnostic should point at the later path value"
         );

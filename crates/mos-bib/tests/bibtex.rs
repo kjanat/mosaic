@@ -270,7 +270,7 @@ fn error_bridges_to_a_core_diagnostic() {
     let diagnostic = err.to_diagnostic("refs.bib");
     assert_eq!(diagnostic.def().code().to_string(), "MOS0043");
     let span = diagnostic.span().expect("diagnostic should carry a span");
-    assert_eq!(span.start, err.offset());
+    assert_eq!(span.start(), err.offset());
 }
 
 #[test]

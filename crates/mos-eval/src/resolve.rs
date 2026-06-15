@@ -704,9 +704,9 @@ mod tests {
 
     fn apply_suggestion(src: &str, suggestion: &Suggestion) -> String {
         let mut out = String::new();
-        out.push_str(&src[..suggestion.span.start]);
+        out.push_str(&src[..suggestion.span.start()]);
         out.push_str(&suggestion.replacement);
-        out.push_str(&src[suggestion.span.end..]);
+        out.push_str(&src[suggestion.span.end()..]);
         out
     }
 
@@ -775,7 +775,7 @@ mod tests {
         // and carry a Related annotation back to the first declaration.
         // Editor UIs rely on both spans to render the redeclaration jump.
         assert_eq!(
-            d.span().map(|span| &src[span.start..span.end]),
+            d.span().map(|span| &src[span.start()..span.end()]),
             Some("= B <dup>"),
             "MOS0030 span should cover the second heading exactly"
         );
@@ -791,7 +791,7 @@ mod tests {
         assert!(related.is_some(), "MOS0030 carries a Related annotation");
         if let Some((note_span, note_message)) = related {
             assert_eq!(
-                &src[note_span.start..note_span.end],
+                &src[note_span.start()..note_span.end()],
                 "= A <dup>",
                 "MOS0030 note should point at the original declaration exactly"
             );
@@ -813,7 +813,7 @@ mod tests {
         );
         if let Some(suggestion) = suggestions.first() {
             assert_eq!(
-                &src[suggestion.span.start..suggestion.span.end],
+                &src[suggestion.span.start()..suggestion.span.end()],
                 "dup",
                 "suggestion span should cover only the duplicate label token"
             );
@@ -853,7 +853,7 @@ mod tests {
         );
         let spans: Vec<&str> = mos0030
             .iter()
-            .filter_map(|d| d.span().map(|s| &src[s.start..s.end]))
+            .filter_map(|d| d.span().map(|s| &src[s.start()..s.end()]))
             .collect();
         assert_eq!(
             spans.len(),
@@ -877,7 +877,7 @@ mod tests {
             assert!(related.is_some(), "MOS0030 carries a Related annotation");
             if let Some((ns, _)) = related {
                 assert_eq!(
-                    &src[ns.start..ns.end],
+                    &src[ns.start()..ns.end()],
                     "= A <dup>",
                     "every redeclaration must link back to the first decl"
                 );
@@ -893,7 +893,7 @@ mod tests {
                 "each MOS0030 carries exactly one rename suggestion, got {suggestions:?}"
             );
             if let Some(suggestion) = suggestions.first() {
-                assert_eq!(&src[suggestion.span.start..suggestion.span.end], "dup");
+                assert_eq!(&src[suggestion.span.start()..suggestion.span.end()], "dup");
             }
         }
         let replacements: Vec<&str> = mos0030
@@ -936,7 +936,7 @@ mod tests {
                 "rename must skip the existing `dup-2` and land on the next free suffix"
             );
             assert_eq!(
-                &src[suggestion.span.start..suggestion.span.end],
+                &src[suggestion.span.start()..suggestion.span.end()],
                 "dup",
                 "suggestion targets the duplicate label token"
             );
@@ -1577,7 +1577,7 @@ mod tests {
             d.message()
         );
         assert_eq!(
-            d.span().map(|span| &src[span.start..span.end]),
+            d.span().map(|span| &src[span.start()..span.end()]),
             Some("@intrdo"),
             "MOS0033 span should still cover the bad reference exactly"
         );
@@ -1590,7 +1590,7 @@ mod tests {
         );
         if let Some(suggestion) = suggestions.first() {
             assert_eq!(
-                &src[suggestion.span.start..suggestion.span.end],
+                &src[suggestion.span.start()..suggestion.span.end()],
                 "@intrdo",
                 "suggestion should replace the whole `@` reference token"
             );

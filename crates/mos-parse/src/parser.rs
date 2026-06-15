@@ -546,7 +546,7 @@ mod tests {
         let src = "= Title\n";
         let r = parse_str(src);
         let (_, _, span) = r.tree.items[0].as_heading().unwrap();
-        assert_eq!(&src[span.start..span.end], "= Title");
+        assert_eq!(&src[span.start()..span.end()], "= Title");
     }
 
     #[test]
@@ -594,7 +594,7 @@ mod tests {
             .iter()
             .find(|i| i.kind == InlineKind::Emphasis)
             .expect("emphasis inline");
-        assert_eq!(&src[emph.span.start..emph.span.end], "*x*");
+        assert_eq!(&src[emph.span.start()..emph.span.end()], "*x*");
         assert_eq!(emph.text, "x");
     }
 
@@ -607,7 +607,7 @@ mod tests {
         let (_, inlines, _) = item.as_heading().unwrap();
         assert_eq!(item.label(), Some("sec:methods"));
         assert_eq!(
-            item.label_span().map(|span| &src[span.start..span.end]),
+            item.label_span().map(|span| &src[span.start()..span.end()]),
             Some("sec:methods")
         );
         assert_eq!(inlines.len(), 1);
@@ -656,7 +656,7 @@ mod tests {
         let (inlines, _) = item.as_paragraph().unwrap();
         assert_eq!(item.label(), Some("intro"));
         assert_eq!(
-            item.label_span().map(|span| &src[span.start..span.end]),
+            item.label_span().map(|span| &src[span.start()..span.end()]),
             Some("intro")
         );
         assert_eq!(inlines[0].text, "body text");
@@ -716,14 +716,14 @@ mod tests {
             .find(|i| i.kind == InlineKind::Reference)
             .unwrap();
         let ref_span = reference.label_span.as_ref().expect("reference label span");
-        assert_eq!(&src[ref_span.start..ref_span.end], "sec:methods");
+        assert_eq!(&src[ref_span.start()..ref_span.end()], "sec:methods");
 
         let page = inlines
             .iter()
             .find(|i| i.kind == InlineKind::PageReference)
             .unwrap();
         let page_span = page.label_span.as_ref().expect("page reference label span");
-        assert_eq!(&src[page_span.start..page_span.end], "fig:wells");
+        assert_eq!(&src[page_span.start()..page_span.end()], "fig:wells");
 
         // Non-reference inlines carry no label span.
         assert!(
@@ -818,7 +818,7 @@ mod tests {
         // CR — only the *payload* is normalized.
         let text = inlines.iter().find(|i| i.kind == InlineKind::Text).unwrap();
         assert_eq!(text.text, "alpha\nbeta");
-        assert_eq!(&src[text.span.start..text.span.end], "alpha\r\nbeta");
+        assert_eq!(&src[text.span.start()..text.span.end()], "alpha\r\nbeta");
     }
 
     #[test]
@@ -1004,7 +1004,7 @@ mod tests {
             assert_eq!(raw.text, "fn main() {}");
             assert_eq!(raw.label, Some("ex:code"));
             assert_eq!(
-                raw.label_span.map(|span| &src[span.start..span.end]),
+                raw.label_span.map(|span| &src[span.start()..span.end()]),
                 Some("ex:code")
             );
         }
@@ -1252,7 +1252,7 @@ mod tests {
         let r = parse_str(src);
         let (_, items, _) = r.tree.items[0].as_list().unwrap();
         let span = &items[0].span;
-        assert_eq!(&src[span.start..span.end], "- hello");
+        assert_eq!(&src[span.start()..span.end()], "- hello");
     }
 
     #[test]
@@ -1261,7 +1261,7 @@ mod tests {
         let r = parse_str(src);
         let (_, _, span) = r.tree.items[0].as_list().unwrap();
         // Outer list's span should reach to the end of the nested item.
-        assert!(span.end > src.find('b').unwrap());
+        assert!(span.end() > src.find('b').unwrap());
     }
 
     // ---------- line-break controls (issue #26) ----------
@@ -1416,7 +1416,7 @@ mod tests {
         // not just the trailing `b`. Newline is not part of the
         // paragraph inline run.
         assert_eq!(
-            inlines[0].span.end - inlines[0].span.start,
+            inlines[0].span.end() - inlines[0].span.start(),
             4,
             "expected span over `a\\-b` (4 bytes), got {:?}",
             inlines[0].span
@@ -1479,7 +1479,7 @@ mod tests {
         assert_eq!(citation.text, "smith2024");
         // Span covers `[@smith2024]` — the full source extent, not
         // just the key.
-        let span_text = &src[citation.span.start..citation.span.end];
+        let span_text = &src[citation.span.start()..citation.span.end()];
         assert_eq!(span_text, "[@smith2024]");
     }
 

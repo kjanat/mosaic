@@ -70,7 +70,7 @@ fn reference_label_at(document: &Document, file: &Path, offset: usize) -> Option
         .nodes()
         .filter(|node| matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
         .filter(|node| node.span.file == file && span_contains(&node.span, offset))
-        .min_by_key(|node| node.span.end.saturating_sub(node.span.start))
+        .min_by_key(|node| node.span.end().saturating_sub(node.span.start()))
         .and_then(|node| match node.attributes.get("label") {
             Some(AttrValue::Str(label)) => Some(label.clone()),
             _ => None,
@@ -123,7 +123,7 @@ fn label_token_span(node: &mos_core::Node) -> Option<SourceSpan> {
 /// token, matching how editors place the caret inside the identifier
 /// when invoking go-to-definition.
 const fn span_contains(span: &SourceSpan, offset: usize) -> bool {
-    span.start <= offset && offset < span.end
+    span.start() <= offset && offset < span.end()
 }
 
 /// Convert an LSP [`LspPosition`] (zero-based line, UTF-16 `character`)

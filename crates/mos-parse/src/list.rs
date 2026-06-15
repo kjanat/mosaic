@@ -67,7 +67,7 @@ impl Parser<'_> {
             while i < raw.len() && raw[i].indent > base_indent {
                 let (nested, new_i) = self.build_list_at(raw, i);
                 if let Item::List { span, .. } = &nested {
-                    last_end = last_end.max(span.end);
+                    last_end = last_end.max(span.end());
                 }
                 item.children.push(nested);
                 i = new_i;

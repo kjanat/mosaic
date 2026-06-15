@@ -248,7 +248,7 @@ mod tests {
         let diagnostic = err.to_diagnostic("style.csl");
         assert_eq!(diagnostic.def().code().to_string(), "MOS0044");
         let span = diagnostic.span().expect("diagnostic should carry a span");
-        assert_eq!(span.start, err.offset());
+        assert_eq!(span.start(), err.offset());
     }
 
     #[test]

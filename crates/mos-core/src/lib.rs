@@ -10,7 +10,8 @@
 //!
 //! - `document` — the lowered semantic node graph ([`Document`], [`Node`])
 //! - `span` — source byte-ranges ([`SourceSpan`]) and [`linecol`]
-//! - `diagnostics` — [`Diagnostic`], [`Severity`], [`Suggestion`]
+//! - `diagnostics` — [`Diagnostic`], [`DiagnosticAnnotation`], [`Severity`],
+//!   [`Suggestion`]
 //! - [`codes`] — the `MOS####` diagnostic-code registry
 //! - `sink` — diagnostic emission plumbing ([`DiagnosticSink`])
 //! - `error` — the crate-level [`CoreError`] and `Result` alias

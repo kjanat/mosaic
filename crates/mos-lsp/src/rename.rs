@@ -89,7 +89,7 @@ fn label_under_cursor(document: &Document, file: &Path, offset: usize) -> Option
         .filter(|node| matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
         .filter_map(|node| label_token_span(node).map(|span| (node, span)))
         .filter(|(_, span)| span.file == file && span_contains(span, offset))
-        .min_by_key(|(_, span)| span.end.saturating_sub(span.start))
+        .min_by_key(|(_, span)| span.end().saturating_sub(span.start()))
         .and_then(|(node, _)| str_attr(node, "label"));
     if on_reference.is_some() {
         return on_reference;
@@ -147,7 +147,7 @@ fn label_token_span(node: &mos_core::Node) -> Option<SourceSpan> {
 /// Whether `span` covers `offset`, end-exclusive — a cursor resting just past
 /// the final byte is treated as outside, matching [`crate::definition`].
 const fn span_contains(span: &SourceSpan, offset: usize) -> bool {
-    span.start <= offset && offset < span.end
+    span.start() <= offset && offset < span.end()
 }
 
 fn str_attr(node: &mos_core::Node, key: &str) -> Option<String> {

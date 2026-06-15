@@ -115,7 +115,7 @@ impl Suggestion {
     /// let span = SourceSpan::new(PathBuf::from("main.mos"), 0, 3);
     /// let fix = Suggestion::new(span, "set".to_owned());
     ///
-    /// assert_eq!(fix.span.start, 0);
+    /// assert_eq!(fix.span.start(), 0);
     /// ```
     #[must_use]
     pub fn new(span: SourceSpan, replacement: impl Into<String>) -> Self {
@@ -406,13 +406,13 @@ mod tests {
         assert_eq!(suggestions.len(), 2);
 
         assert_eq!(suggestions[0].span.file, PathBuf::from("main.mos"));
-        assert_eq!(suggestions[0].span.start, 4);
-        assert_eq!(suggestions[0].span.end, 10);
+        assert_eq!(suggestions[0].span.start(), 4);
+        assert_eq!(suggestions[0].span.end(), 10);
         assert_eq!(suggestions[0].replacement, "@intro");
 
         assert_eq!(suggestions[1].span.file, PathBuf::from("other.mos"));
-        assert_eq!(suggestions[1].span.start, 12);
-        assert_eq!(suggestions[1].span.end, 15);
+        assert_eq!(suggestions[1].span.start(), 12);
+        assert_eq!(suggestions[1].span.end(), 15);
         assert_eq!(suggestions[1].replacement, "@summary");
     }
 
@@ -446,14 +446,14 @@ mod tests {
         let deletion = Suggestion::new(span, "");
         assert!(deletion.replacement.is_empty());
         // A deletion still covers a real, non-empty range.
-        assert!(deletion.span.start < deletion.span.end);
+        assert!(deletion.span.start() < deletion.span.end());
     }
 
     #[test]
     fn suggestion_zero_length_span_encodes_insertion() {
         let point = SourceSpan::new(PathBuf::from("main.mos"), 7, 7);
         let insertion = Suggestion::new(point, "@intro");
-        assert_eq!(insertion.span.start, insertion.span.end);
+        assert_eq!(insertion.span.start(), insertion.span.end());
         assert_eq!(insertion.replacement, "@intro");
     }
 

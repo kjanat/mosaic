@@ -74,8 +74,8 @@ pub fn byte_to_position(src: &str, byte_offset: usize) -> LspPosition {
 #[must_use]
 pub fn span_to_range(src: &str, span: &SourceSpan) -> LspRange {
     LspRange {
-        start: byte_to_position(src, span.start),
-        end: byte_to_position(src, span.end),
+        start: byte_to_position(src, span.start()),
+        end: byte_to_position(src, span.end()),
     }
 }
 
@@ -145,13 +145,11 @@ fn bytes_to_path(bytes: Vec<u8>) -> PathBuf {
 #[cfg(not(unix))]
 fn bytes_to_path(bytes: Vec<u8>) -> PathBuf {
     // Non-unix targets only round-trip UTF-8 paths cleanly. Consume the
-    // bytes as UTF-8, falling back to a lossy decode for stray bytes so the
-    // result stays deterministic.
-    let path = match String::from_utf8(bytes) {
-        Ok(text) => text,
-        Err(err) => String::from_utf8_lossy(err.as_bytes()).into_owned(),
-    };
-    PathBuf::from(windows_local_drive_path(&path).into_owned())
+    // owned bytes (the unix arm takes ownership too, so this signature is
+    // by-value) and fall back to a lossy decode for stray bytes.
+    let text = String::from_utf8(bytes)
+        .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into_owned());
+    PathBuf::from(windows_local_drive_path(&text).into_owned())
 }
 
 #[cfg(any(not(unix), test))]

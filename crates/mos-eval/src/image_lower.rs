@@ -394,11 +394,11 @@ fn build_image_attributes(
 }
 
 fn string_content_span(value_span: &SourceSpan) -> SourceSpan {
-    if value_span.end > value_span.start.saturating_add(1) {
+    if value_span.end() > value_span.start().saturating_add(1) {
         SourceSpan::new(
             value_span.file.clone(),
-            value_span.start + 1,
-            value_span.end - 1,
+            value_span.start() + 1,
+            value_span.end() - 1,
         )
     } else {
         value_span.clone()

@@ -516,7 +516,7 @@ fn render_diagnostic(diag: &Diagnostic, src: &str) {
     let label = severity_label(diag.severity());
     let code = diag.def().code();
     if let Some(span) = diag.span() {
-        let (line, col) = linecol(src, span.start);
+        let (line, col) = linecol(src, span.start());
         eprintln!(
             "{label}[{code}]: {msg}\n  --> {file}:{line}:{col}",
             msg = diag.message(),
@@ -529,7 +529,7 @@ fn render_diagnostic(diag: &Diagnostic, src: &str) {
     for annotation in diag.annotations() {
         match annotation {
             DiagnosticAnnotation::Related { span, message } => {
-                let (line, col) = linecol(src, span.start);
+                let (line, col) = linecol(src, span.start());
                 eprintln!(
                     "  note: {message} ({file}:{line}:{col})",
                     file = display_path(&span.file),
@@ -550,7 +550,7 @@ fn render_suggestion(src: &str, suggestion: &Suggestion) {
 }
 
 fn suggestion_help(src: &str, suggestion: &Suggestion) -> String {
-    let (line, col) = linecol(src, suggestion.span.start);
+    let (line, col) = linecol(src, suggestion.span.start());
     let file = display_path(&suggestion.span.file);
     // The deletion arm carries an empty replacement, so the replacement text
     // is formatted only in the arms that actually print it.
@@ -576,8 +576,8 @@ fn suggestion_help(src: &str, suggestion: &Suggestion) -> String {
 }
 
 fn suggestion_text<'a>(src: &'a str, span: &SourceSpan) -> Option<&'a str> {
-    let start = clamp_to_char_boundary(src, span.start.min(src.len()));
-    let end = clamp_to_char_boundary(src, span.end.min(src.len()));
+    let start = clamp_to_char_boundary(src, span.start().min(src.len()));
+    let end = clamp_to_char_boundary(src, span.end().min(src.len()));
     src.get(start..end)
 }
 
@@ -594,8 +594,8 @@ fn clamp_to_char_boundary(src: &str, mut offset: usize) -> usize {
 }
 
 fn render_span_caret(src: &str, span: &SourceSpan) {
-    let (line_no, col) = linecol(src, span.start);
-    let span_start = clamp_to_char_boundary(src, span.start);
+    let (line_no, col) = linecol(src, span.start());
+    let span_start = clamp_to_char_boundary(src, span.start());
     let line_start = src[..span_start].rfind('\n').map_or(0, |p| p + 1);
     let raw_line_end = src[line_start..]
         .find('\n')
@@ -613,7 +613,7 @@ fn render_span_caret(src: &str, span: &SourceSpan) {
     // sequences (e.g. `µ`, `é`) line up with the source above. Clamp
     // both ends to char boundaries first; otherwise a span that
     // straddles a multibyte sequence would panic the slice below.
-    let span_byte_end = clamp_to_char_boundary(src, span.end.min(line_end));
+    let span_byte_end = clamp_to_char_boundary(src, span.end().min(line_end));
     let span_byte_start = clamp_to_char_boundary(src, span_start.min(span_byte_end));
     let caret_chars = src[span_byte_start..span_byte_end].chars().count().max(1);
     eprintln!("   |");
