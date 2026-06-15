@@ -189,7 +189,7 @@ fn run_check(entry: &Path) -> ExitCode {
     let src = match std::fs::read_to_string(&entry) {
         Ok(s) => s,
         Err(err) => {
-            eprintln!("mos check: cannot read `{}`: {err}", entry.display());
+            eprintln!("mos check: cannot read `{}`: {err}", display_path(&entry));
             return ExitCode::FAILURE;
         }
     };
@@ -239,7 +239,7 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
     let src = match std::fs::read_to_string(&entry) {
         Ok(s) => s,
         Err(err) => {
-            eprintln!("mos build: cannot read `{}`: {err}", entry.display());
+            eprintln!("mos build: cannot read `{}`: {err}", display_path(&entry));
             return ExitCode::FAILURE;
         }
     };
@@ -334,12 +334,12 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
 
     println!(
         "wrote {} in {} ms",
-        out.display(),
+        display_path(&out),
         started.elapsed().as_millis()
     );
     if open.should_open() {
         match open_pdf(&out, open) {
-            Ok(()) => println!("opened {}", out.display()),
+            Ok(()) => println!("opened {}", display_path(&out)),
             Err(err) => {
                 eprintln!("mos build: {err}");
                 return ExitCode::FAILURE;
@@ -438,14 +438,14 @@ fn open_pdf(path: &Path, request: PdfOpen<'_>) -> Result<(), String> {
     match request {
         PdfOpen::No => Ok(()),
         PdfOpen::Default => opener::open(path.as_os_str())
-            .map_err(|err| format!("could not open `{}`: {err}", path.display())),
+            .map_err(|err| format!("could not open `{}`: {err}", display_path(path))),
         PdfOpen::Program(program) => {
             let mut command = ProcessCommand::new(program);
             command.arg(path);
             let status = command.status().map_err(|err| {
                 format!(
                     "could not open `{}` with `{program}`: {err}",
-                    path.display()
+                    display_path(path)
                 )
             })?;
             if status.success() {
@@ -453,11 +453,22 @@ fn open_pdf(path: &Path, request: PdfOpen<'_>) -> Result<(), String> {
             } else {
                 Err(format!(
                     "opener `{program}` failed for `{}` with {status}",
-                    path.display()
+                    display_path(path)
                 ))
             }
         }
     }
+}
+
+/// Render a path for user-facing output with forward slashes on every
+/// platform. On Windows, `PathBuf::join` mixes `/` (from shell-glob inputs
+/// like `examples/*`) with `\`, producing paths such as
+/// `examples/code\code.pdf`; normalizing the separator keeps CLI output
+/// consistent and matches the forward-slash paths the CLI tests assert. On
+/// Unix `MAIN_SEPARATOR` is already `/`, so this is a no-op.
+fn display_path(path: &Path) -> String {
+    path.to_string_lossy()
+        .replace(std::path::MAIN_SEPARATOR, "/")
 }
 
 /// A [`DiagnosticSink`] that renders each diagnostic to stderr as it
@@ -520,7 +531,7 @@ fn render_diagnostic(diag: &Diagnostic, src: &str) {
         eprintln!(
             "{label}[{code}]: {msg}\n  --> {file}:{line}:{col}",
             msg = diag.message(),
-            file = span.file.display(),
+            file = display_path(&span.file),
         );
         render_span_caret(src, span);
     } else {
@@ -532,7 +543,7 @@ fn render_diagnostic(diag: &Diagnostic, src: &str) {
                 let (line, col) = linecol(src, span.start);
                 eprintln!(
                     "  note: {message} ({file}:{line}:{col})",
-                    file = span.file.display(),
+                    file = display_path(&span.file),
                 );
             }
             DiagnosticAnnotation::Note(message) => eprintln!("  note: {message}"),
@@ -551,7 +562,7 @@ fn render_suggestion(src: &str, suggestion: &Suggestion) {
 
 fn suggestion_help(src: &str, suggestion: &Suggestion) -> String {
     let (line, col) = linecol(src, suggestion.span.start);
-    let file = suggestion.span.file.display();
+    let file = display_path(&suggestion.span.file);
     // The deletion arm carries an empty replacement, so the replacement text
     // is formatted only in the arms that actually print it.
     match suggestion_text(src, &suggestion.span) {
