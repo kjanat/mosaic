@@ -150,12 +150,28 @@ fn bytes_to_path(bytes: Vec<u8>) -> PathBuf {
 }
 
 /// Lower `src` against `file` and project the resulting compiler
-/// diagnostics into the LSP shape, filtering to diagnostics that
-/// belong to `file`. Diagnostics without a span are anchored at the
-/// start of the document so they remain visible in the editor.
+/// diagnostics into the LSP shape. The un-cached entry point for callers
+/// (and tests) holding only a source string; the server publishes through
+/// the shared lowering cache via `diagnostics_from_result` so an edit
+/// lowers a document once for both diagnostics and go-to-definition.
 #[must_use]
 pub fn diagnostics_for_document(file: &Path, src: &str) -> Vec<LspDiagnostic> {
-    let lowered = mos_eval::lower(src, file);
+    diagnostics_from_result(file, src, &mos_eval::lower(src, file))
+}
+
+/// Project an already-lowered document's compiler diagnostics into the LSP
+/// shape, filtering to diagnostics that belong to `file`. Diagnostics
+/// without a span are anchored at the start of the document so they remain
+/// visible in the editor.
+///
+/// This is the cached path: the server reuses one [`mos_eval::LowerResult`]
+/// per edit (see [`crate::cache::LoweringCache`]) across diagnostics and
+/// definition rather than lowering the same source twice.
+pub(crate) fn diagnostics_from_result(
+    file: &Path,
+    src: &str,
+    lowered: &mos_eval::LowerResult,
+) -> Vec<LspDiagnostic> {
     lowered
         .diagnostics
         .iter()

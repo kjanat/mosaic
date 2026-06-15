@@ -50,6 +50,14 @@ impl LoweringCache {
     pub(crate) fn invalidate(&mut self, uri: &str) {
         self.entries.remove(uri);
     }
+
+    /// Whether a lowering is currently cached for `uri`. Test-only: used to
+    /// assert that publishing diagnostics leaves the lowering available for a
+    /// later definition request (issue #106) rather than re-lowering.
+    #[cfg(test)]
+    pub(crate) fn is_cached(&self, uri: &str) -> bool {
+        self.entries.contains_key(uri)
+    }
 }
 
 #[cfg(test)]
