@@ -40,22 +40,23 @@ codes use the next free integer.
 
 ### Syntax
 
-| Code    | Slug                       | Default severity | Owner crate | Summary                                                          |
-| ------- | -------------------------- | ---------------- | ----------- | ---------------------------------------------------------------- |
-| MOS0010 | set-missing-identifier     | Error            | mos-parse   | syntax: #set not followed by an identifier                       |
-| MOS0013 | directive-missing-paren    | Error            | mos-parse   | syntax: directive missing opening parenthesis                    |
-| MOS0016 | directive-unterminated     | Error            | mos-parse   | syntax: unterminated directive block                             |
-| MOS0019 | directive-trailing-content | Error            | mos-parse   | syntax: unexpected trailing content after directive              |
-| MOS0022 | directive-malformed-arg    | Error            | mos-parse   | syntax: malformed directive argument value                       |
-| MOS0025 | arglist-shape              | Error            | mos-parse   | syntax: malformed argument list                                  |
-| MOS0028 | unterminated-strong        | Warning          | mos-parse   | syntax: unterminated **strong** run; treated as text             |
-| MOS0031 | unterminated-emphasis      | Warning          | mos-parse   | syntax: unterminated *emphasis* run; treated as text             |
-| MOS0034 | unterminated-code          | Warning          | mos-parse   | syntax: unterminated `code` run; treated as text                 |
-| MOS0036 | stray-at-sign              | Warning          | mos-parse   | syntax: stray @ not followed by a label; treated as text         |
-| MOS0038 | lone-trailing-backslash    | Warning          | mos-parse   | syntax: lone trailing backslash at end of input; treated as text |
-| MOS0039 | malformed-citation         | Warning          | mos-parse   | syntax: malformed citation group; treated as text                |
-| MOS0043 | bibtex-parse-failed        | Error            | mos-bib     | syntax: BibTeX database could not be parsed                      |
-| MOS0044 | csl-parse-failed           | Error            | mos-csl     | syntax: CSL style could not be parsed                            |
+| Code    | Slug                       | Default severity | Owner crate | Summary                                                                    |
+| ------- | -------------------------- | ---------------- | ----------- | -------------------------------------------------------------------------- |
+| MOS0010 | set-missing-identifier     | Error            | mos-parse   | syntax: #set not followed by an identifier                                 |
+| MOS0013 | directive-missing-paren    | Error            | mos-parse   | syntax: directive missing opening parenthesis                              |
+| MOS0016 | directive-unterminated     | Error            | mos-parse   | syntax: unterminated directive block                                       |
+| MOS0019 | directive-trailing-content | Error            | mos-parse   | syntax: unexpected trailing content after directive                        |
+| MOS0022 | directive-malformed-arg    | Error            | mos-parse   | syntax: malformed directive argument value                                 |
+| MOS0025 | arglist-shape              | Error            | mos-parse   | syntax: malformed argument list                                            |
+| MOS0028 | unterminated-strong        | Warning          | mos-parse   | syntax: unterminated **strong** run; treated as text                       |
+| MOS0031 | unterminated-emphasis      | Warning          | mos-parse   | syntax: unterminated *emphasis* run; treated as text                       |
+| MOS0034 | unterminated-code          | Warning          | mos-parse   | syntax: unterminated `code` run; treated as text                           |
+| MOS0036 | stray-at-sign              | Warning          | mos-parse   | syntax: stray @ not followed by a label; treated as text                   |
+| MOS0038 | lone-trailing-backslash    | Warning          | mos-parse   | syntax: lone trailing backslash at end of input; treated as text           |
+| MOS0039 | malformed-citation         | Warning          | mos-parse   | syntax: malformed citation group; treated as text                          |
+| MOS0043 | bibtex-parse-failed        | Error            | mos-bib     | syntax: BibTeX database could not be parsed                                |
+| MOS0044 | csl-parse-failed           | Error            | mos-csl     | syntax: CSL style could not be parsed                                      |
+| MOS0048 | heading-label-not-trailing | Warning          | mos-parse   | syntax: heading label is not the last element on the line; treated as text |
 
 ### Semantic
 

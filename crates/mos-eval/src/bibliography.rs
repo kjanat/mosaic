@@ -18,7 +18,7 @@
 //! - `MOS0045`: a citation key does not exist in a complete parsed bibliography set.
 //! - `MOS0046`: a citation key appears in more than one declared bibliography source.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -227,7 +227,15 @@ fn resolve_path(src_path: &str, source_file: &Path) -> PathBuf {
 /// index real bibliography records. This is the numeric-placeholder slice
 /// (issue #67), not full CSL: no author-year styles, sorted output, or
 /// citation clusters.
-pub(super) fn resolve_citations(document: &mut Document, diagnostics: &mut Vec<Diagnostic>) {
+/// Resolve `[@key]` citations and return the set of keys declared by the
+/// loaded bibliography sources. The reference resolver consumes that set to
+/// tell an `@key` label reference that *misses* the label index but *matches*
+/// a bibliography key apart -- a near-certain "meant a citation" mistake --
+/// from a plain unknown label (see [`crate::resolve::resolve`]).
+pub(super) fn resolve_citations(
+    document: &mut Document,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> BTreeSet<String> {
     let bibliography = load_bibliography(document, diagnostics);
     let citation_ids: Vec<NodeId> = document
         .nodes()
@@ -273,6 +281,8 @@ pub(super) fn resolve_citations(document: &mut Document, diagnostics: &mut Vec<D
             )),
         );
     }
+
+    bibliography.records.entries.into_keys().collect()
 }
 
 struct LoadedBibliography {

@@ -223,3 +223,39 @@ pub(super) fn strip_trailing_label(
     }
     (text_end, Some(label))
 }
+
+/// Locate the first `<label>` token in `src[start..end]`, returning the parsed
+/// label and the byte offset just past its `>`. Unlike [`strip_trailing_label`]
+/// this finds a label *anywhere* in the range, so the heading parser can detect
+/// a label that is not the trailing element (e.g. `= Title <id> trailing`) and
+/// flag it (`MOS0048`) instead of silently swallowing it into the text.
+pub(super) fn locate_label(src: &str, start: usize, end: usize) -> Option<(ParsedLabel, usize)> {
+    let bytes = src.as_bytes();
+    let mut open = start;
+    while open < end {
+        if bytes[open] == b'<' {
+            let mut i = open + 1;
+            while i < end {
+                let b = bytes[i];
+                if b == b'>' {
+                    break;
+                }
+                if !(b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':' | b'.')) {
+                    break;
+                }
+                i += 1;
+            }
+            // A real label has at least one identifier byte and a closing `>`.
+            if i < end && bytes[i] == b'>' && i > open + 1 {
+                let label = ParsedLabel {
+                    text: src[open + 1..i].to_owned(),
+                    start: open + 1,
+                    end: i,
+                };
+                return Some((label, i + 1));
+            }
+        }
+        open += 1;
+    }
+    None
+}

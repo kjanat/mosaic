@@ -1,6 +1,8 @@
+use mos_core::{Suggestion, codes};
+
 use crate::Item;
 use crate::parser::Parser;
-use crate::support::{strip_leading_label, strip_trailing_label};
+use crate::support::{locate_label, strip_leading_label, strip_trailing_label};
 
 impl Parser<'_> {
     pub(crate) fn parse_heading(&mut self) {
@@ -20,6 +22,9 @@ impl Parser<'_> {
             i += 1;
         }
         let (text_end, parsed_label) = strip_trailing_label(self.src, i, content_end);
+        if parsed_label.is_none() {
+            self.flag_misplaced_heading_label(i, content_end);
+        }
         let label_span = parsed_label
             .as_ref()
             .map(|label| self.span(label.start, label.end));
@@ -35,6 +40,48 @@ impl Parser<'_> {
             span,
         });
         self.pos = line_end;
+    }
+
+    /// Emit `MOS0048` when a heading carries a `<label>` token that is not the
+    /// trailing element, so [`strip_trailing_label`] left it unrecognised and
+    /// it would otherwise be swallowed into the heading text. The attached
+    /// suggestion moves the label to the end of the line, where it registers as
+    /// a real declaration.
+    fn flag_misplaced_heading_label(&mut self, start: usize, content_end: usize) {
+        let Some((label, after)) = locate_label(self.src, start, content_end) else {
+            return;
+        };
+        // Only a label with real content after it is misplaced; trailing
+        // whitespace alone is harmless and not the author's mistake.
+        let trailing = self.src[after..content_end].trim();
+        if trailing.is_empty() {
+            return;
+        }
+        let before = self.src[start..label.start - 1].trim();
+        let mut fixed = String::new();
+        for part in [before, trailing] {
+            if part.is_empty() {
+                continue;
+            }
+            if !fixed.is_empty() {
+                fixed.push(' ');
+            }
+            fixed.push_str(part);
+        }
+        if !fixed.is_empty() {
+            fixed.push(' ');
+        }
+        fixed.push('<');
+        fixed.push_str(&label.text);
+        fixed.push('>');
+        let message = format!(
+            "heading label `<{}>` must be the last element on the line",
+            label.text
+        );
+        let diagnostic = self
+            .warn(&codes::MOS0048, &message, start, content_end)
+            .with_suggestion(Suggestion::new(self.span(start, content_end), fixed));
+        self.diagnostics.push(diagnostic);
     }
 
     pub(crate) fn parse_paragraph(&mut self) {

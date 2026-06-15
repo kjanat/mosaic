@@ -100,7 +100,7 @@ struct LabelTarget {
 /// Run the resolver pass over `document` in place. Returns any
 /// diagnostics produced; the document is modified regardless of whether
 /// errors are present so partial output is still renderable.
-pub fn resolve(document: &mut Document) -> Vec<Diagnostic> {
+pub fn resolve(document: &mut Document, bib_keys: &BTreeSet<String>) -> Vec<Diagnostic> {
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     number_sections(document);
     number_figures(document);
@@ -108,7 +108,7 @@ pub fn resolve(document: &mut Document) -> Vec<Diagnostic> {
     validate_page_references(document, &labels, &mut diagnostics);
 
     for _ in 0..MAX_FIXPOINT_ITERATIONS {
-        let changed = rewrite_references(document, &labels, &mut diagnostics);
+        let changed = rewrite_references(document, &labels, bib_keys, &mut diagnostics);
         if !changed {
             break;
         }
@@ -621,6 +621,7 @@ fn nearest_label(unknown: &str, labels: &BTreeMap<String, LabelTarget>) -> Optio
 fn rewrite_references(
     document: &mut Document,
     labels: &BTreeMap<String, LabelTarget>,
+    bib_keys: &BTreeSet<String>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> bool {
     let references: Vec<mos_core::NodeId> = document
@@ -650,11 +651,23 @@ fn rewrite_references(
                     format!("unknown label `{label}` in `@` reference"),
                 )
                 .with_span(node.span.clone());
-                // Offer the nearest existing label as a machine-applicable
-                // fix (`@intrdo` -> `@intro`) when a reasonable near-miss
-                // exists. `node.span` covers the whole `@label` token (sigil
-                // included), so the replacement carries its own `@`.
-                if let Some(candidate) = nearest_label(&label, labels) {
+                // An `@key` that misses every label but exactly matches a
+                // bibliography key is a citation written with the wrong
+                // syntax (`@key` instead of `[@key]`). That exact match is a
+                // stronger signal than any label near-miss, so it wins: offer
+                // the citation form and say why. `node.span` covers the whole
+                // `@label` token (sigil included), so the replacement supplies
+                // the full `[@key]`.
+                if bib_keys.contains(&label) {
+                    diagnostic = diagnostic
+                        .with_annotation(DiagnosticAnnotation::Hint(format!(
+                            "`{label}` is a bibliography key; cite it as `[@{label}]`"
+                        )))
+                        .with_suggestion(Suggestion::new(node.span.clone(), format!("[@{label}]")));
+                } else if let Some(candidate) = nearest_label(&label, labels) {
+                    // Offer the nearest existing label as a machine-applicable
+                    // fix (`@intrdo` -> `@intro`) when a reasonable near-miss
+                    // exists. The replacement carries its own `@`.
                     diagnostic = diagnostic.with_suggestion(Suggestion::new(
                         node.span.clone(),
                         format!("@{candidate}"),
@@ -1223,7 +1236,7 @@ mod tests {
             },
         );
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         // The figure carries its resolved document-order number.
@@ -1258,7 +1271,7 @@ mod tests {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         let (figure, caption_text) = make_captioned_figure(&mut doc, Some("fig:a"), "A plot.");
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(node_number(&doc, figure), "1");
@@ -1285,7 +1298,7 @@ mod tests {
         let (numbered, numbered_caption) =
             make_captioned_figure(&mut doc, Some("fig:num"), "A plot.");
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(
@@ -1337,7 +1350,7 @@ mod tests {
             },
         );
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(
@@ -1383,7 +1396,7 @@ mod tests {
             },
         );
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(
@@ -1426,7 +1439,7 @@ mod tests {
             },
         );
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(
@@ -1447,12 +1460,12 @@ mod tests {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         let (_figure, caption_text) = make_captioned_figure(&mut doc, Some("fig:a"), "A plot.");
 
-        let first = resolve(&mut doc);
+        let first = resolve(&mut doc, &BTreeSet::new());
         assert!(first.is_empty(), "{first:?}");
         let after_first = read_str_attr(&doc, caption_text, "text");
         assert_eq!(after_first, Some("Figure\u{00A0}1: A plot.".to_owned()));
 
-        let second = resolve(&mut doc);
+        let second = resolve(&mut doc, &BTreeSet::new());
         assert!(second.is_empty(), "{second:?}");
         assert_eq!(
             read_str_attr(&doc, caption_text, "text"),
@@ -1471,7 +1484,7 @@ mod tests {
         let middle = make_node(&mut doc, NodeKind::Figure, None, None);
         let last = make_node(&mut doc, NodeKind::Figure, Some("fig:c"), None);
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(node_number(&doc, first), "1");
@@ -1494,7 +1507,7 @@ mod tests {
         let sec_two = make_node(&mut doc, NodeKind::Section, Some("sec:b"), None);
         let fig_two = make_node(&mut doc, NodeKind::Figure, Some("fig:b"), None);
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(node_number(&doc, sec_one), "1");
@@ -1675,7 +1688,7 @@ mod tests {
 
         let mut diagnostics: Vec<Diagnostic> = Vec::new();
         let index = build_label_index(&doc, &mut diagnostics);
-        let changed = rewrite_references(&mut doc, &index, &mut diagnostics);
+        let changed = rewrite_references(&mut doc, &index, &BTreeSet::new(), &mut diagnostics);
         assert!(!changed, "an unknown reference rewrites no text");
 
         let mos0033: Vec<&Diagnostic> = diagnostics

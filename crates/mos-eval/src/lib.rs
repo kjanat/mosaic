@@ -456,8 +456,8 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
 pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
     let mut lowered = Evaluator::new().evaluate(tree);
     let mut diagnostics = std::mem::take(&mut lowered.diagnostics);
-    resolve_citations(&mut lowered.document, &mut diagnostics);
-    diagnostics.extend(resolve(&mut lowered.document));
+    let bib_keys = resolve_citations(&mut lowered.document, &mut diagnostics);
+    diagnostics.extend(resolve(&mut lowered.document, &bib_keys));
     LowerResult {
         document: lowered.document,
         diagnostics,
@@ -1395,6 +1395,41 @@ mod tests {
             reference.attributes.get("text"),
             Some(&AttrValue::Str("1".to_owned())),
             "label references still resolve while citations are checked"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn label_reference_matching_bib_key_suggests_citation() {
+        // `@smith2024` resolves to no label but exactly matches a bibliography
+        // key -- the user meant the citation `[@smith2024]`. MOS0033 carries a
+        // structured fix swapping `@smith2024` for `[@smith2024]`.
+        let dir = unique_temp_dir("ref-is-bibkey");
+        let bib = dir.join("refs.bib");
+        std::fs::write(&bib, "@article{smith2024, title={Known}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let source_text = "#bibliography(\"refs.bib\")\n\nsee @smith2024 here\n";
+        std::fs::write(&source, source_text).unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+
+        let diag = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0033.code())
+            .expect("MOS0033 for the @smith2024 reference");
+        let suggestions = diag.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "one citation fix, got {suggestions:?}"
+        );
+        assert_eq!(suggestions[0].replacement, "[@smith2024]");
+        assert_eq!(
+            &source_text[suggestions[0].span.start..suggestions[0].span.end],
+            "@smith2024",
+            "the fix replaces the whole `@key` token, sigil included"
         );
 
         std::fs::remove_dir_all(&dir).ok();

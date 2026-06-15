@@ -615,6 +615,39 @@ mod tests {
     }
 
     #[test]
+    fn heading_label_with_trailing_content_warns_and_suggests_reorder() {
+        // A `<label>` followed by content is not the trailing element, so it is
+        // not recognised as a declaration (MOS0048). The fix moves it to the end.
+        let src = "= Title <intro> [@k]\n";
+        let r = parse_str(src);
+        let diag = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0048.code())
+            .expect("MOS0048 for the misplaced heading label");
+        assert_eq!(diag.severity(), Severity::Warning);
+        // The label was not attached; it stays in the heading text.
+        assert_eq!(r.tree.items[0].label(), None);
+        let suggestions = diag.suggestions();
+        assert_eq!(suggestions.len(), 1, "one reorder fix, got {suggestions:?}");
+        assert_eq!(suggestions[0].replacement, "Title [@k] <intro>");
+    }
+
+    #[test]
+    fn trailing_heading_label_does_not_warn_misplaced() {
+        // A correctly trailing label attaches and never trips MOS0048.
+        let r = parse_str("= Title <intro>\n");
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0048.code()),
+            "{:?}",
+            r.diagnostics
+        );
+        assert_eq!(r.tree.items[0].label(), Some("intro"));
+    }
+
+    #[test]
     fn paragraph_with_leading_label_attaches() {
         let src = "<intro> body text\n";
         let r = parse_str(src);

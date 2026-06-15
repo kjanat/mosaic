@@ -397,6 +397,11 @@ define_codes! {
     /// Malformed citation group; treated as literal text.
     MOS0039 = 39, Warning, Syntax, "malformed-citation", "mos-parse",
         "syntax: malformed citation group; treated as text";
+    /// A heading `<label>` is not the last element on the line, so it is not
+    /// recognised as a label declaration and is treated as literal text;
+    /// references to it would then fail to resolve.
+    MOS0048 = 48, Warning, Syntax, "heading-label-not-trailing", "mos-parse",
+        "syntax: heading label is not the last element on the line; treated as text";
     /// BibTeX database could not be parsed (`mos-bib`).
     MOS0043 = 43, Error, Syntax, "bibtex-parse-failed", "mos-bib",
         "syntax: BibTeX database could not be parsed";
