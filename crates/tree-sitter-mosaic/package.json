@@ -36,6 +36,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
+		"node-gyp": "^13.0.0",
 		"tree-sitter": "^0.25.0",
 		"tree-sitter-cli": "catalog:",
 		"typescript": "catalog:"
