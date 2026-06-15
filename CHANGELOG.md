@@ -8,6 +8,12 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- CLI structured suggestion rendering (https://github.com/kjanat/mosaic/issues/109): `mos check` and
+  `mos build` now print existing machine-actionable [`mos-core`][mos-core] `Suggestion` payloads as
+  `help:` fix-it lines after diagnostics. Unknown-label near misses show a concrete replacement like
+  `@intrdo` -> `@intro`, duplicate-label diagnostics show the deterministic rename like `dup` ->
+  `dup-2`, and diagnostics without structured suggestions keep their existing output shape.
+
 - LSP label rename: [`mos-lsp`][mos-lsp] now advertises `renameProvider` and answers
   `textDocument/rename`. A cursor on a label — either a declaration's `<label>` token or an `@label`
   / `@page(label)` reference — renames it across the document: the response is a `WorkspaceEdit`

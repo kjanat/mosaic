@@ -21,7 +21,7 @@ use std::process::{Command as ProcessCommand, ExitCode};
 use clap::{Parser, Subcommand};
 use mos_core::{
     Diagnostic, DiagnosticAnnotation, DiagnosticResult, DiagnosticSink, Severity, SourceSpan,
-    linecol,
+    Suggestion, linecol,
 };
 
 /// Cap on resolve↔layout rounds for page references before the engine gives up
@@ -540,6 +540,45 @@ fn render_diagnostic(diag: &Diagnostic, src: &str) {
             DiagnosticAnnotation::Hint(message) => eprintln!("  hint: {message}"),
         }
     }
+    for suggestion in diag.suggestions() {
+        render_suggestion(src, suggestion);
+    }
+}
+
+fn render_suggestion(src: &str, suggestion: &Suggestion) {
+    let (line, col) = linecol(src, suggestion.span.start);
+    let file = suggestion.span.file.display();
+    // The deletion arm carries an empty replacement, so the replacement text
+    // is formatted only in the arms that actually print it.
+    match suggestion_text(src, &suggestion.span) {
+        Some("") => {
+            let replacement = display_edit_text(&suggestion.replacement);
+            eprintln!("  help: insert `{replacement}` at {file}:{line}:{col}");
+        }
+        Some(text) if suggestion.replacement.is_empty() => {
+            let text = display_edit_text(text);
+            eprintln!("  help: delete `{text}` at {file}:{line}:{col}");
+        }
+        Some(text) => {
+            let text = display_edit_text(text);
+            let replacement = display_edit_text(&suggestion.replacement);
+            eprintln!("  help: replace `{text}` with `{replacement}` at {file}:{line}:{col}");
+        }
+        None => {
+            let replacement = display_edit_text(&suggestion.replacement);
+            eprintln!("  help: replace text with `{replacement}` at {file}:{line}:{col}");
+        }
+    }
+}
+
+fn suggestion_text<'a>(src: &'a str, span: &SourceSpan) -> Option<&'a str> {
+    let start = clamp_to_char_boundary(src, span.start);
+    let end = clamp_to_char_boundary(src, span.end.min(src.len()));
+    src.get(start..end)
+}
+
+fn display_edit_text(text: &str) -> String {
+    text.escape_debug().to_string()
 }
 
 fn clamp_to_char_boundary(src: &str, mut offset: usize) -> usize {

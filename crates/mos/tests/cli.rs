@@ -121,6 +121,10 @@ fn check_warns_on_unterminated_emphasis_but_succeeds() {
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 0);
     assert!(stderr.contains("warning[MOS0031]"), "stderr={stderr:?}");
+    assert!(
+        !stderr.contains("help:"),
+        "diagnostics without structured suggestions should not grow fix-its: {stderr:?}"
+    );
 }
 
 #[test]
@@ -300,12 +304,42 @@ fn check_reports_unknown_label() {
 }
 
 #[test]
+fn check_renders_unknown_label_suggestion() {
+    let dir = temp_dir("mos-check-mos0033-suggestion");
+    write_file(dir.path(), "main.mos", "= Intro <intro>\n\nsee @intrdo\n");
+    let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
+    assert_eq!(code, 1);
+    assert!(stderr.contains("error[MOS0033]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("help: replace `@intrdo` with `@intro`"),
+        "stderr={stderr:?}"
+    );
+}
+
+#[test]
 fn check_reports_duplicate_label() {
     let dir = temp_dir("mos-check-mos0030");
     write_file(dir.path(), "main.mos", "= A <dup>\n\n= B <dup>\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
     assert!(stderr.contains("error[MOS0030]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("help: replace `dup` with `dup-2`"),
+        "stderr={stderr:?}"
+    );
+}
+
+#[test]
+fn build_renders_structured_suggestions_before_phase_exit() {
+    let dir = temp_dir("mos-build-suggestion");
+    write_file(dir.path(), "main.mos", "= Intro <intro>\n\nsee @intrdo\n");
+    let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 1);
+    assert!(stderr.contains("error[MOS0033]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("help: replace `@intrdo` with `@intro`"),
+        "stderr={stderr:?}"
+    );
 }
 
 #[test]
