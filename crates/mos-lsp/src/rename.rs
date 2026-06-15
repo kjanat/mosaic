@@ -61,6 +61,17 @@ pub fn rename_ranges(
             continue;
         }
         if let Some(span) = reference_identifier_span(node) {
+            // The identifier span is derived from the reference node's span
+            // geometry (references carry no stamped label span), so assert it
+            // covers exactly the label text. A future parser change to how
+            // reference spans are emitted then fails loudly here in
+            // debug/test builds instead of silently producing an off-by-one
+            // rename edit.
+            debug_assert_eq!(
+                src.get(span.start..span.end),
+                Some(label.as_str()),
+                "reference identifier span must cover exactly the label `{label}`"
+            );
             spans.push(span);
         }
     }
