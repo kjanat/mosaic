@@ -75,7 +75,7 @@ By default every `#figure` is auto-numbered `Figure 1`, `Figure 2`, … in docum
   `numbered: false`, which drops the number itself.
 
 ```mos
-#figure(image: "logo.png", numbered: false)
+#figure(image: "cover.png", caption: "Cover art.", numbered: false)
 
 #figure(image: "map.png", caption: "The site.", supplement: "Plate", label: "fig:site")
 ```
