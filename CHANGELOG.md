@@ -92,6 +92,18 @@ All notable changes to this project will be documented here. The format is based
 
 ### Changed
 
+- Reference nodes now carry a stamped label-identifier span
+  (https://github.com/kjanat/mosaic/issues/116): the [`mos-parse`][mos-parse] `Inline` records a
+  `label_span` for `@label` / `@page(label)` (the bare identifier, excluding the `@` sigil and the
+  `@page(`…`)` wrapper), and [`mos-eval`][mos-eval] stamps it onto lowered `Reference` /
+  `PageReference` nodes as the same `label_span.start` / `label_span.end` attributes declarations
+  carry. [`mos-lsp`][mos-lsp] label rename now reads that span directly instead of re-deriving the
+  editable range from reference-node span geometry, removing a latent coupling to parser span
+  conventions. No intended behavior change for ordinary references; this additionally fixes latent
+  range drift for **styled** references (e.g. `*@intro*`), whose node span the parser widens to the
+  emphasis delimiters — the old geometry then produced an off-by-the-delimiters rename range, while
+  the stamped identifier span is exact.
+
 - LSP diagnostics and go-to-definition now share one lowering per edit
   (https://github.com/kjanat/mosaic/issues/106): publishing diagnostics on `didOpen` / `didChange`
   lowers a document once into the same per-URI cache introduced in #102, and a later

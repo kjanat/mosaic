@@ -121,6 +121,7 @@ impl Parser<'_> {
                         kind: InlineKind::HardBreak,
                         text: String::new(),
                         span: self.span(base + i, base + i + 2),
+                        label_span: None,
                     });
                     i += 2;
                     text_start = i;
@@ -241,6 +242,7 @@ impl Parser<'_> {
                         kind: InlineKind::Code,
                         text: slice[i + 1..end].to_owned(),
                         span: self.span(base + i, base + end + 1),
+                        label_span: None,
                     });
                     i = end + 1;
                     text_start = i;
@@ -286,6 +288,8 @@ impl Parser<'_> {
                                 kind: InlineKind::PageReference,
                                 text: slice[label_start..label_end].to_owned(),
                                 span: self.span(base + i, base + label_end + 1),
+                                // The label identifier between `@page(` and `)`.
+                                label_span: Some(self.span(base + label_start, base + label_end)),
                             });
                             i = label_end + 1;
                             text_start = i;
@@ -306,6 +310,8 @@ impl Parser<'_> {
                         kind: InlineKind::Reference,
                         text: slice[i + 1..id_end].to_owned(),
                         span: self.span(base + i, base + id_end),
+                        // The label identifier after the `@` sigil.
+                        label_span: Some(self.span(base + i + 1, base + id_end)),
                     });
                     i = id_end;
                     text_start = i;
@@ -342,6 +348,7 @@ impl Parser<'_> {
                         kind: InlineKind::Citation,
                         text: slice[key_start..key_end].to_owned(),
                         span: self.span(base + i, base + end),
+                        label_span: None,
                     });
                     i = end;
                     text_start = i;
@@ -436,6 +443,7 @@ impl Parser<'_> {
             kind: style.kind(),
             text,
             span: self.span(base + span_from, base + to),
+            label_span: None,
         });
     }
 
@@ -453,6 +461,7 @@ impl Parser<'_> {
                 kind: style.kind(),
                 text: slice[from..to].to_owned(),
                 span: self.span(base + from, base + to),
+                label_span: None,
             });
         }
     }

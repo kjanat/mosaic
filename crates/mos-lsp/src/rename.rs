@@ -14,9 +14,10 @@
 //! The ranges deliberately cover only the *identifier*, never the sigil or
 //! delimiters: `@intro` rewrites `intro` (the `@` stays), `@page(intro)`
 //! rewrites the `intro` between the parentheses, and `<intro>` rewrites the
-//! token between the angle brackets. References carry no stamped label span
-//! (only declarations do), so their identifier range is derived from the
-//! reference node's span and its kind.
+//! token between the angle brackets. Both declarations and references carry a
+//! stamped `label_span` covering exactly that identifier (issue #116), so
+//! every range here is read from one attribute rather than computed from span
+//! geometry.
 //!
 //! Scope is single-document: there is no workspace index, no file watching,
 //! and no validation of the new name — those are out of this slice.
@@ -27,11 +28,6 @@ use mos_core::{AttrValue, Document, NodeKind, SourceSpan};
 
 use crate::definition::position_to_byte;
 use crate::diagnostics::{LspPosition, LspRange, span_to_range};
-
-/// The `@page(` prefix a [`NodeKind::PageReference`] span opens with, before
-/// its label identifier. Used to locate the identifier inside the reference
-/// span, since references (unlike declarations) carry no stamped label span.
-const PAGE_REFERENCE_PREFIX: &str = "@page(";
 
 /// Collect every editable range for renaming the label under `position`: the
 /// first declaration's label token plus every reference's identifier.
@@ -60,18 +56,7 @@ pub fn rename_ranges(
         if node.span.file != file || str_attr(node, "label").as_deref() != Some(label.as_str()) {
             continue;
         }
-        if let Some(span) = reference_identifier_span(node) {
-            // The identifier span is derived from the reference node's span
-            // geometry (references carry no stamped label span), so assert it
-            // covers exactly the label text. A future parser change to how
-            // reference spans are emitted then fails loudly here in
-            // debug/test builds instead of silently producing an off-by-one
-            // rename edit.
-            debug_assert_eq!(
-                src.get(span.start..span.end),
-                Some(label.as_str()),
-                "reference identifier span must cover exactly the label `{label}`"
-            );
+        if let Some(span) = label_token_span(node) {
             spans.push(span);
         }
     }
@@ -85,15 +70,16 @@ pub fn rename_ranges(
 /// The label spelled at `offset`, whether the cursor sits inside a reference
 /// or inside a declaration's label token.
 ///
-/// The hit-test matches exactly the bytes a rename would *edit*, never more:
+/// The hit-test matches exactly the bytes a rename would *edit*, never more —
+/// every label-bearing node carries a stamped `label_span` covering just the
+/// identifier (the `intro` in `<intro>`, `@intro`, or `@page(intro)`):
 ///
-/// - references are tested against their **identifier** sub-span (the same
-///   range [`reference_identifier_span`] returns), so a cursor on the `@`
-///   sigil, the `@page(` prefix, or the closing `)` is *not* on the label;
-/// - a declaration matches only when `offset` lands inside its stamped
-///   label-token span **and** that declaration is the *canonical* (first)
-///   one for the label. A cursor on a duplicate later `<dup>` returns `None`
-///   rather than renaming the first declaration out from under the cursor.
+/// - references are tested against that identifier span, so a cursor on the
+///   `@` sigil, the `@page(` prefix, or the closing `)` is *not* on the label;
+/// - a declaration matches only when `offset` lands inside its label-token
+///   span **and** that declaration is the *canonical* (first) one for the
+///   label. A cursor on a duplicate later `<dup>` returns `None` rather than
+///   renaming the first declaration out from under the cursor.
 ///
 /// References win over declarations (and narrowest reference wins), mirroring
 /// [`crate::definition`].
@@ -101,9 +87,8 @@ fn label_under_cursor(document: &Document, file: &Path, offset: usize) -> Option
     let on_reference = document
         .nodes()
         .filter(|node| matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
-        .filter(|node| node.span.file == file)
-        .filter_map(|node| reference_identifier_span(node).map(|span| (node, span)))
-        .filter(|(_, span)| span_contains(span, offset))
+        .filter_map(|node| label_token_span(node).map(|span| (node, span)))
+        .filter(|(_, span)| span.file == file && span_contains(span, offset))
         .min_by_key(|(_, span)| span.end.saturating_sub(span.start))
         .and_then(|(node, _)| str_attr(node, "label"));
     if on_reference.is_some() {
@@ -114,7 +99,7 @@ fn label_under_cursor(document: &Document, file: &Path, offset: usize) -> Option
         .nodes()
         .filter(|node| !matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
         .find(|node| {
-            declaration_label_token(node)
+            label_token_span(node)
                 .is_some_and(|span| span.file == file && span_contains(&span, offset))
         })?;
     let label = str_attr(declaration, "label")?;
@@ -144,37 +129,19 @@ fn first_declaration_label_token(
     file: &Path,
     label: &str,
 ) -> Option<SourceSpan> {
-    first_declaration_node(document, file, label).and_then(declaration_label_token)
+    first_declaration_node(document, file, label).and_then(label_token_span)
 }
 
-/// A declaration's label-token span, read from the `label_span.start` /
-/// `label_span.end` attributes the `mos-eval` lowerer stamps (the `intro` in
-/// `<intro>`). `None` when the attributes are absent or malformed.
-fn declaration_label_token(node: &mos_core::Node) -> Option<SourceSpan> {
+/// A node's label-identifier span, read from the `label_span.start` /
+/// `label_span.end` attributes the `mos-eval` lowerer stamps — the `intro` in
+/// `<intro>` for a declaration and in `@intro` / `@page(intro)` for a
+/// reference (issue #116). This is the editable identifier range, excluding
+/// the `@` sigil, the `<>` brackets, and the `@page(`…`)` wrapper. `None` when
+/// the attributes are absent or malformed.
+fn label_token_span(node: &mos_core::Node) -> Option<SourceSpan> {
     let start = usize::try_from(int_attr(node, "label_span.start")?).ok()?;
     let end = usize::try_from(int_attr(node, "label_span.end")?).ok()?;
     (start <= end).then(|| SourceSpan::new(node.span.file.clone(), start, end))
-}
-
-/// The identifier sub-span inside a reference node's span — the bytes a rename
-/// rewrites, excluding the `@` sigil and any `@page(`…`)` delimiters.
-///
-/// A [`NodeKind::Reference`] span covers `@label`, so the identifier is
-/// everything after the leading `@`. A [`NodeKind::PageReference`] span covers
-/// `@page(label)`, so the identifier sits between the `@page(` prefix and the
-/// closing `)`. References carry no stamped label span, so this is derived
-/// from the span geometry the parser guarantees for each kind.
-fn reference_identifier_span(node: &mos_core::Node) -> Option<SourceSpan> {
-    let span = &node.span;
-    let (start, end) = match node.kind {
-        NodeKind::Reference => (span.start.checked_add(1)?, span.end),
-        NodeKind::PageReference => (
-            span.start.checked_add(PAGE_REFERENCE_PREFIX.len())?,
-            span.end.checked_sub(1)?,
-        ),
-        _ => return None,
-    };
-    (start <= end).then(|| SourceSpan::new(span.file.clone(), start, end))
 }
 
 /// Whether `span` covers `offset`, end-exclusive — a cursor resting just past
@@ -338,5 +305,29 @@ mod tests {
             2,
             "canonical declaration token + the reference"
         );
+    }
+
+    #[test]
+    fn renames_styled_reference_to_identifier_only() {
+        // A reference inside emphasis: the parser widens the reference node's
+        // span to the `*…*` delimiters, but the stamped `label_span` still
+        // covers exactly the identifier. Rename must edit `intro`, never
+        // `@intro*` — this is the latent range drift #116 removed by reading
+        // the stamped span instead of deriving from node-span geometry.
+        let src = "= Intro <intro>\n\nSee *@intro* now.\n";
+        let cursor = src.find("@intro").expect("reference") + 2;
+        let found = ranges(src, cursor);
+        assert_eq!(
+            found.len(),
+            2,
+            "decl token + the styled reference: {found:?}"
+        );
+        for range in &found {
+            assert_eq!(
+                ranged(src, range),
+                "intro",
+                "edit covers only the identifier, not the `@` or the `*` delimiters"
+            );
+        }
     }
 }

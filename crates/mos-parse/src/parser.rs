@@ -669,6 +669,40 @@ mod tests {
     }
 
     #[test]
+    fn reference_inlines_carry_label_identifier_span() {
+        // The parser records, for `@label` and `@page(label)`, the source span
+        // of the bare identifier — excluding the `@`, the `@page(` prefix, and
+        // the `)` — so the lowerer can stamp it for editor rename (issue #116).
+        let src = "see @sec:methods and @page(fig:wells)\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+
+        let reference = inlines
+            .iter()
+            .find(|i| i.kind == InlineKind::Reference)
+            .unwrap();
+        let ref_span = reference.label_span.as_ref().expect("reference label span");
+        assert_eq!(&src[ref_span.start..ref_span.end], "sec:methods");
+
+        let page = inlines
+            .iter()
+            .find(|i| i.kind == InlineKind::PageReference)
+            .unwrap();
+        let page_span = page.label_span.as_ref().expect("page reference label span");
+        assert_eq!(&src[page_span.start..page_span.end], "fig:wells");
+
+        // Non-reference inlines carry no label span.
+        assert!(
+            inlines
+                .iter()
+                .filter(|i| i.kind == InlineKind::Text)
+                .all(|i| i.label_span.is_none()),
+            "plain text inlines have no label span"
+        );
+    }
+
+    #[test]
     fn malformed_at_page_falls_back_to_ordinary_reference() {
         // `@page` with no `(label)` is just a cross-reference to a label named
         // "page" — the page-reference branch only fires for a well-formed

@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use mos_core::{AttrMap, AttrValue, Document, Node, NodeId, NodeKind, StyleId};
 use mos_parse::{Inline, InlineKind};
 
+use crate::insert_label_attributes;
+
 pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inline]) {
     for inline in inlines {
         let kind = match inline.kind {
@@ -21,20 +23,24 @@ pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inlin
         let mut attributes: AttrMap = BTreeMap::new();
         match inline.kind {
             InlineKind::Reference => {
-                // Pre-resolve placeholder text: resolver overwrites this on success;
-                // unresolved refs still render visible `?label?` text.
-                attributes.insert("label".to_owned(), AttrValue::Str(inline.text.clone()));
+                // Stamp the label and its identifier `label_span` (issue #116)
+                // exactly as declarations are, so rename reads the editable
+                // identifier range directly instead of re-deriving it from the
+                // reference node's span geometry. Pre-resolve placeholder text:
+                // the resolver overwrites it on success; unresolved refs still
+                // render visible `?label?` text.
+                insert_label_attributes(&mut attributes, &inline.text, inline.label_span.as_ref());
                 attributes.insert(
                     "text".to_owned(),
                     AttrValue::Str(format!("?{}?", inline.text)),
                 );
             }
             InlineKind::PageReference => {
-                // Same placeholder shape as a cross-reference: the label is
-                // recorded and `?label?` stays visible until the resolve↔layout
-                // fixpoint (issue #72) rewrites it to the target's page number.
-                // This slice models the node but does not resolve it.
-                attributes.insert("label".to_owned(), AttrValue::Str(inline.text.clone()));
+                // Same label + identifier-span stamp as a cross-reference
+                // (issue #116). The `?label?` placeholder stays visible until
+                // the resolve↔layout fixpoint (issue #72) rewrites it to the
+                // target's page number; this slice models the node only.
+                insert_label_attributes(&mut attributes, &inline.text, inline.label_span.as_ref());
                 attributes.insert(
                     "text".to_owned(),
                     AttrValue::Str(format!("?{}?", inline.text)),
