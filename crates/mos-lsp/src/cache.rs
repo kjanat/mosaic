@@ -1,27 +1,29 @@
-//! A lazily-populated, per-document cache of `mos-eval` lowerings.
+//! A per-document cache of `mos-eval` lowerings, shared by diagnostics and
+//! go-to-definition so a document is lowered once per edit (issue #106)
+//! rather than once per feature per request.
 //!
-//! Go-to-definition (and, later, hover/rename) re-derives the same
-//! [`LowerResult`] from a document's source on every request. For an
-//! interactive, potentially high-frequency request on a large document,
-//! repeating parse + lower per call is pure waste — the source only
-//! changes on `didChange`.
+//! The server [`store`](LoweringCache::store)s a [`LowerResult`] keyed by
+//! document URI and [`invalidate`](LoweringCache::invalidate)s the entry on
+//! every source mutation (`didOpen` / `didChange` / `didClose`), so a cached
+//! lowering is always derived from the *current* source text.
 //!
-//! This cache stores one [`LowerResult`] per document URI, lowered on
-//! first demand and reused until the source mutates. The server
-//! invalidates an entry whenever it overwrites or removes the document
-//! (`didOpen` / `didChange` / `didClose`), so a cached lowering is always
-//! derived from the *current* source — there is no document version to
-//! track and no staleness to reconcile here.
+//! **Only pure lowerings are cached.** [`mos_eval::lower`] is not a pure
+//! function of the source: `#image` / `#figure` and `#bibliography` read
+//! external files, so the same text can lower differently as those files
+//! appear, change, or fail to load. A [`LowerResult`] with
+//! `reads_external_resources` set is therefore never stored — the server
+//! lowers such documents fresh on every request (matching pre-cache
+//! behavior) rather than risk serving a lowering gone stale against the
+//! filesystem with no source edit to invalidate it (issue #106 review).
 //!
 //! The boundary stays thin: the cache owns no parse/lower policy, it only
-//! memoises [`mos_eval::lower`].
+//! holds the [`LowerResult`] values the server hands it.
 
 use std::collections::HashMap;
-use std::path::Path;
 
 use mos_eval::LowerResult;
 
-/// Per-URI memoisation of [`mos_eval::lower`] output.
+/// Per-URI store of pure [`mos_eval::LowerResult`] values.
 ///
 /// An entry is only valid while the document's source is unchanged; the
 /// owner ([`crate::server`]) is responsible for calling [`Self::invalidate`]
@@ -32,28 +34,32 @@ pub(crate) struct LoweringCache {
 }
 
 impl LoweringCache {
-    /// Return the lowering for `uri`, reusing a cached [`LowerResult`] when
-    /// one is present and lowering `src` (then storing it) on a miss.
-    ///
-    /// The caller guarantees `src` is the current source for `uri`: because
-    /// the server invalidates the entry on every source mutation, a hit can
-    /// never be stale, so `src` is ignored whenever an entry already exists.
-    pub(crate) fn get_or_lower(&mut self, uri: &str, src: &str, file: &Path) -> &LowerResult {
-        self.entries
-            .entry(uri.to_owned())
-            .or_insert_with(|| mos_eval::lower(src, file))
+    /// The cached lowering for `uri`, or `None` when nothing is stored —
+    /// either because the document was never lowered, was invalidated, or its
+    /// last lowering was impure and therefore deliberately not cached.
+    pub(crate) fn get(&self, uri: &str) -> Option<&LowerResult> {
+        self.entries.get(uri)
     }
 
-    /// Drop any cached lowering for `uri`, forcing the next
-    /// [`Self::get_or_lower`] to re-lower. Called when the document's source
+    /// Store `lowered` for `uri`, overwriting any prior entry.
+    ///
+    /// Callers must only store **pure** lowerings (`!reads_external_resources`):
+    /// caching one that read external files could serve a result gone stale
+    /// against the filesystem with no source edit to invalidate it.
+    pub(crate) fn store(&mut self, uri: &str, lowered: LowerResult) {
+        self.entries.insert(uri.to_owned(), lowered);
+    }
+
+    /// Drop any cached lowering for `uri`. Called when the document's source
     /// changes (`didOpen` overwrite / `didChange`) or the document closes.
     pub(crate) fn invalidate(&mut self, uri: &str) {
         self.entries.remove(uri);
     }
 
     /// Whether a lowering is currently cached for `uri`. Test-only: used to
-    /// assert that publishing diagnostics leaves the lowering available for a
-    /// later definition request (issue #106) rather than re-lowering.
+    /// assert that publishing diagnostics leaves a (pure) lowering available
+    /// for a later definition request, and that impure lowerings are not
+    /// cached (issue #106).
     #[cfg(test)]
     pub(crate) fn is_cached(&self, uri: &str) -> bool {
         self.entries.contains_key(uri)
@@ -74,46 +80,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reuses_until_invalidated() {
+    fn stores_and_reuses_until_invalidated() {
         let file = PathBuf::from("/virtual/main.mos");
         let mut cache = LoweringCache::default();
-        let small = "= A\n";
-        let large = "= A\n\n= B\n";
+        assert!(cache.get("u").is_none(), "an empty cache returns nothing");
 
-        let small_len = cache.get_or_lower("u", small, &file).document.len();
-        // Same URI, a *different* source, but no invalidation: the cached
-        // `small` lowering is reused verbatim — the new source is ignored.
+        let lowered = mos_eval::lower("= A\n", &file);
+        let stored_len = lowered.document.len();
+        cache.store("u", lowered);
         assert_eq!(
-            cache.get_or_lower("u", large, &file).document.len(),
-            small_len,
-            "an un-invalidated hit must reuse the cached lowering, not re-lower"
+            cache.get("u").map(|l| l.document.len()),
+            Some(stored_len),
+            "a stored lowering is returned by `get`"
         );
 
         cache.invalidate("u");
-
-        // After invalidation the next call lowers the current `large` source.
-        let large_len = cache.get_or_lower("u", large, &file).document.len();
-        assert!(
-            large_len > small_len,
-            "after invalidation the cache must re-lower the current source \
-             (expected a larger document, got {large_len} vs {small_len})"
-        );
+        assert!(cache.get("u").is_none(), "invalidate drops the entry");
     }
 
     #[test]
-    fn distinct_uris_cache_independently() {
+    fn distinct_uris_store_independently() {
         let file = PathBuf::from("/virtual/main.mos");
         let mut cache = LoweringCache::default();
-        let a_len = cache.get_or_lower("a", "= A\n", &file).document.len();
-        let b_len = cache
-            .get_or_lower("b", "= A\n\n= B\n", &file)
-            .document
-            .len();
+        cache.store("a", mos_eval::lower("= A\n", &file));
+        cache.store("b", mos_eval::lower("= A\n\n= B\n", &file));
+        let a_len = cache.get("a").map(|l| l.document.len());
+        let b_len = cache.get("b").map(|l| l.document.len());
         assert!(b_len > a_len, "each URI keeps its own lowering");
-        // Re-fetching `a` still yields its own (smaller) lowering.
-        assert_eq!(
-            cache.get_or_lower("a", "= A\n", &file).document.len(),
-            a_len
+    }
+
+    #[test]
+    fn pure_source_lowers_without_external_reads() {
+        // A plain document touches no filesystem, so its lowering is pure and
+        // safe to cache. A document with `#figure` (which loads an image file)
+        // is flagged impure — the server must not cache it.
+        let file = PathBuf::from("/virtual/main.mos");
+        assert!(
+            !mos_eval::lower("= A\n\nSee @a\n", &file).reads_external_resources,
+            "a source with no external directives lowers purely"
+        );
+        assert!(
+            mos_eval::lower("#figure(image: \"x.png\", label: \"fig\")\n", &file)
+                .reads_external_resources,
+            "a `#figure` image load makes the lowering depend on external files"
         );
     }
 }

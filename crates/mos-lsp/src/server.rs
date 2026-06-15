@@ -8,7 +8,9 @@
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Write};
+use std::path::Path;
 
+use mos_eval::LowerResult;
 use serde_json::{Value, json};
 
 use crate::cache::LoweringCache;
@@ -199,22 +201,47 @@ fn definition_result(state: &mut ServerState, message: &Value) -> Value {
     let Some(position) = read_position(message) else {
         return Value::Null;
     };
-    // Disjoint field borrows: `documents` (read) and `lowerings` (lower on a
-    // cache miss) are separate fields, so the source can be handed to the
-    // cache while it populates without aliasing.
+    let range = with_lowering(state, uri, |lowered, path, src| {
+        definition_range_in(&lowered.document, path, src, position)
+    });
+    match range.flatten() {
+        Some(range) => json!({ "uri": uri, "range": range }),
+        None => Value::Null,
+    }
+}
+
+/// Run `f` against the lowering for `uri` — a cached one when present, else a
+/// fresh `mos_eval::lower`. Returns `None` only when `uri` names no open
+/// document; otherwise `Some(f(...))`.
+///
+/// A freshly-lowered **pure** result is stored in the cache for reuse across
+/// the next diagnostics/definition request on the unchanged source (issue
+/// #106). An **impure** lowering — one that read external files (`#image` /
+/// `#figure` / `#bibliography`, see `reads_external_resources`) — is used
+/// once and dropped, never cached, so such a document is re-lowered on every
+/// request and always reflects the current filesystem (issue #106 review).
+fn with_lowering<T>(
+    state: &mut ServerState,
+    uri: &str,
+    f: impl FnOnce(&LowerResult, &Path, &str) -> T,
+) -> Option<T> {
+    // Disjoint field borrows: read the source from `documents`, look up /
+    // populate `lowerings` — separate fields, so neither aliases the other.
     let ServerState {
         documents,
         lowerings,
     } = state;
-    let Some(src) = documents.get(uri) else {
-        return Value::Null;
-    };
+    let src = documents.get(uri)?;
     let path = path_from_uri(uri);
-    let lowered = lowerings.get_or_lower(uri, src, &path);
-    match definition_range_in(&lowered.document, &path, src, position) {
-        Some(range) => json!({ "uri": uri, "range": range }),
-        None => Value::Null,
+    if let Some(cached) = lowerings.get(uri) {
+        return Some(f(cached, &path, src));
     }
+    let fresh = mos_eval::lower(src, &path);
+    let result = f(&fresh, &path, src);
+    if !fresh.reads_external_resources {
+        lowerings.store(uri, fresh);
+    }
+    Some(result)
 }
 
 /// Extract the zero-based `position` (`line`, UTF-16 `character`) from a
@@ -244,20 +271,17 @@ fn read_position(message: &Value) -> Option<LspPosition> {
 /// Callers invalidate the cache *before* publishing on a source mutation,
 /// so the lowering populated here always reflects the current text.
 fn publish_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState, uri: &str) -> Result<()> {
-    let path = path_from_uri(uri);
-    // Disjoint field borrows: read the source from `documents`, lower into
-    // `lowerings`. The projected `Vec` is owned, so the cache borrow ends
-    // before `send_publish` writes.
-    let ServerState {
-        documents,
-        lowerings,
-    } = state;
-    let Some(src) = documents.get(uri) else {
-        return Ok(());
-    };
-    let lowered = lowerings.get_or_lower(uri, src, &path);
-    let diagnostics = diagnostics_from_result(&path, src, lowered);
-    send_publish(writer, uri, &diagnostics)
+    // Project diagnostics from the shared lowering (cached pure result, or a
+    // fresh lower that gets stored when pure). The owned `Vec` outlives the
+    // lowering borrow, so the write below is unconstrained. Unknown URIs
+    // yield `None` and publish nothing.
+    let diagnostics = with_lowering(state, uri, |lowered, path, src| {
+        diagnostics_from_result(path, src, lowered)
+    });
+    match diagnostics {
+        Some(diagnostics) => send_publish(writer, uri, &diagnostics),
+        None => Ok(()),
+    }
 }
 
 fn clear_diagnostics<W: Write>(writer: &mut W, uri: &str) -> Result<()> {
@@ -789,6 +813,31 @@ mod tests {
             state.lowerings.is_cached(uri),
             "publishing diagnostics must leave the lowering cached for a later \
              definition request to reuse"
+        );
+    }
+
+    #[test]
+    fn impure_document_is_not_cached_so_requests_relower() {
+        // #106 review: lowering `#figure(image: …)` reads an external file, so
+        // the result is impure and must NOT be cached. Otherwise publishing
+        // diagnostics at `didOpen` (image missing) would seed the cache with a
+        // figure-less lowering, and a later definition request would reuse it
+        // even after the image appears. An empty cache after publish proves the
+        // document is re-lowered fresh on each request, reflecting the
+        // filesystem.
+        let uri = "file:///virtual/main.mos";
+        let mut state = ServerState::default();
+        state.documents.insert(
+            uri.to_owned(),
+            "#figure(image: \"x.png\", label: \"fig\", caption: \"c\")\n\nSee @fig\n".to_owned(),
+        );
+
+        let mut writer: Vec<u8> = Vec::new();
+        publish_diagnostics(&mut writer, &mut state, uri).expect("publish");
+
+        assert!(
+            !state.lowerings.is_cached(uri),
+            "a lowering that read external files must not be cached"
         );
     }
 

@@ -79,6 +79,13 @@ parse/lower policy — and an entry is dropped whenever the document's source ch
 re-open / `didChange`) or the document closes, so a cached lowering is always derived from the
 current source.
 
+Only **pure** lowerings are cached. `mos_eval::lower` is not a pure function of the source —
+`#image` / `#figure` and `#bibliography` read external files — so its `LowerResult` reports
+`reads_external_resources`. A lowering with that flag set is never stored; such a document is
+re-lowered on every request so it always reflects the current filesystem rather than a snapshot
+taken when diagnostics first ran (a referenced image appearing after open would otherwise stay
+invisible to go-to-definition until the next edit).
+
 Compiler phase ownership stays elsewhere:
 
 - `mos-core`: document IDs, spans, diagnostics, shared errors.
