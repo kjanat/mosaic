@@ -8,6 +8,14 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Sharper `@`-reference diagnostics: an `@key` reference that matches no label but exactly matches a
+  bibliography key now reports that the author likely meant a citation and offers `[@key]` as a
+  machine-applicable fix ([`mos-eval`][mos-eval] adds a `MOS0033` hint + suggestion). A heading
+  `<label>` that is not the last element on its line now raises the new `MOS0048` warning with a
+  reorder fix from [`mos-parse`][mos-parse], instead of silently dropping the label declaration and
+  failing only downstream at every `@ref` to it. Both fixes are emitted as structured
+  [`mos-core`][mos-core] `Suggestion`s, ready for LSP code actions.
+
 - Zed language-server wiring (https://github.com/kjanat/mosaic/issues/118): the
   [`zed-mosaic`][zed-mosaic] extension now declares and spawns [`mos-lsp`][mos-lsp] as the `Mosaic`
   language server, so opening a `.mos` file in Zed gets compiler diagnostics, go-to-definition, and
