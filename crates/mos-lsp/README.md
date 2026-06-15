@@ -70,11 +70,21 @@ positions and dispatches JSON-RPC. Go-to-definition follows the same rule: it wa
 `mos-eval` `Document` (label declarations and reference spans) and translates spans to LSP ranges,
 mirroring the resolver's first-declaration-wins index rather than reimplementing label policy.
 
-To avoid re-lowering on every interactive request, the server keeps an in-memory per-document cache
-of `mos_eval::lower` output (`src/cache.rs`) and reuses it across `textDocument/definition`
-requests. The cache only memoises the existing lowering — it owns no parse/lower policy — and an
-entry is dropped whenever the document's source changes (`didOpen` re-open / `didChange`) or the
-document closes, so a cached lowering is always derived from the current source.
+To avoid re-lowering the same source repeatedly, the server keeps an in-memory per-document cache of
+`mos_eval::lower` output (`src/cache.rs`). Both paths share it: publishing diagnostics on `didOpen`
+/ `didChange` lowers the document once into the cache, and a later `textDocument/definition` request
+on the unchanged source reuses that same lowering — so an edit lowers its source only once for both
+diagnostics and go-to-definition. The cache only memoises the existing lowering — it owns no
+parse/lower policy — and an entry is dropped whenever the document's source changes (`didOpen`
+re-open / `didChange`) or the document closes, so a cached lowering is always derived from the
+current source.
+
+Only **pure** lowerings are cached. `mos_eval::lower` is not a pure function of the source —
+`#image` / `#figure` and `#bibliography` read external files — so its `LowerResult` reports
+`reads_external_resources`. A lowering with that flag set is never stored; such a document is
+re-lowered on every request so it always reflects the current filesystem rather than a snapshot
+taken when diagnostics first ran (a referenced image appearing after open would otherwise stay
+invisible to go-to-definition until the next edit).
 
 Compiler phase ownership stays elsewhere:
 
@@ -91,7 +101,8 @@ Compiler phase ownership stays elsewhere:
 - No incremental document sync — `didChange` replaces the buffer wholesale.
 - No source-to-PDF sync or live preview.
 - No persistent or cross-session compilation cache, and no workspace indexing. The only caching is
-  an in-memory per-document lowering memo for go-to-definition (see Boundary), rebuilt each edit.
+  an in-memory per-document lowering memo shared by diagnostics and go-to-definition (see Boundary),
+  rebuilt each edit.
 - No multi-file projects: diagnostics are produced from the opened document in isolation.
 
 The root README and AGENTS files remain the source of truth for what is and isn't shipped overall.

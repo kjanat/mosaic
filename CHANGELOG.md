@@ -83,6 +83,18 @@ All notable changes to this project will be documented here. The format is based
 
 ### Changed
 
+- LSP diagnostics and go-to-definition now share one lowering per edit
+  (https://github.com/kjanat/mosaic/issues/106): publishing diagnostics on `didOpen` / `didChange`
+  lowers a document once into the same per-URI cache introduced in #102, and a later
+  `textDocument/definition` request on the unchanged source reuses that cached
+  [`mos-eval`][mos-eval] lowering instead of lowering the text a second time. Same invalidation
+  invariant (source mutation drops the entry) and identical observable behavior — same diagnostics,
+  same definition `Location`/`null` — only the duplicate per-edit lowering is gone. Only **pure**
+  lowerings are cached: [`mos-eval`][mos-eval]'s `LowerResult` now reports
+  `reads_external_resources` (set when `#image` / `#figure` / `#bibliography` read files), and the
+  language server never caches such a lowering — those documents are re-lowered per request so they
+  always reflect the current filesystem rather than a stale snapshot.
+
 - LSP go-to-definition no longer re-lowers on every request
   (https://github.com/kjanat/mosaic/issues/102): [`mos-lsp`][mos-lsp] now memoises each open
   document's [`mos-eval`][mos-eval] lowering in an in-memory per-URI cache and reuses it across

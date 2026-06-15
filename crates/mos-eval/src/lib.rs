@@ -108,6 +108,15 @@ pub struct LowerResult {
     pub document: Document,
     pub diagnostics: Vec<Diagnostic>,
     pub metadata: DocumentMetadata,
+    /// Whether lowering this document read external files — `#image` /
+    /// `#figure` image loads and `#bibliography` source reads. Such a
+    /// lowering is **not a pure function of the source text**: the same
+    /// `(src, file)` can lower differently as referenced files appear,
+    /// change, or fail to load. Callers that cache a `LowerResult` across
+    /// time (e.g. the language server's per-document memo) must not reuse
+    /// one with this set, since an external change would make it stale
+    /// without any source edit to invalidate it.
+    pub reads_external_resources: bool,
 }
 
 impl LowerResult {
@@ -191,6 +200,10 @@ impl Evaluator {
         // literals on later directives resolve against the right unit.
         // Defaults to 11pt to match `mos-layout`'s `BODY_SIZE_PT`.
         let mut current_text_size_pt: f64 = 11.0;
+        // Set when a directive reads the filesystem (`#image` / `#figure`
+        // image loads, `#bibliography` source reads), marking this lowering
+        // impure over `(src, file)` so time-based caches don't reuse it.
+        let mut reads_external_resources = false;
         let root = document.root;
 
         for item in &tree.items {
@@ -292,6 +305,7 @@ impl Evaluator {
                             current_text_size_pt,
                             &mut diagnostics,
                         );
+                        reads_external_resources = true;
                     }
                     DirectiveKind::Figure => {
                         lower_figure_directive(
@@ -303,6 +317,7 @@ impl Evaluator {
                             current_text_size_pt,
                             &mut diagnostics,
                         );
+                        reads_external_resources = true;
                     }
                     DirectiveKind::Bibliography => {
                         lower_bibliography_directive(
@@ -313,6 +328,7 @@ impl Evaluator {
                             &tree.file,
                             &mut diagnostics,
                         );
+                        reads_external_resources = true;
                     }
                     DirectiveKind::Set => lower_set_directive(
                         &mut document,
@@ -332,6 +348,7 @@ impl Evaluator {
             document,
             diagnostics,
             metadata,
+            reads_external_resources,
         }
     }
 }
@@ -398,6 +415,8 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
                 document: Document::new(file.to_path_buf()),
                 diagnostics: sink.into_diagnostics(),
                 metadata: DocumentMetadata::default(),
+                // Parse aborted before any directive ran: no external reads.
+                reads_external_resources: false,
             };
         }
     };
@@ -408,6 +427,7 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
         document: lowered.document,
         diagnostics,
         metadata: lowered.metadata,
+        reads_external_resources: lowered.reads_external_resources,
     }
 }
 
@@ -442,6 +462,7 @@ pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
         document: lowered.document,
         diagnostics,
         metadata: lowered.metadata,
+        reads_external_resources: lowered.reads_external_resources,
     }
 }
 
@@ -478,6 +499,31 @@ mod tests {
         );
         assert!(!attributes.contains_key(LABEL_SPAN_START_ATTR));
         assert!(!attributes.contains_key(LABEL_SPAN_END_ATTR));
+    }
+
+    #[test]
+    fn reads_external_resources_flags_filesystem_directives() {
+        let file = PathBuf::from("test.mos");
+        // Pure: headings, paragraphs, and references touch no files.
+        assert!(
+            !lower("= Title <t>\n\nSee @t\n", &file).reads_external_resources,
+            "a source with no filesystem directives lowers purely"
+        );
+        // Each filesystem-reading directive marks the lowering impure — even
+        // when the referenced file is missing, since the *attempt* is what
+        // makes the result depend on external state.
+        assert!(
+            lower("#image(\"missing.png\")\n", &file).reads_external_resources,
+            "`#image` reads an external file"
+        );
+        assert!(
+            lower("#figure(image: \"missing.png\")\n", &file).reads_external_resources,
+            "`#figure` loads an external image"
+        );
+        assert!(
+            lower("#bibliography(\"missing.bib\")\n", &file).reads_external_resources,
+            "`#bibliography` reads an external source file"
+        );
     }
 
     #[test]

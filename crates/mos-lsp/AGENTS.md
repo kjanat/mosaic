@@ -25,8 +25,11 @@
 - Answers `textDocument/definition`: cursor on `@label` / `@page(label)` → label's first declaration
   span as a `Location`; undeclared label or cursor off a reference → `null`.
 - Unknown requests return JSON-RPC `MethodNotFound`; unknown notifications drop.
-- Caches each open document's `mos-eval` lowering (`src/cache.rs`) and reuses it for
-  `textDocument/definition` instead of re-lowering per request; invalidated on open/change/close.
+- Caches each open document's `mos-eval` lowering (`src/cache.rs`), shared by diagnostics and
+  `textDocument/definition`: an edit lowers once (publish populates the cache, definition reuses
+  it). Invalidated on open/change/close. Only **pure** lowerings are cached — a `LowerResult` with
+  `reads_external_resources` (`#image` / `#figure` / `#bibliography` read files) is never stored, so
+  those docs re-lower per request and reflect the live filesystem.
 - Advertises UTF-16 position encoding, full text sync, and `definitionProvider`.
 
 ## BOUNDARY RULES
