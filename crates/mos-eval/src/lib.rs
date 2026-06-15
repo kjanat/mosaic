@@ -573,6 +573,41 @@ mod tests {
     }
 
     #[test]
+    fn reference_nodes_carry_stamped_label_span() {
+        // Issue #116: lowered `@label` / `@page(label)` reference nodes carry
+        // the same paired `label_span.*` identifier attributes as declarations,
+        // so `mos-lsp` rename reads the editable range directly instead of
+        // deriving it from the reference node's span geometry.
+        let src = "= Intro <intro>\n\nsee @intro and @page(intro)\n";
+        let r = lower(src, &PathBuf::from("test.mos"));
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+
+        for kind in [NodeKind::Reference, NodeKind::PageReference] {
+            let node = r
+                .document
+                .nodes()
+                .find(|node| node.kind == kind)
+                .unwrap_or_else(|| panic!("expected a {kind:?} node"));
+            let (Some(&AttrValue::Int(start)), Some(&AttrValue::Int(end))) = (
+                node.attributes.get(LABEL_SPAN_START_ATTR),
+                node.attributes.get(LABEL_SPAN_END_ATTR),
+            ) else {
+                panic!(
+                    "{kind:?} node missing paired `label_span.*`: {:?}",
+                    node.attributes
+                );
+            };
+            let start = usize::try_from(start).expect("label_span.start fits usize");
+            let end = usize::try_from(end).expect("label_span.end fits usize");
+            assert_eq!(
+                src.get(start..end),
+                Some("intro"),
+                "{kind:?} label span must cover exactly the `intro` identifier"
+            );
+        }
+    }
+
+    #[test]
     fn lowers_heading_and_paragraph() {
         let r = lower(
             "= Hello\n\nbody *italic* text\n",

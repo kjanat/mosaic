@@ -206,6 +206,14 @@ pub struct Inline {
     pub kind: InlineKind,
     pub text: String,
     pub span: SourceSpan,
+    /// For [`InlineKind::Reference`] / [`InlineKind::PageReference`], the
+    /// source span of the label *identifier* alone — the `intro` in `@intro`
+    /// or `@page(intro)`, excluding the `@` sigil and the `@page(`…`)`
+    /// wrapper. The lowerer stamps it as the node's `label_span` so editor
+    /// features (rename) read the identifier range directly instead of
+    /// re-deriving it from [`Self::span`] geometry. `None` for every other
+    /// inline kind.
+    pub label_span: Option<SourceSpan>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
