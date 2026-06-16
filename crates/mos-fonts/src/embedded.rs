@@ -8,7 +8,10 @@
 //! one document and returns the trimmed bytes suitable for a
 //! `/FontFile2` stream.
 
-use rustybuzz::{Face, UnicodeBuffer};
+use std::collections::HashMap;
+use std::sync::{Arc, PoisonError, RwLock};
+
+use rustybuzz::{Direction, Face, Language, Script, ShapePlan, UnicodeBuffer};
 
 /// One glyph in a shaped run. Cluster values are byte offsets into the
 /// source UTF-8 string.
@@ -27,6 +30,12 @@ pub struct ShapedGlyph {
     /// string. Monotonically non-decreasing across a LTR run.
     pub cluster: u32,
 }
+
+/// Per-face cache of compiled `rustybuzz` shape plans, keyed by the
+/// `(script, language)` a buffer resolves to after segment-property guessing.
+/// `Arc` so the hit path can clone the handle out and shape with the lock
+/// released.
+type ShapePlanCache = RwLock<HashMap<(Script, Option<Language>), Arc<ShapePlan>>>;
 
 /// A bundled `TrueType` face: the raw bytes plus the metrics and
 /// parsed `rustybuzz::Face` needed to shape text and emit a PDF
@@ -79,6 +88,18 @@ pub struct EmbeddedFont {
     /// Latin/Cyrillic/Greek fonts; the italic bit (bit 7, value 64)
     /// is OR'd in for italic cuts.
     pub flags: u32,
+    /// Compiled `rustybuzz` shape plans, keyed by the buffer's
+    /// `(script, language)` after segment-property guessing. A plan is the
+    /// compiled GSUB/GPOS feature program for a
+    /// `(face, script, language, LTR, no user features)` tuple; it is
+    /// invariant across the thousands of per-run shaping calls, so building
+    /// it once per script (Latin dominates real text) replaces the plan
+    /// recompilation `rustybuzz::shape` does on *every* call — ~22% of build
+    /// time in profiling. `RwLock` because the font is shared `&'static`;
+    /// the hit path (the common case) only needs a read lock. Plans are
+    /// `Arc`-wrapped so the hit path can clone the handle out and release
+    /// the lock before shaping.
+    plan_cache: ShapePlanCache,
 }
 
 impl std::fmt::Debug for EmbeddedFont {
@@ -177,6 +198,7 @@ impl EmbeddedFont {
             bbox,
             stem_v,
             flags,
+            plan_cache: RwLock::new(HashMap::new()),
         }
     }
 
@@ -214,12 +236,43 @@ pub fn shape(font: &EmbeddedFont, text: &str) -> Vec<ShapedGlyph> {
     // codepoints; the slice is LTR-only so we force horizontal LTR
     // explicitly to avoid the inference picking RTL for an Arabic
     // word the user typed.
-    buffer.set_direction(rustybuzz::Direction::LeftToRight);
+    buffer.set_direction(Direction::LeftToRight);
     buffer.guess_segment_properties();
     // Force LTR back: guess_segment_properties may flip direction
     // based on script. This slice is LTR-only by scope.
-    buffer.set_direction(rustybuzz::Direction::LeftToRight);
-    let glyph_buffer = rustybuzz::shape(&font.face, &[], buffer);
+    buffer.set_direction(Direction::LeftToRight);
+    // `rustybuzz::shape` recompiles the OpenType shape plan on every call;
+    // that recompilation dominated build time (~22% in profiling). The plan
+    // depends only on `(face, direction, script, language, user features)` —
+    // direction is always LTR here and features are empty — so cache it by
+    // `(script, language)`. Building the plan with these exact arguments
+    // reproduces `rustybuzz::shape`'s plan, so shaped output is byte-identical.
+    let key = (buffer.script(), buffer.language());
+    // Clone the plan handle out under the lock, then shape with the lock
+    // released. A poisoned lock is recovered rather than panicked on, since a
+    // stale plan cache is harmless.
+    let cached = font
+        .plan_cache
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&key)
+        .map(Arc::clone);
+    let plan = cached.unwrap_or_else(|| {
+        let plan = Arc::new(ShapePlan::new(
+            &font.face,
+            Direction::LeftToRight,
+            Some(key.0),
+            key.1.as_ref(),
+            &[],
+        ));
+        font.plan_cache
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry(key)
+            .or_insert_with(|| Arc::clone(&plan));
+        plan
+    });
+    let glyph_buffer = rustybuzz::shape_with_plan(&font.face, &plan, buffer);
     let infos = glyph_buffer.glyph_infos();
     let positions = glyph_buffer.glyph_positions();
     let mut out = Vec::with_capacity(infos.len());
