@@ -15,7 +15,7 @@ repository     = "https://github.com/kjanat/mosaic"
 languages      = ["languages/mosaic"]
 
 [language_servers.mos-lsp]
-name      = "Mosaic Language Server" # This does nothing
+name      = "Mosaic Language Server"  # This does nothing
 # Language-server `languages` are display names from language config.toml.
 # The old singular `language = "Mosaic"` form is deprecated by Zed.
 languages = ["Mosaic"]
