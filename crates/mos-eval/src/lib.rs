@@ -3,7 +3,7 @@
 //! The "evaluator" is really a *lowerer + resolver*: it walks a
 //! [`SyntaxTree`] from `mos-parse` and builds the typed semantic
 //! [`Document`] graph from `mos-core` (manifest §6 stage 2), then
-//! runs the [`resolve`] pass to assign section numbers and rewrite
+//! runs the [`resolve`](resolve()) pass to assign section numbers and rewrite
 //! `@label` cross-references (§6 stage 3, MVP 1).
 
 #![doc(

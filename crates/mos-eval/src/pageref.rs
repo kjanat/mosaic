@@ -9,7 +9,7 @@
 //!
 //! Responsibilities are split by which input each step needs:
 //!
-//! - [`validate_page_references`](crate::resolve) runs at lower time, where the
+//! - [`validate_page_references`](mod@crate::resolve) runs at lower time, where the
 //!   label *index* exists, and reports an undeclared `@page(x)` as `MOS0033`,
 //!   exactly like an undeclared `@x`. (It lives in `resolve` next to the index.)
 //! - [`resolve_page_references`] runs each fixpoint iteration with a label→page

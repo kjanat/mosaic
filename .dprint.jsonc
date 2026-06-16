@@ -20,6 +20,7 @@
 		"crates/tree-sitter-mosaic/src/parser.c",
 		"crates/tree-sitter-mosaic/src/grammar.json",
 		"crates/tree-sitter-mosaic/src/node-types.json",
+		".github/actions/pages/index.html",
 	],
 	"plugins": [
 		"https://plugins.dprint.dev/exec-0.6.2.json@df98f54ffd3092b8a841aedd6d098a2651f16d0a796a40535774f1a8b4b9d463",

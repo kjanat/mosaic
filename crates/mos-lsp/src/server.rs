@@ -289,7 +289,7 @@ fn rename_result(state: &mut ServerState, message: &Value) -> Value {
 
 /// Extract the zero-based `position` (`line`, UTF-16 `character`) from a
 /// request's params. Out-of-`u32`-range values clamp to `u32::MAX`,
-/// which [`definition_range`] then resolves to end-of-document: a
+/// which [`definition_range`](crate::definition_range) then resolves to end-of-document: a
 /// harmless "no definition here" rather than a panic.
 fn read_position(message: &Value) -> Option<LspPosition> {
     let line = message

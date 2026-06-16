@@ -13,6 +13,7 @@ categories.workspace   = true
 include.workspace      = true
 
 [[bin]]
+doc  = false
 name = "mos-lsp"
 path = "src/main.rs"
 

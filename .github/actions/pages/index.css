@@ -1,0 +1,46 @@
+:root {
+	color-scheme: light dark;
+}
+body {
+	font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+	max-width: 720px;
+	margin: 3rem auto;
+	padding: 0 1.25rem;
+}
+h1 {
+	font-weight: 600;
+	font-size: 1.6rem;
+	margin: 0 0 1.5rem;
+}
+ul {
+	list-style: none;
+	padding: 0;
+}
+li {
+	padding: 0.45rem 0;
+	border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+li:last-child {
+	border-bottom: none;
+}
+a {
+	color: #2563eb;
+	text-decoration: none;
+	font-weight: 500;
+}
+a:hover {
+	text-decoration: underline;
+}
+.ver {
+	color: color-mix(in srgb, currentColor 50%, transparent);
+	font-size: 0.9em;
+}
+footer {
+	margin-top: 2rem;
+	font-size: 0.95rem;
+}
+@media (prefers-color-scheme: dark) {
+	a {
+		color: #60a5fa;
+	}
+}

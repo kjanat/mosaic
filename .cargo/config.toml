@@ -13,8 +13,9 @@ br = "build --release"
 bw  = "build --workspace"
 bwa = "build --workspace --all-targets"
 cw  = "check --workspace --all-targets"
+da  = "doc --workspace --no-deps --message-format json --quiet --all-features --document-private-items --bins --examples"
 dw  = "doc --workspace --no-deps"
-dwn = "--config .cargo/nightly.toml doc"  # Run: rustup run nightly -- cargo dwn
+dwn = "--config .cargo/nightly.toml doc"                                                                                   # Run: rustup run nightly -- cargo dwn
 rr  = "run --release"
 tw  = "test --workspace"
 

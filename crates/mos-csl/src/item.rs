@@ -4,7 +4,7 @@
 //! (Appendix III item types, Appendix IV variables) as typed Rust. An [`Item`]
 //! is an `id` plus an [`ItemType`] and four category-keyed maps of variables
 //! (string, number, date, name). Everything is stored in
-//! [`BTreeMap`](std::collections::BTreeMap)s keyed by ordered enums, so
+//! [`BTreeMap`]s keyed by ordered enums, so
 //! iteration is deterministic.
 
 use std::collections::BTreeMap;

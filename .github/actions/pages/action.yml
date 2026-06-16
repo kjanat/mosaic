@@ -1,0 +1,30 @@
+name: Add workspace index page
+description: Add an index page to the docs with links to each crate's API docs.
+
+inputs:
+  server:
+    required: false
+    default: ${{ github.server_url }}
+  repository:
+    required: false
+    default: ${{ github.repository }}
+  dir:
+    required: false
+    default: target/doc
+  asset:
+    required: false
+    default: design/A4.svg
+
+runs:
+  using: composite
+  steps:
+    - name: Add workspace docs index
+      shell: pwsh
+      env: { I: "${{ toJSON(inputs) }}" }
+      run: |
+        $inputs = ConvertFrom-Json $env:I
+        & (Join-Path $env:GITHUB_ACTION_PATH "script.ps1") `
+          -Server $inputs.server `
+          -Repository $inputs.repository `
+          -Dir $inputs.dir `
+          -Asset $inputs.asset
