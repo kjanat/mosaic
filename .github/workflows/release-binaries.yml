@@ -2,8 +2,9 @@ name: release-binaries
 
 # Reusable cross-compile + release-upload pipeline.
 #
-# Ensures the GitHub release for `tag` exists (created with auto-generated
-# "What's Changed" notes if missing), then builds each requested binary for each
+# Ensures the GitHub release for `tag` exists (created from the `changelog`
+# version section via taiki-e/create-gh-release-action if missing), then builds
+# each requested binary for each
 # requested target and attaches a per-(binary, target) archive
 # (`<bin>-<target>.tar.gz` on Unix, `<bin>-<target>.zip` on Windows) plus a
 # sha256 sum. Cross-compilation (e.g. aarch64 Linux, arm64 Windows) is handled by
@@ -24,6 +25,11 @@ on:
         description: Release tag the archives are built from and attached to (e.g. v0.6.0).
         required: true
         type: string
+      changelog:
+        description: Path to a changelog whose `tag` section becomes the release notes. Empty = no notes.
+        required: false
+        type: string
+        default: ""
       targets:
         description: "JSON array of { target, runner } objects to cross-compile for."
         required: false
@@ -39,31 +45,26 @@ on:
           ]
 
 permissions: { contents: read }
+defaults: { run: { shell: pwsh } }
 
 jobs:
   # upload-rust-binary-action attaches to an existing release, so create it once
-  # up front (idempotent) before the matrix fans out. `--generate-notes` yields
-  # GitHub's "What's Changed" section; an already-existing release is reused, not
-  # overwritten, so manual notes survive.
+  # up front before the matrix fans out. create-gh-release-action derives the body
+  # from the `changelog` version section (parse-changelog) and tolerates a missing
+  # entry rather than failing the binaries.
   create-release:
     name: "create release ${{ inputs.tag }}"
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
-      - name: ensure the release exists
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ inputs.tag }}
-        run: |
-          gh release view $env:TAG 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "release $($env:TAG) already exists; reusing it"
-          } else {
-            gh release create $env:TAG --title $env:TAG --generate-notes --verify-tag
-            Write-Host "created release $($env:TAG) with generated notes"
-          }
+      - uses: actions/checkout@v6
+        with: { ref: "refs/tags/${{ inputs.tag }}", persist-credentials: false }
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          changelog: ${{ inputs.changelog }}
+          allow-missing-changelog: true
+          ref: refs/tags/${{ inputs.tag }}
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
 
   upload:
     name: "${{ matrix.bin }} | ${{ matrix.target.target }}"
@@ -97,15 +98,14 @@ jobs:
           ref: refs/tags/${{ inputs.tag }}
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
       - name: job summary
-        shell: pwsh
         env:
           MATRIX: ${{ toJSON(matrix) }}
           OUTPUTS: ${{ toJSON(steps.upload.outputs) }}
         run: |
           $m = $env:MATRIX | ConvertFrom-Json
           $o = $env:OUTPUTS | ConvertFrom-Json
-          # `tar` is set for Unix archives, `zip` for Windows; the other is absent.
-          $archive = if ($o.tar) { $o.tar } else { $o.zip }
+          # `tar` is set for Unix archives, `zip` for Windows; the other is absent (null).
+          $archive = $o.tar ?? $o.zip
           $digest = if ($o.sha256 -and (Test-Path $o.sha256)) {
             (-split (Get-Content $o.sha256 -TotalCount 1))[0]
           } else {
