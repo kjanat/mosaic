@@ -546,7 +546,7 @@ mod tests {
         let src = "= Title\n";
         let r = parse_str(src);
         let (_, _, span) = r.tree.items[0].as_heading().unwrap();
-        assert_eq!(&src[span.start..span.end], "= Title");
+        assert_eq!(&src[span.start()..span.end()], "= Title");
     }
 
     #[test]
@@ -574,7 +574,7 @@ mod tests {
         // is that it does NOT panic and returns a structured result.
         // We document the current behaviour here: `#set` is treated
         // as the keyword and `name` is parsed as the body identifier
-        // — see `at_set_keyword`. This guards against regression.
+        //; see `at_set_keyword`. This guards against regression.
         assert_eq!(r.tree.items.len() + r.diagnostics.len(), 1);
     }
 
@@ -594,7 +594,7 @@ mod tests {
             .iter()
             .find(|i| i.kind == InlineKind::Emphasis)
             .expect("emphasis inline");
-        assert_eq!(&src[emph.span.start..emph.span.end], "*x*");
+        assert_eq!(&src[emph.span.start()..emph.span.end()], "*x*");
         assert_eq!(emph.text, "x");
     }
 
@@ -607,11 +607,89 @@ mod tests {
         let (_, inlines, _) = item.as_heading().unwrap();
         assert_eq!(item.label(), Some("sec:methods"));
         assert_eq!(
-            item.label_span().map(|span| &src[span.start..span.end]),
+            item.label_span().map(|span| &src[span.start()..span.end()]),
             Some("sec:methods")
         );
         assert_eq!(inlines.len(), 1);
         assert_eq!(inlines[0].text, "Methods");
+    }
+
+    #[test]
+    fn heading_label_with_trailing_content_warns_and_suggests_reorder() {
+        // A `<label>` followed by content is not the trailing element, so it is
+        // not recognised as a declaration (MOS0048). The fix moves it to the end.
+        let src = "= Title <intro> [@k]\n";
+        let r = parse_str(src);
+        let diag = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0048.code())
+            .expect("MOS0048 for the misplaced heading label");
+        assert_eq!(diag.severity(), Severity::Warning);
+        // The label was not attached; it stays in the heading text.
+        assert_eq!(r.tree.items[0].label(), None);
+        let suggestions = diag.suggestions();
+        assert_eq!(suggestions.len(), 1, "one reorder fix, got {suggestions:?}");
+        assert_eq!(suggestions[0].replacement, "Title [@k] <intro>");
+    }
+
+    #[test]
+    fn trailing_heading_label_does_not_warn_misplaced() {
+        // A correctly trailing label attaches and never trips MOS0048.
+        let r = parse_str("= Title <intro>\n");
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0048.code()),
+            "{:?}",
+            r.diagnostics
+        );
+        assert_eq!(r.tree.items[0].label(), Some("intro"));
+    }
+
+    #[test]
+    fn escaped_angle_in_heading_is_literal_not_a_label() {
+        // `\<head>` is escaped angle-bracket text: not a label, no MOS0048, and
+        // the rendered inline text carries a literal `<` (so "The <head> element"
+        // is writable as a heading).
+        let r = parse_str("= The \\<head> element\n");
+        assert_eq!(
+            r.tree.items[0].label(),
+            None,
+            "escaped `\\<` is not a label"
+        );
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0048.code()),
+            "escaped angle must not trip MOS0048: {:?}",
+            r.diagnostics
+        );
+        let (_, inlines, _) = r.tree.items[0].as_heading().unwrap();
+        let rendered: String = inlines.iter().map(|i| i.text.as_str()).collect();
+        assert_eq!(rendered, "The <head> element");
+    }
+
+    #[test]
+    fn escaped_trailing_angle_is_not_swallowed_as_label() {
+        // A `\<head>` at end of line must not be claimed by strip_trailing_label.
+        let r = parse_str("= ends with \\<head>\n");
+        assert_eq!(r.tree.items[0].label(), None);
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0048.code()),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn double_backslash_before_label_still_attaches() {
+        // Parity: `\\<intro>` is an escaped backslash (`\\`) followed by a real
+        // label, so the trailing label still registers (even backslash count).
+        let r = parse_str("= title \\\\<intro>\n");
+        assert_eq!(r.tree.items[0].label(), Some("intro"));
     }
 
     #[test]
@@ -623,7 +701,7 @@ mod tests {
         let (inlines, _) = item.as_paragraph().unwrap();
         assert_eq!(item.label(), Some("intro"));
         assert_eq!(
-            item.label_span().map(|span| &src[span.start..span.end]),
+            item.label_span().map(|span| &src[span.start()..span.end()]),
             Some("intro")
         );
         assert_eq!(inlines[0].text, "body text");
@@ -671,8 +749,8 @@ mod tests {
     #[test]
     fn reference_inlines_carry_label_identifier_span() {
         // The parser records, for `@label` and `@page(label)`, the source span
-        // of the bare identifier — excluding the `@`, the `@page(` prefix, and
-        // the `)` — so the lowerer can stamp it for editor rename (issue #116).
+        // of the bare identifier: excluding the `@`, the `@page(` prefix, and
+        // the `)`, so the lowerer can stamp it for editor rename (issue #116).
         let src = "see @sec:methods and @page(fig:wells)\n";
         let r = parse_str(src);
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
@@ -683,14 +761,14 @@ mod tests {
             .find(|i| i.kind == InlineKind::Reference)
             .unwrap();
         let ref_span = reference.label_span.as_ref().expect("reference label span");
-        assert_eq!(&src[ref_span.start..ref_span.end], "sec:methods");
+        assert_eq!(&src[ref_span.start()..ref_span.end()], "sec:methods");
 
         let page = inlines
             .iter()
             .find(|i| i.kind == InlineKind::PageReference)
             .unwrap();
         let page_span = page.label_span.as_ref().expect("page reference label span");
-        assert_eq!(&src[page_span.start..page_span.end], "fig:wells");
+        assert_eq!(&src[page_span.start()..page_span.end()], "fig:wells");
 
         // Non-reference inlines carry no label span.
         assert!(
@@ -705,7 +783,7 @@ mod tests {
     #[test]
     fn malformed_at_page_falls_back_to_ordinary_reference() {
         // `@page` with no `(label)` is just a cross-reference to a label named
-        // "page" — the page-reference branch only fires for a well-formed
+        // "page"; the page-reference branch only fires for a well-formed
         // `@page(label)`.
         let r = parse_str("see @page now\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
@@ -782,10 +860,10 @@ mod tests {
             inlines.iter().map(|i| &i.text).collect::<Vec<_>>()
         );
         // The first text run still spans the raw bytes including the
-        // CR — only the *payload* is normalized.
+        // CR: only the *payload* is normalized.
         let text = inlines.iter().find(|i| i.kind == InlineKind::Text).unwrap();
         assert_eq!(text.text, "alpha\nbeta");
-        assert_eq!(&src[text.span.start..text.span.end], "alpha\r\nbeta");
+        assert_eq!(&src[text.span.start()..text.span.end()], "alpha\r\nbeta");
     }
 
     #[test]
@@ -848,7 +926,7 @@ mod tests {
     #[test]
     fn figure_directive_positional_path() {
         // Pins the `#figure("…")` spelling the directive grammar
-        // advertises — the eval layer treats the first positional arg
+        // advertises; the eval layer treats the first positional arg
         // the same way `#image(...)` does, so the parser-level shape
         // must match `#image`'s.
         let r = parse_str("#figure(\"scan.png\")\n");
@@ -971,7 +1049,7 @@ mod tests {
             assert_eq!(raw.text, "fn main() {}");
             assert_eq!(raw.label, Some("ex:code"));
             assert_eq!(
-                raw.label_span.map(|span| &src[span.start..span.end]),
+                raw.label_span.map(|span| &src[span.start()..span.end()]),
                 Some("ex:code")
             );
         }
@@ -1141,7 +1219,7 @@ mod tests {
 
     #[test]
     fn list_marker_breaks_running_paragraph() {
-        // No blank line between paragraph and list — the marker still
+        // No blank line between paragraph and list; the marker still
         // opens a fresh block.
         let r = parse_str("paragraph line\n- item\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
@@ -1183,7 +1261,7 @@ mod tests {
 
     #[test]
     fn dash_without_space_is_paragraph() {
-        // A bare `-foo` line is a paragraph, not a list — the marker
+        // A bare `-foo` line is a paragraph, not a list; the marker
         // requires trailing whitespace.
         let r = parse_str("-foo\n");
         assert!(!r.has_errors());
@@ -1193,7 +1271,7 @@ mod tests {
     #[test]
     fn number_dot_without_space_is_paragraph() {
         // `1.foo` without trailing whitespace is not an ordered list
-        // marker. (Even `1.` alone with no content is not — keeps the
+        // marker. (Even `1.` alone with no content is not: keeps the
         // parser conservative around inline numerals like `1.5`.)
         let r = parse_str("1.foo\n");
         assert!(!r.has_errors());
@@ -1219,7 +1297,7 @@ mod tests {
         let r = parse_str(src);
         let (_, items, _) = r.tree.items[0].as_list().unwrap();
         let span = &items[0].span;
-        assert_eq!(&src[span.start..span.end], "- hello");
+        assert_eq!(&src[span.start()..span.end()], "- hello");
     }
 
     #[test]
@@ -1228,7 +1306,7 @@ mod tests {
         let r = parse_str(src);
         let (_, _, span) = r.tree.items[0].as_list().unwrap();
         // Outer list's span should reach to the end of the nested item.
-        assert!(span.end > src.find('b').unwrap());
+        assert!(span.end() > src.find('b').unwrap());
     }
 
     // ---------- line-break controls (issue #26) ----------
@@ -1383,7 +1461,7 @@ mod tests {
         // not just the trailing `b`. Newline is not part of the
         // paragraph inline run.
         assert_eq!(
-            inlines[0].span.end - inlines[0].span.start,
+            inlines[0].span.end() - inlines[0].span.start(),
             4,
             "expected span over `a\\-b` (4 bytes), got {:?}",
             inlines[0].span
@@ -1422,7 +1500,7 @@ mod tests {
     // The chosen citation form is `[@key]`. The key alphabet matches
     // the existing label alphabet (`[A-Za-z0-9_:.-]`, see
     // `support::scan_label_chars`). A single key per `[@…]` group is
-    // the only form recognised in this slice — list forms like
+    // the only form recognised in this slice: list forms like
     // `[@a; @b]` and prefix/suffix bodies (`[see @key, p. 33]`) are
     // deferred to a later bibliography slice and parse here as
     // literal text. Malformed citations (`[@`, `[@key`, `[@]`) emit a
@@ -1444,9 +1522,9 @@ mod tests {
         );
         let citation = &inlines[1];
         assert_eq!(citation.text, "smith2024");
-        // Span covers `[@smith2024]` — the full source extent, not
+        // Span covers `[@smith2024]`; the full source extent, not
         // just the key.
-        let span_text = &src[citation.span.start..citation.span.end];
+        let span_text = &src[citation.span.start()..citation.span.end()];
         assert_eq!(span_text, "[@smith2024]");
     }
 
@@ -1464,7 +1542,7 @@ mod tests {
     #[test]
     fn citation_bare_bracket_stays_literal_text() {
         // A bare `[` (no immediate `@`) must not trigger the citation
-        // branch and must not emit a warning — `[` is a freely
+        // branch and must not emit a warning: `[` is a freely
         // available character in prose.
         let r = parse_str("write [this] not that\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
@@ -1484,7 +1562,7 @@ mod tests {
         // `[@key` with no closing `]` before end-of-paragraph must
         // emit `MOS0039` and leave the source bytes as literal text.
         // Critically, recovery must NOT let the `@key` chars fall
-        // through to the `@`-reference branch — that would inject a
+        // through to the `@`-reference branch; that would inject a
         // phantom `Reference` inline and trip the resolver's
         // unknown-label diagnostic (`MOS0033`) on what was a citation
         // mistake, not a label mistake.
@@ -1528,7 +1606,7 @@ mod tests {
     #[test]
     fn citation_multi_key_form_is_deferred_and_does_not_leak_references() {
         // `[@a; @b]` is the pandoc multi-key form. This slice does
-        // NOT support it — recognising it as one citation list is a
+        // NOT support it: recognising it as one citation list is a
         // future bibliography slice (MVP 4 follow-up). Until then it
         // must surface as a single `MOS0039` warning and consume the
         // whole `[@…]` extent so neither `@a` nor `@b` slips out as

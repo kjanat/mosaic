@@ -21,7 +21,7 @@ use crate::images;
 /// shaped glyph stream as big-endian `u16` CIDs.
 ///
 /// Image placements (raster `XObject`s) emit *outside* the text object
-/// — `BT/ET` brackets only permit text operators, so each image
+///: `BT/ET` brackets only permit text operators, so each image
 /// placement is wrapped in its own `q ... Q` save/restore pair before
 /// the text block starts. Putting images first means subsequent text
 /// can overlay (e.g. a caption beneath the image is unaffected, but
@@ -176,7 +176,7 @@ fn emit_simple_text(content: &mut Content, pending: &mut Vec<PositionedItem>) {
 /// Encode `text` against a Base14 face's `DocEncoding`. The planner
 /// guarantees `byte_for_char` covers every `WinAnsi` native and every
 /// extended Latin char that fit into the 256-slot budget; any char
-/// outside both — Cyrillic, CJK, emoji — renders as `?`. Documents
+/// outside both: Cyrillic, CJK, emoji: renders as `?`. Documents
 /// that need real coverage should pick the bundled Noto Sans family
 /// (the default; users hit this Base14 path only by explicitly asking
 /// for `Helvetica`/`Times`/`Courier` via `#set text(font: ...)`).

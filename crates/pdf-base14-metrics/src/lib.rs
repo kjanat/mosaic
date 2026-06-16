@@ -1,8 +1,8 @@
 //! Pre-parsed Adobe Core 14 PDF font metrics.
 //!
 //! The 14 PostScript faces every PDF 1.7-conformant viewer ships
-//! built-in — Helvetica × 4, Times × 4, Courier × 4, Symbol,
-//! `ZapfDingbats` — exposed as `&'static FontMetrics<'static>` constants
+//! built-in: Helvetica × 4, Times × 4, Courier × 4, Symbol,
+//! `ZapfDingbats`: exposed as `&'static FontMetrics<'static>` constants
 //! that cost nothing at runtime. The AFM files are vendored from
 //! [`tecnickcom/tc-font-core14-afms`] under `data/`, parsed by the
 //! sibling [`adobe-font-metrics`] crate at build time (see `build.rs`),
@@ -30,13 +30,13 @@
 //! }
 //! ```
 //!
-//! # Encoding caveat — Symbol and `ZapfDingbats`
+//! # Encoding caveat: Symbol and `ZapfDingbats`
 //!
 //! [`Base14Font::winansi_width`] returns `None` for [`Base14Font::Symbol`]
 //! and [`Base14Font::ZapfDingbats`]: those fonts use their own
 //! PostScript encodings (Greek/math operators and named dingbats
 //! respectively), not `WinAnsi`. Querying them through a Latin-1 byte
-//! would be a category error — the byte `0x41` is `"A"` in `WinAnsi`
+//! would be a category error; the byte `0x41` is `"A"` in `WinAnsi`
 //! but `"Alpha"` in Symbol. Callers must reach for the per-glyph
 //! [`Base14Font::glyph_width`] API for those two fonts.
 //!
@@ -44,7 +44,7 @@
 //!
 //! The crate's Rust source is MIT. The 14 vendored AFM files in
 //! `data/afm/` ship under Adobe's permissive Core 14 AFM license
-//! (`APAFML`) — see `LICENSE-APAFML` in the crate root. The combined
+//! (`APAFML`); see `LICENSE-APAFML` in the crate root. The combined
 //! SPDX expression is `MIT AND APAFML`.
 
 #![doc(
@@ -62,7 +62,7 @@ mod winansi_char_map;
 mod winansi_table;
 
 // The generated file references `BBox`, `CharacterMetric`,
-// `FontMetrics`, `KerningPair`, and `Cow` unqualified — all are in
+// `FontMetrics`, `KerningPair`, and `Cow` unqualified; all are in
 // scope via the `pub use` and `use` above.
 include!(concat!(env!("OUT_DIR"), "/baked.rs"));
 
@@ -200,7 +200,7 @@ impl Base14Font {
     ///
     /// This is an O(n) linear scan over the font's character metrics
     /// (~315 entries for the Latin faces). Prefer
-    /// [`Self::winansi_width`] when querying by byte — that path
+    /// [`Self::winansi_width`] when querying by byte; that path
     /// goes through a pre-baked O(1) table. For the Latin Core 12
     /// faces, [`Self::glyph_width_by_name`] goes through a baked
     /// sorted index instead and is O(log n).
@@ -226,7 +226,7 @@ impl Base14Font {
     /// safe to call once per character per PDF page in tight loops.
     ///
     /// Returns `None` for [`Self::Symbol`] and [`Self::ZapfDingbats`]
-    /// — their AFMs are intentionally unindexed because those faces
+    ///: their AFMs are intentionally unindexed because those faces
     /// don't participate in `/Differences`-style remapping. Callers
     /// that need Symbol/Dingbat widths must use [`Self::glyph_width`].
     ///
@@ -273,7 +273,7 @@ impl Base14Font {
     /// - `code` is unmapped by PDF `WinAnsi` (control characters
     ///   `0x00..=0x1F`, the gaps `0x7F` / `0x81` / `0x8D` / `0x8F`
     ///   / `0x90` / `0x9D`); or
-    /// - `self` is [`Self::Symbol`] or [`Self::ZapfDingbats`] —
+    /// - `self` is [`Self::Symbol`] or [`Self::ZapfDingbats`].
     ///   those fonts do not use `WinAnsi` (see the crate-level docs).
     ///
     /// Implemented as a single `[Option<f32>; 256]` indexed load
@@ -318,7 +318,7 @@ impl Base14Font {
 /// Returns the PostScript glyph name assigned to PDF `WinAnsiEncoding`
 /// byte `code`, or `None` for unmapped codes.
 ///
-/// PDF `WinAnsi` is **not** Microsoft CP1252 — see PDF 1.7 Annex D.2
+/// PDF `WinAnsi` is **not** Microsoft CP1252; see PDF 1.7 Annex D.2
 /// for the canonical table. The two encodings differ at codes
 /// `0x7F`, `0x81`, `0x8D`, `0x8F`, `0x90`, and `0x9D` (gaps in PDF,
 /// assorted glyphs or DEL in CP1252).
@@ -352,7 +352,7 @@ pub fn winansi_glyph_name(code: u8) -> Option<&'static str> {
 /// - The six `WinAnsi` gap bytes (`0x7F`, `0x81`, `0x8D`, `0x8F`,
 ///   `0x90`, `0x9D`).
 ///
-/// O(n) scan over 256 slots — fine for callers that touch it once
+/// O(n) scan over 256 slots: fine for callers that touch it once
 /// per text run, sensible to memoize for hotter paths.
 ///
 /// # Examples
@@ -380,7 +380,7 @@ pub fn winansi_byte(ch: char) -> Option<u8> {
 pub const __WINANSI_CHAR_MAP: [Option<char>; 256] = winansi_char_map::WINANSI_CHAR_MAP;
 
 /// Returns the PostScript glyph name for `ch` *if and only if* `ch`
-/// is in the **extended** tier — i.e. a Core 14 AFM glyph that has
+/// is in the **extended** tier: i.e. a Core 14 AFM glyph that has
 /// no `WinAnsi` byte and therefore must be reached through a custom
 /// `/Encoding` `/Differences` slot. The extended tier covers:
 ///
@@ -395,7 +395,7 @@ pub const __WINANSI_CHAR_MAP: [Option<char>; 256] = winansi_char_map::WINANSI_CH
 /// Returns `None` for **two distinct cases that callers must
 /// distinguish**:
 ///
-/// 1. **`WinAnsi` natives** — `š` (U+0161), `ž` (U+017E), `Š`, `Ž`,
+/// 1. **`WinAnsi` natives**: `š` (U+0161), `ž` (U+017E), `Š`, `Ž`,
 ///    the accented Latin-1 alphabet, `€`, `“`, ... These *do* have
 ///    PostScript glyph names in the AFM, but this function returns
 ///    `None` for them because they're reachable through
@@ -499,7 +499,7 @@ mod tests {
         assert_eq!(extended_glyph_name('ł'), Some("lslash"));
         assert_eq!(extended_glyph_name('Ł'), Some("Lslash"));
         assert_eq!(extended_glyph_name('ě'), Some("ecaron"));
-        // ž is a WinAnsi native, not in the extended tier — by
+        // ž is a WinAnsi native, not in the extended tier: by
         // contract `extended_glyph_name` returns `None` even though
         // the AFM does carry a `zcaron` glyph (reachable through
         // `winansi_byte` / `winansi_glyph_name` instead).

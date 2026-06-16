@@ -8,7 +8,7 @@
 //! - only blocks declare labels; [`NodeKind::Reference`] /
 //!   [`NodeKind::PageReference`] nodes *consume* them, so they are
 //!   skipped when scanning for the declaration site;
-//! - **first declaration wins** — a label declared twice (a MOS0030
+//! - **first declaration wins**: a label declared twice (a MOS0030
 //!   error) resolves to its first occurrence, the same one the resolver
 //!   keeps and points its "first declaration is here" note at.
 //!
@@ -33,7 +33,7 @@ use crate::diagnostics::{LspPosition, LspRange, span_to_range};
 ///
 /// Returns `None` when the cursor is not on a reference, the referenced
 /// label is undeclared, or (defensively) the declaration lives in a
-/// different file than the request — which cannot happen for a
+/// different file than the request, which cannot happen for a
 /// single-document lowering but keeps the contract explicit.
 #[must_use]
 pub fn definition_range(file: &Path, src: &str, position: LspPosition) -> Option<LspRange> {
@@ -45,7 +45,7 @@ pub fn definition_range(file: &Path, src: &str, position: LspPosition) -> Option
 /// `document`, returning the LSP range of its label's first declaration.
 ///
 /// The caller supplies the [`Document`] (from a cache or a fresh lowering)
-/// alongside the `src` it was lowered from — `src` is needed only to map
+/// alongside the `src` it was lowered from: `src` is needed only to map
 /// byte offsets to UTF-16 positions, the document carries the spans. Same
 /// `None` contract as [`definition_range`].
 #[must_use]
@@ -70,7 +70,7 @@ fn reference_label_at(document: &Document, file: &Path, offset: usize) -> Option
         .nodes()
         .filter(|node| matches!(node.kind, NodeKind::Reference | NodeKind::PageReference))
         .filter(|node| node.span.file == file && span_contains(&node.span, offset))
-        .min_by_key(|node| node.span.end.saturating_sub(node.span.start))
+        .min_by_key(|node| node.span.end().saturating_sub(node.span.start()))
         .and_then(|node| match node.attributes.get("label") {
             Some(AttrValue::Str(label)) => Some(label.clone()),
             _ => None,
@@ -81,7 +81,7 @@ fn reference_label_at(document: &Document, file: &Path, offset: usize) -> Option
 /// document order.
 ///
 /// `nodes()` yields the arena in allocation order, which the lowerer
-/// fills in source order, so `find` returns the first declaration —
+/// fills in source order, so `find` returns the first declaration:
 /// matching the resolver's first-wins rule. References are excluded
 /// because they also carry a `label` attribute (the target they point
 /// at), and treating one as a declaration would shadow the real block.
@@ -123,7 +123,7 @@ fn label_token_span(node: &mos_core::Node) -> Option<SourceSpan> {
 /// token, matching how editors place the caret inside the identifier
 /// when invoking go-to-definition.
 const fn span_contains(span: &SourceSpan, offset: usize) -> bool {
-    span.start <= offset && offset < span.end
+    span.start() <= offset && offset < span.end()
 }
 
 /// Convert an LSP [`LspPosition`] (zero-based line, UTF-16 `character`)

@@ -36,13 +36,13 @@ The following are deferred. Do not add scaffolding for them in MVP 1 PRs:
 
 - Page references (`@label` resolving to a page number, or any new page-reference syntax).
 - Table of contents with page numbers, list of figures/tables with page numbers, index locators.
-- Layout fixpoints — iterating layout until pagination is stable.
+- Layout fixpoints: iterating layout until pagination is stable.
 - Oscillation detection, stabilization iteration counts, non-convergence diagnostics.
 - Page boundary signatures, page graph reuse, and reflow-from-first-changed-page.
 - Cross-reference text whose value depends on the target's final page.
 
 The existing `MAX_FIXPOINT_ITERATIONS` loop in `resolve.rs` is a safety net, not an implementation
-of any of the above. It will be replaced — not extended in place — when the real fixpoint lands.
+of any of the above. It will be replaced, not extended in place, when the real fixpoint lands.
 
 ## Minimum future data contract
 
@@ -60,7 +60,7 @@ Layout → resolver, after each pagination attempt:
 
 - A `NodeId → PageNumber` map covering at minimum every requested target, plus any node referenced
   by TOC-like constructs.
-- A `LayoutSignature` — an opaque hash of page boundaries — so the driver can tell whether the new
+- A `LayoutSignature`: an opaque hash of page boundaries, so the driver can tell whether the new
   pagination matches the previous iteration.
 
 Driver loop ownership: **above** both `mos-eval` and `mos-layout`. The compiler pipeline order is
@@ -80,7 +80,7 @@ page-number/signature output. Neither crate gains a dependency on the other.
 
 Implications this contract locks in now:
 
-- `NodeId` must be stable across a single build's layout iterations. It already is —
+- `NodeId` must be stable across a single build's layout iterations. It already is:
   `Document::alloc` hands out monotonic IDs and the lowerer is deterministic per source.
 - Layout may store rendered text in placed runs for measurement and output, but it must not own the
   canonical reference rewrite. Reference string decisions stay in `mos-eval`; layout publishes page
@@ -96,7 +96,7 @@ Nothing in this contract is implemented in MVP 1.
 space as a breaking-change risk.** Leave it undefined.
 
 The current parser (`crates/mos-parse/src/inline.rs`) accepts any `scan_label_chars` run after `@`
-as opaque label text — colons included. That means `@page:foo`, `@p:foo`, `@pg:foo`, and any other
+as opaque label text: colons included. That means `@page:foo`, `@p:foo`, `@pg:foo`, and any other
 `prefix:label` form is **already a valid label reference today**. The corollary:
 
 - A future kind-discriminating prefix syntax such as `@page:label` would silently change the meaning
@@ -132,14 +132,14 @@ described above.
 
 ## Concrete follow-up work
 
-Small, scoped issues only — no umbrella epics:
+Small, scoped issues only; no umbrella epics:
 
 1. When kind-aware reference text lands (figures/equations/tables/theorems), reuse the existing
    one-pass resolver. Do not introduce layout coupling.
 2. When page references are picked up, open a single issue that (a) picks syntax under the
    prefix-collision constraint above, (b) introduces the `NodeId → PageNumber` map and
    `LayoutSignature` types in `mos-core`, and (c) places the iteration driver in `mos` (or a new
-   orchestration crate) — not in `mos-eval` or `mos-layout`. The existing single-pass loop in
+   orchestration crate); not in `mos-eval` or `mos-layout`. The existing single-pass loop in
    `resolve::resolve` is removed in the same change; it does not survive as a second driver. Land
    syntax, contract, and driver together; do not merge a partial scaffold.
 3. Non-convergence diagnostics are part of (2), not a separate prerequisite.

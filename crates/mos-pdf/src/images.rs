@@ -1,7 +1,7 @@
 //! Raster image `XObject` emission for the PDF backend.
 //!
 //! The layout engine hands us a [`mos_layout::PageGraph::images`]
-//! table — one entry per unique on-disk image, dedup'd by resolved
+//! table: one entry per unique on-disk image, dedup'd by resolved
 //! path. For each entry we emit a single Image `XObject`
 //! (`/Type /XObject /Subtype /Image`) with `/Width`, `/Height`,
 //! `/BitsPerComponent`, `/ColorSpace /DeviceRGB`, and the raw RGB8
@@ -27,7 +27,7 @@ use pdf_writer::{Content, Filter, Finish, Name, Pdf, Ref};
 use std::io::Write;
 
 /// Stable PDF resource name for the image with `handle.id`. Mirrors
-/// the `/F<n>` convention used by the font emitter — every page's
+/// the `/F<n>` convention used by the font emitter; every page's
 /// resource dict declares `/Im<n>` so PDF readers can resolve the
 /// references in the content stream.
 #[must_use]
@@ -45,7 +45,7 @@ pub(crate) fn flate_compress(bytes: &[u8]) -> Vec<u8> {
     // under OOM (which aborts the process anyway). Both branches below
     // are unreachable in practice; the `debug_assert!`s fire in tests
     // if that invariant is ever violated. Returning uncompressed bytes
-    // is *not* a correctness path — `emit_image_xobject` unconditionally
+    // is *not* a correctness path: `emit_image_xobject` unconditionally
     // sets `/Filter /FlateDecode`, so an uncompressed fallback would
     // produce a PDF the reader chokes on. It exists purely as a
     // last-resort escape from a release-mode panic.

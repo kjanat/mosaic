@@ -79,8 +79,8 @@ pub struct ShapedRun {
 /// `advance_pt` is the sum of per-glyph advances at the requested
 /// point size.
 ///
-/// Caller emits **one PDF `TextRun` per `WordSubRun`** — same
-/// baseline, x-cursor advances by `advance_pt` between sub-runs — and
+/// Caller emits **one PDF `TextRun` per `WordSubRun`**: same
+/// baseline, x-cursor advances by `advance_pt` between sub-runs: and
 /// PDF emit's existing `Tf` switch fires naturally on the font change.
 ///
 /// # Examples
@@ -109,7 +109,7 @@ pub struct WordSubRun {
     pub text: String,
     /// Shaped glyphs in visual order (LTR). Cluster offsets are local
     /// to `text` (rebased from the parent word's full text). Empty for
-    /// Base14 sub-runs (Base14 has no glyph stream — PDF emit goes via
+    /// Base14 sub-runs (Base14 has no glyph stream: PDF emit goes via
     /// `WinAnsi`-byte encoding instead).
     pub glyphs: Vec<ShapedGlyph>,
     /// Total horizontal advance of this sub-run, in PDF user-space
@@ -123,7 +123,7 @@ pub struct WordSubRun {
 /// contain any `.notdef` (GID 0) glyph are re-shaped against each
 /// embedded face in `fallbacks` in order. The first fallback to produce a
 /// glyph stream with no `.notdef` wins the whole cluster (cluster-
-/// granular replacement, never partial — partial replacement would
+/// granular replacement, never partial: partial replacement would
 /// duplicate bases, drop marks, break ligatures).
 ///
 /// Returns one [`WordSubRun`] per contiguous source span that shares
@@ -475,8 +475,8 @@ mod tests {
         // Noto Sans contains an `fi` ligature; rustybuzz returns one
         // glyph for `fi` (not two). The substituted gid differs from
         // both the standalone `f` and `i` gids. (Noto Sans's `fi`
-        // ligature has the same advance as f+i — purely visual,
-        // joining the dot of `i` with the terminal of `f` — so width
+        // ligature has the same advance as f+i: purely visual,
+        // joining the dot of `i` with the terminal of `f`, so width
         // is not a useful invariant for this font.)
         let ef = EmbeddedFontId::Regular.data();
         let fi = shape(ef, "fi");
@@ -496,7 +496,7 @@ mod tests {
 
     #[test]
     fn fallback_pure_primary_returns_single_subrun() {
-        // Pure ASCII is fully covered by Noto Sans Regular — no
+        // Pure ASCII is fully covered by Noto Sans Regular: no
         // fallback needed; one sub-run, primary-owned glyphs.
         let primary = Font::Embedded(EmbeddedFontId::Regular);
         let fallbacks = &[EmbeddedFontId::Math];
@@ -584,7 +584,7 @@ mod tests {
 
     #[test]
     fn fallback_no_fallbacks_configured_returns_single_subrun_even_with_notdef() {
-        // Empty fallback chain — even if the primary has .notdef, we
+        // Empty fallback chain: even if the primary has .notdef, we
         // produce one sub-run with whatever the primary shaped. PDF
         // reader paints empty boxes; no panic.
         let primary = Font::Embedded(EmbeddedFontId::Regular);

@@ -29,7 +29,7 @@ pub struct LspRange {
 }
 
 /// LSP `Diagnostic`. Only the fields the compiler currently produces
-/// are modelled — adding related-information or tags is a separate
+/// are modelled: adding related-information or tags is a separate
 /// slice.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LspDiagnostic {
@@ -74,8 +74,8 @@ pub fn byte_to_position(src: &str, byte_offset: usize) -> LspPosition {
 #[must_use]
 pub fn span_to_range(src: &str, span: &SourceSpan) -> LspRange {
     LspRange {
-        start: byte_to_position(src, span.start),
-        end: byte_to_position(src, span.end),
+        start: byte_to_position(src, span.start()),
+        end: byte_to_position(src, span.end()),
     }
 }
 
@@ -144,9 +144,21 @@ fn bytes_to_path(bytes: Vec<u8>) -> PathBuf {
 
 #[cfg(not(unix))]
 fn bytes_to_path(bytes: Vec<u8>) -> PathBuf {
-    // Non-unix targets only round-trip UTF-8 paths cleanly. Lossy
-    // decode keeps things deterministic for stray bytes.
-    PathBuf::from(String::from_utf8_lossy(&bytes).into_owned())
+    // Non-unix targets only round-trip UTF-8 paths cleanly. Consume the
+    // owned bytes (the unix arm takes ownership too, so this signature is
+    // by-value) and fall back to a lossy decode for stray bytes.
+    let text = String::from_utf8(bytes)
+        .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into_owned());
+    PathBuf::from(windows_local_drive_path(&text).into_owned())
+}
+
+#[cfg(any(not(unix), test))]
+fn windows_local_drive_path(path: &str) -> std::borrow::Cow<'_, str> {
+    let bytes = path.as_bytes();
+    if bytes.len() >= 3 && bytes[0] == b'/' && bytes[2] == b':' && bytes[1].is_ascii_alphabetic() {
+        return std::borrow::Cow::Borrowed(&path[1..]);
+    }
+    std::borrow::Cow::Borrowed(path)
 }
 
 /// Lower `src` against `file` and project the resulting compiler
@@ -220,7 +232,7 @@ mod tests {
                 character: 0
             }
         );
-        // After `µ` — one UTF-16 code unit consumed.
+        // After `µ`: one UTF-16 code unit consumed.
         assert_eq!(
             byte_to_position(src, 2),
             LspPosition {
@@ -261,7 +273,7 @@ mod tests {
 
     #[test]
     fn byte_to_position_counts_surrogate_pairs_as_two_units() {
-        // 𝕏 (U+1D54F) is outside the BMP — one Unicode scalar value
+        // 𝕏 (U+1D54F) is outside the BMP: one Unicode scalar value
         // but two UTF-16 code units. LSP's default position encoding
         // is UTF-16, so the character right after 𝕏 must report
         // column 2.
@@ -309,6 +321,44 @@ mod tests {
         assert_eq!(
             path_from_uri("file://localhost/tmp/main.mos"),
             PathBuf::from("/tmp/main.mos")
+        );
+    }
+
+    #[test]
+    fn windows_local_drive_path_strips_file_uri_root_slash() {
+        assert_eq!(
+            windows_local_drive_path("/C:/Users/kjanat/Projects/mosaic/main.mos").as_ref(),
+            "C:/Users/kjanat/Projects/mosaic/main.mos"
+        );
+    }
+
+    #[test]
+    fn windows_local_drive_path_leaves_unix_and_unc_paths_alone() {
+        assert_eq!(
+            windows_local_drive_path("/tmp/main.mos").as_ref(),
+            "/tmp/main.mos"
+        );
+        assert_eq!(
+            windows_local_drive_path("//server/share/main.mos").as_ref(),
+            "//server/share/main.mos"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn path_from_uri_decodes_windows_drive_file_uri() {
+        assert_eq!(
+            path_from_uri("file:///C:/Users/kjanat/Projects/mosaic/examples/lsp/main.mos"),
+            PathBuf::from("C:/Users/kjanat/Projects/mosaic/examples/lsp/main.mos")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn path_from_uri_decodes_windows_localhost_drive_file_uri() {
+        assert_eq!(
+            path_from_uri("file://localhost/C:/Users/kjanat/Projects/mosaic/examples/lsp/main.mos"),
+            PathBuf::from("C:/Users/kjanat/Projects/mosaic/examples/lsp/main.mos")
         );
     }
 

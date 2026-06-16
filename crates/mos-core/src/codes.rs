@@ -1,17 +1,17 @@
-//! Diagnostic code registry — the single source of truth for every
+//! Diagnostic code registry; the single source of truth for every
 //! diagnostic the compiler can emit.
 //!
 //! Identity and severity are deliberately *separate axes*:
 //!
 //! - A [`DiagnosticCode`] answers "which rule fired?" It is an opaque,
 //!   namespaced, severity-free identifier rendered as `MOS0010`. The
-//!   number has no semantic meaning — it does not encode severity,
+//!   number has no semantic meaning: it does not encode severity,
 //!   owner crate, category, or lint group. Numbers are globally unique
 //!   and stable; new codes get the next free integer regardless of
 //!   what they describe.
 //! - A [`DiagnosticDef`] pairs that code with its slug, *default*
 //!   severity, category, owning crate, and a one-line summary. The
-//!   catalog groups by [`DiagnosticCategory`], not by numeric range —
+//!   catalog groups by [`DiagnosticCategory`], not by numeric range,
 //!   so a rule that moves phases (parser → eval, fonts → text shaping)
 //!   keeps its stable ID and just updates its `category`.
 //!
@@ -355,7 +355,7 @@ macro_rules! define_codes {
 // Numbers are opaque. They do not encode category, severity, owner, or
 // phase. Current assignments intentionally interleave categories to avoid
 // accidental range semantics. Declaration order groups by category here
-// for source-reading convenience only — the catalog (and any consumer)
+// for source-reading convenience only; the catalog (and any consumer)
 // groups by `category()`, not by numeric range.
 define_codes! {
     // ── syntax (mos-parse) ────────────────────────────────────────────
@@ -397,6 +397,11 @@ define_codes! {
     /// Malformed citation group; treated as literal text.
     MOS0039 = 39, Warning, Syntax, "malformed-citation", "mos-parse",
         "syntax: malformed citation group; treated as text";
+    /// A heading `<label>` is not the last element on the line, so it is not
+    /// recognised as a label declaration and is treated as literal text;
+    /// references to it would then fail to resolve.
+    MOS0048 = 48, Warning, Syntax, "heading-label-not-trailing", "mos-parse",
+        "syntax: heading label is not the last element on the line; treated as text";
     /// BibTeX database could not be parsed (`mos-bib`).
     MOS0043 = 43, Error, Syntax, "bibtex-parse-failed", "mos-bib",
         "syntax: BibTeX database could not be parsed";
@@ -441,6 +446,13 @@ define_codes! {
     /// Citation key appears in more than one declared bibliography source.
     MOS0046 = 46, Error, Semantic, "bibliography-duplicate-key", "mos-eval",
         "semantic: citation key appears in more than one bibliography source";
+    /// A `/`-separated `#image`/`#figure`/`#bibliography` (or manifest) path
+    /// has a segment that is not a portable name: it carries a platform
+    /// separator (`\`), a drive prefix, or otherwise resolves to more than a
+    /// single component, which the OS would re-split past lexical `..`
+    /// normalization. The path is rejected rather than resolved.
+    MOS0049 = 49, Error, Semantic, "path-unsafe-segment", "mos-eval",
+        "semantic: path segment is not a portable name (manifest paths use `/` only)";
 
     // ── filesystem / asset I/O ────────────────────────────────────────
     /// Image file cannot be read from disk.

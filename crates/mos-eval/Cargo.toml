@@ -14,7 +14,7 @@ include.workspace      = true
 
 [dependencies]
 # PNG + JPEG decode for `#image(...)` directives. Default features are
-# turned off so we don't pull in TIFF, AVIF, WebP, etc. — image format
+# turned off so we don't pull in TIFF, AVIF, WebP, etc.: image format
 # coverage beyond PNG/JPEG is a separate later slice.
 image.workspace     = true
 mos-bib.workspace   = true

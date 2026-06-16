@@ -24,20 +24,20 @@ ASCII whitespace.
 
 Authors who refuse to break "Mr. Smith" across a line write the
 literal source `Mr.<NBSP>Smith` (where `<NBSP>` is one U+00A0
-code point — two bytes in UTF-8). Rendered, the pair joins
-as Mr. Smith — visually indistinguishable from a regular space,
+code point, two bytes in UTF-8). Rendered, the pair joins
+as Mr. Smith, visually indistinguishable from a regular space,
 but treated by the breaker as an indivisible unit. Likewise
 `page<NBSP>4` keeps the label and number together, rendered as
 page 4.
 
-A single regular space — like the one between this word and the
-next — is, of course, breakable like any other.
+A single regular space, like the one between this word and the
+next, is, of course, breakable like any other.
 
 == Hard line break (`\\`)
 
 The escape `\\` forces a line break inside a paragraph without
 the extra leading that a blank-line paragraph break would emit.
-Use it when the *line* is the unit of meaning — addresses, verse,
+Use it when the *line* is the unit of meaning: addresses, verse,
 captions, the heroic-but-doomed code path where you really do
 want this on one line\\and this on the next without spawning a
 new paragraph.
@@ -62,7 +62,7 @@ Soft hyphens are *invisible when they aren't needed*: the codepoint
 is stripped before shaping, so a word like
 su\-per\-cali\-fra\-gil\-is\-tic\-ex\-pi\-al\-i\-do\-cious that
 comfortably fits a line renders as supercalifragilisticexpialidocious
-— the same as if none of the `\-` shorthands had been written.
+the same as if none of the `\-` shorthands had been written.
 
 When a word *would* overflow the line, the greedy breaker now picks
 the latest marked position whose prefix-plus-visible-hyphen still fits

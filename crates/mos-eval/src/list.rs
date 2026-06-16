@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use mos_core::{AttrMap, AttrValue, Document, Node, NodeId, NodeKind, SourceSpan, StyleId};
+use mos_core::{AttrMap, AttrValue, Document, NodeId, NodeKind, NodeSpec, SourceSpan};
 use mos_parse::{Item, ListItem};
 
 use crate::inline::lower_inlines;
@@ -22,15 +22,7 @@ pub(super) fn lower_list(
     attributes.insert("ordered".to_owned(), AttrValue::Bool(ordered));
     let list_id = doc.alloc_child(
         parent,
-        Node {
-            id: NodeId::default(),
-            kind: NodeKind::List,
-            span: span.clone(),
-            content_hash: Default::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes,
-        },
+        NodeSpec::new(NodeKind::List, span.clone()).with_attributes(attributes),
     );
     for item in items {
         lower_list_item(doc, list_id, item);
@@ -38,18 +30,7 @@ pub(super) fn lower_list(
 }
 
 fn lower_list_item(doc: &mut Document, parent: NodeId, item: &ListItem) {
-    let item_id = doc.alloc_child(
-        parent,
-        Node {
-            id: NodeId::default(),
-            kind: NodeKind::ListItem,
-            span: item.span.clone(),
-            content_hash: Default::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes: AttrMap::new(),
-        },
-    );
+    let item_id = doc.alloc_child(parent, NodeSpec::new(NodeKind::ListItem, item.span.clone()));
     lower_inlines(doc, item_id, &item.inlines);
     for child in &item.children {
         if let Item::List {

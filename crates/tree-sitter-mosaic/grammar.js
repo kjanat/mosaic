@@ -433,7 +433,7 @@ export default grammar({
 		escaped_char: _ => token(seq('\\', /[^\\\-\r\n]/)),
 
 		// A bare `\` that does not form one of the recognised 2-char escape
-		// tokens above — typically `\` at end of input or immediately before
+		// tokens above: typically `\` at end of input or immediately before
 		// a newline. The compiler treats this as literal text and emits
 		// diagnostic `W025` for the trailing-newline case; surfacing it as
 		// a discrete node lets editors distinguish "lone backslash" from a

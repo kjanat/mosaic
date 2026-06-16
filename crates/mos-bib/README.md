@@ -4,19 +4,19 @@ Bibliography records for Mosaic.
 
 This crate owns the bibliography domain boundary from `manifest.md` §12. It provides a **minimal
 BibTeX record parser**: it reads a `.bib` string into typed records that a citation resolver can
-build on. The scope is deliberately a small, well-defined BibTeX subset — entry type, citation key,
-and string fields — and within that subset the parser is complete and does not panic. It is **not**
-a full bibliography engine; styling, resolution, and rendering are separate concerns (see below).
+build on. The scope is deliberately a small, well-defined BibTeX subset: entry type, citation key,
+and string fields, and within that subset the parser is complete and does not panic. It is **not** a
+full bibliography engine; styling, resolution, and rendering are separate concerns (see below).
 
 ## API
 
-- `parse_bibtex(input: &str) -> Result<Bibliography, BibParseError>` — parse a string.
-- `Bibliography { entries: BTreeMap<String, BibEntry> }` — parsed entries keyed by citation key.
-- `BibEntry { entry_type: String, key: String, fields: BTreeMap<String, String> }` — one
-  `@type{...}` record.
-- `BibParseError` / `BibParseErrorKind` — a local, recoverable parse error carrying a byte offset;
+- `parse_bibtex(input: &str) -> Result<Bibliography, BibParseError>`: parse a string.
+- `Bibliography { entries: BTreeMap<String, BibEntry> }`: parsed entries keyed by citation key.
+- `BibEntry { entry_type: String, key: String, fields: BTreeMap<String, String> }`: one `@type{...}`
+  record.
+- `BibParseError` / `BibParseErrorKind`: a local, recoverable parse error carrying a byte offset;
   `to_diagnostic` and `From<BibParseError> for CoreError` bridge into `mos-core` diagnostics.
-- `Citation { key: String }` — a document-body citation reference.
+- `Citation { key: String }`: a document-body citation reference.
 
 ```rust
 use mos_bib::parse_bibtex;

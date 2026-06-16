@@ -265,12 +265,12 @@ fn error_carries_offset_message_and_line_col() {
 #[test]
 fn error_bridges_to_a_core_diagnostic() {
     // The local error converts into the standard `mos-core` diagnostic
-    // (`MOS0043`) carrying the byte offset as a span — no parallel pipeline.
+    // (`MOS0043`) carrying the byte offset as a span; no parallel pipeline.
     let err = parse_bibtex("nope").expect_err("malformed input should be rejected");
     let diagnostic = err.to_diagnostic("refs.bib");
     assert_eq!(diagnostic.def().code().to_string(), "MOS0043");
     let span = diagnostic.span().expect("diagnostic should carry a span");
-    assert_eq!(span.start, err.offset());
+    assert_eq!(span.start(), err.offset());
 }
 
 #[test]

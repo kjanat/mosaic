@@ -114,7 +114,7 @@ mod tests {
 
     use std::path::PathBuf;
 
-    use mos_core::{AttrMap, ContentHash, NodeId, SourceSpan, StyleId};
+    use mos_core::{AttrMap, NodeId, NodeSpec, SourceSpan};
 
     use crate::{A4_WIDTH_PT, LayoutEngine, MARGIN_PT, TextRun};
 
@@ -126,16 +126,9 @@ mod tests {
         doc.alloc_child(parent, node(kind, attrs));
     }
 
-    fn node(kind: NodeKind, attributes: AttrMap) -> Node {
-        Node {
-            id: NodeId::default(),
-            kind,
-            span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-            content_hash: ContentHash::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes,
-        }
+    fn node(kind: NodeKind, attributes: AttrMap) -> NodeSpec {
+        NodeSpec::new(kind, SourceSpan::placeholder(PathBuf::from("test.mos")))
+            .with_attributes(attributes)
     }
 
     fn pin_helvetica(doc: &mut Document) {

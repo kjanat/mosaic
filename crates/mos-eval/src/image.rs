@@ -43,13 +43,25 @@ pub(crate) fn load(
     source_file: &Path,
     call_span: &SourceSpan,
 ) -> Result<(PathBuf, DecodedImage), Box<Diagnostic>> {
-    let resolved = resolve_path(src_path, source_file);
+    let resolved = mos_core::resolve_source_path(src_path, source_file).map_err(|err| {
+        Box::new(
+            Diagnostic::simple(
+                &codes::MOS0049,
+                None,
+                format!("cannot use image path `{src_path}`: {err}"),
+            )
+            .with_span(call_span.clone()),
+        )
+    })?;
     let bytes = std::fs::read(&resolved).map_err(|err| {
         Box::new(
             Diagnostic::simple(
                 &codes::MOS0012,
                 None,
-                format!("cannot read image `{}`: {err}", resolved.display()),
+                format!(
+                    "cannot read image `{}`: {err}",
+                    mos_core::display_path(&resolved)
+                ),
             )
             .with_span(call_span.clone()),
         )
@@ -59,7 +71,10 @@ pub(crate) fn load(
             Diagnostic::simple(
                 &codes::MOS0029,
                 None,
-                format!("cannot decode `{}`: {err}", resolved.display()),
+                format!(
+                    "cannot decode `{}`: {err}",
+                    mos_core::display_path(&resolved)
+                ),
             )
             .with_span(call_span.clone())
             .with_annotation(DiagnosticAnnotation::Note(
@@ -68,19 +83,6 @@ pub(crate) fn load(
         )
     })?;
     Ok((resolved, decoded))
-}
-
-fn resolve_path(src_path: &str, source_file: &Path) -> PathBuf {
-    let candidate = PathBuf::from(src_path);
-    if candidate.is_absolute() {
-        return candidate;
-    }
-    if let Some(parent) = source_file.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        return parent.join(candidate);
-    }
-    candidate
 }
 
 #[allow(
@@ -144,7 +146,7 @@ mod tests {
     /// A 2×1 fully opaque PNG: red pixel + blue pixel. Hand-crafted so
     /// tests don't depend on filesystem access.
     fn red_blue_png() -> Vec<u8> {
-        // Use `image` crate to produce the bytes — this is the same
+        // Use `image` crate to produce the bytes; this is the same
         // round-trip we exercise in production.
         let mut buf = image::RgbaImage::new(2, 1);
         buf.put_pixel(0, 0, image::Rgba([255, 0, 0, 255]));
@@ -186,7 +188,7 @@ mod tests {
             .write_to(&mut out, image::ImageFormat::Png)
             .unwrap();
         let img = decode(&out.into_inner()).unwrap();
-        // ((255 * 128) + (255 * 127) + 127) / 255 = 255 — red channel
+        // ((255 * 128) + (255 * 127) + 127) / 255 = 255: red channel
         // stays at 255 (white is also 255 red). Green/blue go halfway
         // between 0 and 255.
         assert_eq!(img.rgb8[0], 255);
@@ -203,14 +205,14 @@ mod tests {
     #[test]
     fn resolve_relative_path_uses_source_parent() {
         let src = Path::new("/tmp/proj/main.mos");
-        let resolved = resolve_path("img/scan.png", src);
-        assert_eq!(resolved, PathBuf::from("/tmp/proj/img/scan.png"));
+        let resolved = mos_core::resolve_source_path("img/scan.png", src);
+        assert_eq!(resolved, Ok(PathBuf::from("/tmp/proj/img/scan.png")));
     }
 
     #[test]
     fn resolve_absolute_path_passes_through() {
         let src = Path::new("/tmp/proj/main.mos");
-        let resolved = resolve_path("/abs/path.png", src);
-        assert_eq!(resolved, PathBuf::from("/abs/path.png"));
+        let resolved = mos_core::resolve_source_path("/abs/path.png", src);
+        assert_eq!(resolved, Ok(PathBuf::from("/abs/path.png")));
     }
 }

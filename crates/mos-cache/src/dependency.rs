@@ -3,7 +3,7 @@
 //! Incremental builds need to name *what* a cached artifact depends on before
 //! they can decide *whether* it is stale. This module supplies the vocabulary:
 //! [`DependencyKind`] is the coarse category and [`DependencyId`] is the typed,
-//! deterministic identity. Both are pure value types — there is no dirty-node
+//! deterministic identity. Both are pure value types: there is no dirty-node
 //! invalidation, content hashing, or persistent cache here. Those later slices
 //! (see [`docs/incremental-dependencies.md`]) *consume* these identities.
 //!
@@ -14,9 +14,9 @@
 //! Only inputs with a *real, stable identity today* are modelled: file-backed
 //! inputs (their canonical project path, see [`ProjectPath`]) and labels (their
 //! reference name). Categories the design note sketches but cannot yet identify
-//! deterministically — `Node` and `Style` bundles (their ids are still
+//! deterministically: `Node` and `Style` bundles (their ids are still
 //! defaulted), packages, layout *inputs* (no real layout key until paragraph
-//! hashing lands, §4.4), and layout *outputs* — are deferred until they have a
+//! hashing lands, §4.4), and layout *outputs*: are deferred until they have a
 //! genuine identity scheme, rather than modelled as placeholders that would
 //! collide.
 //!
@@ -68,7 +68,7 @@ impl std::error::Error for ProjectPathError {}
 
 /// The category of a build dependency.
 ///
-/// This is the coarse axis — "what kind of thing changed" — independent of the
+/// This is the coarse axis: "what kind of thing changed": independent of the
 /// concrete identity carried by [`DependencyId`]. Obtain it with
 /// [`DependencyId::kind`].
 ///
@@ -134,7 +134,7 @@ impl fmt::Display for DependencyKind {
 /// - each segment NFC-normalized.
 ///
 /// So `./a.mos`, `a.mos`, and `dir\..\dir/a.mos` all yield the same
-/// `ProjectPath` — which is exactly what makes a file [`DependencyId`]
+/// `ProjectPath`, which is exactly what makes a file [`DependencyId`]
 /// deterministic for the same logical input (design note §3.1).
 ///
 /// Normalization is **lexical only**: it never touches the filesystem, so it
@@ -409,7 +409,7 @@ impl fmt::Display for DependencyId {
 ///
 /// Construction guarantees the id is always the [`Bibliography`] variant, so a
 /// `BibliographyDependency` cannot be built over a source/asset/label identity
-/// by mistake — [`path`] and [`kind`] are therefore infallible.
+/// by mistake: [`path`] and [`kind`] are therefore infallible.
 ///
 /// The content hash is supplied by the caller rather than computed here, which
 /// keeps `mos-cache` free of any bibliography-format knowledge. Produce it from

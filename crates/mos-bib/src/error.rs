@@ -5,8 +5,8 @@
 //! issue #66) so the parser stays self-contained, but it is **not** a parallel
 //! bad-document pipeline: it bridges into the standard `mos-core` diagnostics
 //! surface. [`BibParseError::to_diagnostic`] and `From<BibParseError> for
-//! CoreError` map it onto the `MOS0043` code — carrying the byte offset as a
-//! span — so a malformed `.bib` flows through the same `Diagnostic` path as
+//! CoreError` map it onto the `MOS0043` code: carrying the byte offset as a
+//! span, so a malformed `.bib` flows through the same `Diagnostic` path as
 //! every other compiler error, without callers special-casing `mos-bib`.
 
 use std::fmt;

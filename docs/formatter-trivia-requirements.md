@@ -22,8 +22,8 @@ exercised by tests in `crates/mos-parse/src/parser.rs`:
 - Only two inline escapes: `\\` → hard break, `\-` → soft hyphen (U+00AD). NBSP `U+00A0` is
   preserved as a literal codepoint, not via an escape.
 
-Anything not in that list — `#import`, `#include`, `#verse`, comments, math, footnotes, tables,
-templates, scripting, generic backslash escapes like `\*` / `\#`, single-quoted string literals — is
+Anything not in that list: `#import`, `#include`, `#verse`, comments, math, footnotes, tables,
+templates, scripting, generic backslash escapes like `\*` / `\#`, single-quoted string literals, is
 **aspirational manifest syntax** and is explicitly excluded from formatter requirements until it
 lands in the compiler parser. See *Aspirational syntax* below.
 
@@ -100,7 +100,7 @@ For each shipped construct, R = required to preserve, N = normalize, ? = open qu
 | Indentation depth                     | R        | Hanging-indent nesting depth determines structure.                                                                                                                                                                                                |
 | Indentation width (spaces per level)  | N        | Formatter picks one (recommended: two spaces) from the AST tree. Current parser uses exact indent equality for siblings and greater indent for nesting, so source width itself is not structural after parsing.                                   |
 | Blank line between list blocks        | R        | The parser breaks list collection on any blank line (`list_terminated_by_blank_line`), producing separate `Item::List` blocks. Formatter must preserve that block separation, not merge the runs.                                                 |
-| Continuation lines under an item      | —        | **Not shipped.** `collect_list_lines` stops at the first non-marker line; an indented line without a marker breaks the list rather than continuing the previous item. Formatter contract for continuation is deferred until parser support lands. |
+| Continuation lines under an item      | n/a      | **Not shipped.** `collect_list_lines` stops at the first non-marker line; an indented line without a marker breaks the list rather than continuing the previous item. Formatter contract for continuation is deferred until parser support lands. |
 
 ### `#set` and other directives
 
@@ -125,7 +125,7 @@ tree-sitter's bracket/body figure form is forward syntax, not compiler truth yet
 | Trivia                                      | Decision | Notes                                                                                                                                                                                                                                           |
 | ------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Inner text bytes                            | R/N      | Most bytes are preserved verbatim with no escape decoding, but `normalize_raw_text` trims a single leading line ending immediately after `[[` and rewrites CRLF/CR → LF. The on-the-wire AST text therefore is not byte-identical to source.    |
-| Leading line ending inside the brackets     | —        | **Not preservable today.** The parser always strips exactly one leading line ending after the opening long bracket. Formatter contract: emit the opening delimiter, one LF, the raw text, then the closing delimiter; do not add a trailing LF. |
+| Leading line ending inside the brackets     | n/a      | **Not preservable today.** The parser always strips exactly one leading line ending after the opening long bracket. Formatter contract: emit the opening delimiter, one LF, the raw text, then the closing delimiter; do not add a trailing LF. |
 | `\r\n` vs `\n` line endings inside the body | N        | Normalized to `\n` by the parser; formatter emits `\n`.                                                                                                                                                                                         |
 | Long-bracket `=` run length                 | R        | `[==[ … ]==]` etc. is shipped (`scan_long_raw_open`). Formatter must round-trip the exact `=` count chosen by the author.                                                                                                                       |
 | Optional argument list before the body      | R        | Same rules as `#set`.                                                                                                                                                                                                                           |
@@ -142,11 +142,11 @@ compiler parser must learn to attach comments as trivia to adjacent nodes. See *
 The formatter contract intentionally excludes these because the compiler parser does not produce
 them today. Adding any of them is a prerequisite, not a formatter task.
 
-- `#import "path" : names`, `#include "path"` — defined only in `tree-sitter-mosaic/grammar.js`, not
+- `#import "path" : names`, `#include "path"`: defined only in `tree-sitter-mosaic/grammar.js`, not
   in `crates/mos-parse`.
-- `#verse`, block-form function calls — tree-sitter only.
-- Inline and display math — manifest only.
-- `//` line comments and `/* … */` block comments — tree-sitter has tokens; compiler parser silently
+- `#verse`, block-form function calls: tree-sitter only.
+- Inline and display math: manifest only.
+- `//` line comments and `/* … */` block comments: tree-sitter has tokens; compiler parser silently
   fails to recognize them.
 - Generic backslash escapes (`\*`, `\#`, `\[`, `\]`, `\<`, …): `tree-sitter-mosaic` has an
   `escaped_char` rule, but the compiler parser only recognizes `\\` and `\-`. Any other `\X` keeps
@@ -157,9 +157,9 @@ them today. Adding any of them is a prerequisite, not a formatter task.
   (`parse_set_value`).
 - Lazy paragraph continuation lines inside list items: `collect_list_lines` breaks list collection
   on any non-marker line.
-- Footnotes, tables, theorems, glossary, bibliography, templates, scripting, package imports —
+- Footnotes, tables, theorems, glossary, bibliography, templates, scripting, package imports:
   manifest only.
-- Per-output styling controls beyond `#set` keyed values — manifest only.
+- Per-output styling controls beyond `#set` keyed values: manifest only.
 
 If `mos fmt` is built before any of these land, it must reject or pass-through unknown constructs
 rather than guess.
@@ -225,7 +225,7 @@ Each bullet is a concrete follow-up. None of them are resolved by this PR.
 - Choosing a final indentation width, line length, or argument-wrapping policy.
 - Adding comment syntax to the compiler parser.
 - Changing tree-sitter grammar.
-- Updating `manifest-tracker.md` — the relevant gaps are already listed there.
+- Updating `manifest-tracker.md`; the relevant gaps are already listed there.
 
 ## Acceptance check
 

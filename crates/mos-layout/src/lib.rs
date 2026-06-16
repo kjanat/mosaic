@@ -42,7 +42,7 @@ mod types;
 mod word;
 
 /// Heading sizes by level (1-indexed). Anything beyond level 3 falls
-/// back to body size — counters and section numbering land in MVP 1.
+/// back to body size: counters and section numbering land in MVP 1.
 const HEADING_SIZES_PT: [f32; 3] = [20.0, 16.0, 13.0];
 /// Space above each heading level (skipped for the first block on a
 /// page).
@@ -94,7 +94,7 @@ impl LayoutEngine {
     }
 
     /// Lay out `document` into a [`PageGraph`]. Never returns an
-    /// error in MVP 0 — invalid blocks are skipped and surfaced as
+    /// error in MVP 0: invalid blocks are skipped and surfaced as
     /// diagnostics on `LayoutResult` instead.
     ///
     /// # Examples
@@ -180,7 +180,7 @@ struct LayoutState {
     /// `flush_line` once the marker is committed to a page.
     pending_marker: Option<PendingMarker>,
     /// Labels of blocks dispatched but not yet committed to a page. Bound
-    /// to the page their first content lands on (issue #72) — see
+    /// to the page their first content lands on (issue #72): see
     /// [`LayoutState::bind_pending_labels`].
     pending_labels: Vec<String>,
     /// Built result of label → 1-based start page. Emitted into the
@@ -193,7 +193,7 @@ struct PendingMarker {
     /// X position (page-relative, points from the page's left edge)
     /// where the marker's left edge should sit.
     x_pt: f32,
-    /// Pre-shaped marker word. Width is informational only — the
+    /// Pre-shaped marker word. Width is informational only: the
     /// marker is drawn outside `current_left_pt` so it doesn't reserve
     /// space in the text column.
     word: Word,
@@ -364,7 +364,7 @@ impl LayoutState {
     /// [`WordItem`]s. Inline whitespace inside text runs collapses to
     /// a single split point (`split_ascii_whitespace` handles
     /// `\n`/`\r`/`\t` uniformly **and intentionally preserves U+00A0
-    /// NBSP** — non-ASCII whitespace stays inside the word so the
+    /// NBSP**: non-ASCII whitespace stays inside the word so the
     /// breaker never splits at NBSP). Each word is shaped once here;
     /// the resulting glyphs and width flow through to [`TextRun`]
     /// without re-shaping during line breaking. `NodeKind::HardBreak`
@@ -657,7 +657,7 @@ impl LayoutState {
             if i > 0 {
                 x += text_width(word.font, word.size_pt, " ");
             }
-            // One TextRun per sub-run — same baseline, x advances by
+            // One TextRun per sub-run: same baseline, x advances by
             // each sub-run's `advance_pt`. PDF emit's per-run `Tf`
             // switch fires naturally at the font boundary between
             // sub-runs (Latin → Math → Latin in `a≤b`-style runs).
@@ -748,9 +748,7 @@ mod tests {
     )]
     use std::path::PathBuf;
 
-    use mos_core::{
-        AttrMap, AttrValue, ContentHash, Document, Node, NodeId, NodeKind, SourceSpan, StyleId,
-    };
+    use mos_core::{AttrMap, AttrValue, Document, NodeId, NodeKind, NodeSpec, SourceSpan};
 
     use crate::types::BODY_SIZE_PT;
 
@@ -761,15 +759,8 @@ mod tests {
         attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
         doc.alloc_child(
             parent,
-            Node {
-                id: NodeId::default(),
-                kind,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(kind, SourceSpan::placeholder(PathBuf::from("test.mos")))
+                .with_attributes(attrs),
         );
     }
 
@@ -786,15 +777,11 @@ mod tests {
         );
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Raw,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Raw,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
     }
 
@@ -803,15 +790,11 @@ mod tests {
         attrs.insert("level".to_owned(), AttrValue::Int(level));
         let id = doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Section,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Section,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
         alloc_inline(doc, id, NodeKind::Text, text);
         id
@@ -820,15 +803,10 @@ mod tests {
     fn make_paragraph(doc: &mut Document, text: &str) -> NodeId {
         let id = doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         );
         alloc_inline(doc, id, NodeKind::Text, text);
         id
@@ -839,15 +817,11 @@ mod tests {
         attrs.insert("label".to_owned(), AttrValue::Str(label.to_owned()));
         let id = doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
         alloc_inline(doc, id, NodeKind::Text, text);
         id
@@ -859,15 +833,11 @@ mod tests {
         attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Raw,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Raw,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         )
     }
 
@@ -1014,15 +984,11 @@ mod tests {
         table_attrs.insert("label".to_owned(), AttrValue::Str("phantom".to_owned()));
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Table,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: table_attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Table,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(table_attrs),
         );
         // ...then a normal labelled paragraph that does.
         make_labelled_paragraph(&mut doc, "real text", "real");
@@ -1157,7 +1123,7 @@ mod tests {
     fn cjk_and_emoji_flow_through_without_diagnostics() {
         // The substitution warning is retired. CJK and emoji are not covered by bundled
         // Noto Sans Regular either, but the layout engine no longer
-        // filters them — they pass through to the shaped glyph stream
+        // filters them: they pass through to the shaped glyph stream
         // (rustybuzz emits `.notdef` glyphs for missing coverage,
         // which the PDF backend embeds harmlessly).
         let mut doc = Document::new(PathBuf::from("test.mos"));
@@ -1346,15 +1312,11 @@ mod tests {
         attrs.insert("number".to_owned(), AttrValue::Str("2.1".to_owned()));
         let section = doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Section,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Section,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
         alloc_inline(&mut doc, section, NodeKind::Text, "Background");
         let result = LayoutEngine::new().layout(&doc);
@@ -1375,7 +1337,7 @@ mod tests {
     fn reference_node_renders_resolved_text() {
         // A `Reference` node with a `text` attribute (set by the
         // resolver) flows through `collect_words` like any other inline
-        // — no separate code path. The font defaults to the body face.
+        //; no separate code path. The font defaults to the body face.
         let mut doc = Document::new(PathBuf::from("test.mos"));
         pin_helvetica(&mut doc);
         let para = make_paragraph(&mut doc, "see");
@@ -1384,15 +1346,11 @@ mod tests {
         attrs.insert("text".to_owned(), AttrValue::Str("1.2".to_owned()));
         doc.alloc_child(
             para,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Reference,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Reference,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
         let result = LayoutEngine::new().layout(&doc);
         let runs = &result.graph.pages[0].runs;
@@ -1410,30 +1368,20 @@ mod tests {
         // `NodeKind` alone (see `collect_words`).
         doc.alloc_child(
             parent,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::HardBreak,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::HardBreak,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         );
     }
 
     fn make_empty_paragraph(doc: &mut Document) -> NodeId {
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         )
     }
 
@@ -1657,15 +1605,11 @@ mod tests {
         );
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Raw,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Raw,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
     }
 
@@ -1782,15 +1726,11 @@ mod tests {
         attrs.insert("set".to_owned(), AttrValue::Str("page".to_owned()));
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Raw,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Raw,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
         make_paragraph(&mut doc, "body");
         let result = LayoutEngine::new().layout(&doc);

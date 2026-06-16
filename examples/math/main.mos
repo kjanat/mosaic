@@ -48,10 +48,10 @@ a per-document `/Differences` array layered on top of
 4. `partialdiff` (∂),
 5. `summation` (∑),
 6. `radical` (√),
-7. `minus` (− — the real one, U+2212, *not* the ASCII hyphen-minus on your keyboard),
-8. `Delta` (∆ — the math increment, U+2206; the Greek capital letter delta at U+0394 is a different codepoint and is *not* reachable on this path),
+7. `minus` (−, the real one, U+2212, *not* the ASCII hyphen-minus on your keyboard),
+8. `Delta` (∆, the math increment, U+2206; the Greek capital letter delta at U+0394 is a different codepoint and is *not* reachable on this path),
 9. `lozenge` (◊),
-10. `fraction` (⁄ — U+2044, *not* the ASCII slash).
+10. `fraction` (⁄, U+2044, *not* the ASCII slash).
 
 A worked sample, for the snapshot:
 
@@ -87,7 +87,7 @@ paints depends on which font fontconfig hands the reader as its
 "Helvetica." Different installs of the same reader can end up
 with different substitutes:
 
-- `lozenge` (◊) is the most fragile — many free Helvetica substitutes simply do not contain it, and you get an empty box.
+- `lozenge` (◊) is the most fragile: many free Helvetica substitutes simply do not contain it, and you get an empty box.
 - Adobe Reader has been observed splicing in spacing-substitution composition for `/Differences`-mapped glyphs, most visibly for the Romanian comma-below characters ț and ș.
 - Within the same Poppler-based reader family (GNOME Papers, Evince, zathura), different installs can pick different substitutes via fontconfig and end up with different glyph coverage.
 

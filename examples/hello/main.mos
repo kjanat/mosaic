@@ -27,7 +27,7 @@ everywhere, immediately recognises as *a sad student wrote
 this*.
 
 I have moved on. The new arrangement embeds **real** TrueType
-outlines — Noto Sans, in this case — through a Type 0 CID font
+outlines, Noto Sans in this case, through a Type 0 CID font
 with a /ToUnicode CMap, which is a sentence I should not have to
 know, but here we are. Copy-paste round-trips. Search works. The
 Polish co-author gets **Łódź** instead of *L*, a space, and an
@@ -44,11 +44,11 @@ a paragraph and being forced to load amsmath, amssymb, and a
 third package whose name I have forgotten because the universe
 took it from me. Mosaic shapes math operators (≤ ≥ ≠ √ ∂ ∑)
 through automatic per-glyph fallback to the bundled Noto Sans
-Math cut — mid-word, mid-sentence, no `#set text(font: ...)`,
+Math cut, mid-word, mid-sentence, with no `#set text(font: ...)`,
 no `\usepackage{}`, no `$ … $`. The body face does not contain
 them; the fallback face does; the layout engine notices on its
 own and routes the cluster. The result reads like prose because
-it *is* prose: ∂f/∂x ≠ 0 sits in this line the same way "the"
+it *is* prose; ∂f/∂x ≠ 0 sits in this line the same way "the"
 does.
 
 My grievances, in no particular order except the one I wrote
@@ -56,7 +56,7 @@ them in:
 
 5. The error messages. **Especially** the one about `\par`.
 9. The figure handling. One `#figure(image: "...", caption: "...")` block here, and forty minutes of `\begin{figure}[!htbp]` float-placement bargaining there. I have aged out of caring which letters do which.
-27. The fi/fl ligatures, which you handled but never let me actually *see* without diagnostic incantations. Mine ship as one glyph in the PDF the way the typographer intended — copy "figment" or "flicker" out of this document and paste it somewhere; the ligature collapses back into the source codepoints on the way out. It is shaping, not a font hack.
+27. The fi/fl ligatures, which you handled but never let me actually *see* without diagnostic incantations. Mine ship as one glyph in the PDF the way the typographer intended. Copy "figment" or "flicker" out of this document and paste it somewhere; the ligature collapses back into the source codepoints on the way out. It is shaping, not a font hack.
 
 Sub-grievances, indented because that is also a thing now:
 

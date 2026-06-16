@@ -212,6 +212,10 @@ pub(super) fn strip_trailing_label(
     if i == close || i == start || bytes[i - 1] != b'<' {
         return (end, None);
     }
+    // A `\<` opens literal angle-bracket text (e.g. an HTML tag), not a label.
+    if is_escaped(bytes, start, i - 1) {
+        return (end, None);
+    }
     let label = ParsedLabel {
         text: src[i..close].to_owned(),
         start: i,
@@ -222,4 +226,56 @@ pub(super) fn strip_trailing_label(
         text_end -= 1;
     }
     (text_end, Some(label))
+}
+
+/// Locate the first `<label>` token in `src[start..end]`, returning the parsed
+/// label and the byte offset just past its `>`. Unlike [`strip_trailing_label`]
+/// this finds a label *anywhere* in the range, so the heading parser can detect
+/// a label that is not the trailing element (e.g. `= Title <id> trailing`) and
+/// flag it (`MOS0048`) instead of silently swallowing it into the text.
+pub(super) fn locate_label(src: &str, start: usize, end: usize) -> Option<(ParsedLabel, usize)> {
+    let bytes = src.as_bytes();
+    let mut open = start;
+    while open < end {
+        if bytes[open] == b'<' {
+            let mut i = open + 1;
+            while i < end {
+                let b = bytes[i];
+                if b == b'>' {
+                    break;
+                }
+                if !(b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':' | b'.')) {
+                    break;
+                }
+                i += 1;
+            }
+            // A real label has at least one identifier byte and a closing `>`,
+            // and its `<` must not be escaped (`\<` opens literal angle-bracket
+            // text such as an HTML tag, not label syntax).
+            if i < end && bytes[i] == b'>' && i > open + 1 && !is_escaped(bytes, start, open) {
+                let label = ParsedLabel {
+                    text: src[open + 1..i].to_owned(),
+                    start: open + 1,
+                    end: i,
+                };
+                return Some((label, i + 1));
+            }
+        }
+        open += 1;
+    }
+    None
+}
+
+/// Whether the byte at `pos` is escaped by an odd-length run of `\` immediately
+/// before it (bounded below by `start`). Backslashes pair up (`\\` is a hard
+/// break, not an escape), so only an odd count escapes the following byte. The
+/// label scanners use this so a `\<` opens literal `<` text instead of a label.
+fn is_escaped(bytes: &[u8], start: usize, pos: usize) -> bool {
+    let mut count = 0;
+    let mut j = pos;
+    while j > start && bytes[j - 1] == b'\\' {
+        count += 1;
+        j -= 1;
+    }
+    count % 2 == 1
 }

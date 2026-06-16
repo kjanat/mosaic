@@ -2,12 +2,12 @@
 //! transcribed from PDF 1.7 Annex D.2 Table D.2 must match, byte for
 //! byte, the same map re-derived from the Adobe Glyph List at test
 //! time. AGL is the oracle; if the two diverge, fix the hand-curated
-//! table — the AGL one is the authority for what each glyph name
+//! table; the AGL one is the authority for what each glyph name
 //! resolves to in Unicode.
 //!
 //! The AGL data file (`data/agl/glyphlist.txt`, BSD-3-Clause) lives
 //! in the crate's repo for this test, but is excluded from the
-//! Cargo `include` manifest — it does NOT ship to crates.io. The
+//! Cargo `include` manifest: it does NOT ship to crates.io. The
 //! build script no longer reads it either, so production builds carry
 //! no BSD-3-Clause dependency.
 
@@ -59,7 +59,7 @@ fn load_agl() -> Result<HashMap<String, char>, Box<dyn Error>> {
 }
 
 /// Resolve a PostScript glyph name to its Unicode scalar per AGL
-/// Specification §2 (single-codepoint cases only — all the `WinAnsi`
+/// Specification §2 (single-codepoint cases only; all the `WinAnsi`
 /// glyph names are single-component, so the compound-name branches
 /// are unreachable here but kept for spec faithfulness).
 fn resolve_glyph_name(name: &str, agl: &HashMap<String, char>) -> Option<char> {
@@ -146,7 +146,7 @@ fn winansi_gaps_match_pdf_spec() {
 fn winansi_aliases_collapse_to_ascii() {
     // PDF 1.7 Annex D.2 explicitly aliases 0xA0 → `space` and
     // 0xAD → `hyphen` (the glyph names, which AGL resolves to ASCII
-    // U+0020 and U+002D — not the Latin-1 NBSP/SHY one might expect
+    // U+0020 and U+002D; not the Latin-1 NBSP/SHY one might expect
     // from CP1252). This is the single most likely place for a
     // transcription error in the hand-curated table.
     assert_eq!(__WINANSI_CHAR_MAP[0xA0], Some(' '));

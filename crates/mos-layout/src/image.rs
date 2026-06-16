@@ -314,7 +314,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use mos_core::{AttrMap, ContentHash, SourceSpan, StyleId};
+    use mos_core::{AttrMap, NodeSpec, SourceSpan};
 
     use mos_fonts::FontFamily;
 
@@ -328,15 +328,8 @@ mod tests {
         attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
         doc.alloc_child(
             parent,
-            Node {
-                id: NodeId::default(),
-                kind,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(kind, SourceSpan::placeholder(PathBuf::from("test.mos")))
+                .with_attributes(attrs),
         );
     }
 
@@ -349,15 +342,11 @@ mod tests {
         );
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Raw,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Raw,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
     }
 
@@ -379,15 +368,10 @@ mod tests {
     fn make_paragraph(doc: &mut Document, text: &str) -> NodeId {
         let id = doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         );
         alloc_inline(doc, id, NodeKind::Text, text);
         id
@@ -422,15 +406,11 @@ mod tests {
         }
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Image,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Image,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         )
     }
 
@@ -574,15 +554,10 @@ mod tests {
     ) -> NodeId {
         let fig = doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Figure,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::Figure,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         );
         let mut img_attrs = AttrMap::new();
         img_attrs.insert("src".to_owned(), AttrValue::Str("fig.png".to_owned()));
@@ -601,27 +576,18 @@ mod tests {
         );
         doc.alloc_child(
             fig,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Image,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: img_attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Image,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(img_attrs),
         );
         let cap = doc.alloc_child(
             fig,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         );
         alloc_inline(doc, cap, NodeKind::Text, caption);
         fig

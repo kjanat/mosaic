@@ -401,7 +401,7 @@ that are impossible or simply too inconvenient to express with regexes alone.
 
 For `tree-sitter-mosaic`, I would start with an external scanner only for `blank_line` and the raw
 `#pre` / `#code` body delimiters and content. Inline line-break controls (`hard_break`,
-`soft_hyphen_escape`, `escaped_char`, `loose_backslash`) stay in `grammar.js` as regular tokens —
+`soft_hyphen_escape`, `escaped_char`, `loose_backslash`) stay in `grammar.js` as regular tokens;
 2-char escapes win the lexer's longest-match, and the bare `\` falls through to the 1-char
 `loose_backslash`. I would **not** start with an external scanner for emphasis: a conservative
 precedence-based grammar for `***` / `**` / `*` is enough initially, and full CommonMark-grade
@@ -441,4 +441,4 @@ flowchart LR
 
 This is the right first frozen target for `tree-sitter-mosaic`: line-aware without being
 Markdown-chaotic, semantic enough for labels and calls, and intentionally conservative about the two
-biggest ambiguity sources—delimiter runs and bracket bodies.
+biggest ambiguity source-delimiter runs and bracket bodies.

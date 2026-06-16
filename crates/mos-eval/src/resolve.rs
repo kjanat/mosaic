@@ -29,8 +29,8 @@
 //! - `MOS0030`: a label is declared more than once. The first occurrence
 //!   wins; later occurrences keep their numbering but are not added to
 //!   the index. Each duplicate also carries a structured rename
-//!   [`Suggestion`] — the next free `{label}-N` (`N >= 2`) that no other
-//!   declaration or earlier suggestion already uses — over the duplicate
+//!   [`Suggestion`]; the next free `{label}-N` (`N >= 2`) that no other
+//!   declaration or earlier suggestion already uses: over the duplicate
 //!   label token span.
 //! - `MOS0033`: a `@label` reference targets a label that doesn't exist.
 //!   The reference's text is left at its lowered placeholder
@@ -38,14 +38,14 @@
 //!
 //! Manifest §6 stage 3 calls for a fixpoint loop because later stages
 //! (page references, TOC) can re-trigger resolution. MVP 1 only needs a
-//! single pass — section numbering doesn't depend on layout — but the
+//! single pass: section numbering doesn't depend on layout, but the
 //! driver shape mirrors the manifest's "internal fixpoint" anyway: the
 //! loop runs until no rewrite changes the document, with a hard cap to
 //! detect pathological cycles.
 //!
 //! Every pass is **idempotent**: `resolve` is public and re-entrant, so
-//! running it twice — inside the fixpoint above, or from a future
-//! page-reference stage — must reproduce the same document rather than
+//! running it twice: inside the fixpoint above, or from a future
+//! page-reference stage: must reproduce the same document rather than
 //! compounding edits. Numbering overwrites attributes with the same
 //! value; caption labelling re-derives from a preserved source instead
 //! of re-reading the already-stamped text (which would nest the label
@@ -67,7 +67,7 @@ const MAX_FIXPOINT_ITERATIONS: u32 = 8;
 /// What a label points at, captured at index-build time.
 ///
 /// Each variant carries only the data needed to render the reference's
-/// display text — references never re-traverse the document via the
+/// display text: references never re-traverse the document via the
 /// target [`mos_core::NodeId`] once the index is built, so the resolver can stay
 /// kind-aware without exposing a node-typed handle to callers.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -100,7 +100,7 @@ struct LabelTarget {
 /// Run the resolver pass over `document` in place. Returns any
 /// diagnostics produced; the document is modified regardless of whether
 /// errors are present so partial output is still renderable.
-pub fn resolve(document: &mut Document) -> Vec<Diagnostic> {
+pub fn resolve(document: &mut Document, bib_keys: &BTreeSet<String>) -> Vec<Diagnostic> {
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     number_sections(document);
     number_figures(document);
@@ -108,7 +108,7 @@ pub fn resolve(document: &mut Document) -> Vec<Diagnostic> {
     validate_page_references(document, &labels, &mut diagnostics);
 
     for _ in 0..MAX_FIXPOINT_ITERATIONS {
-        let changed = rewrite_references(document, &labels, &mut diagnostics);
+        let changed = rewrite_references(document, &labels, bib_keys, &mut diagnostics);
         if !changed {
             break;
         }
@@ -120,7 +120,7 @@ pub fn resolve(document: &mut Document) -> Vec<Diagnostic> {
 /// Report an undeclared label in a `@page(label)` reference as `MOS0033`,
 /// mirroring the `@label` cross-reference check. A page reference resolves to a
 /// page *number* later, through the layout fixpoint (issue #72), but an unknown
-/// *label* is a lower-time error exactly like a bad `@ref` — and catching it
+/// *label* is a lower-time error exactly like a bad `@ref`, and catching it
 /// here means `mos check` reports it without needing to lay the document out.
 fn validate_page_references(
     document: &Document,
@@ -202,27 +202,27 @@ fn section_order(document: &Document) -> Vec<(mos_core::NodeId, u8)> {
 /// captioned figure. Figures are not hierarchical, so the counter never
 /// resets.
 ///
-/// The label is baked into the caption text here — rather than rendered
-/// by the layout engine the way section numbers are — so a numbered
+/// The label is baked into the caption text here: rather than rendered
+/// by the layout engine the way section numbers are, so a numbered
 /// figure shows its number with no backend changes; distinct label
 /// *styling* is left to the future float/caption pass. The supplement
 /// word comes from [`figure_supplement`] (the single localization seam)
 /// and is joined to the number with a non-breaking space (U+00A0). That
 /// space is *semantic generated text*, not layout policy in disguise: it
-/// encodes `Figure` and its counter as one cohesive label token — the
-/// same non-breaking space an author could type by hand — which the
+/// encodes `Figure` and its counter as one cohesive label token: the
+/// same non-breaking space an author could type by hand, which the
 /// layout engine merely honors. The resolver makes no wrapping decision
 /// of its own; it just emits the token.
 ///
 /// The pass is **idempotent**: the pre-label caption is preserved under a
 /// `caption_source` attribute and the visible `text` is always re-derived
-/// from it. Re-running the resolver — as the §6 stage 3 fixpoint and any
-/// future page-reference pass do — therefore re-stamps the same label
+/// from it. Re-running the resolver: as the §6 stage 3 fixpoint and any
+/// future page-reference pass do: therefore re-stamps the same label
 /// instead of nesting `"Figure 1: Figure 1: …"`, and stays correct when a
 /// figure is re-numbered, because the source never carries a stale counter.
 fn number_figures(document: &mut Document) {
     // Counter advances only for numbered figures, so `#figure(numbered:
-    // false)` figures neither consume a number nor leave a gap — the
+    // false)` figures neither consume a number nor leave a gap: the
     // numbered figures stay contiguous (1, 2, 3, …). This is the documented
     // skip rule (issue #76).
     let mut counter: usize = 0;
@@ -238,8 +238,8 @@ fn number_figures(document: &mut Document) {
         // borrows the document immutably, but the writes below need
         // `get_mut`. Prefer the preserved `caption_source`; fall back to
         // the live `text` only on the first pass, before any label has
-        // been stamped. Re-deriving the label from this stable source —
-        // never from the already-stamped `text` — is what keeps `resolve`
+        // been stamped. Re-deriving the label from this stable source,
+        // never from the already-stamped `text`; that is what keeps `resolve`
         // idempotent across reruns.
         let caption = figure_caption_text(document, figure_id).and_then(|text_id| {
             read_str_attr(document, text_id, "caption_source")
@@ -343,7 +343,7 @@ fn read_str_attr(document: &Document, id: mos_core::NodeId, key: &str) -> Option
 }
 
 /// The human-facing *supplement* word prefixed to a figure's number in
-/// generated reference and caption text — the "Figure" in "Figure 1".
+/// generated reference and caption text; the "Figure" in "Figure 1".
 ///
 /// This is the single localization seam for figure labels: LaTeX
 /// localizes it through babel's `\figurename`, Typst through
@@ -368,7 +368,7 @@ fn figure_is_numbered(node: &mos_core::Node) -> bool {
 }
 
 /// The supplement word for a figure's caption and its references. An
-/// explicit `#figure(supplement: …)` value wins — **including the empty
+/// explicit `#figure(supplement: …)` value wins: **including the empty
 /// string** (`supplement: ""` / `supplement: none`), which means "number
 /// only, no word" (the "no visible prefix" form). Only an *absent*
 /// supplement falls back to the localized [`figure_supplement`] default
@@ -381,7 +381,7 @@ fn figure_supplement_attr(node: &mos_core::Node) -> String {
 }
 
 /// Join a figure's supplement word and number into the cohesive label
-/// token used in both captions and references — `"Figure\u{00A0}1"`,
+/// token used in both captions and references: `"Figure\u{00A0}1"`,
 /// non-breaking so the word never wraps off its number. An empty
 /// supplement renders the number alone (`"1"`), with no word and no
 /// leading space.
@@ -405,7 +405,7 @@ fn captured_number(node: &mos_core::Node) -> String {
 }
 
 /// Classify a labelled node into a [`LabelTargetKind`]. Only nodes
-/// that actually declare a label reach this function — references are
+/// that actually declare a label reach this function: references are
 /// filtered out by the caller.
 fn classify_target(node: &mos_core::Node) -> LabelTargetKind {
     match node.kind {
@@ -420,8 +420,8 @@ fn classify_target(node: &mos_core::Node) -> LabelTargetKind {
     }
 }
 
-/// Collect every label declared anywhere in the document — any non-reference
-/// block carrying a `label` attribute — regardless of document order or
+/// Collect every label declared anywhere in the document: any non-reference
+/// block carrying a `label` attribute: regardless of document order or
 /// duplication. The duplicate-rename suggestion consults this set so it never
 /// proposes a name that some other declaration already uses.
 fn declared_labels(document: &Document) -> BTreeSet<String> {
@@ -437,7 +437,7 @@ fn declared_labels(document: &Document) -> BTreeSet<String> {
 
 /// Pick a deterministic, collision-aware rename for a duplicated `label`: the
 /// smallest integer suffix `N >= 2` whose `{label}-{N}` is not already in
-/// `declared`. Boring and stable — no similarity ranking — but it steps over
+/// `declared`. Boring and stable; no similarity ranking, but it steps over
 /// existing labels so the suggested fix never re-creates the clash it
 /// resolves. Among the first `declared.len() + 1` candidates at least one is
 /// free (pigeonhole), so the bounded search always yields a name.
@@ -453,7 +453,7 @@ fn nonconflicting_rename(label: &str, declared: &BTreeSet<String>) -> String {
 /// reporting `MOS0030` for redeclarations. The first declaration of a label
 /// wins; later occurrences keep their numbering but are not indexed, and each
 /// carries a related note pointing at the first declaration plus a structured
-/// rename [`Suggestion`] — the next free `{label}-N` — over the duplicate label
+/// rename [`Suggestion`]; the next free `{label}-N`: over the duplicate label
 /// token span (see the module-level docs). Reads the document only, so
 /// `resolve` stays idempotent.
 fn build_label_index(
@@ -527,7 +527,7 @@ fn label_span(node: &mos_core::Node) -> Option<SourceSpan> {
 /// Compute the display string for a reference to `target`.
 ///
 /// Section targets render as their bare hierarchical counter (e.g.
-/// `"1.2"`). Figure targets render kind-aware as `"Figure N"` — the
+/// `"1.2"`). Figure targets render kind-aware as `"Figure N"`: the
 /// localized [`figure_supplement`] joined to the figure's flat
 /// document-order counter with a non-breaking space (U+00A0): one
 /// cohesive label token the layout engine honors, not a wrapping
@@ -548,11 +548,11 @@ fn render_target(target: &LabelTarget, label: &str) -> String {
     }
 }
 
-/// Whether `label` can be spelled as an `@` reference — i.e. it is drawn
+/// Whether `label` can be spelled as an `@` reference: i.e. it is drawn
 /// from the reference grammar's alphabet `[A-Za-z0-9_:.-]` (mirrors
 /// `scan_label_chars` in `mos-parse`). `#figure(label: …)` and
 /// `#image(label: …)` accept arbitrary strings, so the label index can hold
-/// names — `"intro x"`, non-ASCII — that an `@…` reference can never name;
+/// names such as `"intro x"` or non-ASCII labels that an `@…` reference can never name;
 /// suggesting one would produce a fix that does not parse.
 fn is_reference_label(label: &str) -> bool {
     !label.is_empty()
@@ -584,14 +584,14 @@ fn edit_distance(a: &str, b: &str) -> usize {
 }
 
 /// The single nearest *resolvable* label to `unknown`, when one is a
-/// reasonable near-miss rather than an unrelated string — the candidate for a
+/// reasonable near-miss rather than an unrelated string; the candidate for a
 /// "did you mean `@intro`?" fix on an unknown reference.
 ///
 /// "Reasonable" is deliberately conservative:
 ///
 /// - references shorter than three bytes get no suggestion (a one-edit guess
 ///   on a one- or two-byte name is noise, not help);
-/// - the edit distance must be within `unknown.len() / 3` — rustc's "did you
+/// - the edit distance must be within `unknown.len() / 3`: rustc's "did you
 ///   mean" heuristic. With the length floor that bound is always at least 1,
 ///   admitting `intrdo` → `intro` (distance 1, bound 2) while rejecting wholly
 ///   unrelated names.
@@ -616,11 +616,12 @@ fn nearest_label(unknown: &str, labels: &BTreeMap<String, LabelTarget>) -> Optio
 }
 
 /// Rewrite each `Reference` node's `text` attribute to point at its
-/// target. Returns true if any node was mutated this iteration —
+/// target. Returns true if any node was mutated this iteration:
 /// callers use that signal to drive the §6 stage 3 fixpoint loop.
 fn rewrite_references(
     document: &mut Document,
     labels: &BTreeMap<String, LabelTarget>,
+    bib_keys: &BTreeSet<String>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> bool {
     let references: Vec<mos_core::NodeId> = document
@@ -650,11 +651,23 @@ fn rewrite_references(
                     format!("unknown label `{label}` in `@` reference"),
                 )
                 .with_span(node.span.clone());
-                // Offer the nearest existing label as a machine-applicable
-                // fix (`@intrdo` -> `@intro`) when a reasonable near-miss
-                // exists. `node.span` covers the whole `@label` token (sigil
-                // included), so the replacement carries its own `@`.
-                if let Some(candidate) = nearest_label(&label, labels) {
+                // An `@key` that misses every label but exactly matches a
+                // bibliography key is a citation written with the wrong
+                // syntax (`@key` instead of `[@key]`). That exact match is a
+                // stronger signal than any label near-miss, so it wins: offer
+                // the citation form and say why. `node.span` covers the whole
+                // `@label` token (sigil included), so the replacement supplies
+                // the full `[@key]`.
+                if bib_keys.contains(&label) {
+                    diagnostic = diagnostic
+                        .with_annotation(DiagnosticAnnotation::Hint(format!(
+                            "`{label}` is a bibliography key; cite it as `[@{label}]`"
+                        )))
+                        .with_suggestion(Suggestion::new(node.span.clone(), format!("[@{label}]")));
+                } else if let Some(candidate) = nearest_label(&label, labels) {
+                    // Offer the nearest existing label as a machine-applicable
+                    // fix (`@intrdo` -> `@intro`) when a reasonable near-miss
+                    // exists. The replacement carries its own `@`.
                     diagnostic = diagnostic.with_suggestion(Suggestion::new(
                         node.span.clone(),
                         format!("@{candidate}"),
@@ -691,9 +704,9 @@ mod tests {
 
     fn apply_suggestion(src: &str, suggestion: &Suggestion) -> String {
         let mut out = String::new();
-        out.push_str(&src[..suggestion.span.start]);
+        out.push_str(&src[..suggestion.span.start()]);
         out.push_str(&suggestion.replacement);
-        out.push_str(&src[suggestion.span.end..]);
+        out.push_str(&src[suggestion.span.end()..]);
         out
     }
 
@@ -762,7 +775,7 @@ mod tests {
         // and carry a Related annotation back to the first declaration.
         // Editor UIs rely on both spans to render the redeclaration jump.
         assert_eq!(
-            d.span().map(|span| &src[span.start..span.end]),
+            d.span().map(|span| &src[span.start()..span.end()]),
             Some("= B <dup>"),
             "MOS0030 span should cover the second heading exactly"
         );
@@ -778,7 +791,7 @@ mod tests {
         assert!(related.is_some(), "MOS0030 carries a Related annotation");
         if let Some((note_span, note_message)) = related {
             assert_eq!(
-                &src[note_span.start..note_span.end],
+                &src[note_span.start()..note_span.end()],
                 "= A <dup>",
                 "MOS0030 note should point at the original declaration exactly"
             );
@@ -790,7 +803,7 @@ mod tests {
         // The duplicate carries exactly one structured rename suggestion:
         // replace only the duplicate label token with the smallest free
         // `dup-2` candidate (nothing else here claims it). Editors apply this
-        // as a fix-it, so the payload — span + replacement — must preserve the
+        // as a fix-it, so the payload: span + replacement: must preserve the
         // surrounding heading syntax.
         let suggestions = d.suggestions();
         assert_eq!(
@@ -800,7 +813,7 @@ mod tests {
         );
         if let Some(suggestion) = suggestions.first() {
             assert_eq!(
-                &src[suggestion.span.start..suggestion.span.end],
+                &src[suggestion.span.start()..suggestion.span.end()],
                 "dup",
                 "suggestion span should cover only the duplicate label token"
             );
@@ -840,7 +853,7 @@ mod tests {
         );
         let spans: Vec<&str> = mos0030
             .iter()
-            .filter_map(|d| d.span().map(|s| &src[s.start..s.end]))
+            .filter_map(|d| d.span().map(|s| &src[s.start()..s.end()]))
             .collect();
         assert_eq!(
             spans.len(),
@@ -864,7 +877,7 @@ mod tests {
             assert!(related.is_some(), "MOS0030 carries a Related annotation");
             if let Some((ns, _)) = related {
                 assert_eq!(
-                    &src[ns.start..ns.end],
+                    &src[ns.start()..ns.end()],
                     "= A <dup>",
                     "every redeclaration must link back to the first decl"
                 );
@@ -880,7 +893,7 @@ mod tests {
                 "each MOS0030 carries exactly one rename suggestion, got {suggestions:?}"
             );
             if let Some(suggestion) = suggestions.first() {
-                assert_eq!(&src[suggestion.span.start..suggestion.span.end], "dup");
+                assert_eq!(&src[suggestion.span.start()..suggestion.span.end()], "dup");
             }
         }
         let replacements: Vec<&str> = mos0030
@@ -923,7 +936,7 @@ mod tests {
                 "rename must skip the existing `dup-2` and land on the next free suffix"
             );
             assert_eq!(
-                &src[suggestion.span.start..suggestion.span.end],
+                &src[suggestion.span.start()..suggestion.span.end()],
                 "dup",
                 "suggestion targets the duplicate label token"
             );
@@ -1097,15 +1110,8 @@ mod tests {
         }
         doc.alloc_child(
             doc.root,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            mos_core::NodeSpec::new(kind, SourceSpan::placeholder(doc.file.clone()))
+                .with_attributes(attrs),
         )
     }
 
@@ -1117,15 +1123,8 @@ mod tests {
         attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
         doc.alloc_child(
             parent,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Text,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            mos_core::NodeSpec::new(NodeKind::Text, SourceSpan::placeholder(doc.file.clone()))
+                .with_attributes(attrs),
         )
     }
 
@@ -1144,15 +1143,11 @@ mod tests {
         caption_attrs.insert("role".to_owned(), AttrValue::Str("caption".to_owned()));
         let caption_para = doc.alloc_child(
             figure,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: caption_attrs,
-            },
+            mos_core::NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(doc.file.clone()),
+            )
+            .with_attributes(caption_attrs),
         );
         let caption_text = make_text(doc, caption_para, caption);
         (figure, caption_text)
@@ -1207,23 +1202,19 @@ mod tests {
         let figure_id = make_node(&mut doc, NodeKind::Figure, Some("fig:one"), None);
         let ref_id = doc.alloc_child(
             doc.root,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Reference,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: {
-                    let mut a = mos_core::AttrMap::new();
-                    a.insert("label".to_owned(), AttrValue::Str("fig:one".to_owned()));
-                    a.insert("text".to_owned(), AttrValue::Str("?fig:one?".to_owned()));
-                    a
-                },
-            },
+            mos_core::NodeSpec::new(
+                NodeKind::Reference,
+                SourceSpan::placeholder(doc.file.clone()),
+            )
+            .with_attributes({
+                let mut a = mos_core::AttrMap::new();
+                a.insert("label".to_owned(), AttrValue::Str("fig:one".to_owned()));
+                a.insert("text".to_owned(), AttrValue::Str("?fig:one?".to_owned()));
+                a
+            }),
         );
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         // The figure carries its resolved document-order number.
@@ -1258,7 +1249,7 @@ mod tests {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         let (figure, caption_text) = make_captioned_figure(&mut doc, Some("fig:a"), "A plot.");
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(node_number(&doc, figure), "1");
@@ -1272,8 +1263,8 @@ mod tests {
     #[test]
     fn skipped_figure_omits_label_and_does_not_advance_counter() {
         // `#figure(numbered: false)` opts out of numbering (issue #76): no
-        // `number` attribute, no `Figure N:` caption prefix, and — the
-        // documented counter rule — the skip does not advance the counter,
+        // `number` attribute, no `Figure N:` caption prefix, and the
+        // documented counter rule; the skip does not advance the counter,
         // so a later numbered figure is still "Figure 1", not "Figure 2".
         let mut doc = Document::new(PathBuf::from("test.mos"));
         let (skipped, skipped_caption) =
@@ -1285,7 +1276,7 @@ mod tests {
         let (numbered, numbered_caption) =
             make_captioned_figure(&mut doc, Some("fig:num"), "A plot.");
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(
@@ -1321,23 +1312,19 @@ mod tests {
         }
         let ref_id = doc.alloc_child(
             doc.root,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Reference,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: {
-                    let mut a = mos_core::AttrMap::new();
-                    a.insert("label".to_owned(), AttrValue::Str("fig:plate".to_owned()));
-                    a.insert("text".to_owned(), AttrValue::Str("?fig:plate?".to_owned()));
-                    a
-                },
-            },
+            mos_core::NodeSpec::new(
+                NodeKind::Reference,
+                SourceSpan::placeholder(doc.file.clone()),
+            )
+            .with_attributes({
+                let mut a = mos_core::AttrMap::new();
+                a.insert("label".to_owned(), AttrValue::Str("fig:plate".to_owned()));
+                a.insert("text".to_owned(), AttrValue::Str("?fig:plate?".to_owned()));
+                a
+            }),
         );
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(
@@ -1356,7 +1343,7 @@ mod tests {
     fn empty_supplement_renders_number_only() {
         // `#figure(supplement: "")` / `supplement: none` keeps the figure
         // numbered but drops the supplement word: the caption and any
-        // reference show the number alone — the "no visible prefix" form
+        // reference show the number alone; the "no visible prefix" form
         // (issue #76). Distinct from `numbered: false`, which drops the
         // number entirely.
         let mut doc = Document::new(PathBuf::from("test.mos"));
@@ -1367,23 +1354,19 @@ mod tests {
         }
         let ref_id = doc.alloc_child(
             doc.root,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Reference,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: {
-                    let mut a = mos_core::AttrMap::new();
-                    a.insert("label".to_owned(), AttrValue::Str("fig:plain".to_owned()));
-                    a.insert("text".to_owned(), AttrValue::Str("?fig:plain?".to_owned()));
-                    a
-                },
-            },
+            mos_core::NodeSpec::new(
+                NodeKind::Reference,
+                SourceSpan::placeholder(doc.file.clone()),
+            )
+            .with_attributes({
+                let mut a = mos_core::AttrMap::new();
+                a.insert("label".to_owned(), AttrValue::Str("fig:plain".to_owned()));
+                a.insert("text".to_owned(), AttrValue::Str("?fig:plain?".to_owned()));
+                a
+            }),
         );
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(
@@ -1401,7 +1384,7 @@ mod tests {
     #[test]
     fn reference_to_skipped_figure_renders_bare_label() {
         // A reference to a `numbered: false` figure has no number to show,
-        // so it falls back to the bare label name — like an image reference.
+        // so it falls back to the bare label name: like an image reference.
         let mut doc = Document::new(PathBuf::from("test.mos"));
         let figure = make_node(&mut doc, NodeKind::Figure, Some("fig:skip"), None);
         if let Some(node) = doc.get_mut(figure) {
@@ -1410,23 +1393,19 @@ mod tests {
         }
         let ref_id = doc.alloc_child(
             doc.root,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Reference,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: {
-                    let mut a = mos_core::AttrMap::new();
-                    a.insert("label".to_owned(), AttrValue::Str("fig:skip".to_owned()));
-                    a.insert("text".to_owned(), AttrValue::Str("?fig:skip?".to_owned()));
-                    a
-                },
-            },
+            mos_core::NodeSpec::new(
+                NodeKind::Reference,
+                SourceSpan::placeholder(doc.file.clone()),
+            )
+            .with_attributes({
+                let mut a = mos_core::AttrMap::new();
+                a.insert("label".to_owned(), AttrValue::Str("fig:skip".to_owned()));
+                a.insert("text".to_owned(), AttrValue::Str("?fig:skip?".to_owned()));
+                a
+            }),
         );
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(
@@ -1440,19 +1419,19 @@ mod tests {
     fn resolve_is_idempotent_for_captioned_figures() {
         // `resolve` is public and re-entrant: the §6 stage 3 fixpoint and
         // future page-reference passes rerun it. Stamping the caption
-        // label must therefore be idempotent — the second pass has to
+        // label must therefore be idempotent; the second pass has to
         // reproduce `"Figure 1: A plot."` byte-for-byte instead of
         // re-reading the stamped text and nesting the label into
         // `"Figure 1: Figure 1: A plot."`.
         let mut doc = Document::new(PathBuf::from("test.mos"));
         let (_figure, caption_text) = make_captioned_figure(&mut doc, Some("fig:a"), "A plot.");
 
-        let first = resolve(&mut doc);
+        let first = resolve(&mut doc, &BTreeSet::new());
         assert!(first.is_empty(), "{first:?}");
         let after_first = read_str_attr(&doc, caption_text, "text");
         assert_eq!(after_first, Some("Figure\u{00A0}1: A plot.".to_owned()));
 
-        let second = resolve(&mut doc);
+        let second = resolve(&mut doc, &BTreeSet::new());
         assert!(second.is_empty(), "{second:?}");
         assert_eq!(
             read_str_attr(&doc, caption_text, "text"),
@@ -1471,7 +1450,7 @@ mod tests {
         let middle = make_node(&mut doc, NodeKind::Figure, None, None);
         let last = make_node(&mut doc, NodeKind::Figure, Some("fig:c"), None);
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(node_number(&doc, first), "1");
@@ -1494,7 +1473,7 @@ mod tests {
         let sec_two = make_node(&mut doc, NodeKind::Section, Some("sec:b"), None);
         let fig_two = make_node(&mut doc, NodeKind::Figure, Some("fig:b"), None);
 
-        let diags = resolve(&mut doc);
+        let diags = resolve(&mut doc, &BTreeSet::new());
         assert!(diags.is_empty(), "{diags:?}");
 
         assert_eq!(node_number(&doc, sec_one), "1");
@@ -1564,7 +1543,7 @@ mod tests {
             d.message()
         );
         assert_eq!(
-            d.span().map(|span| &src[span.start..span.end]),
+            d.span().map(|span| &src[span.start()..span.end()]),
             Some("@intrdo"),
             "MOS0033 span should still cover the bad reference exactly"
         );
@@ -1577,7 +1556,7 @@ mod tests {
         );
         if let Some(suggestion) = suggestions.first() {
             assert_eq!(
-                &src[suggestion.span.start..suggestion.span.end],
+                &src[suggestion.span.start()..suggestion.span.end()],
                 "@intrdo",
                 "suggestion should replace the whole `@` reference token"
             );
@@ -1675,7 +1654,7 @@ mod tests {
 
         let mut diagnostics: Vec<Diagnostic> = Vec::new();
         let index = build_label_index(&doc, &mut diagnostics);
-        let changed = rewrite_references(&mut doc, &index, &mut diagnostics);
+        let changed = rewrite_references(&mut doc, &index, &BTreeSet::new(), &mut diagnostics);
         assert!(!changed, "an unknown reference rewrites no text");
 
         let mos0033: Vec<&Diagnostic> = diagnostics

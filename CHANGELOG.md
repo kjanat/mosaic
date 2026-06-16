@@ -8,6 +8,14 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Sharper `@`-reference diagnostics: an `@key` reference that matches no label but exactly matches a
+  bibliography key now reports that the author likely meant a citation and offers `[@key]` as a
+  machine-applicable fix ([`mos-eval`][mos-eval] adds a `MOS0033` hint + suggestion). A heading
+  `<label>` that is not the last element on its line now raises the new `MOS0048` warning with a
+  reorder fix from [`mos-parse`][mos-parse], instead of silently dropping the label declaration and
+  failing only downstream at every `@ref` to it. Both fixes are emitted as structured
+  [`mos-core`][mos-core] `Suggestion`s, ready for LSP code actions.
+
 - Zed language-server wiring (https://github.com/kjanat/mosaic/issues/118): the
   [`zed-mosaic`][zed-mosaic] extension now declares and spawns [`mos-lsp`][mos-lsp] as the `Mosaic`
   language server, so opening a `.mos` file in Zed gets compiler diagnostics, go-to-definition, and
@@ -27,23 +35,23 @@ All notable changes to this project will be documented here. The format is based
   `dup-2`, and diagnostics without structured suggestions keep their existing output shape.
 
 - LSP label rename: [`mos-lsp`][mos-lsp] now advertises `renameProvider` and answers
-  `textDocument/rename`. A cursor on a label — either a declaration's `<label>` token or an `@label`
-  / `@page(label)` reference — renames it across the document: the response is a `WorkspaceEdit`
+  `textDocument/rename`. A cursor on a label: either a declaration's `<label>` token or an `@label`
+  / `@page(label)` reference renames it across the document; the response is a `WorkspaceEdit`
   rewriting the **first** declaration's token and every reference to the request's `newName`. Each
   edit covers only the identifier, never the `@` sigil, the `<>` brackets, or the `@page(`…`)`
   delimiters. First-declaration-wins (a duplicate later declaration is left untouched, matching the
-  resolver); a cursor off any label returns `null`. Single-document — no workspace/cross-file
-  rename, no `prepareRename`, and the new name is not validated.
+  resolver); a cursor off any label returns `null`. Single-document; no workspace/cross-file rename,
+  no `prepareRename`, and the new name is not validated.
 
 - Figure numbering controls (https://github.com/kjanat/mosaic/issues/76): `#figure` gains two
   per-figure arguments interpreted by [`mos-eval`][mos-eval]. `numbered: false` opts a figure out of
-  the auto `Figure N` counter — it carries no number, its caption keeps no `Figure N:` prefix, and
+  the auto `Figure N` counter: it carries no number, its caption keeps no `Figure N:` prefix, and
   (the documented counter rule) it does **not** advance the counter, so surrounding numbered figures
   stay contiguous; a reference to a skipped figure renders its bare label. `supplement: "Plate"`
   swaps the `Figure` supplement word in both the caption (`Plate 1: …`) and references (`Plate 1`)
   while still numbering; `supplement: ""` (or `supplement: none`) drops the word entirely, rendering
   the number alone (`1: …`, `1`) for a "no visible prefix" caption. Numbering stays deterministic
-  from document order — `numbered:` is a boolean, not an explicit count. Default `#figure` behavior
+  from document order: `numbered:` is a boolean, not an explicit count. Default `#figure` behavior
   is unchanged, and `#image` remains the way to place an inherently unnumbered graphic. See
   [`docs/labels-and-references.md`](docs/labels-and-references.md).
 
@@ -51,7 +59,7 @@ All notable changes to this project will be documented here. The format is based
   advertises `definitionProvider` and answers `textDocument/definition`. A cursor on an `@label` or
   `@page(label)` reference resolves to the source range of the label's declaration; an undeclared
   label or a cursor off any reference returns `null` (no error). When a label is declared more than
-  once, the definition points at the **first** declaration — the same one the resolver keeps and
+  once, the definition points at the **first** declaration; the same one the resolver keeps and
   reports its "first declaration is here" note against. Single-document only: no workspace index, no
   rename, no source/PDF sync.
 
@@ -78,13 +86,13 @@ All notable changes to this project will be documented here. The format is based
   Repeated citations to one key reuse its number, and unresolved keys keep the `[?key?]`
   placeholder. Sorted bibliography-list rendering and CSL styles remain out of scope.
 - Typed dependency identities (https://github.com/kjanat/mosaic/issues/64): [`mos-cache`][mos-cache]
-  now exports `DependencyId`, `DependencyKind`, `ProjectPath`, and `ProjectPathError` —
-  deterministic identities for the build inputs that have a real identity today
-  (source/asset/bibliography files and labels). `ProjectPath` canonicalizes project-relative file
-  paths (fold `\`→`/`, drop `.`/empty segments, resolve `..`, NFC-normalize) so equal logical inputs
-  share one id and rejects empty, raw absolute, drive-prefixed, or project-escaping identities.
-  Identities only: no content hashing, dependency graph, or `CacheKey` wiring yet, and
-  layout-input/node/style kinds wait for real identity schemes.
+  now exports `DependencyId`, `DependencyKind`, `ProjectPath`, and `ProjectPathError`: deterministic
+  identities for the build inputs that have a real identity today (source/asset/bibliography files
+  and labels). `ProjectPath` canonicalizes project-relative file paths (fold `\`→`/`, drop `.`/empty
+  segments, resolve `..`, NFC-normalize) so equal logical inputs share one id and rejects empty, raw
+  absolute, drive-prefixed, or project-escaping identities. Identities only: no content hashing,
+  dependency graph, or `CacheKey` wiring yet, and layout-input/node/style kinds wait for real
+  identity schemes.
 - Bibliography file dependencies (https://github.com/kjanat/mosaic/issues/69): the first content
   boundary built on those identities. [`mos-bib`][mos-bib] now exports `bibliography_content_hash`,
   the source-hash boundary specialized to `.bib` (engine version + domain tag + raw bytes,
@@ -92,21 +100,33 @@ All notable changes to this project will be documented here. The format is based
   change), and [`mos-cache`][mos-cache] adds `BibliographyDependency`, pairing a `Bibliography` id
   with that content hash so a future incremental build can tell when citation data changed.
   Construction guarantees the bibliography variant (so `path()`/`kind()` are infallible), the hash
-  is caller-supplied (no new crate dependency edge), and it stays identity/boundary only — no
+  is caller-supplied (no new crate dependency edge), and it stays identity/boundary only: no
   dependency graph, `CacheKey` wiring, or persistent cache yet.
 - Page boundary signatures (https://github.com/kjanat/mosaic/issues/70): [`mos-layout`][mos-layout]
   now exposes `PageBoundarySignature` (per page) and `PageGraphSignature` (the ordered per-page
-  list, via `PageGraphSignature::of_graph` / `LayoutResult::page_boundary_signatures`) — the §4.5
+  list, via `PageGraphSignature::of_graph` / `LayoutResult::page_boundary_signatures`); the §4.5
   `PageOutputHash` reduced to today's layout primitives. Each page folds its number, the quantized
   page box, and ordered runs (quantized position/size, a backend-neutral font identity, text) and
   image placements (intrinsic pixel dimensions + quantized rectangle); shaped glyphs, decoded
   pixels, absolute paths, PDF resource names, and encounter-order image ids are excluded for
   determinism and locality. `first_divergence` reports the first page index where two graphs differ,
-  i.e. where pagination changed. Comparison only — no reflow loop or cache wiring yet.
+  i.e. where pagination changed. Comparison only; no reflow loop or cache wiring yet.
 - Shared content hasher: [`mos-core`][mos-core] now exports `ContentHasher`, the engine-stamped,
   length-framed FNV-1a-128 boundary hasher (interim, swappable per the incremental-dependencies §9.4
   slice). [`mos-bib`][mos-bib]'s `bibliography_content_hash` and the new page signatures both build
   on it instead of re-deriving FNV; bibliography hash values are unchanged.
+
+- Literal angle brackets via `\<`: [`mos-parse`][mos-parse] now treats `\<` as an escaped literal
+  `<`, the third inline escape alongside `\\` (hard break) and `\-` (soft hyphen). Prose and
+  headings can finally contain literal angle brackets -- e.g. a section titled
+  `The \<head>
+  element` -- which was previously impossible because a trailing `<name>` was
+  unconditionally eaten as a label. The label scanners honor the escape too: an escaped `\<name>` at
+  a heading's trailing position or a paragraph's leading position is literal text, not a label
+  declaration, so writing about markup no longer mints stray labels or trips `MOS0048`. The
+  misplaced-heading-label warning gains a hint pointing at the `\<` escape, and the
+  [`tree-sitter-mosaic`][tree-sitter-mosaic] grammar already tokenizes `\<` as `escaped_char`
+  (locked with a corpus test).
 
 ### Changed
 
@@ -119,7 +139,7 @@ All notable changes to this project will be documented here. The format is based
   editable range from reference-node span geometry, removing a latent coupling to parser span
   conventions. No intended behavior change for ordinary references; this additionally fixes latent
   range drift for **styled** references (e.g. `*@intro*`), whose node span the parser widens to the
-  emphasis delimiters — the old geometry then produced an off-by-the-delimiters rename range, while
+  emphasis delimiters; the old geometry then produced an off-by-the-delimiters rename range, while
   the stamped identifier span is exact.
 
 - LSP diagnostics and go-to-definition now share one lowering per edit
@@ -127,11 +147,11 @@ All notable changes to this project will be documented here. The format is based
   lowers a document once into the same per-URI cache introduced in #102, and a later
   `textDocument/definition` request on the unchanged source reuses that cached
   [`mos-eval`][mos-eval] lowering instead of lowering the text a second time. Same invalidation
-  invariant (source mutation drops the entry) and identical observable behavior — same diagnostics,
-  same definition `Location`/`null` — only the duplicate per-edit lowering is gone. Only **pure**
+  invariant (source mutation drops the entry) and identical observable behavior: same diagnostics,
+  same definition `Location`/`null`: only the duplicate per-edit lowering is gone. Only **pure**
   lowerings are cached: [`mos-eval`][mos-eval]'s `LowerResult` now reports
   `reads_external_resources` (set when `#image` / `#figure` / `#bibliography` read files), and the
-  language server never caches such a lowering — those documents are re-lowered per request so they
+  language server never caches such a lowering; those documents are re-lowered per request so they
   always reflect the current filesystem rather than a stale snapshot.
 
 - LSP go-to-definition no longer re-lowers on every request
@@ -139,19 +159,42 @@ All notable changes to this project will be documented here. The format is based
   document's [`mos-eval`][mos-eval] lowering in an in-memory per-URI cache and reuses it across
   `textDocument/definition` requests. The cache is invalidated whenever the document's source
   changes (`didOpen` re-open / `didChange`) or the document closes, so a cached lowering is always
-  derived from the current source — behavior is unchanged, only the repeated parse + lower per
+  derived from the current source: behavior is unchanged, only the repeated parse + lower per
   request is gone. The boundary stays thin: the cache only memoises `mos_eval::lower`, it owns no
   parse/lower policy, and it is ready to back future requests (hover, rename) once those land.
 - Crate packages now use explicit include allowlists: ordinary crates inherit workspace defaults for
   root licenses, README, examples, source, and tests, while data/build-script crates keep precise
   root-anchored package lists. This keeps agent/project files out of future crates.io tarballs.
 
+### Fixed
+
+- `resolve_relative` ([`mos-core`][mos-core]) no longer silently swallows excess `..`. It looped
+  `PathBuf::pop` over each `..`, so once the base was exhausted the extra `..` simply vanished:
+  `proj/sub` + `../../../x` collapsed to a bare `x` *inside* the base that the author never wrote.
+  Normalization is now correctly lexical -- a `..` that escapes a **relative** base is preserved as
+  a leading `..` (`-> ../x`), while a `..` at an **absolute** root is clamped (`/a` +
+  `../../x ->
+  /x`), matching the OS. Still filesystem-free and symlink-agnostic; identity-grade
+  canonicalization stays in `mos_cache::ProjectPath`.
+
+- Unsafe path segments are now rejected, not silently re-split. `resolve_relative` /
+  `resolve_source_path` ([`mos-core`][mos-core]) split a `/`-separated path and handed each segment
+  to `PathBuf::push`, which on Windows re-parses a segment containing `\` (or a drive prefix) into
+  multiple components -- letting a `#image` / `#figure` / `#bibliography` or manifest path smuggle
+  traversal past the lexical `..` normalization. Both functions now return
+  `Result<PathBuf,
+  PathError>` and reject any segment that is not a single portable name (a
+  backslash is rejected on **every** platform so a manifest resolves identically everywhere). The
+  new **MOS0049** (`path-unsafe-segment`) reports the offending segment from
+  [`mos-eval`][mos-eval]'s image and bibliography lowering; the CLI surfaces it for malformed
+  `mosaic.toml` entry/output paths. Absolute and rooted paths still pass through unchanged.
+
 ## [0.0.1] - 2026-06-03
 
 ### Added
 
 - Citation Style Language (CSL) data foundations (manifest §12): a new [`mos-csl`][mos-csl] crate
-  adds (1) a typed CSL **item data model** — `Item`, `ItemType`, and the standard/number/date/name
+  adds (1) a typed CSL **item data model**: `Item`, `ItemType`, and the standard/number/date/name
   variable vocabularies from CSL 1.0.2 Appendices III–IV, plus `Name` and `Date`/`DateParts`; (2) an
   infallible **BibTeX → CSL mapping** (`item_from_bib_entry`, `library_from_bibliography`) from
   `mos-bib` records (entry types map to the closest CSL type, recognised fields to variables,
@@ -172,7 +215,7 @@ All notable changes to this project will be documented here. The format is based
   wiring.
 - Minimal BibTeX record parser (https://github.com/kjanat/mosaic/issues/66): [`mos-bib`][mos-bib]
   gains `parse_bibtex(input: &str) -> Result<Bibliography, BibParseError>`, reading a BibTeX string
-  into typed records — `Bibliography { entries }` keyed by citation key and
+  into typed records: `Bibliography { entries }` keyed by citation key and
   `BibEntry { entry_type, key, fields }`, both ordered by `BTreeMap` for deterministic iteration. It
   accepts zero or more `@type{key, field = value, ...}` entries with braced (`{...}`), quoted
   (`"..."`), or bare (`year = 1984`) values, comma-separated fields with an optional trailing comma,
@@ -197,13 +240,13 @@ All notable changes to this project will be documented here. The format is based
   [`mos-pdf`][mos-pdf] now writes deterministic `/Producer` and `/Creator` Info-dictionary entries
   set to `Mosaic <version>` (sourced from `CARGO_PKG_VERSION` at compile time via the `PRODUCER`
   constant), so a generated PDF traces back to the compiler that bred it. Existing `/Title` and
-  `/Author` are preserved and output stays byte-for-byte deterministic — no `/CreationDate`,
+  `/Author` are preserved and output stays byte-for-byte deterministic; no `/CreationDate`,
   `/ModDate`, XMP, git SHA, hostname, username, path, wall-clock, or build-timestamp data. Both
   fields carry the same constant string and PDF string escaping is handled by the existing `TextStr`
   writer. Deterministic dates via `SOURCE_DATE_EPOCH` and an XMP metadata packet are deferred
   follow-ups.
 - Structured diagnostic suggestions (https://github.com/kjanat/mosaic/issues/63): `mos-core` gains a
-  backend-neutral `Suggestion` payload — a `SourceSpan` plus replacement text — that diagnostics can
+  backend-neutral `Suggestion` payload: a `SourceSpan` plus replacement text that diagnostics can
   carry alongside prose `DiagnosticAnnotation::Help` annotations. `Diagnostic` stores them in a
   private `suggestions` vec exposed through a `with_suggestion` builder and a `suggestions()`
   accessor; an empty replacement encodes deletion and a zero-length span encodes insertion. Emitting
@@ -267,9 +310,9 @@ All notable changes to this project will be documented here. The format is based
   generic-label fallback, and duplicate/unknown diagnostics are unchanged.
 - Resolver ([`crates/mos-eval/src/resolve.rs`][mos-eval:resolve.rs]) now attaches a structured
   rename suggestion to duplicate-label diagnostics (https://github.com/kjanat/mosaic/issues/52):
-  every `MOS0030` carries a machine-readable `Suggestion` — a deterministic, collision-aware rename
+  every `MOS0030` carries a machine-readable `Suggestion`: a deterministic, collision-aware rename
   to the next free `{label}-N` (smallest `N >= 2` not already declared or suggested) over the
-  duplicate label token span — building on the `mos-core` `Suggestion` payload above. The existing
+  duplicate label token span: building on the `mos-core` `Suggestion` payload above. The existing
   `MOS0030` message, the related first-declaration note, and first-declaration-wins resolution are
   unchanged; emitting the suggestion does not mutate the document, so the resolver stays idempotent.
   Rendering suggestions in the CLI/LSP remains out of this slice.

@@ -1,4 +1,4 @@
-//! One-off demo: emit a PDF with two Romanian lines side by side —
+//! One-off demo: emit a PDF with two Romanian lines side by side:
 //! one using the comma-below glyphs (`Ș`/`ș`/`Ț`/`ț` via U+0218..U+021B
 //! → `Scommaaccent`/`scommaaccent`/`Tcommaaccent`/`tcommaaccent` in
 //! the Helvetica AFM, reachable through the per-document
@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out = std::path::PathBuf::from("/tmp/commaaccent-demo.pdf");
     let diags = mos_pdf::emit(&graph, &PdfMetadata::default(), &out)?;
     // Mirror the CLI's severity gate (see
-    // `crates/mos/src/main.rs` — exits non-zero only on
+    // `crates/mos/src/main.rs`: exits non-zero only on
     // `Severity::Error`). Warnings (e.g. `MOS0032` glyph-budget exhaustion)
     // are non-fatal and pass through silently; the workspace's
     // `-D warnings` clippy rule blocks `println!`/`eprintln!` on

@@ -1,4 +1,4 @@
-//! `mos-lsp` — language-server stdio entry point (manifest §17).
+//! `mos-lsp`: language-server stdio entry point (manifest §17).
 //!
 //! Editors spawn this binary and speak LSP over stdin/stdout. The
 //! protocol implementation lives in `mos_lsp::run` so it can be

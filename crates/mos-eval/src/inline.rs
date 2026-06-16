@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use mos_core::{AttrMap, AttrValue, Document, Node, NodeId, NodeKind, StyleId};
+use mos_core::{AttrMap, AttrValue, Document, NodeId, NodeKind, NodeSpec};
 use mos_parse::{Inline, InlineKind};
 
 use crate::insert_label_attributes;
@@ -68,15 +68,7 @@ pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inlin
         }
         doc.alloc_child(
             parent,
-            Node {
-                id: NodeId::default(),
-                kind,
-                span: inline.span.clone(),
-                content_hash: Default::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes,
-            },
+            NodeSpec::new(kind, inline.span.clone()).with_attributes(attributes),
         );
     }
 }

@@ -10,25 +10,25 @@
 
 ; --- Definitions ------------------------------------------------------------
 
-; `#import "lib.mos": foo, bar` — each trailing identifier is a binding.
+; `#import "lib.mos": foo, bar`; each trailing identifier is a binding.
 (import_directive
   items: (import_items
     (identifier) @local.definition))
 
-; `<intro:setup>` — label introduction.
+; `<intro:setup>`: label introduction.
 (label
   name: (label_name) @local.definition)
 
 ; --- References -------------------------------------------------------------
 
-; `@intro:setup` — label use.
+; `@intro:setup`: label use.
 (reference
   target: (label_name) @local.reference)
 
-; `#name(...)` — block / inline call site.
+; `#name(...)`: block / inline call site.
 (hash_call
   function: (qualified_name) @local.reference)
 
-; `name(...)` — expression-position call (rare in surface syntax).
+; `name(...)`: expression-position call (rare in surface syntax).
 (call_expr
   function: (qualified_name) @local.reference)

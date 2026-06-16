@@ -1,4 +1,4 @@
-//! The CSL item data model — the typed input data a CSL style formats.
+//! The CSL item data model; the typed input data a CSL style formats.
 //!
 //! This mirrors the "CSL-JSON" shape from the CSL 1.0.2 specification
 //! (Appendix III item types, Appendix IV variables) as typed Rust. An [`Item`]
@@ -244,8 +244,8 @@ csl_vocab! {
 
 /// A personal or institutional name (specification "Name" name-parts).
 ///
-/// Personal names use the part fields; an institution — or any name kept whole
-/// — goes in [`literal`](Self::literal).
+/// Personal names use the part fields; an institution, or any name kept whole,
+/// goes in [`literal`](Self::literal).
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Name {
     pub family: Option<String>,
@@ -319,7 +319,7 @@ impl Date {
     }
 }
 
-/// A single bibliographic item — the unit a CSL style formats.
+/// A single bibliographic item; the unit a CSL style formats.
 ///
 /// Variables are split by category into deterministic [`BTreeMap`]s. Build one
 /// from a parsed BibTeX record with

@@ -56,7 +56,7 @@ pub enum Item {
     /// A bullet (`- `) or numbered (`\d+\. `) list. Sibling items at
     /// the same indent are grouped under one list; deeper indents
     /// become nested lists hanging off the most recent item. Numbered
-    /// lists always renumber from 1 in MVP — explicit `start: N` is
+    /// lists always renumber from 1 in MVP: explicit `start: N` is
     /// deferred.
     List {
         ordered: bool,
@@ -76,20 +76,20 @@ pub struct ListItem {
     pub span: SourceSpan,
 }
 
-/// Tag for the directive shapes [`Item::Set`] can represent — the
+/// Tag for the directive shapes [`Item::Set`] can represent: the
 /// `#set <target>(...)` configuration directive vs the standalone
 /// `#image(...)`, `#figure(...)`, and `#bibliography(...)` calls. The
 /// lowerer dispatches on this rather than the [`Item::Set::name`] string
 /// so `#set image(...)` can never collide with `#image(...)`.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum DirectiveKind {
-    /// `#set <name>(...)` — sets defaults on a style target.
+    /// `#set <name>(...)`: sets defaults on a style target.
     Set,
-    /// `#image("path", ...)` — raster image directive.
+    /// `#image("path", ...)`: raster image directive.
     Image,
-    /// `#figure(image: ..., caption: ...)` — captioned image container.
+    /// `#figure(image: ..., caption: ...)`: captioned image container.
     Figure,
-    /// `#bibliography("refs.bib")` — declares a bibliography source
+    /// `#bibliography("refs.bib")`: declares a bibliography source
     /// database. The lowerer records the (source-relative) path so a
     /// later BibTeX-parsing slice can read it; citation resolution and
     /// rendering are not part of this directive.
@@ -113,7 +113,7 @@ pub struct RawBlockView<'a> {
     pub span: &'a SourceSpan,
 }
 
-/// One argument inside a directive body — either a `key: value`
+/// One argument inside a directive body: either a `key: value`
 /// pair (the only form `#set` accepts) or a positional value (a
 /// leading string literal allowed on `#image(...)` / `#figure(...)`).
 ///
@@ -207,7 +207,7 @@ pub struct Inline {
     pub text: String,
     pub span: SourceSpan,
     /// For [`InlineKind::Reference`] / [`InlineKind::PageReference`], the
-    /// source span of the label *identifier* alone — the `intro` in `@intro`
+    /// source span of the label *identifier* alone; the `intro` in `@intro`
     /// or `@page(intro)`, excluding the `@` sigil and the `@page(`…`)`
     /// wrapper. The lowerer stamps it as the node's `label_span` so editor
     /// features (rename) read the identifier range directly instead of
@@ -223,11 +223,11 @@ pub enum InlineKind {
     Strong,
     BoldItalic,
     Code,
-    /// `@label` — a cross-reference to a labelled block. The
+    /// `@label`: a cross-reference to a labelled block. The
     /// [`Inline::text`] payload is the bare label name (no leading
     /// `@`); the resolver rewrites it to the target's resolved text.
     Reference,
-    /// `@page(label)` — a reference to the printed *page number* of a
+    /// `@page(label)`: a reference to the printed *page number* of a
     /// labelled target. The [`Inline::text`] payload is the bare label name
     /// (the `page(` wrapper and `)` stripped). Distinct from
     /// [`Reference`](Self::Reference), which resolves to the target's section
@@ -236,15 +236,15 @@ pub enum InlineKind {
     /// resolve↔layout fixpoint (issue #72); this slice parses and models the
     /// reference but leaves it unresolved (placeholder text).
     PageReference,
-    /// `[@key]` — a citation to a bibliography entry. The
+    /// `[@key]`: a citation to a bibliography entry. The
     /// [`Inline::text`] payload is the bare citation key (no leading
     /// `[@` or trailing `]`); bibliography loading and rendering are
     /// future work tracked under MVP 4. The key alphabet matches the
     /// label alphabet (`[A-Za-z0-9_:.-]`); a single key per
-    /// `[@…]` group is the only form recognised in this slice — list
+    /// `[@…]` group is the only form recognised in this slice: list
     /// forms like `[@a; @b]` and prefix/suffix bodies are deferred.
     Citation,
-    /// `\\` — a forced line break inside a paragraph. The line
+    /// `\\`: a forced line break inside a paragraph. The line
     /// breaks here without the extra leading a blank-line paragraph
     /// break would give. Carries no text payload. The shorthand for
     /// a soft hyphen `\-` lowers to a literal U+00AD inside a
@@ -283,7 +283,7 @@ impl Item {
     ///
     /// The returned tuple is `(name, args, span)`; the caller can also
     /// reach [`DirectiveKind`] via [`Self::directive_kind`]. The
-    /// accessor name is retained for back-compat — every existing
+    /// accessor name is retained for back-compat; every existing
     /// caller pre-dates the `#image`/`#figure` directives and only
     /// looks at name/args/span.
     #[must_use]

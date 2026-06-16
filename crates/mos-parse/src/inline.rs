@@ -90,7 +90,7 @@ impl Parser<'_> {
         let bytes = slice.as_bytes();
         let mut out: Vec<Inline> = Vec::new();
         // `pending` accumulates characters that belong to the current
-        // styled text run but aren't a verbatim slice of `slice` — at
+        // styled text run but aren't a verbatim slice of `slice`: at
         // the moment, only the soft-hyphen shorthand `\-` (which
         // contributes a U+00AD codepoint without `\` or `-` ever
         // appearing in the run). When `pending` is non-empty, the run
@@ -143,7 +143,21 @@ impl Parser<'_> {
                     text_start = i;
                     continue;
                 }
-                // Backslash followed by anything other than `\` or `-`
+                if i + 1 < bytes.len() && bytes[i + 1] == b'<' {
+                    // `\<` -> literal `<`. Lets authors write angle-bracket text
+                    // (e.g. an HTML tag like `<head>`) in prose and headings
+                    // without `<...>` being read as label syntax. The heading
+                    // label scanners skip an escaped `<` to match.
+                    if pending_source_start.is_none() {
+                        pending_source_start = Some(text_start);
+                    }
+                    pending.push_str(&slice[text_start..i]);
+                    pending.push('<');
+                    i += 2;
+                    text_start = i;
+                    continue;
+                }
+                // Backslash followed by anything other than `\`, `-`, or `<`
                 // is left to fall through as a literal `\` byte (the
                 // slice path picks it up at the next flush). A lone
                 // trailing `\` at end-of-input gets a warning so the
@@ -260,7 +274,7 @@ impl Parser<'_> {
             if c == b'@' {
                 let id_end = scan_label_chars(bytes, i + 1);
                 if id_end > i + 1 {
-                    // `@page(label)` — a page reference. Only a *well-formed*
+                    // `@page(label)`: a page reference. Only a *well-formed*
                     // `@page(` + label + `)` takes this branch; anything else
                     // (`@page` alone, an unterminated `@page(`, `@pages`) falls
                     // through to the ordinary `@label` reference path below.
@@ -327,7 +341,7 @@ impl Parser<'_> {
                 continue;
             }
             if c == b'[' && i + 1 < bytes.len() && bytes[i + 1] == b'@' {
-                // `[@key]` — citation. Only enter the citation branch
+                // `[@key]`: citation. Only enter the citation branch
                 // once we have seen `[@`, so a bare `[` keeps its
                 // current literal-text behaviour and never warns.
                 let key_start = i + 2;
@@ -359,7 +373,7 @@ impl Parser<'_> {
                 // prefix/suffix). Warn once and *consume* the
                 // citation-candidate extent so the trailing `@key`
                 // bytes don't fall back through to the `@`-reference
-                // branch — that would surface a bogus MOS0033 in the
+                // branch; that would surface a bogus MOS0033 in the
                 // resolver for what was syntactically a malformed
                 // citation, not an unknown label.
                 //
@@ -409,7 +423,7 @@ impl Parser<'_> {
     /// from the earliest byte that fed `pending` (or `from` when pending
     /// is empty) through `to`, so emitted inlines whose text includes
     /// expanded escapes still carry a span covering the original source
-    /// bytes — including the consumed `\-` markers.
+    /// bytes: including the consumed `\-` markers.
     #[allow(
         clippy::too_many_arguments,
         reason = "transitional: extends the existing `flush_styled_text` (7-arg) with a buffered-text channel and a pending-source-start tracker for escape expansion. Bundling the slice/base/style triple into a context struct would churn every call site in `parse_inline_segment` for no net clarity."
@@ -501,9 +515,9 @@ fn delimiter_closes(delimiter: Delimiter, run_len: usize) -> bool {
 
 fn widen_span_to_delimiters(inlines: &mut [Inline], start: usize, end: usize) {
     if let Some(first) = inlines.first_mut() {
-        first.span.start = start;
+        first.span.set_start(start);
     }
     if let Some(last) = inlines.last_mut() {
-        last.span.end = end;
+        last.span.set_end(end);
     }
 }

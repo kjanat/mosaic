@@ -128,14 +128,14 @@ pub struct OutputSection {
 /// ```
 #[derive(thiserror::Error, Debug)]
 pub enum ManifestError {
-    #[error("could not read manifest `{path}`: {source}")]
+    #[error("could not read manifest `{}`: {}", mos_core::display_path(.path), .source)]
     Io {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
 
-    #[error("could not parse manifest `{path}`: {source}")]
+    #[error("could not parse manifest `{}`: {}", mos_core::display_path(.path), .source)]
     Parse {
         path: PathBuf,
         #[source]

@@ -46,15 +46,15 @@ and the bibliography-style reference [@patashnik1988] print as numbered markers.
 
 Go-to-definition jumps from a reference to the heading that declares its label.
 This section demonstrates it on itself: it holds a live reference to its own
-heading — section @gotodef — which the PDF prints as the number you see. In the
+heading, section @gotodef, which the PDF prints as the number you see. In the
 source that token is `@gotodef`; put the cursor on it and run go-to-definition to
 land on this heading's `<gotodef>` label.
 
 == Rename <rename>
 
 Rename rewrites a label's declaration and every reference to it in one edit. This
-heading declares the `<rename>` label, and the cross-link here —
-section @rename — is a reference to it. Rename either the declaration or this reference,
+heading declares the `<rename>` label, and the cross-link here,
+section @rename, is a reference to it. Rename either the declaration or this reference,
 and both change together, in view, without scrolling away from this section.
 
 == Diagnostics <diagnostics>
@@ -63,10 +63,25 @@ To watch diagnostics appear, introduce an error in the source: point a reference
 at a label that does not exist, or cite an unknown bibliography key. `mos-lsp`
 reports the problem inline; undo to clear it.
 
+== Figure labels <figures>
+
+Figures carry labels too, through the `label:` argument:
+
+#figure(
+  image: "demo.png",
+  caption: "A labelled figure you can reach with go-to-definition.",
+  label: "diagram",
+)
+
+The figure above is labelled `diagram`, and this sentence references it as
+@diagram (which the PDF prints as its `Figure N` number). Go-to-definition on the
+`@diagram` token jumps to the figure, and rename rewrites the figure's label and
+every reference together, exactly as for heading labels.
+
 = Setup <setup>
 
-Install the server so it lands on `PATH` — run `cargo mosils` from the
-workspace — then open this project in your editor. Section @intro has the
+Install the server so it lands on `PATH`: run `cargo mosils` from the
+workspace, then open this project in your editor. Section @intro has the
 overview and section @conclusion has the final check.
 
 = Conclusion <conclusion>

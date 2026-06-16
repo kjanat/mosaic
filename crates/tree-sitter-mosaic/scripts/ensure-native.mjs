@@ -4,7 +4,7 @@
  * loader expects them.
  *
  * Two addons are involved, and each `bindings/node/index.js` loads them
- * from `prebuilds/<platform>-<arch>/<name>.node` when running under bun —
+ * from `prebuilds/<platform>-<arch>/<name>.node` when running under bun:
  * whereas node-gyp emits to `build/Release/<target>.node`, and bun does
  * not run a dependency's own install script, so the `tree-sitter` runtime
  * addon is never compiled by `bun install` either. This script bridges
@@ -90,6 +90,6 @@ function ensureAddon(pkgDir, builtName, prebuildName) {
 const grammarRoot = fileURLToPath(new URL('..', import.meta.url));
 ensureAddon(grammarRoot, 'tree_sitter_mosaic_binding.node', 'tree-sitter-mosaic');
 
-// 2. The `tree-sitter` runtime addon — a dependency bun won't build itself.
+// 2. The `tree-sitter` runtime addon: a dependency bun won't build itself.
 const treeSitterRoot = dirname(require.resolve('tree-sitter/package.json'));
 ensureAddon(treeSitterRoot, 'tree_sitter_runtime_binding.node', 'tree-sitter');

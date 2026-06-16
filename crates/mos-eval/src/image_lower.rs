@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use mos_core::{
-    AttrMap, AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, SourceSpan, StyleId, codes,
+    AttrMap, AttrValue, Diagnostic, Document, NodeId, NodeKind, NodeSpec, SourceSpan, codes,
 };
 use mos_parse::{SetArg, SetValue};
 
@@ -31,15 +31,7 @@ pub(super) fn lower_image_directive(
     };
     document.alloc_child(
         root,
-        Node {
-            id: NodeId::default(),
-            kind: NodeKind::Image,
-            span: span.clone(),
-            content_hash: Default::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes,
-        },
+        NodeSpec::new(NodeKind::Image, span.clone()).with_attributes(attributes),
     );
 }
 
@@ -176,61 +168,29 @@ pub(super) fn lower_figure_directive(
     }
     let figure_id = document.alloc_child(
         root,
-        Node {
-            id: NodeId::default(),
-            kind: NodeKind::Figure,
-            span: span.clone(),
-            content_hash: Default::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes: figure_attrs,
-        },
+        NodeSpec::new(NodeKind::Figure, span.clone()).with_attributes(figure_attrs),
     );
     document.alloc_child(
         figure_id,
-        Node {
-            id: NodeId::default(),
-            kind: NodeKind::Image,
-            span: span.clone(),
-            content_hash: Default::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes: image_attrs,
-        },
+        NodeSpec::new(NodeKind::Image, span.clone()).with_attributes(image_attrs),
     );
     if let Some((text, caption_span)) = caption {
         let caption_id = document.alloc_child(
             figure_id,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: caption_span.clone(),
-                content_hash: Default::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: {
-                    let mut a = AttrMap::new();
-                    // Tag the caption so the layout engine can give it
-                    // distinct styling later. For now it renders as a
-                    // plain paragraph beneath the image.
-                    a.insert("role".to_owned(), AttrValue::Str("caption".to_owned()));
-                    a
-                },
-            },
+            NodeSpec::new(NodeKind::Paragraph, caption_span.clone()).with_attributes({
+                let mut a = AttrMap::new();
+                // Tag the caption so the layout engine can give it
+                // distinct styling later. For now it renders as a
+                // plain paragraph beneath the image.
+                a.insert("role".to_owned(), AttrValue::Str("caption".to_owned()));
+                a
+            }),
         );
         let mut child_attrs = AttrMap::new();
         child_attrs.insert("text".to_owned(), AttrValue::Str(text));
         document.alloc_child(
             caption_id,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Text,
-                span: caption_span,
-                content_hash: Default::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: child_attrs,
-            },
+            NodeSpec::new(NodeKind::Text, caption_span).with_attributes(child_attrs),
         );
     }
 }
@@ -394,11 +354,11 @@ fn build_image_attributes(
 }
 
 fn string_content_span(value_span: &SourceSpan) -> SourceSpan {
-    if value_span.end > value_span.start.saturating_add(1) {
+    if value_span.end() > value_span.start().saturating_add(1) {
         SourceSpan::new(
             value_span.file.clone(),
-            value_span.start + 1,
-            value_span.end - 1,
+            value_span.start() + 1,
+            value_span.end() - 1,
         )
     } else {
         value_span.clone()

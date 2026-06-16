@@ -1,6 +1,14 @@
 # https://just.systems
 set unstable
 
+# Git Bash / MSYS2 sources /etc/bash.bashrc, whose line 13 reads
+# `${CYG_SYS_BASHRC}` unguarded. The shells bun/runner spawn run under
+# `bash -u` (nounset), so an unset CYG_SYS_BASHRC prints
+# "CYG_SYS_BASHRC: unbound variable" on every recipe. Binding it here
+# (exported to every recipe's process tree) silences the noise without
+# touching the system bashrc, which Git updates would overwrite anyway.
+export CYG_SYS_BASHRC := "1"
+
 alias f := fmt
 alias format := fmt
 
@@ -32,7 +40,7 @@ doc-nightly: setup
 # `tree-sitter-mosaic/queries/` sources. Zed does not load Tree-sitter
 # `locals.scm` or `tags.scm` under those filenames.
 sync-zed-queries:
-    #!/usr/bin/env bash
+    #!/bin/bash
     set -euo pipefail
     src=crates/tree-sitter-mosaic/queries
     dst=crates/zed-mosaic/languages/mosaic

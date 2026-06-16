@@ -10,7 +10,7 @@ pub(crate) enum Target {
     Page,
     Text,
     Document,
-    /// Default styling for `#image(...)` calls — currently just `width`
+    /// Default styling for `#image(...)` calls; currently just `width`
     /// and `height` are recognised. The MVP 1.5 emit path doesn't yet
     /// pick these defaults up on bare images (only explicit per-call
     /// width/height apply), but accepting them in the schema keeps

@@ -24,14 +24,14 @@ pub struct Bibliography {
     pub entries: BTreeMap<String, BibEntry>,
 }
 
-/// A single parsed BibTeX entry — one `@type{...}` record.
+/// A single parsed BibTeX entry: one `@type{...}` record.
 ///
 /// The entry type and field names are normalized to lowercase, because
 /// BibTeX treats them case-insensitively; the citation [`key`](Self::key) is
 /// preserved verbatim, because keys *are* case-sensitive. Fields live in a
 /// [`BTreeMap`], so [`fields`](Self::fields) iterates in sorted, stable
 /// order. Values are stored as raw text exactly as written between the
-/// delimiters — no `TeX` decoding or name parsing.
+/// delimiters; no `TeX` decoding or name parsing.
 ///
 /// # Examples
 ///
@@ -57,7 +57,7 @@ pub struct BibEntry {
     pub fields: BTreeMap<String, String>,
 }
 
-/// A citation reference within the document body — a single key that
+/// A citation reference within the document body: a single key that
 /// resolves into a [`Bibliography`] entry at render time.
 ///
 /// # Examples

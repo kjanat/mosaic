@@ -24,8 +24,8 @@ mod set_schema;
 use std::collections::BTreeMap;
 
 use mos_core::{
-    AttrMap, AttrValue, CollectingSink, Diagnostic, Document, Node, NodeId, NodeKind, Severity,
-    SourceSpan, StyleId,
+    AttrMap, AttrValue, CollectingSink, Diagnostic, Document, NodeId, NodeKind, NodeSpec, Severity,
+    SourceSpan,
 };
 use mos_parse::{DirectiveKind, Item, RawBlockKind, SyntaxTree};
 
@@ -46,7 +46,7 @@ fn insert_label_attributes(attributes: &mut AttrMap, label: &str, label_span: Op
     let Some(span) = label_span else {
         return;
     };
-    let (Ok(start), Ok(end)) = (i64::try_from(span.start), i64::try_from(span.end)) else {
+    let (Ok(start), Ok(end)) = (i64::try_from(span.start()), i64::try_from(span.end())) else {
         // AttrValue::Int is i64 while SourceSpan offsets are usize. If a future
         // source can exceed that range, omit the fix-it span instead of storing
         // a lossy edit location; the resolver will skip the unsafe suggestion.
@@ -108,7 +108,7 @@ pub struct LowerResult {
     pub document: Document,
     pub diagnostics: Vec<Diagnostic>,
     pub metadata: DocumentMetadata,
-    /// Whether lowering this document read external files — `#image` /
+    /// Whether lowering this document read external files: `#image` /
     /// `#figure` image loads and `#bibliography` source reads. Such a
     /// lowering is **not a pure function of the source text**: the same
     /// `(src, file)` can lower differently as referenced files appear,
@@ -222,15 +222,7 @@ impl Evaluator {
                     }
                     let heading = document.alloc_child(
                         root,
-                        Node {
-                            id: NodeId::default(),
-                            kind: NodeKind::Section,
-                            span: span.clone(),
-                            content_hash: Default::default(),
-                            style_id: StyleId::default(),
-                            children: Vec::new(),
-                            attributes,
-                        },
+                        NodeSpec::new(NodeKind::Section, span.clone()).with_attributes(attributes),
                     );
                     lower_inlines(&mut document, heading, inlines);
                 }
@@ -246,15 +238,8 @@ impl Evaluator {
                     }
                     let para = document.alloc_child(
                         root,
-                        Node {
-                            id: NodeId::default(),
-                            kind: NodeKind::Paragraph,
-                            span: span.clone(),
-                            content_hash: Default::default(),
-                            style_id: StyleId::default(),
-                            children: Vec::new(),
-                            attributes,
-                        },
+                        NodeSpec::new(NodeKind::Paragraph, span.clone())
+                            .with_attributes(attributes),
                     );
                     lower_inlines(&mut document, para, inlines);
                 }
@@ -290,7 +275,7 @@ impl Evaluator {
                     span,
                 } => match kind {
                     // `DirectiveKind` (set by the parser) is the
-                    // discriminator here, *not* `name` — `#set image(...)`
+                    // discriminator here, *not* `name`: `#set image(...)`
                     // and `#image(...)` are both parsed with `name ==
                     // "image"`, and dispatching on the string would
                     // route `#set image(width: 200pt)` into the image
@@ -379,15 +364,7 @@ fn lower_raw_block(
     );
     document.alloc_child(
         root,
-        Node {
-            id: NodeId::default(),
-            kind: NodeKind::Raw,
-            span: span.clone(),
-            content_hash: Default::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes,
-        },
+        NodeSpec::new(NodeKind::Raw, span.clone()).with_attributes(attributes),
     );
 }
 
@@ -456,8 +433,8 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
 pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
     let mut lowered = Evaluator::new().evaluate(tree);
     let mut diagnostics = std::mem::take(&mut lowered.diagnostics);
-    resolve_citations(&mut lowered.document, &mut diagnostics);
-    diagnostics.extend(resolve(&mut lowered.document));
+    let bib_keys = resolve_citations(&mut lowered.document, &mut diagnostics);
+    diagnostics.extend(resolve(&mut lowered.document, &bib_keys));
     LowerResult {
         document: lowered.document,
         diagnostics,
@@ -509,7 +486,7 @@ mod tests {
             !lower("= Title <t>\n\nSee @t\n", &file).reads_external_resources,
             "a source with no filesystem directives lowers purely"
         );
-        // Each filesystem-reading directive marks the lowering impure — even
+        // Each filesystem-reading directive marks the lowering impure: even
         // when the referenced file is missing, since the *attempt* is what
         // makes the result depend on external state.
         assert!(
@@ -532,8 +509,8 @@ mod tests {
         // #103): a labelled declaration carries BOTH `label_span.start` and
         // `label_span.end` as `Int`s spanning exactly the label token, so the
         // LSP can target `<intro>` rather than the whole heading. If the
-        // lowerer ever stamps one attribute without the other — or stops
-        // stamping them — `definition.rs`'s safe fallback would silently widen
+        // lowerer ever stamps one attribute without the other, or stops
+        // stamping them: `definition.rs`'s safe fallback would silently widen
         // the definition range with no test catching it. This locks the pair.
         let src = "= Intro <intro>\n";
         let r = lower(src, &PathBuf::from("test.mos"));
@@ -974,7 +951,7 @@ mod tests {
         // End-to-end: a real `#figure(label: ...)` lowers with its label
         // on the Figure node, the resolver numbers the figure, and an
         // `@label` reference rewrites to kind-aware `Figure 1` text. Note
-        // the space before `here.` — a `.` flush against the reference
+        // the space before `here.`: a `.` flush against the reference
         // would be absorbed into the label (`fig:plot.`) and miss.
         let png_path = write_tiny_png("ref-fig.png");
         let dir = png_path.parent().unwrap();
@@ -1039,8 +1016,8 @@ mod tests {
         // `@page(label)` reaches the semantic model as a distinct
         // `NodeKind::PageReference` carrying the bare label and a `?label?`
         // placeholder (the unresolved-reference pattern). This slice models the
-        // node but does not resolve it — page resolution is the resolve↔layout
-        // fixpoint (issue #72) — so it must NOT be folded into the cross-
+        // node but does not resolve it: page resolution is the resolve↔layout
+        // fixpoint (issue #72), so it must NOT be folded into the cross-
         // reference machinery and the placeholder must survive lowering. The
         // label is declared so the lower-time validation stays quiet here.
         let r = lower(
@@ -1070,7 +1047,7 @@ mod tests {
     #[test]
     fn undeclared_page_reference_label_emits_mos0033() {
         // An undeclared label in `@page(...)` is a lower-time error, exactly
-        // like a bad `@ref` — `mos check` reports it without laying out.
+        // like a bad `@ref`: `mos check` reports it without laying out.
         let r = lower("See @page(missing) here.\n", &PathBuf::from("test.mos"));
         assert!(
             r.diagnostics
@@ -1138,14 +1115,14 @@ mod tests {
             citation.attributes.get("text"),
             Some(&AttrValue::Str("[?smith2024?]".to_owned())),
         );
-        let span_text = &src[citation.span.start..citation.span.end];
+        let span_text = &src[citation.span.start()..citation.span.end()];
         assert_eq!(span_text, "[@smith2024]");
     }
 
     #[test]
     fn malformed_citation_does_not_create_citation_node() {
         // `[@]` with an empty key must surface as a parse warning
-        // (MOS0039) and produce zero `NodeKind::Citation` nodes — the
+        // (MOS0039) and produce zero `NodeKind::Citation` nodes: the
         // semantic model only carries citations that parsed cleanly.
         let r = lower("look [@] here\n", &PathBuf::from("test.mos"));
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
@@ -1401,6 +1378,41 @@ mod tests {
     }
 
     #[test]
+    fn label_reference_matching_bib_key_suggests_citation() {
+        // `@smith2024` resolves to no label but exactly matches a bibliography
+        // key -- the user meant the citation `[@smith2024]`. MOS0033 carries a
+        // structured fix swapping `@smith2024` for `[@smith2024]`.
+        let dir = unique_temp_dir("ref-is-bibkey");
+        let bib = dir.join("refs.bib");
+        std::fs::write(&bib, "@article{smith2024, title={Known}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let source_text = "#bibliography(\"refs.bib\")\n\nsee @smith2024 here\n";
+        std::fs::write(&source, source_text).unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+
+        let diag = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0033.code())
+            .expect("MOS0033 for the @smith2024 reference");
+        let suggestions = diag.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "one citation fix, got {suggestions:?}"
+        );
+        assert_eq!(suggestions[0].replacement, "[@smith2024]");
+        assert_eq!(
+            &source_text[suggestions[0].span.start()..suggestions[0].span.end()],
+            "@smith2024",
+            "the fix replaces the whole `@key` token, sigil included"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn repeated_known_citation_key_reuses_its_first_number() {
         // Two citations to the same resolved key render the same numeric
         // label -- a key is numbered once, on first use.
@@ -1503,7 +1515,7 @@ mod tests {
         assert_eq!(
             diagnostic
                 .span()
-                .map(|span| &source_text[span.start..span.end]),
+                .map(|span| &source_text[span.start()..span.end()]),
             Some("[@missing]"),
             "MOS0045 should point at the citation token"
         );
@@ -1537,7 +1549,7 @@ mod tests {
             .diagnostics
             .iter()
             .filter(|d| d.def().code() == codes::MOS0045.code())
-            .filter_map(|d| d.span().map(|span| &source_text[span.start..span.end]))
+            .filter_map(|d| d.span().map(|span| &source_text[span.start()..span.end()]))
             .collect();
         assert_eq!(
             spans,
@@ -1619,7 +1631,7 @@ mod tests {
         assert_eq!(
             diagnostic
                 .span()
-                .map(|span| &source_text[span.start..span.end]),
+                .map(|span| &source_text[span.start()..span.end()]),
             Some("#bibliography(\"second.bib\")"),
             "duplicate should point at the later bibliography source"
         );
@@ -1727,7 +1739,7 @@ mod tests {
         assert_eq!(
             duplicate
                 .span()
-                .map(|span| &source_text[span.start..span.end]),
+                .map(|span| &source_text[span.start()..span.end()]),
             Some("\"second.bib\""),
             "duplicate path diagnostic should point at the later path value"
         );

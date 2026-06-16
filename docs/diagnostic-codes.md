@@ -1,17 +1,17 @@
 # Mosaic diagnostic code catalog
 
 Authoritative mirror of the diagnostic registry in
-[`crates/mos-core/src/codes.rs`](../crates/mos-core/src/codes.rs). That file — not this document —
-is the source of truth; a drift test (`crates/mos/tests/catalog.rs`) fails CI if the two disagree.
+[`crates/mos-core/src/codes.rs`](../crates/mos-core/src/codes.rs). That file, not this document, is
+the source of truth; a drift test (`crates/mos/tests/catalog.rs`) fails CI if the two disagree.
 
 ## The contract
 
 - **Identity is opaque.** A diagnostic code is a stable, namespaced, severity-free identifier
-  rendered as `MOS0010`. The number is just a number — it does **not** encode severity, owner crate,
+  rendered as `MOS0010`. The number is just a number: it does **not** encode severity, owner crate,
   category, phase, or lint group. Numbers are globally unique and stable; new codes get the next
   free integer regardless of what they describe.
 - **Severity, category, owner, and summary are metadata** on `DiagnosticDef`. The catalog groups by
-  metadata (this document organises by category for human scanning), never by numeric range — so a
+  metadata (this document organises by category for human scanning), never by numeric range, so a
   rule that moves phase (parser → eval, fonts → text shaping) keeps its stable ID and just updates
   its `category`.
 - **Codes are minted in one place.** `DiagnosticCode` and `DiagnosticDef` have private fields and
@@ -29,50 +29,52 @@ is the source of truth; a drift test (`crates/mos/tests/catalog.rs`) fails CI if
 | `Warning` | Surfaced, but the build continues.                                  |
 | `Notice`  | Informational (substitutions, auto-decisions). The build continues. |
 
-`note` / `help` / `hint` are *not* severities — they are `DiagnosticAnnotation` sub-message kinds
+`note` / `help` / `hint` are *not* severities: they are `DiagnosticAnnotation` sub-message kinds
 attached to a diagnostic, alongside `Related` (a secondary span).
 
 ## Codes
 
-Grouped by `DiagnosticCategory` for human scanning. Numeric order has no meaning — current numbers
+Grouped by `DiagnosticCategory` for human scanning. Numeric order has no meaning: current numbers
 are intentionally interleaved across categories, and a code's number is just an opaque key. Future
 codes use the next free integer.
 
 ### Syntax
 
-| Code    | Slug                       | Default severity | Owner crate | Summary                                                          |
-| ------- | -------------------------- | ---------------- | ----------- | ---------------------------------------------------------------- |
-| MOS0010 | set-missing-identifier     | Error            | mos-parse   | syntax: #set not followed by an identifier                       |
-| MOS0013 | directive-missing-paren    | Error            | mos-parse   | syntax: directive missing opening parenthesis                    |
-| MOS0016 | directive-unterminated     | Error            | mos-parse   | syntax: unterminated directive block                             |
-| MOS0019 | directive-trailing-content | Error            | mos-parse   | syntax: unexpected trailing content after directive              |
-| MOS0022 | directive-malformed-arg    | Error            | mos-parse   | syntax: malformed directive argument value                       |
-| MOS0025 | arglist-shape              | Error            | mos-parse   | syntax: malformed argument list                                  |
-| MOS0028 | unterminated-strong        | Warning          | mos-parse   | syntax: unterminated **strong** run; treated as text             |
-| MOS0031 | unterminated-emphasis      | Warning          | mos-parse   | syntax: unterminated *emphasis* run; treated as text             |
-| MOS0034 | unterminated-code          | Warning          | mos-parse   | syntax: unterminated `code` run; treated as text                 |
-| MOS0036 | stray-at-sign              | Warning          | mos-parse   | syntax: stray @ not followed by a label; treated as text         |
-| MOS0038 | lone-trailing-backslash    | Warning          | mos-parse   | syntax: lone trailing backslash at end of input; treated as text |
-| MOS0039 | malformed-citation         | Warning          | mos-parse   | syntax: malformed citation group; treated as text                |
-| MOS0043 | bibtex-parse-failed        | Error            | mos-bib     | syntax: BibTeX database could not be parsed                      |
-| MOS0044 | csl-parse-failed           | Error            | mos-csl     | syntax: CSL style could not be parsed                            |
+| Code    | Slug                       | Default severity | Owner crate | Summary                                                                    |
+| ------- | -------------------------- | ---------------- | ----------- | -------------------------------------------------------------------------- |
+| MOS0010 | set-missing-identifier     | Error            | mos-parse   | syntax: #set not followed by an identifier                                 |
+| MOS0013 | directive-missing-paren    | Error            | mos-parse   | syntax: directive missing opening parenthesis                              |
+| MOS0016 | directive-unterminated     | Error            | mos-parse   | syntax: unterminated directive block                                       |
+| MOS0019 | directive-trailing-content | Error            | mos-parse   | syntax: unexpected trailing content after directive                        |
+| MOS0022 | directive-malformed-arg    | Error            | mos-parse   | syntax: malformed directive argument value                                 |
+| MOS0025 | arglist-shape              | Error            | mos-parse   | syntax: malformed argument list                                            |
+| MOS0028 | unterminated-strong        | Warning          | mos-parse   | syntax: unterminated **strong** run; treated as text                       |
+| MOS0031 | unterminated-emphasis      | Warning          | mos-parse   | syntax: unterminated *emphasis* run; treated as text                       |
+| MOS0034 | unterminated-code          | Warning          | mos-parse   | syntax: unterminated `code` run; treated as text                           |
+| MOS0036 | stray-at-sign              | Warning          | mos-parse   | syntax: stray @ not followed by a label; treated as text                   |
+| MOS0038 | lone-trailing-backslash    | Warning          | mos-parse   | syntax: lone trailing backslash at end of input; treated as text           |
+| MOS0039 | malformed-citation         | Warning          | mos-parse   | syntax: malformed citation group; treated as text                          |
+| MOS0043 | bibtex-parse-failed        | Error            | mos-bib     | syntax: BibTeX database could not be parsed                                |
+| MOS0044 | csl-parse-failed           | Error            | mos-csl     | syntax: CSL style could not be parsed                                      |
+| MOS0048 | heading-label-not-trailing | Warning          | mos-parse   | syntax: heading label is not the last element on the line; treated as text |
 
 ### Semantic
 
-| Code    | Slug                        | Default severity | Owner crate | Summary                                                             |
-| ------- | --------------------------- | ---------------- | ----------- | ------------------------------------------------------------------- |
-| MOS0011 | set-unknown-target          | Error            | mos-eval    | semantic: unknown #set target                                       |
-| MOS0015 | unknown-kwarg               | Error            | mos-eval    | semantic: unknown keyword argument                                  |
-| MOS0020 | arg-type-mismatch           | Error            | mos-eval    | semantic: argument type mismatch or non-positive length             |
-| MOS0024 | set-positional-rejected     | Error            | mos-eval    | semantic: #set rejects positional argument                          |
-| MOS0027 | set-sanity-floor            | Warning          | mos-eval    | semantic: #set value trips a sanity floor; value still applied      |
-| MOS0030 | label-duplicate             | Error            | mos-eval    | semantic: label declared more than once                             |
-| MOS0033 | label-missing               | Error            | mos-eval    | semantic: @reference to a label that does not exist                 |
-| MOS0037 | image-missing-path          | Error            | mos-eval    | semantic: #image/#figure missing a path argument                    |
-| MOS0040 | bibliography-missing-path   | Error            | mos-eval    | semantic: #bibliography missing a path argument                     |
-| MOS0042 | bibliography-duplicate-path | Error            | mos-eval    | semantic: #bibliography path argument declared more than once       |
-| MOS0045 | citation-missing            | Error            | mos-eval    | semantic: citation key does not exist in bibliography records       |
-| MOS0046 | bibliography-duplicate-key  | Error            | mos-eval    | semantic: citation key appears in more than one bibliography source |
+| Code    | Slug                        | Default severity | Owner crate | Summary                                                                     |
+| ------- | --------------------------- | ---------------- | ----------- | --------------------------------------------------------------------------- |
+| MOS0011 | set-unknown-target          | Error            | mos-eval    | semantic: unknown #set target                                               |
+| MOS0015 | unknown-kwarg               | Error            | mos-eval    | semantic: unknown keyword argument                                          |
+| MOS0020 | arg-type-mismatch           | Error            | mos-eval    | semantic: argument type mismatch or non-positive length                     |
+| MOS0024 | set-positional-rejected     | Error            | mos-eval    | semantic: #set rejects positional argument                                  |
+| MOS0027 | set-sanity-floor            | Warning          | mos-eval    | semantic: #set value trips a sanity floor; value still applied              |
+| MOS0030 | label-duplicate             | Error            | mos-eval    | semantic: label declared more than once                                     |
+| MOS0033 | label-missing               | Error            | mos-eval    | semantic: @reference to a label that does not exist                         |
+| MOS0037 | image-missing-path          | Error            | mos-eval    | semantic: #image/#figure missing a path argument                            |
+| MOS0040 | bibliography-missing-path   | Error            | mos-eval    | semantic: #bibliography missing a path argument                             |
+| MOS0042 | bibliography-duplicate-path | Error            | mos-eval    | semantic: #bibliography path argument declared more than once               |
+| MOS0045 | citation-missing            | Error            | mos-eval    | semantic: citation key does not exist in bibliography records               |
+| MOS0046 | bibliography-duplicate-key  | Error            | mos-eval    | semantic: citation key appears in more than one bibliography source         |
+| MOS0049 | path-unsafe-segment         | Error            | mos-eval    | semantic: path segment is not a portable name (manifest paths use `/` only) |
 
 ### Layout
 

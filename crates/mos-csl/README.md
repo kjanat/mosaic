@@ -2,21 +2,21 @@
 
 Citation Style Language (CSL) support for Mosaic.
 
-This crate provides the **data foundations** for CSL 1.0.2 (`manifest.md` §12) — it is **not** a CSL
+This crate provides the **data foundations** for CSL 1.0.2 (`manifest.md` §12): it is **not** a CSL
 processor. The scope is deliberately bounded to a typed data model, a BibTeX mapping, and a style
 parser; evaluating a style against data to render citations is a separate, later concern.
 
 ## API
 
-- **Item data model** — `Item` (`id` + `ItemType` + variable maps), the `ItemType` enum and the
+- **Item data model**: `Item` (`id` + `ItemType` + variable maps), the `ItemType` enum and the
   `StandardVariable` / `NumberVariable` / `DateVariable` / `NameVariable` vocabularies (spec
   Appendices III–IV, including deprecated standard variable `event`), plus `Name` and
   `Date`/`DateParts`. Each vocabulary has `as_str` / `from_csl`.
-- **BibTeX → CSL mapping** — `item_from_bib_entry(&BibEntry) -> Item` and
+- **BibTeX → CSL mapping**: `item_from_bib_entry(&BibEntry) -> Item` and
   `library_from_bibliography(&Bibliography) -> BTreeMap<String, Item>` (infallible, best-effort):
   common entry types/fields, `Last, First` and `First Last` names, numeric years, report numbers,
   and conference event places.
-- **CSL style parser** — `parse_style(&str) -> Result<Style, CslParseError>` producing the typed
+- **CSL style parser**: `parse_style(&str) -> Result<Style, CslParseError>` producing the typed
   `Style` AST (`<style>`, `<info>`, `<citation>`, `<bibliography>`, `<macro>`, and the rendering
   elements). `CslParseError` / `CslParseErrorKind` carry a byte offset and bridge to a `mos-core`
   `Diagnostic` (`MOS0044`).
@@ -65,7 +65,7 @@ assert_eq!(style.class, StyleClass::InText);
 These are distinct capabilities, not unfinished parts of this crate:
 
 - The CSL **processor**: evaluating retained style options against items to produce formatted
-  citations or bibliographies — formatting, sorting, disambiguation, cite grouping/collapsing, name
+  citations or bibliographies: formatting, sorting, disambiguation, cite grouping/collapsing, name
   ordering, ordinals, term/date rendering.
 - Locale files (`locales-xx-XX.xml`) and locale fallback; in-style `<locale>` blocks are retained as
   raw XML, not interpreted.

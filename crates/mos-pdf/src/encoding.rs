@@ -6,9 +6,9 @@
 //! PDF single-byte fonts address at most 256 glyphs. The Core 14
 //! `WinAnsiEncoding` only carries the ~216 Latin-1+Windows glyphs that
 //! every PDF reader ships built-in (Annex D.2). But each Core 14 AFM
-//! also lists 99 extra glyphs — Latin Extended-A (`Ł`, `ł`, `Ě`, …),
+//! also lists 99 extra glyphs: Latin Extended-A (`Ł`, `ł`, `Ě`, …),
 //! the Romanian comma-below set, the spacing diacritics, the math
-//! operators, the `fi`/`fl` ligatures — that have no `WinAnsi` byte.
+//! operators, and the `fi`/`fl` ligatures, which have no `WinAnsi` byte.
 //!
 //! PDF's escape hatch is the `/Encoding` dictionary with a
 //! `/Differences` array: it lets us declare "byte 0x7F means
@@ -24,18 +24,18 @@
 //!
 //! 1. Walk every char of every run and partition into:
 //!    - `WinAnsi natives`: have `winansi_byte(ch) = Some(b)`. The byte
-//!      `b` is **claimed** — it can't be repurposed for a `Differences`
+//!      `b` is **claimed**: it can't be repurposed for a `Differences`
 //!      remap because the content stream already uses it.
 //!    - `Extended`: no `winansi_byte`, but `extended_glyph_name(ch)`
 //!      resolves to an AFM glyph name. Needs a remapped slot.
 //!    - `Unmappable`: neither (Cyrillic, CJK, emoji). Won't occur in
-//!      practice — the layout engine substitutes these to `?` upstream.
+//!      practice; the layout engine substitutes these to `?` upstream.
 //!      We treat them defensively as `?` here.
 //!
 //! 2. Allocate slots for the extended set from a deterministic free
 //!    pool:
 //!    a. The six `WinAnsi` gap bytes `0x7F, 0x81, 0x8D, 0x8F, 0x90,
-//!    0x9D` first — these are guaranteed unmapped in `WinAnsiEncoding`
+//!    0x9D` first; these are guaranteed unmapped in `WinAnsiEncoding`
 //!    and produce stable golden output for the common case (≤ 6
 //!    extended glyphs).
 //!    b. Then unused `0x20..=0xFF` slots in descending order. Going
@@ -99,7 +99,7 @@ pub(crate) struct EncodingPlanner {
     /// Observed chars per face. `BTreeSet` for deterministic order
     /// during finalize, which keeps `/Differences` arrays byte-stable
     /// between runs. (`Base14Font` doesn't derive `Ord`, so the outer
-    /// container is a `HashMap` — finalize sorts what matters.)
+    /// container is a `HashMap`: finalize sorts what matters.)
     used: HashMap<Base14Font, BTreeSet<char>>,
 }
 
@@ -109,7 +109,7 @@ impl EncodingPlanner {
     }
 
     /// Record that `face` will need to render `ch`. Idempotent.
-    /// `Symbol` and `ZapfDingbats` are silently ignored — those faces
+    /// `Symbol` and `ZapfDingbats` are silently ignored; those faces
     /// don't participate in `/Differences` planning (their encodings
     /// are different category entirely; see crate-level
     /// `pdf-base14-metrics` docs).
@@ -178,7 +178,7 @@ fn plan_face(
         // already; the `?` is itself a WinAnsi native handled above.
     }
 
-    // Skip the rest if nothing extended showed up — typical for
+    // Skip the rest if nothing extended showed up: typical for
     // pure-ASCII or pure-Latin-1 documents. Empty differences signals
     // "use /Encoding /WinAnsiEncoding shortcut" to the emitter.
     if extended.is_empty() {
@@ -250,7 +250,7 @@ fn plan_face(
 /// Preferred slot-allocation order: the six `WinAnsi` gap bytes
 /// first (predictable golden output for ≤ 6 extended glyphs), then
 /// `0xFF..=0x20` descending **excluding** those same six bytes. We
-/// deliberately skip `0x00..=0x1F` — PDF readers tolerate control
+/// deliberately skip `0x00..=0x1F`: PDF readers tolerate control
 /// bytes in `/Differences`, but content streams that need an
 /// `Str(...)` literal can run afoul of `\0`/`\r`/`\n` escaping, and
 /// using high-byte slots first keeps short paragraphs from
@@ -259,7 +259,7 @@ fn plan_face(
 /// The gap-exclusion in the descending tail is load-bearing: without
 /// it the gap bytes would appear twice in the iterator (once at the
 /// front, once again at their natural position 0x7F/0x81/…/0x9D), and
-/// the planner — which doesn't re-check `claimed[slot]` after pop —
+/// the planner, which doesn't re-check `claimed[slot]` after pop,
 /// would allocate the same byte to two different extended chars once
 /// `extended.len()` grew past ~104. Today the AGL subset has only
 /// ~99 entries so this latent bug couldn't fire, but it's wrong on
@@ -273,7 +273,7 @@ fn allocation_order() -> impl Iterator<Item = u8> {
 
 #[cfg(test)]
 mod tests {
-    // No `#![allow]` here — every test uses `assert!`/`assert_eq!`
+    // No `#![allow]` here; every test uses `assert!`/`assert_eq!`
     // for failure reporting; nothing reaches for `unwrap`/`expect`/
     // `panic!`. Setup helpers stay infallible by routing missing-key
     // lookups through `unwrap_or_default` (an Option combinator, not
@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn czech_uses_only_gap_slots_when_under_6() {
-        // "Příliš žluťoučký kůň" — extended chars: ě? no, "Příliš":
+        // "Příliš žluťoučký kůň": extended chars: ě? no, "Příliš":
         // Příliš = P, ř, í, l, i, š. ř (U+0159) is extended (rcaron).
         // š (U+0161) is WinAnsi (0x9A). í (U+00ED) is WinAnsi (0xED).
         // So one extended char: ř → first gap slot 0x7F.
@@ -387,7 +387,7 @@ mod tests {
         }
         let mut diags = Vec::new();
         let enc = plan_face(Base14Font::Helvetica, &all_chars, &mut diags);
-        // 39 differences max — the pool size after WinAnsi claims.
+        // 39 differences max; the pool size after WinAnsi claims.
         // (Some Windows-band codepoints in 0xA0..=0xFF actually claim
         // bytes that overlap our pool 0x20..=0xFF, which is exactly
         // the design.)

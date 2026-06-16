@@ -14,17 +14,17 @@
 //! - `MOS0020`: the path argument is present but not a string.
 //! - `MOS0015`: an unknown keyword argument was supplied.
 //! - `MOS0041`: the resolved path does not point to a file on disk
-//!   (a warning — the node is still emitted with its resolved path).
+//!   (a warning; the node is still emitted with its resolved path).
 //! - `MOS0045`: a citation key does not exist in a complete parsed bibliography set.
 //! - `MOS0046`: a citation key appears in more than one declared bibliography source.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use mos_bib::Bibliography;
 use mos_core::{
-    AttrMap, AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, SourceSpan, StyleId, codes,
+    AttrMap, AttrValue, Diagnostic, Document, NodeId, NodeKind, NodeSpec, SourceSpan, codes,
 };
 use mos_parse::{SetArg, SetValue};
 
@@ -45,7 +45,20 @@ pub(super) fn lower_bibliography_directive(
     let Some(path) = bibliography_path(args, span, diagnostics) else {
         return;
     };
-    let resolved = resolve_path(&path, source_file);
+    let resolved = match mos_core::resolve_source_path(&path, source_file) {
+        Ok(resolved) => resolved,
+        Err(err) => {
+            diagnostics.push(
+                Diagnostic::simple(
+                    &codes::MOS0049,
+                    None,
+                    format!("cannot use bibliography path `{path}`: {err}"),
+                )
+                .with_span(span.clone()),
+            );
+            return;
+        }
+    };
     // The directive only *declares* the source in this slice, so a missing
     // file is a non-fatal warning rather than the hard error `#image(...)`
     // raises: the node is still emitted with its resolved path, and the
@@ -58,7 +71,7 @@ pub(super) fn lower_bibliography_directive(
                 None,
                 format!(
                     "declared bibliography source `{}` was not found",
-                    resolved.display()
+                    mos_core::display_path(&resolved)
                 ),
             )
             .with_span(span.clone()),
@@ -72,15 +85,7 @@ pub(super) fn lower_bibliography_directive(
     );
     document.alloc_child(
         root,
-        Node {
-            id: NodeId::default(),
-            kind: NodeKind::Bibliography,
-            span: span.clone(),
-            content_hash: Default::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes,
-        },
+        NodeSpec::new(NodeKind::Bibliography, span.clone()).with_attributes(attributes),
     );
 }
 
@@ -199,23 +204,6 @@ fn bibliography_path(
     Some(path)
 }
 
-/// Resolve `src_path` (as written in the source) relative to the `.mos`
-/// file currently being lowered. Mirrors the resolver in [`crate::image`];
-/// absolute paths pass through untouched, and a parentless source file
-/// (e.g. a bare `main.mos`) leaves the path relative to the cwd.
-fn resolve_path(src_path: &str, source_file: &Path) -> PathBuf {
-    let candidate = PathBuf::from(src_path);
-    if candidate.is_absolute() {
-        return candidate;
-    }
-    if let Some(parent) = source_file.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        return parent.join(candidate);
-    }
-    candidate
-}
-
 /// Load every declared bibliography source, mark citation nodes whose keys
 /// exist in any parsed record set, and rewrite their visible text to a
 /// numeric label assigned by first-use order. Unknown citation keys emit
@@ -227,7 +215,15 @@ fn resolve_path(src_path: &str, source_file: &Path) -> PathBuf {
 /// index real bibliography records. This is the numeric-placeholder slice
 /// (issue #67), not full CSL: no author-year styles, sorted output, or
 /// citation clusters.
-pub(super) fn resolve_citations(document: &mut Document, diagnostics: &mut Vec<Diagnostic>) {
+/// Resolve `[@key]` citations and return the set of keys declared by the
+/// loaded bibliography sources. The reference resolver consumes that set to
+/// tell an `@key` label reference that *misses* the label index but *matches*
+/// a bibliography key apart -- a near-certain "meant a citation" mistake --
+/// from a plain unknown label (see [`crate::resolve::resolve`]).
+pub(super) fn resolve_citations(
+    document: &mut Document,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> BTreeSet<String> {
     let bibliography = load_bibliography(document, diagnostics);
     let citation_ids: Vec<NodeId> = document
         .nodes()
@@ -273,6 +269,8 @@ pub(super) fn resolve_citations(document: &mut Document, diagnostics: &mut Vec<D
             )),
         );
     }
+
+    bibliography.records.entries.into_keys().collect()
 }
 
 struct LoadedBibliography {
@@ -306,7 +304,7 @@ fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> 
                     Some(node.span.clone()),
                     format!(
                         "declared bibliography source `{}` could not be read: {err}",
-                        path_buf.display()
+                        mos_core::display_path(&path_buf)
                     ),
                 ));
                 continue;
@@ -322,14 +320,14 @@ fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> 
                                 Some(node.span.clone()),
                                 format!(
                                     "duplicate citation key `{key}` in bibliography source `{}`",
-                                    path_buf.display()
+                                    mos_core::display_path(&path_buf)
                                 ),
                             )
                             .with_annotation(mos_core::DiagnosticAnnotation::Related {
                                 span: first_span.clone(),
                                 message: format!(
                                     "first bibliography source for `{key}` was `{}`",
-                                    first_path.display()
+                                    mos_core::display_path(first_path)
                                 ),
                             })
                             .with_annotation(mos_core::DiagnosticAnnotation::Hint(

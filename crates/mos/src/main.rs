@@ -1,4 +1,4 @@
-//! `mos` — command-line interface for the Mosaic typesetting engine.
+//! `mos`: command-line interface for the Mosaic typesetting engine.
 //!
 //! Subcommands mirror manifest §15.1. MVP 0 wires `mos check` end-to-end
 //! (read source → parse → lower → report diagnostics); the remaining
@@ -21,7 +21,7 @@ use std::process::{Command as ProcessCommand, ExitCode};
 use clap::{Parser, Subcommand};
 use mos_core::{
     Diagnostic, DiagnosticAnnotation, DiagnosticResult, DiagnosticSink, Severity, SourceSpan,
-    Suggestion, linecol,
+    Suggestion, display_path, linecol,
 };
 
 /// Cap on resolve↔layout rounds for page references before the engine gives up
@@ -35,8 +35,8 @@ const MAX_PAGE_FIXPOINT_ITERATIONS: u32 = 8;
     name = "mos",
     bin_name = "mos",
     version,
-    about = "Mosaic — semantic, incremental typesetting compiler",
-    long_about = "Mosaic compiles `.mos` source files to PDF, HTML, and EPUB.\n\
+    about = "Mosaic: semantic, incremental typesetting compiler",
+    long_about = "Mosaic compiles `.mos` source files to PDF.\n\
                   See manifest.md in the repository root for the full design."
 )]
 struct Cli {
@@ -180,7 +180,7 @@ fn unimplemented_subcommand(name: &str) -> ExitCode {
     ExitCode::FAILURE
 }
 
-/// `mos check` — parse + lower the entry file and report diagnostics.
+/// `mos check`: parse + lower the entry file and report diagnostics.
 /// Exits 0 if no errors (warnings still print); 1 otherwise.
 fn run_check(entry: &Path) -> ExitCode {
     let Ok(entry) = resolve_entry("check", entry).map(|entry| entry.source) else {
@@ -189,7 +189,7 @@ fn run_check(entry: &Path) -> ExitCode {
     let src = match std::fs::read_to_string(&entry) {
         Ok(s) => s,
         Err(err) => {
-            eprintln!("mos check: cannot read `{}`: {err}", entry.display());
+            eprintln!("mos check: cannot read `{}`: {err}", display_path(&entry));
             return ExitCode::FAILURE;
         }
     };
@@ -227,7 +227,7 @@ fn run_check(entry: &Path) -> ExitCode {
     }
 }
 
-/// `mos build` — read source, parse, lower, lay out, and emit a PDF
+/// `mos build`: read source, parse, lower, lay out, and emit a PDF
 /// to `build/<entry-stem>.pdf`. MVP 0 produces a fixed-A4 document
 /// using the standard PDF base fonts (no embedding). Layout warnings
 /// (e.g. non-ASCII substitutions) print but don't fail the build.
@@ -239,7 +239,7 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
     let src = match std::fs::read_to_string(&entry) {
         Ok(s) => s,
         Err(err) => {
-            eprintln!("mos build: cannot read `{}`: {err}", entry.display());
+            eprintln!("mos build: cannot read `{}`: {err}", display_path(&entry));
             return ExitCode::FAILURE;
         }
     };
@@ -248,7 +248,7 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
     let mut sink = RenderingSink::new(&src);
 
     // Each phase runs to completion, then the barrier below stops the
-    // build before the next phase if any error was collected — so a
+    // build before the next phase if any error was collected, so a
     // broken document never reaches PDF emission and writes garbage.
     let Ok(tree) = mos_parse::parse(&src, &entry, &mut sink) else {
         return ExitCode::FAILURE;
@@ -334,12 +334,12 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
 
     println!(
         "wrote {} in {} ms",
-        out.display(),
+        display_path(&out),
         started.elapsed().as_millis()
     );
     if open.should_open() {
         match open_pdf(&out, open) {
-            Ok(()) => println!("opened {}", out.display()),
+            Ok(()) => println!("opened {}", display_path(&out)),
             Err(err) => {
                 eprintln!("mos build: {err}");
                 return ExitCode::FAILURE;
@@ -377,8 +377,14 @@ fn resolve_entry(command: &str, entry: &Path) -> Result<ResolvedEntry, ()> {
                 return Err(());
             }
         };
+        let source = mos_core::resolve_relative(entry, &manifest.project.entry).map_err(|err| {
+            eprintln!(
+                "mos {command}: invalid project entry path `{}`: {err}",
+                manifest.project.entry
+            );
+        })?;
         return Ok(ResolvedEntry {
-            source: entry.join(manifest.project.entry),
+            source,
             output_base: entry.to_path_buf(),
             output: match manifest.output.pdf.as_deref() {
                 Some(path) => Some(resolve_manifest_output(command, entry, path)?),
@@ -409,7 +415,9 @@ fn resolve_manifest_output(command: &str, project_dir: &Path, output: &str) -> R
         );
         return Err(());
     }
-    Ok(project_dir.join(output_path))
+    mos_core::resolve_relative(project_dir, output).map_err(|err| {
+        eprintln!("mos {command}: invalid PDF output path `{output}`: {err}");
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -438,14 +446,14 @@ fn open_pdf(path: &Path, request: PdfOpen<'_>) -> Result<(), String> {
     match request {
         PdfOpen::No => Ok(()),
         PdfOpen::Default => opener::open(path.as_os_str())
-            .map_err(|err| format!("could not open `{}`: {err}", path.display())),
+            .map_err(|err| format!("could not open `{}`: {err}", display_path(path))),
         PdfOpen::Program(program) => {
             let mut command = ProcessCommand::new(program);
             command.arg(path);
             let status = command.status().map_err(|err| {
                 format!(
                     "could not open `{}` with `{program}`: {err}",
-                    path.display()
+                    display_path(path)
                 )
             })?;
             if status.success() {
@@ -453,7 +461,7 @@ fn open_pdf(path: &Path, request: PdfOpen<'_>) -> Result<(), String> {
             } else {
                 Err(format!(
                     "opener `{program}` failed for `{}` with {status}",
-                    path.display()
+                    display_path(path)
                 ))
             }
         }
@@ -463,7 +471,7 @@ fn open_pdf(path: &Path, request: PdfOpen<'_>) -> Result<(), String> {
 /// A [`DiagnosticSink`] that renders each diagnostic to stderr as it
 /// arrives and tracks error/warning counts. The CLI drives one of these
 /// across every phase and checks [`Self::had_error`] at each phase
-/// barrier — that, not `Severity::Error` itself, is what stops the build.
+/// barrier; that, not `Severity::Error` itself, is what stops the build.
 struct RenderingSink<'a> {
     src: &'a str,
     errors: usize,
@@ -516,11 +524,11 @@ fn render_diagnostic(diag: &Diagnostic, src: &str) {
     let label = severity_label(diag.severity());
     let code = diag.def().code();
     if let Some(span) = diag.span() {
-        let (line, col) = linecol(src, span.start);
+        let (line, col) = linecol(src, span.start());
         eprintln!(
             "{label}[{code}]: {msg}\n  --> {file}:{line}:{col}",
             msg = diag.message(),
-            file = span.file.display(),
+            file = display_path(&span.file),
         );
         render_span_caret(src, span);
     } else {
@@ -529,10 +537,10 @@ fn render_diagnostic(diag: &Diagnostic, src: &str) {
     for annotation in diag.annotations() {
         match annotation {
             DiagnosticAnnotation::Related { span, message } => {
-                let (line, col) = linecol(src, span.start);
+                let (line, col) = linecol(src, span.start());
                 eprintln!(
                     "  note: {message} ({file}:{line}:{col})",
-                    file = span.file.display(),
+                    file = display_path(&span.file),
                 );
             }
             DiagnosticAnnotation::Note(message) => eprintln!("  note: {message}"),
@@ -550,8 +558,8 @@ fn render_suggestion(src: &str, suggestion: &Suggestion) {
 }
 
 fn suggestion_help(src: &str, suggestion: &Suggestion) -> String {
-    let (line, col) = linecol(src, suggestion.span.start);
-    let file = suggestion.span.file.display();
+    let (line, col) = linecol(src, suggestion.span.start());
+    let file = display_path(&suggestion.span.file);
     // The deletion arm carries an empty replacement, so the replacement text
     // is formatted only in the arms that actually print it.
     match suggestion_text(src, &suggestion.span) {
@@ -576,8 +584,8 @@ fn suggestion_help(src: &str, suggestion: &Suggestion) -> String {
 }
 
 fn suggestion_text<'a>(src: &'a str, span: &SourceSpan) -> Option<&'a str> {
-    let start = clamp_to_char_boundary(src, span.start.min(src.len()));
-    let end = clamp_to_char_boundary(src, span.end.min(src.len()));
+    let start = clamp_to_char_boundary(src, span.start().min(src.len()));
+    let end = clamp_to_char_boundary(src, span.end().min(src.len()));
     src.get(start..end)
 }
 
@@ -594,8 +602,8 @@ fn clamp_to_char_boundary(src: &str, mut offset: usize) -> usize {
 }
 
 fn render_span_caret(src: &str, span: &SourceSpan) {
-    let (line_no, col) = linecol(src, span.start);
-    let span_start = clamp_to_char_boundary(src, span.start);
+    let (line_no, col) = linecol(src, span.start());
+    let span_start = clamp_to_char_boundary(src, span.start());
     let line_start = src[..span_start].rfind('\n').map_or(0, |p| p + 1);
     let raw_line_end = src[line_start..]
         .find('\n')
@@ -613,7 +621,7 @@ fn render_span_caret(src: &str, span: &SourceSpan) {
     // sequences (e.g. `µ`, `é`) line up with the source above. Clamp
     // both ends to char boundaries first; otherwise a span that
     // straddles a multibyte sequence would panic the slice below.
-    let span_byte_end = clamp_to_char_boundary(src, span.end.min(line_end));
+    let span_byte_end = clamp_to_char_boundary(src, span.end().min(line_end));
     let span_byte_start = clamp_to_char_boundary(src, span_start.min(span_byte_end));
     let caret_chars = src[span_byte_start..span_byte_end].chars().count().max(1);
     eprintln!("   |");

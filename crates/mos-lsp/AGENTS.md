@@ -4,7 +4,8 @@
 
 `mos-lsp` is a thin stdio LSP server: it publishes compiler diagnostics and answers
 `textDocument/definition` for `@label` references. Tiny protocol cave around real compiler services
-— it re-shapes their output into LSP, never owns parse/lower/resolve policy.
+
+- it re-shapes their output into LSP, never owns parse/lower/resolve policy.
 
 ## WHERE TO LOOK
 
@@ -31,7 +32,7 @@
 - Unknown requests return JSON-RPC `MethodNotFound`; unknown notifications drop.
 - Caches each open document's `mos-eval` lowering (`src/cache.rs`), shared by diagnostics and
   `textDocument/definition`: an edit lowers once (publish populates the cache, definition reuses
-  it). Invalidated on open/change/close. Only **pure** lowerings are cached — a `LowerResult` with
+  it). Invalidated on open/change/close. Only **pure** lowerings are cached: a `LowerResult` with
   `reads_external_resources` (`#image` / `#figure` / `#bibliography` read files) is never stored, so
   those docs re-lower per request and reflect the live filesystem.
 - Advertises UTF-16 position encoding, full text sync, `definitionProvider`, and `renameProvider`.

@@ -4,7 +4,7 @@
 //! returning a `Vec`. This crate ships exactly one sink, [`CollectingSink`],
 //! which gathers everything and tracks whether any error-severity
 //! diagnostic was seen. Rendering sinks (and any future
-//! suppression/severity-resolver wrappers) live in the consumer — the CLI
+//! suppression/severity-resolver wrappers) live in the consumer; the CLI
 //! binary owns presentation, `mos-core` owns data.
 //!
 //! ## `Err` means *structural abort*, not *error diagnostic*
