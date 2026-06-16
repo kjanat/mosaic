@@ -34,8 +34,12 @@ zed-mosaic/
 - Sync skips `locals.scm` and `tags.scm`; Zed does not load them under those names.
 - Generated/local artifacts stay untracked: `*.wasm`, `grammars/`, `target/`, `Cargo.lock`.
 - Keep grammar source in `tree-sitter-mosaic`, not here.
-- `mos-lsp` binary discovery in `src/lib.rs`: settings `binary.path` → `mos-lsp` on `PATH`. Keep
-  this order; surface a clear error when nothing resolves.
+- `mos-lsp` binary discovery in `src/lib.rs`: settings `binary.path` → `mos-lsp` on `PATH` → cached
+  download → matching GitHub release asset (`current_platform()` → `mos-lsp-<target>.{tar.gz,zip}`,
+  via the `extension.toml` `download_file` capability). Keep this order; surface a clear error when
+  nothing resolves. Release assets come from the reusable `.github/workflows/release-binaries.yml`
+  (cross-compile + upload) driven by `.github/workflows/release.yml` on `v*` tags; asset names are
+  versionless so the extension resolves them without the release version.
 - Verify the crate (it is workspace-excluded) with:
   `cargo check --manifest-path crates/zed-mosaic/Cargo.toml --target wasm32-wasip2`. CI runs the
   same check. Install the server for live testing with `cargo mosils`.

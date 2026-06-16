@@ -28,6 +28,17 @@ All notable changes to this project will be documented here. The format is based
   `[@key]` citations for exercising the server. CI now type-checks the workspace-excluded extension
   crate against `wasm32-wasip2` so the wiring cannot silently regress.
 
+- Zed extension auto-downloads `mos-lsp` (https://github.com/kjanat/mosaic/issues/118): the
+  [`zed-mosaic`][zed-mosaic] extension extends binary discovery past settings/`PATH` to (3) a cached
+  release binary and (4) an automatic download of the matching `mos-lsp-<target>.{tar.gz,zip}` asset
+  from the latest GitHub release, chosen by `current_platform()`, extracted, marked executable, and
+  cached -- so installed-extension users get the server without a local checkout. `extension.toml`
+  declares the `download_file` capability that grants it. A new **reusable**
+  `.github/workflows/release-binaries.yml` pipeline cross-compiles a JSON-input list of `bins` for
+  every Zed-supported target via `taiki-e/upload-rust-binary-action` (sha256 sums, no per-target
+  shell), and the thin tag-triggered `.github/workflows/release.yml` caller ships `mos-lsp` on each
+  `v*` tag.
+
 - CLI structured suggestion rendering (https://github.com/kjanat/mosaic/issues/109): `mos check` and
   `mos build` now print existing machine-actionable [`mos-core`][mos-core] `Suggestion` payloads as
   `help:` fix-it lines after diagnostics. Unknown-label near misses show a concrete replacement like

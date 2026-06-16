@@ -1,0 +1,22 @@
+name: release
+run-name: "release ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+
+# Thin caller: on a `v*` tag (or manual dispatch), cross-compile and attach the
+# `mos-lsp` release binaries the Zed extension downloads. To also ship the CLI,
+# add to the list: bins: '["mos-lsp", "mos"]'.
+
+on:
+  push: { tags: [v*] }
+  workflow_dispatch:
+    inputs:
+      tag: { description: Release tag to build binaries for (e.g. v0.6.0), required: true, type: string }
+
+permissions: { contents: read }
+
+jobs:
+  binaries:
+    permissions: { contents: write }
+    uses: ./.github/workflows/release-binaries.yml
+    with:
+      bins: '["mos-lsp"]'
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}

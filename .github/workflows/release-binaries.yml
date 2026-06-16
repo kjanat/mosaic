@@ -1,0 +1,68 @@
+name: release-binaries
+
+# Reusable cross-compile + release-upload pipeline.
+#
+# Builds each requested binary for each requested target and attaches a
+# per-(binary, target) archive (`<bin>-<target>.tar.gz` on Unix,
+# `<bin>-<target>.zip` on Windows) plus a sha256 sum to the release for `tag`.
+# Cross-compilation (e.g. aarch64 Linux, arm64 Windows) is handled by
+# taiki-e/upload-rust-binary-action, which installs the rustup target / `cross`
+# as needed -- no per-target shell scripting here.
+#
+# Repurpose by calling with a different `bins` (and optionally `targets`) list;
+# nothing below is Mosaic-specific.
+
+on:
+  workflow_call:
+    inputs:
+      bins:
+        description: 'JSON array of cargo binary names to build, e.g. ["mos-lsp","mos"].'
+        required: true
+        type: string
+      tag:
+        description: Release tag the archives are built from and attached to (e.g. v0.6.0).
+        required: true
+        type: string
+      targets:
+        description: "JSON array of { target, runner } objects to cross-compile for."
+        required: false
+        type: string
+        default: >-
+          [
+            {"target": "x86_64-unknown-linux-gnu",  "runner": "ubuntu-latest"},
+            {"target": "aarch64-unknown-linux-gnu", "runner": "ubuntu-latest"},
+            {"target": "x86_64-apple-darwin",       "runner": "macos-15-intel"},
+            {"target": "aarch64-apple-darwin",      "runner": "macos-15"},
+            {"target": "x86_64-pc-windows-msvc",    "runner": "windows-latest"},
+            {"target": "aarch64-pc-windows-msvc",   "runner": "windows-latest"}
+          ]
+
+permissions: { contents: read }
+
+jobs:
+  upload:
+    name: "${{ matrix.bin }} · ${{ matrix.target.target }}"
+    runs-on: ${{ matrix.target.runner }}
+    permissions: { contents: write }
+    strategy:
+      fail-fast: false
+      matrix:
+        bin: ${{ fromJSON(inputs.bins) }}
+        target: ${{ fromJSON(inputs.targets) }}
+    steps:
+      - uses: actions/checkout@v6
+        with: { ref: "refs/tags/${{ inputs.tag }}", persist-credentials: false }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: ${{ matrix.bin }}
+          target: ${{ matrix.target.target }}
+          # Versionless asset names so the Zed extension can resolve them without
+          # formatting the release version into the lookup (see crates/zed-mosaic).
+          archive: $bin-$target
+          tar: unix
+          zip: windows
+          checksum: sha256
+          locked: true
+          ref: refs/tags/${{ inputs.tag }}
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
