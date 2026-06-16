@@ -48,6 +48,10 @@ on:
 permissions: { contents: read }
 defaults: { run: { shell: pwsh } }
 
+env:
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+
 jobs:
   create-release:
     name: "create release ${{ inputs.tag }}"
