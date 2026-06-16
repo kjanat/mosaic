@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use mos_core::{
-    AttrMap, AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, SourceSpan, StyleId, codes,
+    AttrMap, AttrValue, Diagnostic, Document, NodeId, NodeKind, NodeSpec, SourceSpan, codes,
 };
 use mos_parse::{SetArg, SetValue};
 
@@ -65,16 +65,8 @@ pub(super) fn lower_set_directive(
     document.alloc_child(root, set_node(span, attributes));
 }
 
-fn set_node(span: &SourceSpan, attributes: AttrMap) -> Node {
-    Node {
-        id: NodeId::default(),
-        kind: NodeKind::Raw,
-        span: span.clone(),
-        content_hash: Default::default(),
-        style_id: StyleId::default(),
-        children: Vec::new(),
-        attributes,
-    }
+fn set_node(span: &SourceSpan, attributes: AttrMap) -> NodeSpec {
+    NodeSpec::new(NodeKind::Raw, span.clone()).with_attributes(attributes)
 }
 
 /// Convert one parser-level `SetArg` into an attribute on the Raw node

@@ -8,7 +8,8 @@
 //! the crate root — consumers use `mos_core::Diagnostic`,
 //! `mos_core::SourceSpan`, etc., never the module paths. Internally:
 //!
-//! - `document` — the lowered semantic node graph ([`Document`], [`Node`])
+//! - `document` — the lowered semantic node graph ([`Document`], [`Node`],
+//!   [`NodeSpec`])
 //! - `span` — source byte-ranges ([`SourceSpan`]) and [`linecol`]
 //! - `diagnostics` — [`Diagnostic`], [`DiagnosticAnnotation`], [`Severity`],
 //!   [`Suggestion`]
@@ -34,7 +35,7 @@ mod span;
 
 pub use codes::{DiagnosticCategory, DiagnosticCode, DiagnosticDef};
 pub use diagnostics::{Diagnostic, DiagnosticAnnotation, Severity, Suggestion};
-pub use document::{AttrMap, AttrValue, Document, Node, NodeId, NodeKind, StyleId};
+pub use document::{AttrMap, AttrValue, Document, Node, NodeId, NodeKind, NodeSpec, StyleId};
 pub use error::{CoreError, Result};
 pub use hash::{ContentHash, ContentHasher};
 pub use path::{display_path, resolve_relative, resolve_source_path};

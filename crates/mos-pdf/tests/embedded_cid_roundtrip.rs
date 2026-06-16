@@ -24,7 +24,7 @@ use std::{
 };
 
 use lopdf::{Dictionary, Document, Object, content::Content};
-use mos_core::{AttrMap, AttrValue, ContentHash, Node, NodeId, NodeKind, SourceSpan, StyleId};
+use mos_core::{AttrMap, AttrValue, NodeKind, NodeSpec, SourceSpan};
 use mos_fonts::EmbeddedFontId;
 use mos_layout::{
     EmbeddedFontId as LayoutEmbeddedFontId, Font, FontFamily, LayoutEngine, Page, PageGraph,
@@ -70,29 +70,20 @@ fn build_default_graph(text: &str) -> (PageGraph, Vec<f32>) {
     let mut doc = mos_core::Document::new(PathBuf::from("fallback-test.mos"));
     let paragraph = doc.alloc_child(
         doc.root,
-        Node {
-            id: NodeId::default(),
-            kind: NodeKind::Paragraph,
-            span: SourceSpan::placeholder(PathBuf::from("fallback-test.mos")),
-            content_hash: ContentHash::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes: AttrMap::new(),
-        },
+        NodeSpec::new(
+            NodeKind::Paragraph,
+            SourceSpan::placeholder(PathBuf::from("fallback-test.mos")),
+        ),
     );
     let mut text_attrs = AttrMap::new();
     text_attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
     doc.alloc_child(
         paragraph,
-        Node {
-            id: NodeId::default(),
-            kind: NodeKind::Text,
-            span: SourceSpan::placeholder(PathBuf::from("fallback-test.mos")),
-            content_hash: ContentHash::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes: text_attrs,
-        },
+        NodeSpec::new(
+            NodeKind::Text,
+            SourceSpan::placeholder(PathBuf::from("fallback-test.mos")),
+        )
+        .with_attributes(text_attrs),
     );
 
     let result = LayoutEngine::new().layout(&doc);

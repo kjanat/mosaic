@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 
 use mos_bib::Bibliography;
 use mos_core::{
-    AttrMap, AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, SourceSpan, StyleId, codes,
+    AttrMap, AttrValue, Diagnostic, Document, NodeId, NodeKind, NodeSpec, SourceSpan, codes,
 };
 use mos_parse::{SetArg, SetValue};
 
@@ -72,15 +72,7 @@ pub(super) fn lower_bibliography_directive(
     );
     document.alloc_child(
         root,
-        Node {
-            id: NodeId::default(),
-            kind: NodeKind::Bibliography,
-            span: span.clone(),
-            content_hash: Default::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes,
-        },
+        NodeSpec::new(NodeKind::Bibliography, span.clone()).with_attributes(attributes),
     );
 }
 

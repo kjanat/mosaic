@@ -106,35 +106,87 @@ pub enum NodeKind {
 
 /// A semantic document node (manifest §5.1).
 ///
+/// Nodes are allocated only by [`Document::alloc`] / [`Document::alloc_child`]
+/// from a [`NodeSpec`]: the arena assigns the [`NodeId`] and owns the
+/// `content_hash`/`style_id` placeholders. Those two fields are `pub(crate)`,
+/// which makes the struct literal unconstructible outside this crate, so no
+/// caller can fabricate a node with a fake id or a hand-set hash.
+///
 /// # Examples
 ///
 /// ```
 /// use std::path::PathBuf;
 ///
-/// use mos_core::{AttrMap, ContentHash, Node, NodeId, NodeKind, SourceSpan, StyleId};
+/// use mos_core::{Document, NodeKind, NodeSpec, SourceSpan};
 ///
 /// let file = PathBuf::from("main.mos");
-/// let node = Node {
-///     id: NodeId(1),
-///     kind: NodeKind::Paragraph,
-///     span: SourceSpan::placeholder(file),
-///     content_hash: ContentHash::default(),
-///     style_id: StyleId::default(),
-///     children: Vec::new(),
-///     attributes: AttrMap::new(),
-/// };
+/// let mut doc = Document::new(file.clone());
+/// let id = doc.alloc(NodeSpec::new(NodeKind::Paragraph, SourceSpan::placeholder(file)));
 ///
-/// assert_eq!(node.kind, NodeKind::Paragraph);
+/// assert_eq!(doc.get(id).map(|node| &node.kind), Some(&NodeKind::Paragraph));
 /// ```
 #[derive(Clone, Debug)]
 pub struct Node {
     pub id: NodeId,
     pub kind: NodeKind,
     pub span: SourceSpan,
-    pub content_hash: ContentHash,
-    pub style_id: StyleId,
     pub children: Vec<NodeId>,
     pub attributes: AttrMap,
+    /// Hash-derived identity placeholder (manifest §5.1); set by the arena,
+    /// always default until the MVP 5 cache work. `pub(crate)` to seal
+    /// external construction.
+    pub(crate) content_hash: ContentHash,
+    /// Resolved style slot placeholder; set by the arena, always default
+    /// until styling lands. `pub(crate)` to seal external construction.
+    pub(crate) style_id: StyleId,
+}
+
+impl Node {
+    /// The node's content hash — a hash-derived identity placeholder
+    /// (manifest §5.1), default until the MVP 5 cache work. Read-only: the
+    /// arena owns this field.
+    #[must_use]
+    pub const fn content_hash(&self) -> ContentHash {
+        self.content_hash
+    }
+
+    /// The node's resolved style slot — a placeholder, default until styling
+    /// lands. Read-only: the arena owns this field.
+    #[must_use]
+    pub const fn style_id(&self) -> StyleId {
+        self.style_id
+    }
+}
+
+/// The blueprint for a node handed to [`Document::alloc`] /
+/// [`Document::alloc_child`]. Carries only the fields a caller legitimately
+/// chooses — `kind`, `span`, and `attributes`. The arena supplies the
+/// `id`, the empty `children` list, and the `content_hash`/`style_id`
+/// placeholders, so an invalid node is unrepresentable at the call site.
+#[derive(Clone, Debug)]
+pub struct NodeSpec {
+    pub kind: NodeKind,
+    pub span: SourceSpan,
+    pub attributes: AttrMap,
+}
+
+impl NodeSpec {
+    /// A spec for a node of `kind` spanning `span`, with no attributes.
+    #[must_use]
+    pub fn new(kind: NodeKind, span: SourceSpan) -> Self {
+        Self {
+            kind,
+            span,
+            attributes: AttrMap::new(),
+        }
+    }
+
+    /// Attach `attributes` to this spec.
+    #[must_use]
+    pub fn with_attributes(mut self, attributes: AttrMap) -> Self {
+        self.attributes = attributes;
+        self
+    }
 }
 
 /// Attribute map carried on each node. Keys are interned strings in a
@@ -241,39 +293,46 @@ impl Document {
         }
     }
 
-    /// Allocate `node` in the arena and return its assigned [`NodeId`].
-    /// The `id` field on the input is overwritten with the fresh ID.
+    /// Allocate a node from `spec` in the arena and return its assigned
+    /// [`NodeId`]. The arena fills in the id, an empty `children` list, and
+    /// the default `content_hash`/`style_id` placeholders.
     ///
     /// # Examples
     ///
     /// ```
     /// use std::path::PathBuf;
     ///
-    /// use mos_core::{AttrMap, ContentHash, Document, Node, NodeId, NodeKind, SourceSpan, StyleId};
+    /// use mos_core::{Document, NodeId, NodeKind, NodeSpec, SourceSpan};
     ///
     /// let file = PathBuf::from("main.mos");
     /// let mut doc = Document::new(file.clone());
-    /// let id = doc.alloc(Node {
-    ///     id: NodeId::default(),
-    ///     kind: NodeKind::Paragraph,
-    ///     span: SourceSpan::placeholder(file),
-    ///     content_hash: ContentHash::default(),
-    ///     style_id: StyleId::default(),
-    ///     children: Vec::new(),
-    ///     attributes: AttrMap::new(),
-    /// });
+    /// let id = doc.alloc(NodeSpec::new(NodeKind::Paragraph, SourceSpan::placeholder(file)));
     ///
     /// assert_eq!(id, NodeId(1));
     /// ```
-    pub fn alloc(&mut self, mut node: Node) -> NodeId {
+    pub fn alloc(&mut self, spec: NodeSpec) -> NodeId {
         let id = NodeId(self.next_id);
         self.next_id += 1;
-        node.id = id;
-        self.nodes.insert(id, node);
+        self.nodes.insert(id, Self::node_from_spec(id, spec));
         id
     }
 
-    /// Allocate `node` as a child of `parent` and return its [`NodeId`].
+    /// Build the arena-owned [`Node`] for `id` from a caller's [`NodeSpec`],
+    /// supplying the fields the caller does not control.
+    fn node_from_spec(id: NodeId, spec: NodeSpec) -> Node {
+        Node {
+            id,
+            kind: spec.kind,
+            span: spec.span,
+            children: Vec::new(),
+            attributes: spec.attributes,
+            content_hash: ContentHash::default(),
+            style_id: StyleId::default(),
+        }
+    }
+
+    /// Allocate a node from `spec` as a child of `parent` and return its
+    /// [`NodeId`].
     ///
     /// # Panics
     ///
@@ -287,28 +346,20 @@ impl Document {
     /// ```
     /// use std::path::PathBuf;
     ///
-    /// use mos_core::{AttrMap, ContentHash, Document, Node, NodeId, NodeKind, SourceSpan, StyleId};
+    /// use mos_core::{Document, NodeKind, NodeSpec, SourceSpan};
     ///
     /// let file = PathBuf::from("main.mos");
     /// let mut doc = Document::new(file.clone());
-    /// let child = doc.alloc_child(doc.root, Node {
-    ///     id: NodeId::default(),
-    ///     kind: NodeKind::Paragraph,
-    ///     span: SourceSpan::placeholder(file),
-    ///     content_hash: ContentHash::default(),
-    ///     style_id: StyleId::default(),
-    ///     children: Vec::new(),
-    ///     attributes: AttrMap::new(),
-    /// });
+    /// let child = doc.alloc_child(doc.root, NodeSpec::new(NodeKind::Paragraph, SourceSpan::placeholder(file)));
     ///
     /// assert_eq!(doc.get(doc.root).map(|node| node.children.as_slice()), Some(&[child][..]));
     /// ```
-    pub fn alloc_child(&mut self, parent: NodeId, node: Node) -> NodeId {
+    pub fn alloc_child(&mut self, parent: NodeId, spec: NodeSpec) -> NodeId {
         assert!(
             self.nodes.contains_key(&parent),
             "Document::alloc_child: unknown parent {parent:?}"
         );
-        let child_id = self.alloc(node);
+        let child_id = self.alloc(spec);
         // Safe to index: we just verified the key exists, and `alloc`
         // doesn't remove existing entries.
         if let Some(parent_node) = self.nodes.get_mut(&parent) {
@@ -427,15 +478,10 @@ mod tests {
         // abort instead of leaking a detached node.
         doc.alloc_child(
             NodeId(9999),
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Text,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::Text,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         );
     }
 
@@ -444,27 +490,17 @@ mod tests {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         let para = doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         );
         doc.alloc_child(
             para,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Text,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::Text,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         );
         assert_eq!(doc.len(), 3);
         assert_eq!(doc.get(doc.root).unwrap().children.len(), 1);

@@ -226,10 +226,7 @@ mod tests {
 
     use std::path::PathBuf;
 
-    use mos_core::{
-        AttrMap, AttrValue, ContentHash, Document, Node, NodeId, NodeKind, SourceSpan, StyleId,
-        codes,
-    };
+    use mos_core::{AttrMap, AttrValue, Document, NodeId, NodeKind, NodeSpec, SourceSpan, codes};
 
     use crate::{A4_WIDTH_PT, MARGIN_PT};
 
@@ -243,15 +240,11 @@ mod tests {
         }
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Raw,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Raw,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         )
     }
 

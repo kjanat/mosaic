@@ -748,9 +748,7 @@ mod tests {
     )]
     use std::path::PathBuf;
 
-    use mos_core::{
-        AttrMap, AttrValue, ContentHash, Document, Node, NodeId, NodeKind, SourceSpan, StyleId,
-    };
+    use mos_core::{AttrMap, AttrValue, Document, NodeId, NodeKind, NodeSpec, SourceSpan};
 
     use crate::types::BODY_SIZE_PT;
 
@@ -761,15 +759,8 @@ mod tests {
         attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
         doc.alloc_child(
             parent,
-            Node {
-                id: NodeId::default(),
-                kind,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(kind, SourceSpan::placeholder(PathBuf::from("test.mos")))
+                .with_attributes(attrs),
         );
     }
 
@@ -786,15 +777,11 @@ mod tests {
         );
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Raw,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Raw,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
     }
 
@@ -803,15 +790,11 @@ mod tests {
         attrs.insert("level".to_owned(), AttrValue::Int(level));
         let id = doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Section,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Section,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
         alloc_inline(doc, id, NodeKind::Text, text);
         id
@@ -820,15 +803,10 @@ mod tests {
     fn make_paragraph(doc: &mut Document, text: &str) -> NodeId {
         let id = doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         );
         alloc_inline(doc, id, NodeKind::Text, text);
         id
@@ -839,15 +817,11 @@ mod tests {
         attrs.insert("label".to_owned(), AttrValue::Str(label.to_owned()));
         let id = doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
         alloc_inline(doc, id, NodeKind::Text, text);
         id
@@ -859,15 +833,11 @@ mod tests {
         attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Raw,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Raw,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         )
     }
 
@@ -1014,15 +984,11 @@ mod tests {
         table_attrs.insert("label".to_owned(), AttrValue::Str("phantom".to_owned()));
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Table,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: table_attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Table,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(table_attrs),
         );
         // ...then a normal labelled paragraph that does.
         make_labelled_paragraph(&mut doc, "real text", "real");
@@ -1346,15 +1312,11 @@ mod tests {
         attrs.insert("number".to_owned(), AttrValue::Str("2.1".to_owned()));
         let section = doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Section,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Section,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
         alloc_inline(&mut doc, section, NodeKind::Text, "Background");
         let result = LayoutEngine::new().layout(&doc);
@@ -1384,15 +1346,11 @@ mod tests {
         attrs.insert("text".to_owned(), AttrValue::Str("1.2".to_owned()));
         doc.alloc_child(
             para,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Reference,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Reference,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
         let result = LayoutEngine::new().layout(&doc);
         let runs = &result.graph.pages[0].runs;
@@ -1410,30 +1368,20 @@ mod tests {
         // `NodeKind` alone (see `collect_words`).
         doc.alloc_child(
             parent,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::HardBreak,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::HardBreak,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         );
     }
 
     fn make_empty_paragraph(doc: &mut Document) -> NodeId {
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: AttrMap::new(),
-            },
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         )
     }
 
@@ -1657,15 +1605,11 @@ mod tests {
         );
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Raw,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Raw,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
     }
 
@@ -1782,15 +1726,11 @@ mod tests {
         attrs.insert("set".to_owned(), AttrValue::Str("page".to_owned()));
         doc.alloc_child(
             doc.root,
-            Node {
-                id: NodeId::default(),
-                kind: NodeKind::Raw,
-                span: SourceSpan::placeholder(PathBuf::from("test.mos")),
-                content_hash: ContentHash::default(),
-                style_id: StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            NodeSpec::new(
+                NodeKind::Raw,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
         );
         make_paragraph(&mut doc, "body");
         let result = LayoutEngine::new().layout(&doc);

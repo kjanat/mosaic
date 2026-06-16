@@ -24,8 +24,8 @@ mod set_schema;
 use std::collections::BTreeMap;
 
 use mos_core::{
-    AttrMap, AttrValue, CollectingSink, Diagnostic, Document, Node, NodeId, NodeKind, Severity,
-    SourceSpan, StyleId,
+    AttrMap, AttrValue, CollectingSink, Diagnostic, Document, NodeId, NodeKind, NodeSpec, Severity,
+    SourceSpan,
 };
 use mos_parse::{DirectiveKind, Item, RawBlockKind, SyntaxTree};
 
@@ -222,15 +222,7 @@ impl Evaluator {
                     }
                     let heading = document.alloc_child(
                         root,
-                        Node {
-                            id: NodeId::default(),
-                            kind: NodeKind::Section,
-                            span: span.clone(),
-                            content_hash: Default::default(),
-                            style_id: StyleId::default(),
-                            children: Vec::new(),
-                            attributes,
-                        },
+                        NodeSpec::new(NodeKind::Section, span.clone()).with_attributes(attributes),
                     );
                     lower_inlines(&mut document, heading, inlines);
                 }
@@ -246,15 +238,8 @@ impl Evaluator {
                     }
                     let para = document.alloc_child(
                         root,
-                        Node {
-                            id: NodeId::default(),
-                            kind: NodeKind::Paragraph,
-                            span: span.clone(),
-                            content_hash: Default::default(),
-                            style_id: StyleId::default(),
-                            children: Vec::new(),
-                            attributes,
-                        },
+                        NodeSpec::new(NodeKind::Paragraph, span.clone())
+                            .with_attributes(attributes),
                     );
                     lower_inlines(&mut document, para, inlines);
                 }
@@ -379,15 +364,7 @@ fn lower_raw_block(
     );
     document.alloc_child(
         root,
-        Node {
-            id: NodeId::default(),
-            kind: NodeKind::Raw,
-            span: span.clone(),
-            content_hash: Default::default(),
-            style_id: StyleId::default(),
-            children: Vec::new(),
-            attributes,
-        },
+        NodeSpec::new(NodeKind::Raw, span.clone()).with_attributes(attributes),
     );
 }
 

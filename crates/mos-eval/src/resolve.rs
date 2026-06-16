@@ -1110,15 +1110,8 @@ mod tests {
         }
         doc.alloc_child(
             doc.root,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            mos_core::NodeSpec::new(kind, SourceSpan::placeholder(doc.file.clone()))
+                .with_attributes(attrs),
         )
     }
 
@@ -1130,15 +1123,8 @@ mod tests {
         attrs.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
         doc.alloc_child(
             parent,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Text,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: attrs,
-            },
+            mos_core::NodeSpec::new(NodeKind::Text, SourceSpan::placeholder(doc.file.clone()))
+                .with_attributes(attrs),
         )
     }
 
@@ -1157,15 +1143,11 @@ mod tests {
         caption_attrs.insert("role".to_owned(), AttrValue::Str("caption".to_owned()));
         let caption_para = doc.alloc_child(
             figure,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Paragraph,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: caption_attrs,
-            },
+            mos_core::NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(doc.file.clone()),
+            )
+            .with_attributes(caption_attrs),
         );
         let caption_text = make_text(doc, caption_para, caption);
         (figure, caption_text)
@@ -1220,20 +1202,16 @@ mod tests {
         let figure_id = make_node(&mut doc, NodeKind::Figure, Some("fig:one"), None);
         let ref_id = doc.alloc_child(
             doc.root,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Reference,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: {
-                    let mut a = mos_core::AttrMap::new();
-                    a.insert("label".to_owned(), AttrValue::Str("fig:one".to_owned()));
-                    a.insert("text".to_owned(), AttrValue::Str("?fig:one?".to_owned()));
-                    a
-                },
-            },
+            mos_core::NodeSpec::new(
+                NodeKind::Reference,
+                SourceSpan::placeholder(doc.file.clone()),
+            )
+            .with_attributes({
+                let mut a = mos_core::AttrMap::new();
+                a.insert("label".to_owned(), AttrValue::Str("fig:one".to_owned()));
+                a.insert("text".to_owned(), AttrValue::Str("?fig:one?".to_owned()));
+                a
+            }),
         );
 
         let diags = resolve(&mut doc, &BTreeSet::new());
@@ -1334,20 +1312,16 @@ mod tests {
         }
         let ref_id = doc.alloc_child(
             doc.root,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Reference,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: {
-                    let mut a = mos_core::AttrMap::new();
-                    a.insert("label".to_owned(), AttrValue::Str("fig:plate".to_owned()));
-                    a.insert("text".to_owned(), AttrValue::Str("?fig:plate?".to_owned()));
-                    a
-                },
-            },
+            mos_core::NodeSpec::new(
+                NodeKind::Reference,
+                SourceSpan::placeholder(doc.file.clone()),
+            )
+            .with_attributes({
+                let mut a = mos_core::AttrMap::new();
+                a.insert("label".to_owned(), AttrValue::Str("fig:plate".to_owned()));
+                a.insert("text".to_owned(), AttrValue::Str("?fig:plate?".to_owned()));
+                a
+            }),
         );
 
         let diags = resolve(&mut doc, &BTreeSet::new());
@@ -1380,20 +1354,16 @@ mod tests {
         }
         let ref_id = doc.alloc_child(
             doc.root,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Reference,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: {
-                    let mut a = mos_core::AttrMap::new();
-                    a.insert("label".to_owned(), AttrValue::Str("fig:plain".to_owned()));
-                    a.insert("text".to_owned(), AttrValue::Str("?fig:plain?".to_owned()));
-                    a
-                },
-            },
+            mos_core::NodeSpec::new(
+                NodeKind::Reference,
+                SourceSpan::placeholder(doc.file.clone()),
+            )
+            .with_attributes({
+                let mut a = mos_core::AttrMap::new();
+                a.insert("label".to_owned(), AttrValue::Str("fig:plain".to_owned()));
+                a.insert("text".to_owned(), AttrValue::Str("?fig:plain?".to_owned()));
+                a
+            }),
         );
 
         let diags = resolve(&mut doc, &BTreeSet::new());
@@ -1423,20 +1393,16 @@ mod tests {
         }
         let ref_id = doc.alloc_child(
             doc.root,
-            mos_core::Node {
-                id: mos_core::NodeId::default(),
-                kind: NodeKind::Reference,
-                span: SourceSpan::placeholder(doc.file.clone()),
-                content_hash: mos_core::ContentHash::default(),
-                style_id: mos_core::StyleId::default(),
-                children: Vec::new(),
-                attributes: {
-                    let mut a = mos_core::AttrMap::new();
-                    a.insert("label".to_owned(), AttrValue::Str("fig:skip".to_owned()));
-                    a.insert("text".to_owned(), AttrValue::Str("?fig:skip?".to_owned()));
-                    a
-                },
-            },
+            mos_core::NodeSpec::new(
+                NodeKind::Reference,
+                SourceSpan::placeholder(doc.file.clone()),
+            )
+            .with_attributes({
+                let mut a = mos_core::AttrMap::new();
+                a.insert("label".to_owned(), AttrValue::Str("fig:skip".to_owned()));
+                a.insert("text".to_owned(), AttrValue::Str("?fig:skip?".to_owned()));
+                a
+            }),
         );
 
         let diags = resolve(&mut doc, &BTreeSet::new());
