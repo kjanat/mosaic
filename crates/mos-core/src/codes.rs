@@ -1,17 +1,17 @@
-//! Diagnostic code registry — the single source of truth for every
+//! Diagnostic code registry; the single source of truth for every
 //! diagnostic the compiler can emit.
 //!
 //! Identity and severity are deliberately *separate axes*:
 //!
 //! - A [`DiagnosticCode`] answers "which rule fired?" It is an opaque,
 //!   namespaced, severity-free identifier rendered as `MOS0010`. The
-//!   number has no semantic meaning — it does not encode severity,
+//!   number has no semantic meaning: it does not encode severity,
 //!   owner crate, category, or lint group. Numbers are globally unique
 //!   and stable; new codes get the next free integer regardless of
 //!   what they describe.
 //! - A [`DiagnosticDef`] pairs that code with its slug, *default*
 //!   severity, category, owning crate, and a one-line summary. The
-//!   catalog groups by [`DiagnosticCategory`], not by numeric range —
+//!   catalog groups by [`DiagnosticCategory`], not by numeric range,
 //!   so a rule that moves phases (parser → eval, fonts → text shaping)
 //!   keeps its stable ID and just updates its `category`.
 //!
@@ -355,7 +355,7 @@ macro_rules! define_codes {
 // Numbers are opaque. They do not encode category, severity, owner, or
 // phase. Current assignments intentionally interleave categories to avoid
 // accidental range semantics. Declaration order groups by category here
-// for source-reading convenience only — the catalog (and any consumer)
+// for source-reading convenience only; the catalog (and any consumer)
 // groups by `category()`, not by numeric range.
 define_codes! {
     // ── syntax (mos-parse) ────────────────────────────────────────────

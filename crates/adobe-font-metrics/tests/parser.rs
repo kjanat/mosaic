@@ -158,7 +158,7 @@ fn rejects_missing_required_fields() {
 
 #[test]
 fn rejects_malformed_version_minor() {
-    // `4.x`, `4.bad`, `4.` should all fail — not just non-`4.` prefixes.
+    // `4.x`, `4.bad`, `4.` should all fail; not just non-`4.` prefixes.
     for bad in ["4.x", "4.bad", "4."] {
         let src = format!("StartFontMetrics {bad}\nFontName X\nFontBBox 0 0 0 0\nEndFontMetrics\n");
         assert!(
@@ -194,7 +194,7 @@ fn rejects_bare_w_in_char_metric() {
 
 #[test]
 fn rejects_kpy_with_non_numeric_operand() {
-    // `KPY A V nope` must fail — operand has to be numeric even though
+    // `KPY A V nope` must fail: operand has to be numeric even though
     // KPY's value is discarded for the public x-only `adjust` field.
     let src = "StartFontMetrics 4.1\n\
                FontName Bad\n\
@@ -215,7 +215,7 @@ fn rejects_kpy_with_non_numeric_operand() {
 
 #[test]
 fn rejects_bbox_with_trailing_garbage() {
-    // `FontBBox 0 0 0 0 junk` must fail — wrong arity, not silently truncated.
+    // `FontBBox 0 0 0 0 junk` must fail: wrong arity, not silently truncated.
     let src = "StartFontMetrics 4.1\n\
                FontName Bad\n\
                FontBBox 0 0 0 0 junk\n\

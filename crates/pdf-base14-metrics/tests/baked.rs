@@ -4,7 +4,7 @@
 //! - Per-variant PDF `/BaseFont` strings (written verbatim into PDF
 //!   resource dictionaries).
 //! - Adobe-canonical glyph widths for `A` in Helvetica / Times /
-//!   Courier — the same values the legacy hand-typed
+//!   Courier; the same values the legacy hand-typed
 //!   `mos-layout::metrics` table used to assert, now read through
 //!   the parsed AFM instead of typed by hand.
 //! - PDF `WinAnsiEncoding` byte lookups span all four bands of the
@@ -15,7 +15,7 @@
 use pdf_base14_metrics::Base14Font;
 
 // AFM widths are integers (per Adobe spec) and integer values up to
-// 1015 round-trip exactly through f32, so bare `==` is safe here —
+// 1015 round-trip exactly through f32, so bare `==` is safe here.
 // no approximate comparison needed.
 
 #[test]
@@ -144,14 +144,14 @@ fn winansi_unmapped_returns_none() {
     let h = Base14Font::Helvetica;
     // 0x00 (NUL): no WinAnsi mapping (control character).
     assert_eq!(h.winansi_width(0x00), None);
-    // 0x81: gap in PDF WinAnsi per PDF 1.7 Annex D.2 Table D.2 —
+    // 0x81: gap in PDF WinAnsi per PDF 1.7 Annex D.2 Table D.2.
     // unlike CP1252, PDF doesn't define a glyph at this slot.
     assert_eq!(h.winansi_width(0x81), None);
 }
 
 #[test]
 fn winansi_returns_none_for_symbol_and_zapfdingbats() {
-    // Symbol and ZapfDingbats don't use WinAnsi — every byte returns
+    // Symbol and ZapfDingbats don't use WinAnsi; every byte returns
     // `None`, even ones (like 0x20 / `"space"`) that DO have a glyph
     // by name in the font. Callers must reach for `glyph_width` on
     // the encoding-specific name instead.

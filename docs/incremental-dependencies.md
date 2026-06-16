@@ -4,7 +4,7 @@ Status: design note. No persistent `.mos-cache/` is implemented in this slice. T
 implementation itself is out of scope; this document defines the typed identifiers and the hash
 boundaries that a future incremental engine will key off.
 
-Scope: tracks issue #48 (`MVP 5 — Incremental builds`, `manifest-tracker.md` → *Incremental Builds
+Scope: tracks issue #48 (`MVP 5: Incremental builds`, `manifest-tracker.md` → *Incremental Builds
 And Cache*).
 
 ## 1. Why this note exists now
@@ -29,16 +29,15 @@ that live in this document until a concrete crate slice needs them.
 
 Already in code:
 
-- `mos_core::NodeId(u64)` — monotonic per-`Document`, allocated by `Document::alloc`. Not yet
-  derived from a hash of `(file, syntactic position, label, local structure)` as manifest §5.1
-  wants.
-- `mos_core::ContentHash(u128)` — opaque, defaulted everywhere. Carried as `Node.content_hash`.
-- `mos_core::StyleId(u32)` — defaulted everywhere; no resolved style bundle exists yet.
-- `mos_cache::CacheKey(ContentHash)` + `Cache` trait + `InMemoryCache` — byte-payload key/value
+- `mos_core::NodeId(u64)`: monotonic per-`Document`, allocated by `Document::alloc`. Not yet derived
+  from a hash of `(file, syntactic position, label, local structure)` as manifest §5.1 wants.
+- `mos_core::ContentHash(u128)`: opaque, defaulted everywhere. Carried as `Node.content_hash`.
+- `mos_core::StyleId(u32)`: defaulted everywhere; no resolved style bundle exists yet.
+- `mos_cache::CacheKey(ContentHash)` + `Cache` trait + `InMemoryCache`: byte-payload key/value
   store. No schema, no eviction, no disk.
-- `mos-eval::LowerResult { document, diagnostics, metadata }` — the semantic surface that a future
+- `mos-eval::LowerResult { document, diagnostics, metadata }`; the semantic surface that a future
   cache would key on for "did anything semantic change?".
-- `mos-layout::LayoutEngine::layout(&Document) -> LayoutResult` — currently recomputes everything
+- `mos-layout::LayoutEngine::layout(&Document) -> LayoutResult`; currently recomputes everything
   from scratch every call. `layout_incremental` from manifest §31 does not exist yet.
 
 Future work this note assumes will land later:
@@ -57,7 +56,7 @@ A future `DepId` is a tagged union over the categories below. Each category has 
 scheme (so two builds of the same input produce the same `DepId`) and a clearly-bounded hash input
 set (so two `DepId`s with the same `output_hash` truly represent interchangeable artifacts).
 
-Illustrative sketch — not added to any crate in this slice:
+Illustrative sketch; not added to any crate in this slice:
 
 ```text
 DepId ::=
@@ -76,19 +75,19 @@ DepId ::=
 
 The first concrete slice (`crates/mos-cache/src/dependency.rs`) introduces
 [`DependencyId`](../crates/mos-cache/src/dependency.rs), `DependencyKind`, `ProjectPath`, and
-`ProjectPathError` as real public types. It **deliberately models a subset** of the sketch above —
+`ProjectPathError` as real public types. It **deliberately models a subset** of the sketch above:
 only the categories that have a *stable identity today*:
 
-| `DependencyKind` | Identity (payload) | Sketch category                                                        |
-| ---------------- | ------------------ | ---------------------------------------------------------------------- |
-| `SourceFile`     | `ProjectPath`      | `Source`                                                               |
-| `Asset`          | `ProjectPath`      | `Asset`                                                                |
-| `Bibliography`   | `ProjectPath`      | `Source` (`.bib`) — split out because §4 hashes it on its own boundary |
-| `Label`          | reference name     | `Reference` (name only; target binding lives in the hash, §3.6)        |
+| `DependencyKind` | Identity (payload) | Sketch category                                                       |
+| ---------------- | ------------------ | --------------------------------------------------------------------- |
+| `SourceFile`     | `ProjectPath`      | `Source`                                                              |
+| `Asset`          | `ProjectPath`      | `Asset`                                                               |
+| `Bibliography`   | `ProjectPath`      | `Source` (`.bib`): split out because §4 hashes it on its own boundary |
+| `Label`          | reference name     | `Reference` (name only; target binding lives in the hash, §3.6)       |
 
 Naming follows the workspace convention (`NodeId`, `StyleId`, `CacheKey`): the types spell out
 `Dependency…` rather than the `Dep…` shorthand the prose uses. The label payload is an inline
-`String` under the variant tag — the tag already prevents mixing it with a path, so no wrapper is
+`String` under the variant tag; the tag already prevents mixing it with a path, so no wrapper is
 needed. File payloads, by contrast, use the checked `ProjectPath` newtype, which *earns* its
 wrapper: it canonicalizes the path on construction (fold `\`→`/`, drop `.`/empty segments, resolve
 `..`, NFC-normalize per §3.1) so `./a.mos`, `a.mos`, and `a\b\..\b/a.mos` collapse to one identity.
@@ -100,16 +99,16 @@ relies on would be a lie.
 
 Deliberately **not** modelled yet:
 
-- `Package`, `Node`, `Style` — their identities are still defaulted (`NodeId` is monotonic,
-  `StyleId` is `0` everywhere), so an id over them would collide unrelated inputs. They graduate
-  once they have a real scheme (see §9).
-- `LayoutInput` — there is no real layout key until paragraph hashing lands (`ParagraphInputHash`,
+- `Package`, `Node`, `Style`: their identities are still defaulted (`NodeId` is monotonic, `StyleId`
+  is `0` everywhere), so an id over them would collide unrelated inputs. They graduate once they
+  have a real scheme (see §9).
+- `LayoutInput`: there is no real layout key until paragraph hashing lands (`ParagraphInputHash`,
   §4.4, folds node + style + width + font set). Keying it on the defaulted `StyleId` alone would
   conflate every layout request under `StyleId(0)`, so it waits for the genuine key.
-- `LayoutOutput`, `Artifact` — output-side, not dependencies.
+- `LayoutOutput`, `Artifact`: output-side, not dependencies.
 
 The id/kind types carry no hashing themselves. The first content boundary built on one has since
-landed for bibliography inputs — `BibliographyDependency` pairs a `Bibliography` id with a
+landed for bibliography inputs: `BibliographyDependency` pairs a `Bibliography` id with a
 `ContentHash` (§4.1). None of these are wired into `CacheKey` or a `DepNode` graph yet; that is a
 later slice (§9.6).
 
@@ -123,7 +122,7 @@ content-shaped, so reading the same file twice gives the same `SourceId`. Conten
 
 Identity: project-relative path of the asset as referenced (`#image("figures/x.png")`), plus the
 resolution rule used (project root vs. package). Decoding/transcoding output (e.g. RGB8 pixel
-buffer) is *not* part of the asset's identity — it is part of an `Artifact` derived from the asset.
+buffer) is *not* part of the asset's identity: it is part of an `Artifact` derived from the asset.
 
 ### 3.3 `Package`
 
@@ -137,8 +136,8 @@ Identity: a `NodeId` allocated through the document arena in `mos-core` but *der
 in `mos-eval`. Today `Document::alloc` hands out a monotonic counter; the migration target (manifest
 §5.1) computes the stable ID from
 `hash(source_id, syntactic_position, explicit_label,
-local_structure)` inside the lowerer — which is
-the only stage that has the parse tree — and passes the precomputed ID into the arena.
+local_structure)` inside the lowerer, which is
+the only stage that has the parse tree, and passes the precomputed ID into the arena.
 
 This split matters for crate boundaries. `mos-core` must not learn about syntax trees, so a future
 `Document::alloc_with_id(id, node)` (or equivalent) keeps the derivation in `mos-eval` without
@@ -199,7 +198,7 @@ SourceHash = H(
 ```
 
 Source hashing is intentionally byte-for-byte. The parser does *not* NFC-normalize source today, and
-the source hash must match what the parser actually consumed — otherwise the cache would "forget"
+the source hash must match what the parser actually consumed: otherwise the cache would "forget"
 cosmetic edits the parser is sensitive to. NFC handling enters the pipeline later at the
 layout-input boundary (§4.4), where two paragraphs whose authored text is NFC-equivalent should hit
 the same `ParagraphInputHash`.
@@ -219,16 +218,16 @@ the `SourceHash` shape above, specialized to `source_kind = bibliography`:
 ```text
 BibliographyContentHash = H(
     engine_version,               // CARGO_PKG_VERSION; bumping it invalidates (§5 rule 2)
-    domain_tag,                   // "mos-bib/bibliography-source/v1" — separates this boundary
+    domain_tag,                   // "mos-bib/bibliography-source/v1": separates this boundary
     file_bytes                    // raw bytes as read, byte-for-byte (no NFC / line-ending / BOM)
 )
 ```
 
 It honors the determinism rules: byte-for-byte input (§4.1), `engine_version` stamped (§5 rule 2),
 no filesystem-derived data, and a fixed `u64`-width length prefix per field so the hash is identical
-on 32- and 64-bit targets. `H` is currently **FNV-1a over 128 bits** — fully specified, portable,
-and deterministic, unlike the randomly-seeded `SipHash` §4 rules out. This is an *interim* hasher:
-the construction may be replaced with BLAKE3-truncated-to-128 (the note's preference) by the §9.4
+on 32- and 64-bit targets. `H` is currently **FNV-1a over 128 bits**: fully specified, portable, and
+deterministic, unlike the randomly-seeded `SipHash` §4 rules out. This is an *interim* hasher: the
+construction may be replaced with BLAKE3-truncated-to-128 (the note's preference) by the §9.4
 source/asset hashing slice without changing the `&[u8] -> ContentHash` signature; the stamped
 `engine_version` absorbs the resulting value change. FNV is not collision-hardened, and no shipped
 path yet depends on adversarial collision resistance.
@@ -236,7 +235,7 @@ path yet depends on adversarial collision resistance.
 `mos-cache` pairs this content boundary with the path identity as
 `BibliographyDependency { DependencyId::Bibliography(ProjectPath), ContentHash }` (§3): the id is
 the cache slot, the content hash is the staleness check. `mos-cache` stays free of
-bibliography-format knowledge — the caller (`mos-eval`, which reads the `.bib` and depends on both
+bibliography-format knowledge; the caller (`mos-eval`, which reads the `.bib` and depends on both
 crates) supplies the hash. Neither type is wired into `CacheKey` or a `DepNode` graph yet; that
 remains §9.6.
 
@@ -254,7 +253,7 @@ NodeHash(node) = H(
 ```
 
 `NodeHash` covers *authored* semantic state, not resolution residue. The lowerer in `mos-eval`
-currently stashes filesystem- and decoder-derived data directly onto node attributes — see
+currently stashes filesystem- and decoder-derived data directly onto node attributes: see
 `crates/mos-eval/src/image_lower.rs`, which writes `resolved_path` (an absolute path), `pixels`
 (decoded RGB8 bytes), `pixel_width`, `pixel_height`, `colorspace`, and `bits_per_component` onto an
 `Image` node. These must *not* feed `NodeHash`:
@@ -264,7 +263,7 @@ currently stashes filesystem- and decoder-derived data directly onto node attrib
 - `pixels` and decoded dimensions duplicate the asset's bytes into the "semantic" hash and would
   bind a paragraph's `NodeHash` to a transcoder version it should not care about.
 
-The carve-out: `authored_attrs(node)` is the subset of attributes that the parser produced — `src`
+The carve-out: `authored_attrs(node)` is the subset of attributes that the parser produced: `src`
 (the source-relative path token written by the author), `alt`, `width`, `height`, `label`, `role`,
 `text`, list `ordered`-style flags, and so on. Anything the lowerer added during resolution is
 addressed indirectly through `asset_refs(node)` (each referenced asset's `AssetHash` per §4.3) or
@@ -278,7 +277,7 @@ addressed through the asset's content hash; the resolved path is a build-machine
 Other notes:
 
 - Span byte offsets are *excluded*. A paragraph that shifts down because an earlier paragraph grew
-  must hash identically — that is the whole point of the boundary.
+  must hash identically; that is the whole point of the boundary.
 - `canonical_attrs` sorts by key (already a `BTreeMap`), normalizes float NaNs, quantizes authored
   layout dimensions per §6, and rejects `AttrValue::Bytes` entries (which today only appear as
   derived pixel buffers and therefore fail the carve-out above).
@@ -348,14 +347,14 @@ Pages need two hashes, not one. The lookup key and the result digest are differe
 cannot be the same value, because the result is not known at lookup time.
 
 ```text
-PageInputHash = H(                // cache lookup key — known before layout
+PageInputHash = H(                // cache lookup key: known before layout
     engine_version,
     StyleHash(page_style),
     page_boundary_signature_in,   // manifest §33 input boundary
     [LayoutInputHash(box) for box queued on this page]
 )
 
-PageOutputHash = H(               // result digest — known after layout
+PageOutputHash = H(               // result digest: known after layout
     engine_version,
     [LayoutOutputHash(box) for box on page],
     page_boundary_signature_out   // manifest §33 output boundary
@@ -385,14 +384,14 @@ primitives that exist today: each page folds its number, quantized page box, and
 placements (intrinsic pixel dimensions + quantized rectangle), via [`mos_core::ContentHasher`]
 (§9.4). Run/image counts are folded so insertions shift the digest.
 `PageGraphSignature::first_divergence` returns the first page index whose signature differs, i.e.
-*where* pagination changed — the seam reflow (manifest §33) will key off.
+*where* pagination changed; the seam reflow (manifest §33) will key off.
 
 Excluded per §5 and the §4.2/§4.3 carve-outs: shaped glyphs (derived from text + font + shaper); a
-font's PDF resource name (`F1`.., a backend emitter slot layout must not depend on — a neutral font
+font's PDF resource name (`F1`.., a backend emitter slot layout must not depend on: a neutral font
 identity is folded instead); decoded image pixels (`rgb8`, an asset-content concern);
 `resolved_path` (an absolute path, §5 rule 1); and the encounter-order `handle.id` (folding it would
 churn unrelated pages' signatures when an image is added earlier, breaking the locality
-`first_divergence` provides). It is identity/comparison only — no `PageInputHash`, no `DepNode`
+`first_divergence` provides). It is identity/comparison only; no `PageInputHash`, no `DepNode`
 graph, no `CacheKey` wiring, and no reflow loop yet (those remain §9.6/§9.8).
 
 [`mos_core::ContentHasher`]: ../crates/mos-core/src/hash.rs
@@ -430,7 +429,7 @@ Float bit patterns are unsuitable as hash inputs: two builds that arrive at the 
 slightly different arithmetic must hash equally.
 
 Rule: every layout dimension that feeds a hash is first converted to an integer count of 1/64 pt (a
-"shaper unit" — same granularity HarfBuzz uses internally), saturating-cast to `i32`. The engine
+"shaper unit": same granularity HarfBuzz uses internally), saturating-cast to `i32`. The engine
 version stamps the granularity so it can be tightened later without silently invalidating caches.
 
 This applies to `width_pt`, `available_width_pt`, `margin_pt`, `size_pt`, and any future
@@ -439,8 +438,8 @@ exact baseline of a glyph); those go through whichever encoding `LayoutOutputHas
 
 What landed (page boundary signatures, §4.5): the implementation snaps to the same 1/64-pt grid via
 `(pt * 64).round()` but folds the **canonical `f32` bit pattern** of that integral count rather than
-an `i32`. The two are equivalent for hashing — for the sub-`2^24` magnitudes layout produces, the
-integral count is represented exactly by `f32`, so the same grid cell yields the same bits — and it
+an `i32`. The two are equivalent for hashing: for the sub-`2^24` magnitudes layout produces, the
+integral count is represented exactly by `f32`, so the same grid cell yields the same bits, and it
 avoids a float-to-int cast the workspace clippy set denies (`cast_possible_truncation`). The §9.5
 quantization newtype can adopt the `i32` form later; because the engine version stamps the encoding,
 that switch invalidates cleanly rather than silently.
@@ -468,15 +467,15 @@ describes under *Layout* and *Page Reflow And Fixpoints*:
 - **Figure invalidation.** Changing the image bytes flips `AssetHash`, which flips
   `FigureInputHash`, which flips the figure box's `LayoutOutputHash`. Changing only the caption text
   flips `NodeHash` on the caption, which flips the nested `caption_input_hash` field of
-  `FigureInputHash`, which flips the figure box — without touching the image asset's hash. The
+  `FigureInputHash`, which flips the figure box: without touching the image asset's hash. The
   list-of-figures entry depends on the figure's resolved number/page, so it follows the reference
   pathway above.
 - **Invalidate citation data on bibliography edits.** Each declared `.bib` source has a
   `BibliographyDependency`: a `Bibliography` id (the cache slot) plus a `BibliographyContentHash`
   (§4.1, the staleness check). Editing a `.bib`'s bytes flips its content hash, so the engine can
-  see that the source changed and recompute only the citation-resolution work that consumed it —
+  see that the source changed and recompute only the citation-resolution work that consumed it:
   parsed records, key-existence checks, and the downstream `ReferenceInputHash` of any `[@key]` that
-  resolved against it — while sources whose hash is unchanged stay cached. Moving or renaming the
+  resolved against it: while sources whose hash is unchanged stay cached. Moving or renaming the
   file changes the id (a different slot) rather than the hash. Today this is the identity/boundary
   pair only; the dependency graph that consumes it is §9.6.
 - **Report what changed.** Because every artifact has a typed `DepId` and an `output_hash`, the
@@ -502,9 +501,9 @@ Explicitly *not* designed here:
 These are scope-sized, one-PR work items, not umbrella epics. Each can become its own GitHub issue
 when it is ready to start:
 
-1. *Stable `NodeId` derivation in `mos-eval`.* Compute the stable ID —
+1. *Stable `NodeId` derivation in `mos-eval`.* Compute the stable ID:
    `hash(source_id,
-   syntactic_position, explicit_label, local_structure)` — inside the lowerer,
+   syntactic_position, explicit_label, local_structure)`: inside the lowerer,
    which is the only stage with the parse tree. Add a `Document::alloc_with_id` (or equivalent) on
    `mos-core` so the lowerer can hand precomputed IDs to the arena without `mos-core` learning about
    syntax. Public `NodeId(u64)` stays.

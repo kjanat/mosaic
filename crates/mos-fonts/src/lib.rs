@@ -2,18 +2,18 @@
 //!
 //! Two font-emission paths live behind one [`Font`] enum:
 //!
-//! - [`Font::Base14`] — the 14 standard PDF base fonts. No glyph data
+//! - [`Font::Base14`]; the 14 standard PDF base fonts. No glyph data
 //!   ships; the PDF reader supplies outlines. Advance widths come from
 //!   bundled Adobe AFMs, addressed through [`pdf_base14_metrics`].
 //!   `WinAnsi` natives go out as their canonical byte; the small set
 //!   of extended Latin glyphs each face carries (Latin Extended-A
 //!   beyond `WinAnsi`, the math operators, `fi`/`fl` ligatures) goes
 //!   out through a per-document `/Differences` remap that
-//!   `mos-pdf` plans. Characters outside both tiers — Cyrillic,
-//!   CJK, emoji — silently substitute to `?` in both the width and
+//!   `mos-pdf` plans. Characters outside both tiers: Cyrillic,
+//!   CJK, emoji: silently substitute to `?` in both the width and
 //!   emit paths (no warning, no panic; callers that want non-Latin
 //!   should pick the embedded family).
-//! - [`Font::Embedded`] — a bundled Noto Sans cut shaped with
+//! - [`Font::Embedded`]: a bundled Noto Sans cut shaped with
 //!   `rustybuzz` (`HarfBuzz` Rust port). The PDF backend embeds a
 //!   subset of the actual `TrueType` outlines as a Type 0 CID font
 //!   with a `/ToUnicode` `CMap`, so the output is a real

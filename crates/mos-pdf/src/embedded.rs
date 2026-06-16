@@ -76,7 +76,7 @@ pub(crate) enum ContentOp {
 ///
 /// # Errors
 ///
-/// Returns an error if subsetting fails for a face — only possible
+/// Returns an error if subsetting fails for a face: only possible
 /// with corrupted font data, which the bundled cuts are not.
 pub(crate) fn plan_embedded(runs: &[TextRun]) -> Result<Vec<EmbeddedFontPlan>> {
     // gid set + gid → cluster text, per face.
@@ -146,7 +146,7 @@ fn accumulate_glyphs(
         let cluster_str = source.get(cluster..next_cluster).unwrap_or("");
         for (k, g) in glyphs[i..j].iter().enumerate() {
             gids.push(g.gid);
-            // GID 0 is `.notdef` — rustybuzz emits it for codepoints
+            // GID 0 is `.notdef`: rustybuzz emits it for codepoints
             // the face doesn't cover. Recording a Unicode mapping for
             // it would round-trip every unsupported character back to
             // whichever source text happened to land on GID 0 first
@@ -236,7 +236,7 @@ pub(crate) fn emit_embedded(pdf: &mut Pdf, plan: &EmbeddedFontPlan, refs: Embedd
     write_font_descriptor(&mut desc, font, base_font_bytes, refs.font_file);
     desc.finish();
 
-    // 4. /FontFile2 stream — the subsetted TTF.
+    // 4. /FontFile2 stream; the subsetted TTF.
     {
         let mut stream = pdf.stream(refs.font_file, &plan.subset_bytes);
         let length1 = i32::try_from(plan.subset_bytes.len()).unwrap_or(i32::MAX);

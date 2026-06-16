@@ -163,7 +163,7 @@ fn build_emits_pdf() {
     let dir = temp_dir("mos-build");
     // Pin Helvetica so the content stream emits ASCII byte strings
     // that the byte-grep assertions below can find. The default font
-    // family is Noto Sans (embedded TTF, hex CID encoding) — see
+    // family is Noto Sans (embedded TTF, hex CID encoding): see
     // `cyrillic_routes_through_embedded_font` below for the embedded
     // path's smoke test.
     write_file(
@@ -241,7 +241,7 @@ fn build_renders_section_numbers_and_resolves_references() {
         "expected `2.` and `Methods` runs in PDF stream"
     );
     // `@intro` resolves to section 1, so the rendered reference is `1`.
-    // The bare label must NOT appear — that would mean the resolver
+    // The bare label must NOT appear; that would mean the resolver
     // didn't run.
     assert!(has(b"(1)"), "expected resolved reference text `1`");
     assert!(
@@ -254,8 +254,8 @@ fn build_renders_section_numbers_and_resolves_references() {
 fn build_resolves_page_references_to_page_numbers() {
     // End-to-end #72: `@page(label)` renders the target's printed page number,
     // resolved through the resolve↔layout fixpoint. The intro lands on page 1,
-    // so the rendered run is `(1)` — section numbers render as `(1.)`, so this
-    // does not collide — and the `?intro?` placeholder must be gone.
+    // so the rendered run is `(1)`: section numbers render as `(1.)`, so this
+    // does not collide, and the `?intro?` placeholder must be gone.
     let dir = temp_dir("mos-build-pageref");
     write_file(
         dir.path(),
@@ -284,7 +284,7 @@ fn build_resolves_page_references_to_page_numbers() {
 #[test]
 fn check_reports_unknown_page_reference_label() {
     // An undeclared label in `@page(...)` is MOS0033 at check time, without
-    // laying the document out — same as a bad `@ref`.
+    // laying the document out: same as a bad `@ref`.
     let dir = temp_dir("mos-check-pageref-mos0033");
     write_file(dir.path(), "main.mos", "see page @page(no:such)\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
@@ -598,7 +598,7 @@ fn build_skips_non_mos_files_when_multiple_entries_provided() {
 /// uncompressed deflate block), and IEND. The colour space is
 /// RGBA8.
 fn write_tiny_png(path: &Path) {
-    // Construct the IDAT body — for a 4×3 image with one filter byte
+    // Construct the IDAT body: for a 4×3 image with one filter byte
     // per row + 4 RGBA bytes per pixel × 4 pixels = 17 bytes per row.
     let width: u32 = 4;
     let height: u32 = 3;
@@ -728,7 +728,7 @@ fn build_fails_when_image_path_is_missing() {
 #[test]
 fn check_collects_multiple_errors_in_one_pass() {
     // Phase-barrier fail-fast collects every diagnostic in a phase before
-    // stopping — it does not bail on the first error. Two malformed `#set`
+    // stopping: it does not bail on the first error. Two malformed `#set`
     // directives must both surface as MOS0022, not just the first.
     let dir = temp_dir("mos-check-multi-err");
     write_file(dir.path(), "main.mos", "#set a(x: -)\n#set b(y: -)\n");

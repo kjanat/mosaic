@@ -16,19 +16,19 @@
 
 ; --- References -------------------------------------------------------------
 
-; `#name(...)` — template/function invocation in block or inline position.
+; `#name(...)`: template/function invocation in block or inline position.
 (hash_call
   function: (qualified_name) @name) @reference.call
 
-; `name(...)` — expression-position call.
+; `name(...)`: expression-position call.
 (call_expr
   function: (qualified_name) @name) @reference.call
 
-; `@intro:setup` — label use.
+; `@intro:setup`: label use.
 (reference
   target: (label_name) @name) @reference.label
 
-; `#import "lib.mos"` / `#include "..."` — module references by path.
+; `#import "lib.mos"` / `#include "..."`: module references by path.
 (import_directive
   path: (string) @name) @reference.import
 

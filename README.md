@@ -8,12 +8,12 @@
 
 [![CI](https://github.com/kjanat/mosaic/actions/workflows/ci.yml/badge.svg)](https://github.com/kjanat/mosaic/actions/workflows/ci.yml)
 
-A semantic, ~~incremental, constraint-based~~ typesetting compiler — written in Rust, targeting PDF
+A semantic, ~~incremental, constraint-based~~ typesetting compiler: written in Rust, targeting PDF
 ~~/HTML/EPUB~~ .\
 Mosaic compiles `.mos` source files into documents ~~through a dependency graph rather than a linear
 stream of typesetting commands, so editing one sentence reflows only the affected pages~~.
 
-The full design — language, layout algorithm, package model, MVP roadmap — lives in
+The full design: language, layout algorithm, package model, MVP roadmap: lives in
 [`manifest.md`](./manifest.md). This README is just enough to orient you and to get the workspace
 building. The actionable implementation checklist lives in
 [`manifest-tracker.md`](./manifest-tracker.md).
@@ -30,18 +30,18 @@ under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed
       greedy breaker never splits, a `\\` hard line break for forced mid-paragraph breaks, and a
       `\-` (or literal U+00AD) soft hyphen that stays invisible when the word fits and otherwise
       breaks the line at the latest fitting marker with a visible hyphen (optimal non-greedy
-      selection still belongs to the eventual Knuth-Plass pass) — see `examples/linebreaks/`;
+      selection still belongs to the eventual Knuth-Plass pass); see `examples/linebreaks/`;
 - [x] lowering to a typed semantic `Document` graph in `mos-core`, with `#image(...)`,
       `#figure(...)`, and `#bibliography(...)` source declarations evaluated in `mos-eval` (manifest
       §5, §6 stage 2);
-- [x] `mos check` end-to-end — parse → lower → render diagnostics with `file:line:col` and source
+- [x] `mos check` end-to-end: parse → lower → render diagnostics with `file:line:col` and source
       carets;
-- [x] `mos build` end-to-end — layout + PDF emission for the Base-14 core fonts and bundled Noto
+- [x] `mos build` end-to-end: layout + PDF emission for the Base-14 core fonts and bundled Noto
       Sans, with PNG/JPEG raster images and figure captions (manifest §6 stages 5–9, §21.1);
 - [x] `mos-lsp` publishes current compiler diagnostics over stdio LSP on open/change, and answers
       `textDocument/definition` for `@label` references (jump to the label's declaration);
 - [ ] HTML and EPUB backends, persistent incremental cache, full bibliography rendering (sorted
-      entry lists, CSL styles) and compiler integration, and richer LSP features — see MVP 1–6 in
+      entry lists, CSL styles) and compiler integration, and richer LSP features; see MVP 1–6 in
       `manifest.md`. Citation keys resolve and resolved `[@key]` markers render numeric labels
       (`[1]`, ...), but BibTeX/CSL foundations are not yet a shipped end-to-end bibliography
       pipeline.

@@ -1,7 +1,7 @@
 // PDF WinAnsiEncoding byte → PostScript glyph name mapping.
 //
 // Source: PDF 1.7 Annex D.2, Table D.2 ("Latin Character Set and
-// Encodings"), column "WIN". This is NOT Microsoft CP1252 — the two
+// Encodings"), column "WIN". This is NOT Microsoft CP1252; the two
 // differ at codes 0x7F, 0x81, 0x8D, 0x8F, 0x90, 0x9D (gaps in PDF;
 // assorted glyphs in CP1252). The PDF WinAnsi table is what every
 // conformant PDF reader uses when a font's /Encoding is
@@ -9,8 +9,8 @@
 // with.
 //
 // This file is shared with build.rs via `include!` and consumed by
-// `src/lib.rs` via `mod winansi_table;` — single source of truth.
-// Regular `//` comments only — inner doc comments (`//!`) would
+// `src/lib.rs` via `mod winansi_table;`: single source of truth.
+// Regular `//` comments only: inner doc comments (`//!`) would
 // break the `include!` consumer because they'd land mid-file in
 // build.rs's binary.
 //
@@ -26,7 +26,7 @@
 // or `None` for unmapped slots (control characters 0x00..=0x1F and
 // the six WinAnsi gaps).
 pub(crate) const WINANSI_TABLE: [Option<&str>; 256] = [
-    // 0x00..=0x1F: C0 control characters — unmapped in PDF WinAnsi.
+    // 0x00..=0x1F: C0 control characters: unmapped in PDF WinAnsi.
     None,
     None,
     None,
@@ -67,7 +67,7 @@ pub(crate) const WINANSI_TABLE: [Option<&str>; 256] = [
     Some("dollar"),      // 0x24
     Some("percent"),     // 0x25
     Some("ampersand"),   // 0x26
-    Some("quotesingle"), // 0x27  — PDF WinAnsi uses `quotesingle`, not `quoteright`
+    Some("quotesingle"), // 0x27 : PDF WinAnsi uses `quotesingle`, not `quoteright`
     Some("parenleft"),   // 0x28
     Some("parenright"),  // 0x29
     Some("asterisk"),    // 0x2A
@@ -128,7 +128,7 @@ pub(crate) const WINANSI_TABLE: [Option<&str>; 256] = [
     Some("bracketright"), // 0x5D
     Some("asciicircum"),  // 0x5E
     Some("underscore"),   // 0x5F
-    Some("grave"),        // 0x60  — PDF WinAnsi: `grave`, not `quoteleft`
+    Some("grave"),        // 0x60 : PDF WinAnsi: `grave`, not `quoteleft`
     // 0x61..=0x7A: lowercase a..z.
     Some("a"),
     Some("b"),
@@ -165,7 +165,7 @@ pub(crate) const WINANSI_TABLE: [Option<&str>; 256] = [
     None,
     // 0x80..=0x9F: Windows-extended block.
     Some("Euro"),           // 0x80
-    None,                   // 0x81  — gap (PDF WinAnsi differs from CP1252 here)
+    None,                   // 0x81 : gap (PDF WinAnsi differs from CP1252 here)
     Some("quotesinglbase"), // 0x82
     Some("florin"),         // 0x83
     Some("quotedblbase"),   // 0x84
@@ -177,10 +177,10 @@ pub(crate) const WINANSI_TABLE: [Option<&str>; 256] = [
     Some("Scaron"),         // 0x8A
     Some("guilsinglleft"),  // 0x8B
     Some("OE"),             // 0x8C
-    None,                   // 0x8D  — gap
+    None,                   // 0x8D : gap
     Some("Zcaron"),         // 0x8E
-    None,                   // 0x8F  — gap
-    None,                   // 0x90  — gap
+    None,                   // 0x8F : gap
+    None,                   // 0x90 : gap
     Some("quoteleft"),      // 0x91
     Some("quoteright"),     // 0x92
     Some("quotedblleft"),   // 0x93
@@ -193,11 +193,11 @@ pub(crate) const WINANSI_TABLE: [Option<&str>; 256] = [
     Some("scaron"),         // 0x9A
     Some("guilsinglright"), // 0x9B
     Some("oe"),             // 0x9C
-    None,                   // 0x9D  — gap
+    None,                   // 0x9D : gap
     Some("zcaron"),         // 0x9E
     Some("Ydieresis"),      // 0x9F
     // 0xA0..=0xAF: Latin-1 punctuation. 0xA0 aliases `space`; 0xAD aliases `hyphen`.
-    Some("space"),         // 0xA0  — alias of 0x20 per PDF 1.7 Annex D.2
+    Some("space"),         // 0xA0 : alias of 0x20 per PDF 1.7 Annex D.2
     Some("exclamdown"),    // 0xA1
     Some("cent"),          // 0xA2
     Some("sterling"),      // 0xA3
@@ -210,7 +210,7 @@ pub(crate) const WINANSI_TABLE: [Option<&str>; 256] = [
     Some("ordfeminine"),   // 0xAA
     Some("guillemotleft"), // 0xAB
     Some("logicalnot"),    // 0xAC
-    Some("hyphen"),        // 0xAD  — alias of 0x2D per PDF 1.7 Annex D.2
+    Some("hyphen"),        // 0xAD : alias of 0x2D per PDF 1.7 Annex D.2
     Some("registered"),    // 0xAE
     Some("macron"),        // 0xAF
     // 0xB0..=0xBF.

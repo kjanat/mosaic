@@ -12,7 +12,7 @@ use crate::codes::DiagnosticDef;
 /// Diagnostic severity (manifest §31).
 ///
 /// Three runtime severities. `Error` marks a *failing* diagnostic (the CLI
-/// exits non-zero at the next phase barrier) — it does **not** mean "abort
+/// exits non-zero at the next phase barrier): it does **not** mean "abort
 /// the phase right now". `Notice` is informational and non-failing
 /// (substitutions, auto-decisions). Sub-message kinds (`note`/`help`/
 /// `hint`) live on [`DiagnosticAnnotation`], never here.
@@ -38,7 +38,7 @@ pub enum Severity {
 ///
 /// The diagnostic's *primary* span lives on [`Diagnostic::span`]; these are
 /// only secondary spans (`Related`) and textual rows. There is intentionally
-/// no `Primary` variant — that would be a second home for the primary span.
+/// no `Primary` variant; that would be a second home for the primary span.
 ///
 /// # Examples
 ///
@@ -69,7 +69,7 @@ pub enum DiagnosticAnnotation {
 /// A machine-actionable fix for a [`Diagnostic`].
 ///
 /// A `Suggestion` says "replace the bytes at this [`SourceSpan`] with this
-/// text" — it is structured data a tool can apply automatically, as opposed
+/// text": it is structured data a tool can apply automatically, as opposed
 /// to the prose advice carried by [`DiagnosticAnnotation::Help`]. Backends
 /// consume it without re-parsing: the CLI can print a fix-it diff and an LSP
 /// can surface it as a code action keyed on the same span.
@@ -131,7 +131,7 @@ impl Suggestion {
 /// Identity and default severity come from a `'static` [`DiagnosticDef`] in
 /// [`crate::codes`]; the instance carries the *resolved* severity (today always
 /// the def's default, later a config override) so rendering never has to
-/// consult the def. Fields are private — construct via [`Diagnostic::simple`]
+/// consult the def. Fields are private; construct via [`Diagnostic::simple`]
 /// or [`Diagnostic::new`].
 ///
 /// # Examples

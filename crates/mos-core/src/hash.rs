@@ -1,8 +1,8 @@
 //! Deterministic content hashing for cache boundaries (design note
 //! `docs/incremental-dependencies.md` §4, §5).
 //!
-//! Incremental builds compare *content boundaries* — "did these bytes change?"
-//! — and the §4 hash sketches all share one shape: `H(engine_version, …fields)`.
+//! Incremental builds compare *content boundaries*: "did these bytes change?"
+//!, and the §4 hash sketches all share one shape: `H(engine_version, …fields)`.
 //! [`ContentHasher`] is the one place that shape is implemented, so every
 //! boundary (bibliography sources, page layout output, future source/asset
 //! hashes per §9.4) folds its fields the same way instead of re-deriving FNV in
@@ -13,7 +13,7 @@
 //! - **Engine-version stamped.** [`ContentHasher::new`] folds
 //!   `CARGO_PKG_VERSION` first, so bumping the engine invalidates every hash
 //!   (§5 rule 2). Callers cannot forget it.
-//! - **Portable & deterministic.** The state is FNV-1a over 128 bits — fully
+//! - **Portable & deterministic.** The state is FNV-1a over 128 bits: fully
 //!   specified, endianness-pinned (fixed little-endian widths), and independent
 //!   of pointer identity or hash-map order. Unlike [`std`]'s randomly-seeded
 //!   `SipHash`, which §4 rules out, two runs of the same input always agree.
@@ -26,7 +26,7 @@
 //!
 //! FNV-1a is an **interim** choice: the design note prefers
 //! BLAKE3-truncated-to-128, and the §9.4 slice may swap the construction. That
-//! swap stays internal — the [`ContentHasher`] API is unchanged — but it does
+//! swap stays internal; the [`ContentHasher`] API is unchanged, but it does
 //! change hash *values*, which the stamped engine version absorbs. FNV is not
 //! collision-hardened; nothing yet relies on adversarial collision resistance.
 

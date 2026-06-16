@@ -11,7 +11,7 @@
 //! function of the source: `#image` / `#figure` and `#bibliography` read
 //! external files, so the same text can lower differently as those files
 //! appear, change, or fail to load. A [`LowerResult`] with
-//! `reads_external_resources` set is therefore never stored — the server
+//! `reads_external_resources` set is therefore never stored; the server
 //! lowers such documents fresh on every request (matching pre-cache
 //! behavior) rather than risk serving a lowering gone stale against the
 //! filesystem with no source edit to invalidate it (issue #106 review).
@@ -34,7 +34,7 @@ pub(crate) struct LoweringCache {
 }
 
 impl LoweringCache {
-    /// The cached lowering for `uri`, or `None` when nothing is stored —
+    /// The cached lowering for `uri`, or `None` when nothing is stored:
     /// either because the document was never lowered, was invalidated, or its
     /// last lowering was impure and therefore deliberately not cached.
     pub(crate) fn get(&self, uri: &str) -> Option<&LowerResult> {
@@ -113,7 +113,7 @@ mod tests {
     fn pure_source_lowers_without_external_reads() {
         // A plain document touches no filesystem, so its lowering is pure and
         // safe to cache. A document with `#figure` (which loads an image file)
-        // is flagged impure — the server must not cache it.
+        // is flagged impure; the server must not cache it.
         let file = PathBuf::from("/virtual/main.mos");
         assert!(
             !mos_eval::lower("= A\n\nSee @a\n", &file).reads_external_resources,

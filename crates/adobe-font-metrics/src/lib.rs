@@ -8,14 +8,14 @@
 //! Supports AFM **v4.x** (the format Adobe shipped with the Core 14
 //! PostScript fonts). The single entry point is [`parse`], which
 //! consumes a `&str` and returns a borrowed [`FontMetrics`] whose
-//! `Cow<'_, str>` fields point into the source slice — zero allocations
+//! `Cow<'_, str>` fields point into the source slice: zero allocations
 //! for glyph names and kerning operands. Call [`FontMetrics::into_owned`]
 //! to obtain an [`OwnedFontMetrics`] (`FontMetrics<'static>`) suitable
 //! for caching, baking into static tables, or sending across threads.
 //!
 //! AFM v3.x files (e.g. older Adobe samples) are deliberately rejected
 //! with [`ParseError::UnsupportedVersion`]. The reader subset here
-//! would handle most v3 files, but the v4-only scope claim is honest —
+//! would handle most v3 files, but the v4-only scope claim is honest;
 //! relax it once a real v3 fixture is on hand to validate against.
 //!
 //! # Coverage
@@ -43,7 +43,7 @@
 //!
 //! [`ParseError`] carries a 1-based `line` number on every variant
 //! that originates inside the source. The parser never panics on
-//! ill-formed input — every malformed record is converted into a
+//! ill-formed input; every malformed record is converted into a
 //! [`ParseError::InvalidNumber`] or [`ParseError::MalformedRecord`].
 
 #![doc(
@@ -149,7 +149,7 @@ pub struct KerningPair<'a> {
     /// PostScript name of the right-hand glyph.
     pub right: Cow<'a, str>,
     /// Horizontal kerning adjustment in 1/1000 em. `KPY` records
-    /// always store `0.0` here at v0.1 — the public type does not
+    /// always store `0.0` here at v0.1; the public type does not
     /// expose vertical kerning yet.
     pub adjust: f32,
 }
@@ -437,7 +437,7 @@ enum State {
     Top,
     CharMetrics,
     KernPairs,
-    /// Inside a `StartKernPairs1` block — direction-1 kerning is not
+    /// Inside a `StartKernPairs1` block: direction-1 kerning is not
     /// modelled by the public type, so records are dropped instead
     /// of being conflated into the direction-0 vector.
     SkipKernPairs,
@@ -513,7 +513,7 @@ pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
         }
 
         // Skip direction-1 blocks wholesale (direction-0 / direction-2
-        // are accepted at top level — see the StartDirection arm below).
+        // are accepted at top level; see the StartDirection arm below).
         if skip_direction {
             if kw == "EndDirection" {
                 skip_direction = false;
@@ -529,7 +529,7 @@ pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
                 return Err(ParseError::MissingHeader { line: lineno });
             }
             let version = rest.trim();
-            // Strict `4.<digits>` — reject `4.`, `4.x`, `4.bad`, etc.
+            // Strict `4.<digits>`: reject `4.`, `4.x`, `4.bad`, etc.
             let is_v4 = version.split_once('.').is_some_and(|(major, minor)| {
                 major == "4" && !minor.is_empty() && minor.bytes().all(|b| b.is_ascii_digit())
             });
@@ -602,7 +602,7 @@ pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
                     skip_direction = true;
                 }
             }
-            // `EndDirection` for accepted directions is a no-op — falls
+            // `EndDirection` for accepted directions is a no-op: falls
             // through the wildcard. The skip-direction guard above
             // handles `EndDirection` for the dropped direction-1 case.
             "C" | "CH" if state == State::CharMetrics => {
@@ -615,7 +615,7 @@ pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
                 }
             }
             "KPH" if state == State::KernPairs => {
-                // Hex-encoded kern pairs — accepted and discarded; the
+                // Hex-encoded kern pairs: accepted and discarded; the
                 // public type doesn't model decoded byte-coded names.
             }
 
@@ -762,7 +762,7 @@ fn parse_char_metric_line(line: &str, lineno: usize) -> Result<CharacterMetric<'
             }
             "N" => name = rest,
             "B" => bbox = Some(parse_bbox(rest, "B", lineno)?),
-            _ => {} // WY, L, VV, etc. — silently ignored
+            _ => {} // WY, L, VV, etc.: silently ignored
         }
     }
 
@@ -812,7 +812,7 @@ fn parse_kern_record<'a>(
             0.0
         }
         "KP" => {
-            // `KP left right xadj yadj` — both operands required.
+            // `KP left right xadj yadj`: both operands required.
             let x = parse_f32(first_num, "KP", lineno)?;
             let y = toks.next().ok_or(ParseError::MalformedRecord {
                 line: lineno,

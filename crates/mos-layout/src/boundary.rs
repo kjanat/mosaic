@@ -11,7 +11,7 @@
 //! This is the §4.5 `PageOutputHash` ("did the laid-out page actually change?")
 //! reduced to the layout primitives that exist today (text runs and image
 //! placements). It is identity/comparison only: no `DepNode` graph, no
-//! `CacheKey` wiring, no reflow loop — those consume these signatures later.
+//! `CacheKey` wiring, no reflow loop; those consume these signatures later.
 //!
 //! # What feeds a signature
 //!
@@ -23,17 +23,17 @@
 //! Deliberately **excluded**, per the determinism rules (§5) and the §4.2/§4.3
 //! carve-outs:
 //!
-//! - **Shaped glyphs** on a run — derived from text + font + shaper, so folding
+//! - **Shaped glyphs** on a run: derived from text + font + shaper, so folding
 //!   them would bind the signature to a transcoder version it should not care
 //!   about. The authored text and font identity stand in for them.
-//! - **The PDF resource name** of a font (`F1`..) — a backend emitter slot;
+//! - **The PDF resource name** of a font (`F1`..): a backend emitter slot;
 //!   layout must not depend on it, so a backend-neutral font identity is folded
 //!   instead (see `font_identity`).
-//! - **Decoded image pixels** (`rgb8`) — an asset-content concern (§4.3),
+//! - **Decoded image pixels** (`rgb8`): an asset-content concern (§4.3),
 //!   addressed by the asset's own hash, not the page boundary.
-//! - **`resolved_path`** on an image handle — an absolute filesystem path, which
+//! - **`resolved_path`** on an image handle: an absolute filesystem path, which
 //!   §5 rule 1 forbids from any hash.
-//! - **`handle.id`** — assigned in image-encounter order, so folding it would
+//! - **`handle.id`**: assigned in image-encounter order, so folding it would
 //!   churn unrelated pages' signatures when an image is added earlier; the
 //!   intrinsic pixel dimensions identify the asset's footprint instead.
 //!
@@ -95,7 +95,7 @@ fn font_identity(font: Font) -> &'static [u8] {
 /// count, and while that count stays below `2^24` (i.e. `pt < 262144`, ~five
 /// orders of magnitude above any real page coordinate) it is represented
 /// exactly by `f32`, so its bit pattern is a canonical, collision-free encoding
-/// of that integer. Past `2^24` consecutive counts would alias — out of the
+/// of that integer. Past `2^24` consecutive counts would alias: out of the
 /// domain layout produces, but the bound the `i32` form (§9.5) would lift.
 /// `-0.0`, `NaN`, and non-finite values normalize to `0` so they cannot create
 /// spurious distinctions.
@@ -157,7 +157,7 @@ fn fold_image(hasher: &mut ContentHasher, image: &ImagePlacement) {
 ///
 /// Equal for identical pagination of identical content, different when a page's
 /// content or its break changes. It is the cache slot's staleness check, not a
-/// human-readable description — use [`content_hash`](Self::content_hash) to read
+/// human-readable description: use [`content_hash`](Self::content_hash) to read
 /// the underlying value.
 ///
 /// # Examples
@@ -253,7 +253,7 @@ impl PageGraphSignature {
     /// [`None`] if the two are identical.
     ///
     /// When one graph is a prefix of the other (a page was added or removed at
-    /// the end), the divergence is the length of the shorter graph — the first
+    /// the end), the divergence is the length of the shorter graph; the first
     /// page index that exists in one but not the other.
     ///
     /// # Examples
@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn page_number_is_folded() {
         // Identical content on a differently-numbered page must sign
-        // differently — the page number is part of the boundary.
+        // differently; the page number is part of the boundary.
         let runs = || vec![run("same", 68.0)];
         assert_ne!(
             PageBoundarySignature::of_page(&page(1, runs())),

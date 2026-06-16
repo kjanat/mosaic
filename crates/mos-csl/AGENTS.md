@@ -3,7 +3,7 @@
 ## OVERVIEW
 
 `mos-csl` holds the CSL (Citation Style Language) data foundations: a typed item data model, a
-BibTeX → CSL mapping, and a CSL 1.0.2 XML style parser. It is **not** a CSL processor — there is no
+BibTeX → CSL mapping, and a CSL 1.0.2 XML style parser. It is **not** a CSL processor: there is no
 evaluation of a style against data, and no wiring into the compiler pipeline.
 
 ## CURRENT SCOPE
@@ -51,7 +51,7 @@ Not implemented:
   retain in-style `<locale>` as raw XML; ignore other unmodelled attributes; error on unknown
   rendering elements. Reject unsupported style versions, `<text>` elements with multiple source
   selectors, and invalid `<choose>` branch order.
-- Tests return `()` and use `expect`/`expect_err` — the workspace enables
+- Tests return `()` and use `expect`/`expect_err`; the workspace enables
   `clippy::panic_in_result_fn`, so `Result`-returning tests with `assert!` are clippy errors.
 
 ## ANTI-PATTERNS

@@ -49,8 +49,8 @@ Not implemented yet:
 - Keep layout and backend concerns out. Store semantic attrs only.
 - Resolve paths relative to the source file/project context used by existing code.
 - Image decode failures should prevent phantom figure output.
-- `resolve` is public and re-entrant — the fixpoint reruns it and future page-ref passes will too —
-  so every pass must be idempotent. Numbering overwrites; caption labelling re-derives `text` from a
+- `resolve` is public and re-entrant; the fixpoint reruns it and future page-ref passes will too, so
+  every pass must be idempotent. Numbering overwrites; caption labelling re-derives `text` from a
   preserved `caption_source` rather than re-reading the already-stamped text (which would nest
   `Figure 1: Figure 1: …`).
 - Preserve diagnostics with useful spans; user input errors are not panics.

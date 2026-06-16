@@ -1,4 +1,4 @@
-//! `mos` — command-line interface for the Mosaic typesetting engine.
+//! `mos`: command-line interface for the Mosaic typesetting engine.
 //!
 //! Subcommands mirror manifest §15.1. MVP 0 wires `mos check` end-to-end
 //! (read source → parse → lower → report diagnostics); the remaining
@@ -35,7 +35,7 @@ const MAX_PAGE_FIXPOINT_ITERATIONS: u32 = 8;
     name = "mos",
     bin_name = "mos",
     version,
-    about = "Mosaic — semantic, incremental typesetting compiler",
+    about = "Mosaic: semantic, incremental typesetting compiler",
     long_about = "Mosaic compiles `.mos` source files to PDF, HTML, and EPUB.\n\
                   See manifest.md in the repository root for the full design."
 )]
@@ -180,7 +180,7 @@ fn unimplemented_subcommand(name: &str) -> ExitCode {
     ExitCode::FAILURE
 }
 
-/// `mos check` — parse + lower the entry file and report diagnostics.
+/// `mos check`: parse + lower the entry file and report diagnostics.
 /// Exits 0 if no errors (warnings still print); 1 otherwise.
 fn run_check(entry: &Path) -> ExitCode {
     let Ok(entry) = resolve_entry("check", entry).map(|entry| entry.source) else {
@@ -227,7 +227,7 @@ fn run_check(entry: &Path) -> ExitCode {
     }
 }
 
-/// `mos build` — read source, parse, lower, lay out, and emit a PDF
+/// `mos build`: read source, parse, lower, lay out, and emit a PDF
 /// to `build/<entry-stem>.pdf`. MVP 0 produces a fixed-A4 document
 /// using the standard PDF base fonts (no embedding). Layout warnings
 /// (e.g. non-ASCII substitutions) print but don't fail the build.
@@ -248,7 +248,7 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
     let mut sink = RenderingSink::new(&src);
 
     // Each phase runs to completion, then the barrier below stops the
-    // build before the next phase if any error was collected — so a
+    // build before the next phase if any error was collected, so a
     // broken document never reaches PDF emission and writes garbage.
     let Ok(tree) = mos_parse::parse(&src, &entry, &mut sink) else {
         return ExitCode::FAILURE;
@@ -463,7 +463,7 @@ fn open_pdf(path: &Path, request: PdfOpen<'_>) -> Result<(), String> {
 /// A [`DiagnosticSink`] that renders each diagnostic to stderr as it
 /// arrives and tracks error/warning counts. The CLI drives one of these
 /// across every phase and checks [`Self::had_error`] at each phase
-/// barrier — that, not `Severity::Error` itself, is what stops the build.
+/// barrier; that, not `Severity::Error` itself, is what stops the build.
 struct RenderingSink<'a> {
     src: &'a str,
     errors: usize,

@@ -13,7 +13,7 @@
 //! Entry types and field names are lowercased; citation keys are kept
 //! verbatim. Brace values balance nested `{}` by naive counting, so
 //! `{The {LaTeX} Companion}` is captured whole, but their contents are
-//! stored as raw text — no `TeX` decoding, no `@string` / `@preamble` macro
+//! stored as raw text; no `TeX` decoding, no `@string` / `@preamble` macro
 //! expansion, no `#` concatenation, no name parsing.
 
 use std::collections::BTreeMap;
@@ -33,7 +33,7 @@ use crate::record::{BibEntry, Bibliography};
 ///
 /// Returns a [`BibParseError`] when the input is not a sequence of
 /// well-formed `@type{key, field = value, ...}` entries separated by
-/// whitespace — for example a missing `@`, entry type, `{`, citation key, or
+/// whitespace: for example a missing `@`, entry type, `{`, citation key, or
 /// `=`, or an unterminated brace/quote value.
 ///
 /// # Examples

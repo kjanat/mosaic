@@ -108,7 +108,7 @@ pub struct LowerResult {
     pub document: Document,
     pub diagnostics: Vec<Diagnostic>,
     pub metadata: DocumentMetadata,
-    /// Whether lowering this document read external files — `#image` /
+    /// Whether lowering this document read external files: `#image` /
     /// `#figure` image loads and `#bibliography` source reads. Such a
     /// lowering is **not a pure function of the source text**: the same
     /// `(src, file)` can lower differently as referenced files appear,
@@ -275,7 +275,7 @@ impl Evaluator {
                     span,
                 } => match kind {
                     // `DirectiveKind` (set by the parser) is the
-                    // discriminator here, *not* `name` — `#set image(...)`
+                    // discriminator here, *not* `name`: `#set image(...)`
                     // and `#image(...)` are both parsed with `name ==
                     // "image"`, and dispatching on the string would
                     // route `#set image(width: 200pt)` into the image
@@ -486,7 +486,7 @@ mod tests {
             !lower("= Title <t>\n\nSee @t\n", &file).reads_external_resources,
             "a source with no filesystem directives lowers purely"
         );
-        // Each filesystem-reading directive marks the lowering impure — even
+        // Each filesystem-reading directive marks the lowering impure: even
         // when the referenced file is missing, since the *attempt* is what
         // makes the result depend on external state.
         assert!(
@@ -509,8 +509,8 @@ mod tests {
         // #103): a labelled declaration carries BOTH `label_span.start` and
         // `label_span.end` as `Int`s spanning exactly the label token, so the
         // LSP can target `<intro>` rather than the whole heading. If the
-        // lowerer ever stamps one attribute without the other — or stops
-        // stamping them — `definition.rs`'s safe fallback would silently widen
+        // lowerer ever stamps one attribute without the other, or stops
+        // stamping them: `definition.rs`'s safe fallback would silently widen
         // the definition range with no test catching it. This locks the pair.
         let src = "= Intro <intro>\n";
         let r = lower(src, &PathBuf::from("test.mos"));
@@ -951,7 +951,7 @@ mod tests {
         // End-to-end: a real `#figure(label: ...)` lowers with its label
         // on the Figure node, the resolver numbers the figure, and an
         // `@label` reference rewrites to kind-aware `Figure 1` text. Note
-        // the space before `here.` — a `.` flush against the reference
+        // the space before `here.`: a `.` flush against the reference
         // would be absorbed into the label (`fig:plot.`) and miss.
         let png_path = write_tiny_png("ref-fig.png");
         let dir = png_path.parent().unwrap();
@@ -1016,8 +1016,8 @@ mod tests {
         // `@page(label)` reaches the semantic model as a distinct
         // `NodeKind::PageReference` carrying the bare label and a `?label?`
         // placeholder (the unresolved-reference pattern). This slice models the
-        // node but does not resolve it — page resolution is the resolve↔layout
-        // fixpoint (issue #72) — so it must NOT be folded into the cross-
+        // node but does not resolve it: page resolution is the resolve↔layout
+        // fixpoint (issue #72), so it must NOT be folded into the cross-
         // reference machinery and the placeholder must survive lowering. The
         // label is declared so the lower-time validation stays quiet here.
         let r = lower(
@@ -1047,7 +1047,7 @@ mod tests {
     #[test]
     fn undeclared_page_reference_label_emits_mos0033() {
         // An undeclared label in `@page(...)` is a lower-time error, exactly
-        // like a bad `@ref` — `mos check` reports it without laying out.
+        // like a bad `@ref`: `mos check` reports it without laying out.
         let r = lower("See @page(missing) here.\n", &PathBuf::from("test.mos"));
         assert!(
             r.diagnostics
@@ -1122,7 +1122,7 @@ mod tests {
     #[test]
     fn malformed_citation_does_not_create_citation_node() {
         // `[@]` with an empty key must surface as a parse warning
-        // (MOS0039) and produce zero `NodeKind::Citation` nodes — the
+        // (MOS0039) and produce zero `NodeKind::Citation` nodes: the
         // semantic model only carries citations that parsed cleanly.
         let r = lower("look [@] here\n", &PathBuf::from("test.mos"));
         assert!(!r.has_errors(), "{:?}", r.diagnostics);

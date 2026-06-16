@@ -2,7 +2,7 @@
 //!
 //! Emits a fixed-A4 PDF declaring all 14 standard PDF base fonts
 //! (Helvetica/Times/Courier × 4 + Symbol + `ZapfDingbats`). No font
-//! data ships — every glyph outline is supplied by the PDF reader's
+//! data ships; every glyph outline is supplied by the PDF reader's
 //! built-in Core 14 implementations.
 //!
 //! For each Latin Core 14 face actually used, the backend plans a
@@ -43,7 +43,7 @@ use crate::encoding::{DocEncoding, EncodingPlanner};
 /// Identifies Mosaic as the PDF's producing application, written to the
 /// Info dictionary `/Producer` and `/Creator` so a built PDF traces back
 /// to the compiler that bred it (the way ffmpeg/Word/Adobe stamp theirs).
-/// A compile-time constant, so output stays byte-for-byte deterministic —
+/// A compile-time constant, so output stays byte-for-byte deterministic:
 /// no wall-clock, host, path, or user data leaks in. The version tracks
 /// the workspace `CARGO_PKG_VERSION` automatically.
 ///
@@ -82,7 +82,7 @@ pub struct PdfMetadata {
 /// Emit `graph` as a PDF file at `out`. Creates `out`'s parent
 /// directory if it doesn't already exist.
 ///
-/// Returns any diagnostics raised during PDF emission — currently
+/// Returns any diagnostics raised during PDF emission; currently
 /// only `MOS0032` (per-font extended-glyph budget exhausted). Layout
 /// diagnostics flow through [`mos_layout::LayoutResult::diagnostics`]
 /// separately; callers (the CLI) typically render both.
@@ -135,7 +135,7 @@ fn io_diagnostic(message: String) -> CoreError {
 /// Build the PDF bytes from `graph`. Pulled out of [`emit`] so tests
 /// can round-trip without touching the filesystem. Returns the bytes
 /// plus any encoding diagnostics (currently `MOS0032` for Base14
-/// `/Differences` overflow). Kept `pub(crate)` — the public surface
+/// `/Differences` overflow). Kept `pub(crate)`; the public surface
 /// is [`emit`].
 ///
 /// # Errors
@@ -148,7 +148,7 @@ pub(crate) fn build_pdf(
     metadata: &PdfMetadata,
 ) -> Result<(Vec<u8>, Vec<Diagnostic>)> {
     // Phase 1a: scan every run and plan per-face Base14 /Differences
-    // encodings (embedded-font runs are skipped — they take the Type 0
+    // encodings (embedded-font runs are skipped: they take the Type 0
     // CID path below).
     let mut planner = EncodingPlanner::new();
     for page in &graph.pages {
@@ -160,7 +160,7 @@ pub(crate) fn build_pdf(
     // Phase 1b: subset every embedded face actually used. One plan
     // per face referenced; absent if the face never appears in `runs`.
     // Only embedded-font runs need cloning into the flat slice the
-    // planner consumes — Base14 runs would be filtered out by
+    // planner consumes: Base14 runs would be filtered out by
     // `plan_embedded` anyway, so cloning them up front is pure waste
     // for documents where Base14 dominates.
     let embedded_runs: Vec<TextRun> = graph
@@ -191,7 +191,7 @@ pub(crate) fn build_pdf(
 
     // One indirect ref per Base14 face, in the order published by
     // `Font::ALL_BASE14`. Always all 14 entries so every page's
-    // resource dictionary is identical for Base14 — preserves byte
+    // resource dictionary is identical for Base14: preserves byte
     // stability for Base14-only documents.
     let base14_refs: Vec<(Font, Ref)> = Font::ALL_BASE14.iter().map(|f| (*f, alloc())).collect();
 
@@ -199,8 +199,8 @@ pub(crate) fn build_pdf(
     // the indirect refs for the custom encoding dict and the
     // `/ToUnicode` CMap stream. Symbol/Dingbats and unused faces get
     // no extra refs. Iterate `Font::ALL_BASE14` (not `&encodings`) so the
-    // `alloc()` order — and therefore the byte layout of the produced
-    // PDF — is deterministic across runs.
+    // `alloc()` order, and therefore the byte layout of the produced
+    // PDF is deterministic across runs.
     let mut encoding_refs: HashMap<Font, (Ref, Ref)> = HashMap::new();
     for font in Font::ALL_BASE14 {
         if let Some(enc) = encodings.get(&font)
@@ -231,7 +231,7 @@ pub(crate) fn build_pdf(
 
     // Allocate one indirect ref per unique image. Compression itself
     // happens at emit time (see the loop below) so we don't hold every
-    // compressed stream in memory simultaneously — `graph.images` is
+    // compressed stream in memory simultaneously: `graph.images` is
     // already the deduped set, and an image-heavy document can blow
     // peak RAM if we buffer all compressed copies before writing them.
     let image_refs: Vec<Ref> = graph.images.iter().map(|_| alloc()).collect();
@@ -270,7 +270,7 @@ pub(crate) fn build_pdf(
             }
             // Image XObjects. Every page lists every image referenced
             // anywhere in the document so resource dicts stay byte-
-            // stable across pages — same pattern as the font dicts.
+            // stable across pages: same pattern as the font dicts.
             if !graph.images.is_empty() {
                 let mut x_objects = resources.x_objects();
                 for (handle, image_id) in graph.images.iter().zip(image_refs.iter()) {
@@ -317,7 +317,7 @@ pub(crate) fn build_pdf(
                 font_dict.to_unicode(cmap_ref);
             }
             None => {
-                // No extended glyphs needed for this face — the
+                // No extended glyphs needed for this face: the
                 // standard WinAnsi shortcut suffices. PDF readers
                 // default Type1 dicts to the font's built-in
                 // encoding (StandardEncoding for Helvetica), so
@@ -407,7 +407,7 @@ fn emit_to_unicode_cmap(pdf: &mut Pdf, id: Ref, enc: &DocEncoding) {
     // The `SystemInfo` here is embedded inside the PostScript-y CMap
     // stream content (the `%%BeginResource: CMap …` header that
     // `UnicodeCmap::new` writes). The `/CMapName` and `/CIDSystemInfo`
-    // entries set further down go on the stream dictionary itself —
+    // entries set further down go on the stream dictionary itself.
     // both are required by PDF 1.7 §9.7.5.4 / §9.10.3 (pdf-writer
     // documents `.name()` and `.system_info()` as "Required"), even
     // though readers we've tested tolerate their absence because the
@@ -647,7 +647,7 @@ mod tests {
         assert_eq!(count_bytes(&bytes, b"println"), 1);
     }
 
-    /// A graph containing Polish + Czech text — exercises the
+    /// A graph containing Polish + Czech text: exercises the
     /// `/Differences` and `/ToUnicode` emit paths end to end.
     fn extended_latin_graph() -> PageGraph {
         PageGraph {
@@ -709,7 +709,7 @@ mod tests {
 
     #[test]
     fn pure_ascii_graph_keeps_predefined_winansi_shortcut() {
-        // Existing sample_graph() is pure ASCII — no /Differences
+        // Existing sample_graph() is pure ASCII; no /Differences
         // should be emitted, the predefined WinAnsi shortcut path is
         // exercised. This guards against accidental "always emit a
         // custom encoding" regressions that would balloon every PDF.
@@ -739,7 +739,7 @@ mod tests {
         // a remapped slot rather than substituting `?` (0x3F).
         //
         // Both assertions operate on the page content stream slice
-        // only — scanning the whole PDF would let the `/ToUnicode`
+        // only: scanning the whole PDF would let the `/ToUnicode`
         // CMap (`<7F> <0141>`) satisfy the `7F` needle even if the
         // content stream had silently substituted to `?`. Surgical
         // slicing keeps the smoke test honest.
@@ -895,7 +895,7 @@ mod tests {
     #[test]
     fn duplicate_image_emits_one_xobject() {
         // Two placements of the same image should still produce one
-        // shared XObject — the layout pass already dedup'd them, so the
+        // shared XObject; the layout pass already dedup'd them, so the
         // PDF backend never sees two ImageHandle entries.
         use mos_layout::{ImageHandle, ImagePlacement};
         use std::sync::Arc;

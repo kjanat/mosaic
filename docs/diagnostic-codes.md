@@ -1,17 +1,17 @@
 # Mosaic diagnostic code catalog
 
 Authoritative mirror of the diagnostic registry in
-[`crates/mos-core/src/codes.rs`](../crates/mos-core/src/codes.rs). That file — not this document —
-is the source of truth; a drift test (`crates/mos/tests/catalog.rs`) fails CI if the two disagree.
+[`crates/mos-core/src/codes.rs`](../crates/mos-core/src/codes.rs). That file, not this document, is
+the source of truth; a drift test (`crates/mos/tests/catalog.rs`) fails CI if the two disagree.
 
 ## The contract
 
 - **Identity is opaque.** A diagnostic code is a stable, namespaced, severity-free identifier
-  rendered as `MOS0010`. The number is just a number — it does **not** encode severity, owner crate,
+  rendered as `MOS0010`. The number is just a number: it does **not** encode severity, owner crate,
   category, phase, or lint group. Numbers are globally unique and stable; new codes get the next
   free integer regardless of what they describe.
 - **Severity, category, owner, and summary are metadata** on `DiagnosticDef`. The catalog groups by
-  metadata (this document organises by category for human scanning), never by numeric range — so a
+  metadata (this document organises by category for human scanning), never by numeric range, so a
   rule that moves phase (parser → eval, fonts → text shaping) keeps its stable ID and just updates
   its `category`.
 - **Codes are minted in one place.** `DiagnosticCode` and `DiagnosticDef` have private fields and
@@ -29,12 +29,12 @@ is the source of truth; a drift test (`crates/mos/tests/catalog.rs`) fails CI if
 | `Warning` | Surfaced, but the build continues.                                  |
 | `Notice`  | Informational (substitutions, auto-decisions). The build continues. |
 
-`note` / `help` / `hint` are *not* severities — they are `DiagnosticAnnotation` sub-message kinds
+`note` / `help` / `hint` are *not* severities: they are `DiagnosticAnnotation` sub-message kinds
 attached to a diagnostic, alongside `Related` (a secondary span).
 
 ## Codes
 
-Grouped by `DiagnosticCategory` for human scanning. Numeric order has no meaning — current numbers
+Grouped by `DiagnosticCategory` for human scanning. Numeric order has no meaning: current numbers
 are intentionally interleaved across categories, and a code's number is just an opaque key. Future
 codes use the next free integer.
 

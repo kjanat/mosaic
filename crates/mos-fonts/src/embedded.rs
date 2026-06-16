@@ -96,7 +96,7 @@ impl std::fmt::Debug for EmbeddedFont {
 
 impl EmbeddedFont {
     /// Parse a bundled TTF blob into an [`EmbeddedFont`]. The blob
-    /// must outlive the program (which it does — bundled cuts come
+    /// must outlive the program (which it does: bundled cuts come
     /// from `include_bytes!` and are baked into the binary).
     ///
     /// `postscript_name`, `is_bold`, and `is_italic` are provided by
@@ -114,7 +114,7 @@ impl EmbeddedFont {
     /// failed LFS pull or a truncated binary). Threading
     /// `Result`/`Option` through the dozens of downstream call sites
     /// to handle a case the compile-time `include_bytes!` already
-    /// rules out would make the code materially worse — the lint
+    /// rules out would make the code materially worse; the lint
     /// suppression is the explicit CLAUDE.md exception, paired with
     /// the CI test that catches the only realistic failure mode.
     #[must_use]
@@ -131,7 +131,7 @@ impl EmbeddedFont {
         is_italic: bool,
     ) -> Self {
         let ttf = ttf_parser::Face::parse(bytes, 0)
-            .expect("bundled font bytes failed to parse as TrueType — repository corruption?");
+            .expect("bundled font bytes failed to parse as TrueType: repository corruption?");
         let face = Face::from_face(ttf.clone());
 
         let units_per_em = ttf.units_per_em();
@@ -149,7 +149,7 @@ impl EmbeddedFont {
         );
 
         // PDF FontDescriptor flag bits (PDF 1.7 §9.8.2 Table 123):
-        //   bit 6 (value 32)  Nonsymbolic — character set is standard
+        //   bit 6 (value 32)  Nonsymbolic: character set is standard
         //                     Adobe-Latin (covers extended Latin and
         //                     anything Unicode-addressable that doesn't
         //                     deliberately use a symbol encoding).
@@ -260,7 +260,7 @@ pub fn subset(font: &EmbeddedFont, gids: &[u16]) -> Result<Vec<u8>, SubsetError>
 
 /// Wraps [`subsetter::Error`] without exposing the dependency in the
 /// public API. The PDF emit path bails on this error with a
-/// `Diagnostic`. The inner variant is private — callers debug via
+/// `Diagnostic`. The inner variant is private: callers debug via
 /// the `Display`/`Debug` impls, not pattern matching on
 /// `subsetter::Error` directly.
 #[derive(Debug)]

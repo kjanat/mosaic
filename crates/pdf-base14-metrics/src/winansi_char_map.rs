@@ -6,7 +6,7 @@
 // Why a hand-written table rather than deriving from the Adobe Glyph
 // List at build time: the AGL data is BSD-3-Clause and would force
 // that leg onto the crate's SPDX expression. Transcribing the 256
-// slots from PDF 1.7 — a normative spec, not someone else's data —
+// slots from PDF 1.7: a normative spec, not someone else's data.
 // keeps the published artifact MIT + APAFML only. The
 // `winansi_vendor` integration test re-derives the same map from AGL
 // at test time and asserts byte-for-byte equality, so any
@@ -14,7 +14,7 @@
 //
 // This file is `mod`-included by `src/lib.rs` only. It is deliberately
 // NOT pulled into `build.rs` (unlike its sibling `winansi_table.rs`)
-// because the build script doesn't need it — keeping it out of build.rs
+// because the build script doesn't need it: keeping it out of build.rs
 // avoids a `dead_code` warning in the build-script binary.
 //
 // Per PDF 1.7 Annex D.2 the encoding pins two aliasing rules:
@@ -26,7 +26,7 @@
 // the same as Latin-1 / CP1252 round-tripping.
 
 pub(crate) const WINANSI_CHAR_MAP: [Option<char>; 256] = [
-    // 0x00..=0x1F: C0 control characters — unmapped in PDF WinAnsi.
+    // 0x00..=0x1F: C0 control characters: unmapped in PDF WinAnsi.
     None,
     None,
     None,

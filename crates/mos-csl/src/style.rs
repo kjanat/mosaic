@@ -1,6 +1,6 @@
 //! The typed CSL style AST produced by [`parse_style`](crate::parse_style).
 //!
-//! This models the structure of a CSL 1.0.2 style — the `<style>` root, its
+//! This models the structure of a CSL 1.0.2 style; the `<style>` root, its
 //! `<info>`, `<citation>`, `<bibliography>`, and `<macro>` children, and the
 //! rendering elements ([`Element`]) with their common attributes. It is a
 //! faithful *structural* model, not a processor: there is no evaluation of a
@@ -81,9 +81,9 @@ pub enum StyleClass {
 /// Style metadata (`<info>`). Only the commonly-needed fields are modelled.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Info {
-    /// `<id>` — the stable style identifier.
+    /// `<id>`; the stable style identifier.
     pub id: Option<String>,
-    /// `<title>` — the human-facing style name.
+    /// `<title>`; the human-facing style name.
     pub title: Option<String>,
     /// `<link>` entries, including dependent-style `rel="independent-parent"`.
     pub links: Vec<InfoLink>,
@@ -176,7 +176,7 @@ pub struct BibliographyOptions {
     pub names: InheritableNameOptions,
 }
 
-/// A `<layout>` — an ordered list of rendering elements plus common attributes.
+/// A `<layout>`: an ordered list of rendering elements plus common attributes.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Layout {
     pub elements: Vec<Element>,
@@ -240,7 +240,7 @@ pub enum Element {
     Choose(Choose),
 }
 
-/// `<text>` — renders a variable, macro, term, or literal value.
+/// `<text>`: renders a variable, macro, term, or literal value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Text {
     pub source: TextSource,
@@ -262,11 +262,11 @@ pub enum TextSource {
         form: Option<String>,
         plural: bool,
     },
-    /// `value="..."` — a literal string.
+    /// `value="..."`: a literal string.
     Value(String),
 }
 
-/// `<number>` — renders a number variable.
+/// `<number>`: renders a number variable.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Number {
     pub variable: String,
@@ -274,7 +274,7 @@ pub struct Number {
     pub common: Common,
 }
 
-/// `<date>` — renders a date variable, localized or with explicit parts.
+/// `<date>`: renders a date variable, localized or with explicit parts.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DateElement {
     pub variable: String,
@@ -298,7 +298,7 @@ pub struct DatePart {
     pub common: Common,
 }
 
-/// `<names>` — renders one or more name variables.
+/// `<names>`: renders one or more name variables.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Names {
     /// The `variable` attribute, split on whitespace.
@@ -340,7 +340,7 @@ pub struct EtAl {
     pub common: Common,
 }
 
-/// `<label>` — renders a term matching a variable.
+/// `<label>`: renders a term matching a variable.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Label {
     /// The `variable` attribute. `None` when nested in `<names>` (it inherits
@@ -352,14 +352,14 @@ pub struct Label {
     pub common: Common,
 }
 
-/// `<group>` — a delimited, conditionally-suppressed run of elements.
+/// `<group>`: a delimited, conditionally-suppressed run of elements.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Group {
     pub children: Vec<Element>,
     pub common: Common,
 }
 
-/// `<choose>` — conditional rendering.
+/// `<choose>`: conditional rendering.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Choose {
     /// `<if>` followed by any `<else-if>` branches, in order.

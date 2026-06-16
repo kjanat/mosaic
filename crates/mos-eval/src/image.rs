@@ -137,7 +137,7 @@ mod tests {
     /// A 2×1 fully opaque PNG: red pixel + blue pixel. Hand-crafted so
     /// tests don't depend on filesystem access.
     fn red_blue_png() -> Vec<u8> {
-        // Use `image` crate to produce the bytes — this is the same
+        // Use `image` crate to produce the bytes; this is the same
         // round-trip we exercise in production.
         let mut buf = image::RgbaImage::new(2, 1);
         buf.put_pixel(0, 0, image::Rgba([255, 0, 0, 255]));
@@ -179,7 +179,7 @@ mod tests {
             .write_to(&mut out, image::ImageFormat::Png)
             .unwrap();
         let img = decode(&out.into_inner()).unwrap();
-        // ((255 * 128) + (255 * 127) + 127) / 255 = 255 — red channel
+        // ((255 * 128) + (255 * 127) + 127) / 255 = 255: red channel
         // stays at 255 (white is also 255 red). Green/blue go halfway
         // between 0 and 255.
         assert_eq!(img.rgb8[0], 255);

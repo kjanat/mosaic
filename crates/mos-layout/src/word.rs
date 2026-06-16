@@ -59,7 +59,7 @@ pub(crate) struct ShyBreak {
 ///
 /// Re-shapes both halves through [`shape_with_fallback`] so the
 /// resulting [`Word::width_pt`] matches the post-shape subrun
-/// advances exactly — the cheap [`text_width`] estimate used during
+/// advances exactly; the cheap [`text_width`] estimate used during
 /// the fit search may differ from the shaped width when fallback
 /// splits the run, so the shaped sum is the authoritative value and
 /// is re-checked against `max_prefix_width` before the candidate is

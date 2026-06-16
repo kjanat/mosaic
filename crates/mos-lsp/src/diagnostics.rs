@@ -29,7 +29,7 @@ pub struct LspRange {
 }
 
 /// LSP `Diagnostic`. Only the fields the compiler currently produces
-/// are modelled — adding related-information or tags is a separate
+/// are modelled: adding related-information or tags is a separate
 /// slice.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LspDiagnostic {
@@ -232,7 +232,7 @@ mod tests {
                 character: 0
             }
         );
-        // After `µ` — one UTF-16 code unit consumed.
+        // After `µ`: one UTF-16 code unit consumed.
         assert_eq!(
             byte_to_position(src, 2),
             LspPosition {
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn byte_to_position_counts_surrogate_pairs_as_two_units() {
-        // 𝕏 (U+1D54F) is outside the BMP — one Unicode scalar value
+        // 𝕏 (U+1D54F) is outside the BMP: one Unicode scalar value
         // but two UTF-16 code units. LSP's default position encoding
         // is UTF-16, so the character right after 𝕏 must report
         // column 2.

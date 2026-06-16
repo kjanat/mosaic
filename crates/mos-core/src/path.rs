@@ -4,7 +4,7 @@
 //! convention). These helpers resolve such paths to the platform separator
 //! ([`resolve_relative`], [`resolve_source_path`]) and render any path back
 //! with forward slashes for user-facing output ([`display_path`]). Nothing
-//! here touches the filesystem — these are pure path-string operations.
+//! here touches the filesystem; these are pure path-string operations.
 
 use std::path::{Path, PathBuf};
 

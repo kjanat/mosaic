@@ -2,8 +2,8 @@
 //!
 //! [`parse_bibtex`] reads a BibTeX string into typed [`BibEntry`] records,
 //! keyed by citation key inside a [`Bibliography`]. The grammar is a
-//! deliberately small, well-defined BibTeX subset — entry type, citation
-//! key, and `{braced}` / `"quoted"` / bare string fields — chosen to give a
+//! deliberately small, well-defined BibTeX subset: entry type, citation
+//! key, and `{braced}` / `"quoted"` / bare string fields: chosen to give a
 //! later citation resolver a stable, ordered record model to build on.
 //!
 //! Within that subset the parser is complete: it accepts any

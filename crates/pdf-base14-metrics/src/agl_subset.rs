@@ -11,19 +11,19 @@
 //
 // Encoded as a `&[(char, &'static str)]` sorted by `char` so callers
 // can `binary_search_by_key`. The names are exactly those in the
-// Adobe AFM (e.g. `Tcommaaccent`, not `Tcedilla`) — what the PDF
+// Adobe AFM (e.g. `Tcommaaccent`, not `Tcedilla`): what the PDF
 // reader looks up to find the glyph outline.
 //
 // The Romanian comma-below codepoints `U+0218`..`U+021B` and the
 // historical cedilla-below variants `U+015E`/`U+015F`/`U+0162`/`U+0163`
 // both resolve to the same glyph names in the AFM
 // (`Scommaaccent`/`scommaaccent`/`Tcommaaccent`/`tcommaaccent`,
-// `Scedilla`/`scedilla` only for S — Helvetica's AFM has both
+// `Scedilla`/`scedilla` only for S: Helvetica's AFM has both
 // `Scedilla` and `Scommaaccent` as distinct glyphs but only one
 // `Tcommaaccent`). The mapping below picks the AGLFN canonical name
 // for each codepoint.
 //
-// `WinAnsi` natives (`á`, `ß`, `€`, `“`, ...) are NOT in this table —
+// `WinAnsi` natives (`á`, `ß`, `€`, `“`, ...) are NOT in this table:
 // look them up through `winansi_byte` instead.
 //
 // Source: the Helvetica.adobe-font-metrics `CharSet` minus the 216 names in
@@ -118,8 +118,8 @@ pub(crate) const AGL_SUBSET: &[(char, &str)] = &[
     ('\u{017A}', "zacute"),
     ('\u{017B}', "Zdotaccent"),
     ('\u{017C}', "zdotaccent"),
-    // (`Zcaron`/`zcaron` are NOT here — they live in WinAnsi at 0x8E/0x9E.)
-    // Latin Extended-B (Romanian comma-below — modern canonical).
+    // (`Zcaron`/`zcaron` are NOT here: they live in WinAnsi at 0x8E/0x9E.)
+    // Latin Extended-B (Romanian comma-below: modern canonical).
     ('\u{0218}', "Scommaaccent"),
     ('\u{0219}', "scommaaccent"),
     ('\u{021A}', "Tcommaaccent"),
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn winansi_native_returns_none() {
-        // 'A' (U+0041) is in WinAnsi at byte 0x41 — not our table.
+        // 'A' (U+0041) is in WinAnsi at byte 0x41; not our table.
         assert_eq!(agl_glyph_name('A'), None);
         // 'é' (U+00E9) is in WinAnsi at 0xE9.
         assert_eq!(agl_glyph_name('é'), None);

@@ -19,7 +19,7 @@ Implemented:
 - Panic-free recovery: `BibParseError` carries a byte offset and bridges via `to_diagnostic` /
   `From<BibParseError> for CoreError`.
 - `bibliography_content_hash(&[u8]) -> ContentHash` (`src/content.rs`): the §4.1 source-hash
-  boundary specialized to `.bib` inputs — supplies the domain tag + raw bytes to
+  boundary specialized to `.bib` inputs: supplies the domain tag + raw bytes to
   `mos_core::ContentHasher` (the shared, engine-stamped, length-framed FNV-1a-128 interim hasher).
   Deterministic, byte-for-byte, no filesystem inputs. Pairs with
   `mos_cache::BibliographyDependency`. See `docs/incremental-dependencies.md` §4.1.
@@ -45,8 +45,8 @@ Not implemented:
 ## CONVENTIONS
 
 - Keep the public API small: `crates/mos-bib/src/lib.rs` intentionally exposes `parse_bibtex`,
-  `bibliography_content_hash`, and the record/error types — nothing more. Add a re-export only when
-  a new slice genuinely warrants it.
+  `bibliography_content_hash`, and the record/error types: nothing more. Add a re-export only when a
+  new slice genuinely warrants it.
 - `parse_bibtex` returns the local `BibParseError` (issue #66), but it bridges into the standard
   diagnostics surface via `BibParseError::to_diagnostic` and `From<BibParseError> for CoreError`
   (code `MOS0043`). Keep the local type as the parser entry point; don't change `parse_bibtex` to

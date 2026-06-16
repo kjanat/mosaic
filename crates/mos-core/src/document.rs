@@ -66,7 +66,7 @@ pub enum NodeKind {
     BoldItalic,
     Math,
     Equation,
-    /// A captioned container — an image plus a caption paragraph, laid
+    /// A captioned container: an image plus a caption paragraph, laid
     /// out together with the caption beneath. Cross-references via
     /// `@fig:foo` will target this kind once MVP 3 lands.
     Figure,
@@ -95,10 +95,10 @@ pub enum NodeKind {
     /// item's text; nested [`NodeKind::List`] children describe deeper
     /// levels.
     ListItem,
-    /// `\\` — a forced line break inside a paragraph. Carries no
+    /// `\\`: a forced line break inside a paragraph. Carries no
     /// attributes; layout consumes it as a `WordItem::HardBreak`
     /// sentinel in the inline word stream. A blank-line paragraph
-    /// break is **not** the same node — it ends the paragraph and
+    /// break is **not** the same node: it ends the paragraph and
     /// triggers paragraph-spacing leading, whereas `HardBreak` keeps
     /// the same paragraph and applies normal inter-line leading.
     HardBreak,
@@ -142,7 +142,7 @@ pub struct Node {
 }
 
 impl Node {
-    /// The node's content hash — a hash-derived identity placeholder
+    /// The node's content hash: a hash-derived identity placeholder
     /// (manifest §5.1), default until the MVP 5 cache work. Read-only: the
     /// arena owns this field.
     #[must_use]
@@ -150,7 +150,7 @@ impl Node {
         self.content_hash
     }
 
-    /// The node's resolved style slot — a placeholder, default until styling
+    /// The node's resolved style slot: a placeholder, default until styling
     /// lands. Read-only: the arena owns this field.
     #[must_use]
     pub const fn style_id(&self) -> StyleId {
@@ -160,7 +160,7 @@ impl Node {
 
 /// The blueprint for a node handed to [`Document::alloc`] /
 /// [`Document::alloc_child`]. Carries only the fields a caller legitimately
-/// chooses — `kind`, `span`, and `attributes`. The arena supplies the
+/// chooses: `kind`, `span`, and `attributes`. The arena supplies the
 /// `id`, the empty `children` list, and the `content_hash`/`style_id`
 /// placeholders, so an invalid node is unrepresentable at the call site.
 #[derive(Clone, Debug)]
@@ -216,7 +216,7 @@ pub enum AttrValue {
     /// them to a single canonical scalar so layout never has to know
     /// about units.
     Length(f64),
-    /// Opaque binary payload — currently used to carry decoded raster
+    /// Opaque binary payload; currently used to carry decoded raster
     /// image pixels (RGB8) onto an [`NodeKind::Image`] node so the PDF
     /// backend can emit them as an Image `XObject` without re-reading the
     /// source file.

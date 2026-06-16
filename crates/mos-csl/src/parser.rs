@@ -62,7 +62,7 @@ pub fn parse_style(input: &str) -> Result<Style, CslParseError> {
     }
     // A namespaced root must use the CSL namespace; an unnamespaced root is
     // tolerated (hand-authored styles routinely omit it). A foreign namespace
-    // is rejected — element local names alone would otherwise accept non-CSL XML.
+    // is rejected: element local names alone would otherwise accept non-CSL XML.
     if let Some(namespace) = root.tag_name().namespace()
         && namespace != CSL_NAMESPACE
     {

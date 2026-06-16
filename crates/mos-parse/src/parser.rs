@@ -574,7 +574,7 @@ mod tests {
         // is that it does NOT panic and returns a structured result.
         // We document the current behaviour here: `#set` is treated
         // as the keyword and `name` is parsed as the body identifier
-        // — see `at_set_keyword`. This guards against regression.
+        //; see `at_set_keyword`. This guards against regression.
         assert_eq!(r.tree.items.len() + r.diagnostics.len(), 1);
     }
 
@@ -704,8 +704,8 @@ mod tests {
     #[test]
     fn reference_inlines_carry_label_identifier_span() {
         // The parser records, for `@label` and `@page(label)`, the source span
-        // of the bare identifier — excluding the `@`, the `@page(` prefix, and
-        // the `)` — so the lowerer can stamp it for editor rename (issue #116).
+        // of the bare identifier: excluding the `@`, the `@page(` prefix, and
+        // the `)`, so the lowerer can stamp it for editor rename (issue #116).
         let src = "see @sec:methods and @page(fig:wells)\n";
         let r = parse_str(src);
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
@@ -738,7 +738,7 @@ mod tests {
     #[test]
     fn malformed_at_page_falls_back_to_ordinary_reference() {
         // `@page` with no `(label)` is just a cross-reference to a label named
-        // "page" — the page-reference branch only fires for a well-formed
+        // "page"; the page-reference branch only fires for a well-formed
         // `@page(label)`.
         let r = parse_str("see @page now\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
@@ -815,7 +815,7 @@ mod tests {
             inlines.iter().map(|i| &i.text).collect::<Vec<_>>()
         );
         // The first text run still spans the raw bytes including the
-        // CR — only the *payload* is normalized.
+        // CR: only the *payload* is normalized.
         let text = inlines.iter().find(|i| i.kind == InlineKind::Text).unwrap();
         assert_eq!(text.text, "alpha\nbeta");
         assert_eq!(&src[text.span.start()..text.span.end()], "alpha\r\nbeta");
@@ -881,7 +881,7 @@ mod tests {
     #[test]
     fn figure_directive_positional_path() {
         // Pins the `#figure("…")` spelling the directive grammar
-        // advertises — the eval layer treats the first positional arg
+        // advertises; the eval layer treats the first positional arg
         // the same way `#image(...)` does, so the parser-level shape
         // must match `#image`'s.
         let r = parse_str("#figure(\"scan.png\")\n");
@@ -1174,7 +1174,7 @@ mod tests {
 
     #[test]
     fn list_marker_breaks_running_paragraph() {
-        // No blank line between paragraph and list — the marker still
+        // No blank line between paragraph and list; the marker still
         // opens a fresh block.
         let r = parse_str("paragraph line\n- item\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
@@ -1216,7 +1216,7 @@ mod tests {
 
     #[test]
     fn dash_without_space_is_paragraph() {
-        // A bare `-foo` line is a paragraph, not a list — the marker
+        // A bare `-foo` line is a paragraph, not a list; the marker
         // requires trailing whitespace.
         let r = parse_str("-foo\n");
         assert!(!r.has_errors());
@@ -1226,7 +1226,7 @@ mod tests {
     #[test]
     fn number_dot_without_space_is_paragraph() {
         // `1.foo` without trailing whitespace is not an ordered list
-        // marker. (Even `1.` alone with no content is not — keeps the
+        // marker. (Even `1.` alone with no content is not: keeps the
         // parser conservative around inline numerals like `1.5`.)
         let r = parse_str("1.foo\n");
         assert!(!r.has_errors());
@@ -1455,7 +1455,7 @@ mod tests {
     // The chosen citation form is `[@key]`. The key alphabet matches
     // the existing label alphabet (`[A-Za-z0-9_:.-]`, see
     // `support::scan_label_chars`). A single key per `[@…]` group is
-    // the only form recognised in this slice — list forms like
+    // the only form recognised in this slice: list forms like
     // `[@a; @b]` and prefix/suffix bodies (`[see @key, p. 33]`) are
     // deferred to a later bibliography slice and parse here as
     // literal text. Malformed citations (`[@`, `[@key`, `[@]`) emit a
@@ -1477,7 +1477,7 @@ mod tests {
         );
         let citation = &inlines[1];
         assert_eq!(citation.text, "smith2024");
-        // Span covers `[@smith2024]` — the full source extent, not
+        // Span covers `[@smith2024]`; the full source extent, not
         // just the key.
         let span_text = &src[citation.span.start()..citation.span.end()];
         assert_eq!(span_text, "[@smith2024]");
@@ -1497,7 +1497,7 @@ mod tests {
     #[test]
     fn citation_bare_bracket_stays_literal_text() {
         // A bare `[` (no immediate `@`) must not trigger the citation
-        // branch and must not emit a warning — `[` is a freely
+        // branch and must not emit a warning: `[` is a freely
         // available character in prose.
         let r = parse_str("write [this] not that\n");
         assert!(!r.has_errors(), "{:?}", r.diagnostics);
@@ -1517,7 +1517,7 @@ mod tests {
         // `[@key` with no closing `]` before end-of-paragraph must
         // emit `MOS0039` and leave the source bytes as literal text.
         // Critically, recovery must NOT let the `@key` chars fall
-        // through to the `@`-reference branch — that would inject a
+        // through to the `@`-reference branch; that would inject a
         // phantom `Reference` inline and trip the resolver's
         // unknown-label diagnostic (`MOS0033`) on what was a citation
         // mistake, not a label mistake.
@@ -1561,7 +1561,7 @@ mod tests {
     #[test]
     fn citation_multi_key_form_is_deferred_and_does_not_leak_references() {
         // `[@a; @b]` is the pandoc multi-key form. This slice does
-        // NOT support it — recognising it as one citation list is a
+        // NOT support it: recognising it as one citation list is a
         // future bibliography slice (MVP 4 follow-up). Until then it
         // must surface as a single `MOS0039` warning and consume the
         // whole `[@…]` extent so neither `@a` nor `@b` slips out as

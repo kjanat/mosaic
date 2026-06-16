@@ -10,7 +10,7 @@
 //! Responsibilities are split by which input each step needs:
 //!
 //! - [`validate_page_references`](crate::resolve) runs at lower time, where the
-//!   label *index* exists, and reports an undeclared `@page(x)` as `MOS0033` —
+//!   label *index* exists, and reports an undeclared `@page(x)` as `MOS0033`,
 //!   exactly like an undeclared `@x`. (It lives in `resolve` next to the index.)
 //! - [`resolve_page_references`] runs each fixpoint iteration with a label→page
 //!   *map* from layout and rewrites each page reference's text to the number.
@@ -83,7 +83,7 @@ pub enum PageFixpointOutcome {
         /// Resolve↔layout rounds run before the map settled.
         iterations: u32,
     },
-    /// The map never settled — it oscillated, or the iteration cap was hit.
+    /// The map never settled: it oscillated, or the iteration cap was hit.
     /// The caller keeps the last computed page numbers and should report
     /// `MOS0047`.
     NotConverged {

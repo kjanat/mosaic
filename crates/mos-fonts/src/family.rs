@@ -2,7 +2,7 @@ use mos_core::{Diagnostic, SourceSpan, codes};
 
 use crate::{Base14Font, EmbeddedFontId, Font};
 
-/// A four-cut family — Regular, Bold, Italic, `BoldItalic`. The layout
+/// A four-cut family: Regular, Bold, Italic, `BoldItalic`. The layout
 /// engine picks one slot per styled run (`*emphasis*` → italic,
 /// `**strong**` → bold, raw → fixed-width family, body → regular).
 ///
@@ -52,7 +52,7 @@ pub struct FontFamily {
 const NOTO_SANS_FALLBACKS: &[EmbeddedFontId] = &[EmbeddedFontId::Math];
 
 impl FontFamily {
-    /// The bundled Noto Sans family — embedded TTFs, real designed
+    /// The bundled Noto Sans family: embedded TTFs, real designed
     /// cuts for every style slot (no faux-bold or faux-italic). Raw
     /// runs route through the bundled Noto Sans Mono Regular cut so
     /// `` `Привет` `` and other non-WinAnsi raw content shape through
@@ -87,7 +87,7 @@ impl FontFamily {
     /// The Base14 Helvetica family. Used when the document explicitly
     /// asks for `Helvetica`. Falls back through Courier for raw.
     ///
-    /// Base14 has no per-glyph fallback target — the byte-encoded
+    /// Base14 has no per-glyph fallback target; the byte-encoded
     /// content stream path can't splice in glyph IDs from a sibling
     /// face. Non-WinAnsi codepoints silently substitute to `?` in
     /// `mos-pdf::encode_base14_run`.
@@ -114,7 +114,7 @@ impl FontFamily {
     }
 
     /// The Base14 Times Roman family. Used when the document asks
-    /// for `Times` or `Times-Roman`. No per-glyph fallback — see
+    /// for `Times` or `Times-Roman`. No per-glyph fallback: see
     /// [`Self::helvetica`].
     ///
     /// # Examples
@@ -140,7 +140,7 @@ impl FontFamily {
 
     /// The Base14 Courier family. Used when the document asks for
     /// `Courier` as the body face. All four style slots route to a
-    /// Courier cut. No per-glyph fallback — see [`Self::helvetica`].
+    /// Courier cut. No per-glyph fallback; see [`Self::helvetica`].
     ///
     /// # Examples
     ///
@@ -227,7 +227,7 @@ mod tests {
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
 
         // Mixed case and leading/trailing whitespace must resolve the
-        // same way the canonical spelling does — `resolve` normalises
+        // same way the canonical spelling does: `resolve` normalises
         // through `.trim().to_ascii_lowercase()` before matching.
         let padded = FontFamily::resolve("  heLVETICA  ", None, &mut diags);
         assert!(

@@ -120,7 +120,7 @@ fn apply_text_set(
         ));
         return;
     }
-    // Leading must be strictly positive — zero or negative would
+    // Leading must be strictly positive: zero or negative would
     // stack lines on top of each other or walk upward.
     if next.leading <= 0.0 {
         diagnostics.push(reject(

@@ -11,7 +11,7 @@ use crate::{Base14Font, Font, extended_glyph_name, normalize::nfc_text, shape, w
 ///
 /// For Base14 faces this sums per-character AFM widths (`WinAnsi`
 /// natives + extended Latin reachable via [`extended_glyph_name`]).
-/// Characters outside both tiers — Cyrillic, CJK, emoji — get the
+/// Characters outside both tiers: Cyrillic, CJK, emoji: get the
 /// width of `?` (the substitution glyph the PDF emit path also uses
 /// for those characters in Base14 runs). No diagnostic; callers wanting
 /// real coverage should pick an embedded family.
@@ -143,7 +143,7 @@ pub fn descent(font: Font, size: f32) -> f32 {
 /// natives go through the baked O(1) table; extended glyphs (Latin
 /// Extended-A, math operators, ligatures) go through the baked sorted
 /// name index. Anything else (Cyrillic, CJK, emoji) silently returns
-/// the width of `?` — the PDF emit path renders those characters as
+/// the width of `?`; the PDF emit path renders those characters as
 /// `?` too, so widths and content stream stay in sync. Embedded
 /// families exist precisely so callers wanting real coverage can opt
 /// out of this `?`-everywhere behaviour.

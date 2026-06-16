@@ -1,6 +1,6 @@
 //! Citation Style Language (CSL) support for Mosaic (manifest §12).
 //!
-//! This crate provides the **data foundations** for CSL 1.0.2 — not a CSL
+//! This crate provides the **data foundations** for CSL 1.0.2; not a CSL
 //! processor. It ships:
 //!
 //! - a typed **item data model** ([`Item`] with the [`ItemType`] and variable
@@ -11,7 +11,7 @@
 //!   AST (`<style>` / `<info>` / `<citation>` / `<bibliography>` / `<macro>`
 //!   and the rendering elements).
 //!
-//! Out of scope: the CSL **processor** itself — evaluating a style against
+//! Out of scope: the CSL **processor** itself: evaluating a style against
 //! items to render citations or bibliographies (formatting, sorting,
 //! disambiguation, name ordering, locales). This crate has no
 //! `mos-eval` / layout / PDF wiring.

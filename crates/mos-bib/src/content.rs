@@ -21,12 +21,12 @@
 //! ```
 //!
 //! The bytes are hashed **raw**: no NFC, no line-ending fold, no BOM strip. That
-//! mirrors §4.1 — the parser does not normalize source today, so the content
+//! mirrors §4.1; the parser does not normalize source today, so the content
 //! hash must reflect what the parser actually consumed, or the cache would
 //! "forget" cosmetic edits the parser is sensitive to. Filesystem-derived data
 //! (mtime, inode, absolute path) is deliberately *not* an input.
 //!
-//! `H` is [`mos_core::ContentHasher`] — the shared, engine-version-stamped,
+//! `H` is [`mos_core::ContentHasher`]; the shared, engine-version-stamped,
 //! length-framed FNV-1a-128 boundary hasher (interim; swappable to BLAKE3 per
 //! §9.4 without changing this `&[u8] -> ContentHash` signature). This boundary
 //! just supplies the domain tag and the raw bytes.
@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn hashing_is_byte_for_byte_not_normalized() {
         // Composed (NFC) vs. decomposed (NFD) "é": same text, different bytes,
-        // therefore different hashes — the parser would see different bytes.
+        // therefore different hashes; the parser would see different bytes.
         assert_ne!(
             bibliography_content_hash("\u{00e9}".as_bytes()),
             bibliography_content_hash("e\u{0301}".as_bytes())

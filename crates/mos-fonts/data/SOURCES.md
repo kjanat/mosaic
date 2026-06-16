@@ -11,7 +11,7 @@ commit [`4bc63d7ebca1faed49c6c685f380ba0abc2c1941`], the upstream package for th
 Latin/Greek/Cyrillic build that ships in the `notofonts.github.io` mirror.\
 The same OFL-1.1 license text covers Noto Sans Mono and Noto Sans Math.
 
-Files are vendored verbatim — no re-subsetting, no metadata edits. The PDF backend re-subsets per
+Files are vendored verbatim; no re-subsetting, no metadata edits. The PDF backend re-subsets per
 emitted document.
 
 The URLs below are pinned to those upstream commit SHAs so re-vendoring fetches the exact same bytes

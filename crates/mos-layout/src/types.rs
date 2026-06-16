@@ -146,7 +146,7 @@ pub struct Page {
     pub runs: Vec<TextRun>,
     /// Raster image placements on this page. Stored as a separate
     /// vector so PDF emit can walk every placement without filtering
-    /// the text-run stream — the two streams are independent.
+    /// the text-run stream; the two streams are independent.
     pub images: Vec<ImagePlacement>,
 }
 

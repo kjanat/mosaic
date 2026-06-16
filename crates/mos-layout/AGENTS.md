@@ -55,7 +55,7 @@ Not implemented here yet:
 - Font family names come through semantic attrs; unknown fonts warn and fall back.
 - Keep layout deterministic. No hash-map-dependent output order.
 - NBSP (U+00A0) must stay inside a `Word`. The text extractor in `collect_words` splits on ASCII
-  whitespace only — do not swap in a UAX #14 splitter without preserving this contract.
+  whitespace only: do not swap in a UAX #14 splitter without preserving this contract.
 - `flow_words` consumes `Vec<WordItem>`; `WordItem::HardBreak` flushes the current line (or advances
   one blank line if the buffer is empty) without paragraph spacing. Anything that builds word
   streams (headings, raw blocks, list items) must wrap `Word`s in `WordItem::Word`.

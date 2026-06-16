@@ -49,7 +49,7 @@ sizes, or leading values produce warnings, not hard errors.
   `#figure(numbered:
   false)` opts out: no number, no caption prefix, and the skip does not advance
   the counter, so the remaining figures stay contiguous.
-- References to numbered figures render as kind-aware `Figure N` text — or `{supplement} N` for a
+- References to numbered figures render as kind-aware `Figure N` text, or `{supplement} N` for a
   custom `#figure(supplement: "Plate")`, or just `N` when `supplement: ""`/`none`. A reference to a
   skipped figure renders its bare label.
 - Captioned numbered figures get a visible `Figure N: ...` prefix (custom supplement / number-only

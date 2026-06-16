@@ -9,12 +9,12 @@ homepage.workspace     = true
 repository.workspace   = true
 # Both components are SPDX-registered identifiers (v3.6+):
 # - MIT: our own code. License text in `LICENSE-MIT`.
-# - APAFML: Adobe PostScript AFM License — the Core 14 AFM data (`data/afm/*.afm`).
+# - APAFML: Adobe PostScript AFM License; the Core 14 AFM data (`data/afm/*.afm`).
 #   License text in `LICENSE-APAFML`.
 #
 # The Adobe Glyph List data (`data/agl/glyphlist.txt`, BSD-3-Clause)
 # is kept in the repo for the `winansi_vendor` integration test but is
-# NOT in the `include` manifest below — it does not ship to crates.io.
+# NOT in the `include` manifest below: it does not ship to crates.io.
 # The build script no longer reads it; the byte→`char` `WinAnsi` map
 # is hand-transcribed from PDF 1.7 Annex D.2 into
 # `src/winansi_char_map.rs`.

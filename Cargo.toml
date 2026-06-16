@@ -55,7 +55,7 @@ features = ["derive"]
 
 # `image` is the raster decoder used by `mos-eval` for `#image(...)`
 # directives. Default features are turned off so we ship only PNG + JPEG
-# support — TIFF/AVIF/WebP and SVG live behind separate later slices.
+# support: TIFF/AVIF/WebP and SVG live behind separate later slices.
 [workspace.dependencies.image]
 version          = "0.25"
 default-features = false

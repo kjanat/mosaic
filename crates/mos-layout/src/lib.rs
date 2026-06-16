@@ -42,7 +42,7 @@ mod types;
 mod word;
 
 /// Heading sizes by level (1-indexed). Anything beyond level 3 falls
-/// back to body size — counters and section numbering land in MVP 1.
+/// back to body size: counters and section numbering land in MVP 1.
 const HEADING_SIZES_PT: [f32; 3] = [20.0, 16.0, 13.0];
 /// Space above each heading level (skipped for the first block on a
 /// page).
@@ -94,7 +94,7 @@ impl LayoutEngine {
     }
 
     /// Lay out `document` into a [`PageGraph`]. Never returns an
-    /// error in MVP 0 — invalid blocks are skipped and surfaced as
+    /// error in MVP 0: invalid blocks are skipped and surfaced as
     /// diagnostics on `LayoutResult` instead.
     ///
     /// # Examples
@@ -180,7 +180,7 @@ struct LayoutState {
     /// `flush_line` once the marker is committed to a page.
     pending_marker: Option<PendingMarker>,
     /// Labels of blocks dispatched but not yet committed to a page. Bound
-    /// to the page their first content lands on (issue #72) — see
+    /// to the page their first content lands on (issue #72): see
     /// [`LayoutState::bind_pending_labels`].
     pending_labels: Vec<String>,
     /// Built result of label → 1-based start page. Emitted into the
@@ -193,7 +193,7 @@ struct PendingMarker {
     /// X position (page-relative, points from the page's left edge)
     /// where the marker's left edge should sit.
     x_pt: f32,
-    /// Pre-shaped marker word. Width is informational only — the
+    /// Pre-shaped marker word. Width is informational only: the
     /// marker is drawn outside `current_left_pt` so it doesn't reserve
     /// space in the text column.
     word: Word,
@@ -364,7 +364,7 @@ impl LayoutState {
     /// [`WordItem`]s. Inline whitespace inside text runs collapses to
     /// a single split point (`split_ascii_whitespace` handles
     /// `\n`/`\r`/`\t` uniformly **and intentionally preserves U+00A0
-    /// NBSP** — non-ASCII whitespace stays inside the word so the
+    /// NBSP**: non-ASCII whitespace stays inside the word so the
     /// breaker never splits at NBSP). Each word is shaped once here;
     /// the resulting glyphs and width flow through to [`TextRun`]
     /// without re-shaping during line breaking. `NodeKind::HardBreak`
@@ -657,7 +657,7 @@ impl LayoutState {
             if i > 0 {
                 x += text_width(word.font, word.size_pt, " ");
             }
-            // One TextRun per sub-run — same baseline, x advances by
+            // One TextRun per sub-run: same baseline, x advances by
             // each sub-run's `advance_pt`. PDF emit's per-run `Tf`
             // switch fires naturally at the font boundary between
             // sub-runs (Latin → Math → Latin in `a≤b`-style runs).
@@ -1123,7 +1123,7 @@ mod tests {
     fn cjk_and_emoji_flow_through_without_diagnostics() {
         // The substitution warning is retired. CJK and emoji are not covered by bundled
         // Noto Sans Regular either, but the layout engine no longer
-        // filters them — they pass through to the shaped glyph stream
+        // filters them: they pass through to the shaped glyph stream
         // (rustybuzz emits `.notdef` glyphs for missing coverage,
         // which the PDF backend embeds harmlessly).
         let mut doc = Document::new(PathBuf::from("test.mos"));
@@ -1337,7 +1337,7 @@ mod tests {
     fn reference_node_renders_resolved_text() {
         // A `Reference` node with a `text` attribute (set by the
         // resolver) flows through `collect_words` like any other inline
-        // — no separate code path. The font defaults to the body face.
+        //; no separate code path. The font defaults to the body face.
         let mut doc = Document::new(PathBuf::from("test.mos"));
         pin_helvetica(&mut doc);
         let para = make_paragraph(&mut doc, "see");

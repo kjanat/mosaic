@@ -7,10 +7,10 @@
 //!
 //! 1. **Every registered code has a row.** For each `DiagnosticDef`, the
 //!    canonical `| code | slug | severity | owner | summary |` row must
-//!    appear in the doc — so renaming a slug, re-severitising a code, or
+//!    appear in the doc, so renaming a slug, re-severitising a code, or
 //!    changing a summary without updating the doc fails CI.
 //! 2. **Every documented code is registered.** Any `| MOSxxxx …` table
-//!    row in the doc whose code is absent from the registry fails CI —
+//!    row in the doc whose code is absent from the registry fails CI:
 //!    so a stale row can't linger after a code is retired.
 
 use mos_core::codes;
@@ -38,7 +38,7 @@ fn code_cell(trimmed: &str) -> &str {
 
 #[test]
 fn every_registered_code_has_a_catalog_row() {
-    // The catalog organises codes by category — each section's table omits
+    // The catalog organises codes by category; each section's table omits
     // the `Category` column because the section header carries it. The
     // drift check therefore expects the same column shape humans see:
     // `| code | slug | severity | owner | summary |`. The category itself

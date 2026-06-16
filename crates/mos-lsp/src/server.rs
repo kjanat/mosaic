@@ -2,8 +2,8 @@
 //! narrow: just the messages needed to publish compiler diagnostics
 //! for an opened document.
 //!
-//! Wire format follows the LSP base protocol — `Content-Length` framed
-//! JSON-RPC 2.0 messages — implemented directly against [`std::io`]
+//! Wire format follows the LSP base protocol: `Content-Length` framed
+//! JSON-RPC 2.0 messages: implemented directly against [`std::io`]
 //! rather than pulling in `tower-lsp` for one notification.
 
 use std::collections::HashMap;
@@ -19,7 +19,7 @@ use crate::diagnostics::{LspDiagnostic, LspPosition, diagnostics_from_result, pa
 use crate::rename::rename_ranges;
 
 /// Errors surfaced by the LSP server runtime. Compiler diagnostics
-/// flow over the wire instead — they are never represented here.
+/// flow over the wire instead: they are never represented here.
 #[derive(Debug, thiserror::Error)]
 pub enum LspError {
     /// stdio read/write failure.
@@ -195,8 +195,8 @@ fn initialize_result() -> Value {
 /// `null` when the request names no open document, carries no position,
 /// the cursor is not on a reference, or the label is undeclared.
 ///
-/// The target always lives in the requested document — the server holds
-/// one source per URI and lowers it in isolation — so the response
+/// The target always lives in the requested document; the server holds
+/// one source per URI and lowers it in isolation, so the response
 /// reuses the request URI verbatim.
 fn definition_result(state: &mut ServerState, message: &Value) -> Value {
     let Some(uri) = message
@@ -217,14 +217,14 @@ fn definition_result(state: &mut ServerState, message: &Value) -> Value {
     }
 }
 
-/// Run `f` against the lowering for `uri` — a cached one when present, else a
+/// Run `f` against the lowering for `uri`: a cached one when present, else a
 /// fresh `mos_eval::lower`. Returns `None` only when `uri` names no open
 /// document; otherwise `Some(f(...))`.
 ///
 /// A freshly-lowered **pure** result is stored in the cache for reuse across
 /// the next diagnostics/definition request on the unchanged source (issue
-/// #106). An **impure** lowering — one that read external files (`#image` /
-/// `#figure` / `#bibliography`, see `reads_external_resources`) — is used
+/// #106). An **impure** lowering: one that read external files (`#image` /
+/// `#figure` / `#bibliography`, see `reads_external_resources`) is used
 /// once and dropped, never cached, so such a document is re-lowered on every
 /// request and always reflects the current filesystem (issue #106 review).
 fn with_lowering<T>(
@@ -233,7 +233,7 @@ fn with_lowering<T>(
     f: impl FnOnce(&LowerResult, &Path, &str) -> T,
 ) -> Option<T> {
     // Disjoint field borrows: read the source from `documents`, look up /
-    // populate `lowerings` — separate fields, so neither aliases the other.
+    // populate `lowerings`: separate fields, so neither aliases the other.
     let ServerState {
         documents,
         lowerings,
@@ -252,8 +252,8 @@ fn with_lowering<T>(
 }
 
 /// Build the `textDocument/rename` response: a `WorkspaceEdit` rewriting the
-/// label under the cursor — its first declaration's token and every reference
-/// — to the request's `newName`. Returns `null` when the cursor is not on a
+/// label under the cursor: its first declaration's token and every reference
+///: to the request's `newName`. Returns `null` when the cursor is not on a
 /// label, the request omits a position or new name, or names no open document.
 ///
 /// Single-document: every edit lands in the request URI, so the
@@ -289,7 +289,7 @@ fn rename_result(state: &mut ServerState, message: &Value) -> Value {
 
 /// Extract the zero-based `position` (`line`, UTF-16 `character`) from a
 /// request's params. Out-of-`u32`-range values clamp to `u32::MAX`,
-/// which [`definition_range`] then resolves to end-of-document — a
+/// which [`definition_range`] then resolves to end-of-document: a
 /// harmless "no definition here" rather than a panic.
 fn read_position(message: &Value) -> Option<LspPosition> {
     let line = message
@@ -586,7 +586,7 @@ mod tests {
     fn initialize_capabilities_omit_pull_diagnostics() {
         // We only push diagnostics over `publishDiagnostics`. The
         // `diagnosticProvider` capability advertises pull support
-        // (`textDocument/diagnostic`), which we don't implement —
+        // (`textDocument/diagnostic`), which we don't implement.
         // declaring it would deadlock pull-capable clients.
         let mut input: Vec<u8> = Vec::new();
         input.extend(frame(&json!({
@@ -616,7 +616,7 @@ mod tests {
     #[test]
     fn unknown_request_returns_method_not_found() {
         let mut input: Vec<u8> = Vec::new();
-        // `textDocument/hover` is not implemented — an unhandled request
+        // `textDocument/hover` is not implemented: an unhandled request
         // must still get a MethodNotFound reply so the client doesn't hang.
         input.extend(frame(&json!({
             "jsonrpc": "2.0",
@@ -664,7 +664,7 @@ mod tests {
     fn rename_request_returns_workspace_edit_for_all_occurrences() {
         // `@intro` (and the declaration) rename to `outro`. The response is a
         // WorkspaceEdit whose single `changes` entry lists one edit per
-        // occurrence — declaration token + reference — each replacing the
+        // occurrence: declaration token + reference; each replacing the
         // identifier text with the new name.
         let uri = "file:///virtual/main.mos";
         let src = "= Intro <intro>\n\nSee @intro here.\n";
@@ -814,7 +814,7 @@ mod tests {
         // The lowering cache must not outlive an edit. We resolve `@intro`
         // once (priming the cache), then `didChange` pushes the `<intro>`
         // declaration down a line. A second definition request must land on
-        // the *new* declaration line — a stale cache would still report the
+        // the *new* declaration line: a stale cache would still report the
         // original line 0.
         let uri = "file:///virtual/main.mos";
         let before = "= Intro <intro>\n\nSee @intro here.\n";
@@ -993,7 +993,7 @@ mod tests {
         // leak stale state between them. Open a clean doc and resolve a
         // reference, then change to a doc whose reference is undefined: the
         // post-edit diagnostics must report MOS0033 and the definition request
-        // must return null — both reflecting the new text from one re-lowering.
+        // must return null: both reflecting the new text from one re-lowering.
         let uri = "file:///virtual/main.mos";
         let before = "= Intro <intro>\n\nSee @intro here.\n";
         let after = "See @gone here.\n";

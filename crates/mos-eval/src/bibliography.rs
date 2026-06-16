@@ -14,7 +14,7 @@
 //! - `MOS0020`: the path argument is present but not a string.
 //! - `MOS0015`: an unknown keyword argument was supplied.
 //! - `MOS0041`: the resolved path does not point to a file on disk
-//!   (a warning — the node is still emitted with its resolved path).
+//!   (a warning; the node is still emitted with its resolved path).
 //! - `MOS0045`: a citation key does not exist in a complete parsed bibliography set.
 //! - `MOS0046`: a citation key appears in more than one declared bibliography source.
 

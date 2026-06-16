@@ -206,7 +206,7 @@ fn cyrillic_emits_type0_cid_font_chain() -> TestResult {
         cmap_text.contains("beginbfchar") || cmap_text.contains("beginbfrange"),
         "ToUnicode CMap missing bfchar/bfrange",
     );
-    // The source contained `П` (U+041F) — its 4-hex-uppercase form
+    // The source contained `П` (U+041F): its 4-hex-uppercase form
     // must appear in a bfchar entry's RHS.
     ensure!(
         cmap_text.contains("041F"),
@@ -257,7 +257,7 @@ fn font_file2_is_subset_not_full_ttf() -> TestResult {
     );
 
     // /Length1 (uncompressed size) must equal the actual stream
-    // content length — pdf-writer doesn't compress, so the two are
+    // content length: pdf-writer doesn't compress, so the two are
     // the same.
     let length1 = match ff_stream.dict.get(b"Length1")? {
         Object::Integer(n) => usize::try_from(*n)?,
@@ -307,11 +307,11 @@ fn content_stream_uses_hex_cid_pairs_not_ascii_literals() -> TestResult {
     // big-endian u16). pdf-writer picks `(...)` or `<...>` based on
     // byte contents; we don't depend on that choice. What we do
     // depend on is that the source ASCII letters don't appear
-    // verbatim in the content stream — if they did, the run had
+    // verbatim in the content stream: if they did, the run had
     // taken the Base14 byte path by mistake.
     ensure!(
         !content.windows(b"(Hello)".len()).any(|w| w == b"(Hello)"),
-        "embedded run leaked `(Hello)` literal — wrong code path?",
+        "embedded run leaked `(Hello)` literal: wrong code path?",
     );
     Ok(())
 }
@@ -327,7 +327,7 @@ fn re_exported_layout_id_matches_fonts_id() {
 fn notdef_glyphs_dont_pollute_tounicode() -> TestResult {
     // CJK + emoji aren't in Noto Sans Regular's coverage, so rustybuzz
     // emits gid 0 (`.notdef`) for those codepoints. The ToUnicode CMap
-    // must not record a Unicode mapping for gid 0 — otherwise every
+    // must not record a Unicode mapping for gid 0: otherwise every
     // unsupported character round-trips back to whichever source
     // codepoint happened to be first.
     let (doc, _) = render(EmbeddedFontId::Regular, "日本 🦀")?;
@@ -687,7 +687,7 @@ fn mixed_latin_math_emits_two_resource_slots() -> TestResult {
     let (graph, xs) = build_fallback_graph(EmbeddedFontId::Regular, MATH_FALLBACK, "a≤b");
     ensure!(
         graph.pages[0].runs.len() == 3,
-        "expected 3 sub-runs (a / ≤ / b), got {} — {:?}",
+        "expected 3 sub-runs (a / ≤ / b), got {}: {:?}",
         graph.pages[0].runs.len(),
         graph.pages[0]
             .runs
@@ -705,7 +705,7 @@ fn mixed_latin_math_emits_two_resource_slots() -> TestResult {
             ],
         "sub-run face sequence wrong: {fonts:?}",
     );
-    // x positions must be strictly increasing — sub-runs render
+    // x positions must be strictly increasing: sub-runs render
     // side-by-side, never overlapping. `f32` is only `PartialOrd`, so
     // compare via `partial_cmp` to be explicit about NaN handling
     // (NaN here would be a real bug, not "incomparable values").
@@ -744,7 +744,7 @@ fn mixed_run_content_stream_switches_tf_in_source_order() -> TestResult {
 fn math_subrun_tounicode_maps_only_its_own_codepoint() -> TestResult {
     // The cluster rebasing contract: a sub-run's glyphs have `cluster`
     // offsets local to the sub-run's `text`. The /ToUnicode CMap for
-    // F20 must therefore map back to the math character only — not to
+    // F20 must therefore map back to the math character only; not to
     // a substring of the parent word `a≤b` (which would corrupt copy-
     // paste).
     let (graph, _) = build_fallback_graph(EmbeddedFontId::Regular, MATH_FALLBACK, "a≤b");
@@ -771,7 +771,7 @@ fn math_subrun_tounicode_maps_only_its_own_codepoint() -> TestResult {
         "F20 ToUnicode does not map emitted CID {math_cid:04X} to U+2264 (≤):\n{cmap_text}",
     );
     // The Latin letters `a` (0x61) and `b` (0x62) must NOT appear as
-    // bfchar RHS values in F20's CMap — they live in F15 only.
+    // bfchar RHS values in F20's CMap: they live in F15 only.
     let mut in_block = false;
     for line in cmap_text.lines() {
         let trimmed = line.trim();
@@ -786,7 +786,7 @@ fn math_subrun_tounicode_maps_only_its_own_codepoint() -> TestResult {
         if !in_block {
             continue;
         }
-        // Look at the angle-bracketed Unicode RHS only — the LHS is a
+        // Look at the angle-bracketed Unicode RHS only; the LHS is a
         // CID, which can legitimately be any hex value. The RHS is the
         // last `<...>` token on the line.
         let Some(last_open) = trimmed.rfind('<') else {
@@ -808,7 +808,7 @@ fn math_subrun_tounicode_maps_only_its_own_codepoint() -> TestResult {
 fn unsupported_codepoint_stays_notdef_without_panic() -> TestResult {
     // 🦀 (U+1F980) isn't covered by Noto Sans Regular OR by Noto Sans
     // Math. With Math as the only fallback, the cluster must stay in
-    // the primary face as `.notdef` — no panic, no second sub-run, no
+    // the primary face as `.notdef`; no panic, no second sub-run, no
     // bogus CMap entry for the emoji codepoint.
     let (graph, _) = build_fallback_graph(EmbeddedFontId::Regular, MATH_FALLBACK, "a🦀b");
     // Whole word stays in the primary face (one sub-run) because no
@@ -845,7 +845,7 @@ fn unsupported_codepoint_stays_notdef_without_panic() -> TestResult {
     };
     let cmap_text = String::from_utf8_lossy(&cmap_stream.content);
     // U+1F980 needs a surrogate pair `D83E DD80` in /ToUnicode. The
-    // .notdef cluster must NOT round-trip — the byte slice that
+    // .notdef cluster must NOT round-trip; the byte slice that
     // produced gid 0 is unmapped, so neither the high nor low surrogate
     // appears.
     ensure!(
@@ -857,7 +857,7 @@ fn unsupported_codepoint_stays_notdef_without_panic() -> TestResult {
 
 #[test]
 fn capital_delta_letter_vs_increment_routing() -> TestResult {
-    // Δ (U+0394, Greek capital delta) is a letter — Noto Sans covers
+    // Δ (U+0394, Greek capital delta) is a letter: Noto Sans covers
     // it, so it must stay in F15.
     let (graph, _) = build_fallback_graph(EmbeddedFontId::Regular, MATH_FALLBACK, "Δ");
     ensure!(
@@ -870,7 +870,7 @@ fn capital_delta_letter_vs_increment_routing() -> TestResult {
             .map(|r| r.font)
             .collect::<Vec<_>>(),
     );
-    // ∆ (U+2206, math increment) is a math operator — not in Noto
+    // ∆ (U+2206, math increment) is a math operator; not in Noto
     // Sans, must route through the Math fallback.
     let (graph2, _) = build_fallback_graph(EmbeddedFontId::Regular, MATH_FALLBACK, "∆");
     ensure!(

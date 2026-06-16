@@ -225,11 +225,11 @@ example.
 - [x] Author-facing line-break controls (https://github.com/kjanat/mosaic/issues/26): U+00A0 NBSP
       preserved by the greedy breaker, `\\` hard line break threaded through `InlineKind::HardBreak`
       / `NodeKind::HardBreak` / `WordItem::HardBreak`, and `\-` / U+00AD soft hyphen stripped from
-      shaping with offsets consumed greedily by the line-breaker via `try_shy_break` — overflowing
+      shaping with offsets consumed greedily by the line-breaker via `try_shy_break`: overflowing
       words pick the latest fitting SHY position and emit `prefix-` + suffix across two lines;
       oversize cluster fallback still applies when no SHY prefix fits.
 - [ ] Replace greedy line breaking with a real paragraph algorithm.
-      (https://github.com/kjanat/mosaic/issues/26 piece 3b-e — Knuth-Plass + UAX #14 +
+      (https://github.com/kjanat/mosaic/issues/26 piece 3b-e: Knuth-Plass + UAX #14 +
       SHY-as-penalty + optimal break selection. The greedy SHY hyphenation slice has landed; optimal
       whole-paragraph selection remains separate future work.)
 - [ ] Add Unicode line breaking. (Same MVP 2 slice as Knuth-Plass; `unicode-linebreak` crate as the
@@ -318,14 +318,14 @@ example.
       citations is not implemented.)*
 - [x] Render numeric citations. *(Resolved `[@key]` markers render a bracketed number `[1]`, `[2]`,
       ... assigned by first-use order over known records; unresolved keys keep `[?key?]`. Marker
-      text only — sorted bibliography output is not rendered yet.)*
+      text only: sorted bibliography output is not rendered yet.)*
 - [ ] Render author-year citations.
 - [ ] Render footnote citations.
 - [ ] Render citation clusters.
 - [ ] Render sorted bibliographies.
 - [x] Track bibliography dependencies. *(`BibliographyDependency` pairs a `Bibliography` id with a
       `ContentHash` boundary; `mos_bib::bibliography_content_hash` hashes the raw `.bib` bytes
-      (§4.1). Identity/boundary only — no `DepNode` graph or `CacheKey` wiring yet.)*
+      (§4.1). Identity/boundary only; no `DepNode` graph or `CacheKey` wiring yet.)*
 - [ ] Keep `mos-bib` stub docs honest until real support lands.
 
 ## Incremental Builds And Cache
@@ -365,7 +365,7 @@ example.
 
 - [ ] Add page graph as a first-class output of layout.
 - [x] Store page boundary signatures. *(`mos-layout` exposes `PageBoundarySignature` /
-      `PageGraphSignature` — the §4.5 `PageOutputHash` over current primitives, with
+      `PageGraphSignature`; the §4.5 `PageOutputHash` over current primitives, with
       `first_divergence` to locate where pagination changed. Comparison only; no reflow loop or
       cache wiring yet.)*
 - [ ] Reflow from first changed page.
