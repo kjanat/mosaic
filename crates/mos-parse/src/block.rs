@@ -1,4 +1,4 @@
-use mos_core::{Suggestion, codes};
+use mos_core::{DiagnosticAnnotation, Suggestion, codes};
 
 use crate::Item;
 use crate::parser::Parser;
@@ -80,7 +80,11 @@ impl Parser<'_> {
         );
         let diagnostic = self
             .warn(&codes::MOS0048, &message, start, content_end)
-            .with_suggestion(Suggestion::new(self.span(start, content_end), fixed));
+            .with_suggestion(Suggestion::new(self.span(start, content_end), fixed))
+            .with_annotation(DiagnosticAnnotation::Hint(format!(
+                "if `<{label}>` is literal text (e.g. an HTML tag), escape the `<` as `\\<{label}>`",
+                label = label.text
+            )));
         self.diagnostics.push(diagnostic);
     }
 

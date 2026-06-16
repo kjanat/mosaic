@@ -46,6 +46,13 @@ pub fn display_path(path: &Path) -> String {
 /// prefix-less, which `Path::is_absolute` alone misses, so `has_root` is
 /// checked too.
 ///
+/// `.` and empty (`a//b`) segments are dropped and `..` segments are resolved
+/// lexically, so the result is a clean path for display (`proj/file.txt`, not
+/// `proj/sub/../file.txt`). This stays filesystem-free: `..` is popped
+/// textually and does not consult symlinks, so callers that need link-aware
+/// resolution rely on the OS at access time, and identity/canonicalization for
+/// dependency tracking lives in `mos_cache::ProjectPath`.
+///
 /// # Examples
 ///
 /// ```
@@ -57,6 +64,11 @@ pub fn display_path(path: &Path) -> String {
 ///     resolve_relative(Path::new("proj"), "sub/file.txt"),
 ///     Path::new("proj").join("sub").join("file.txt"),
 /// );
+/// // `.` and `..` segments are normalized away:
+/// assert_eq!(
+///     resolve_relative(Path::new("proj"), "sub/../assets/./logo.png"),
+///     Path::new("proj").join("assets").join("logo.png"),
+/// );
 /// ```
 #[must_use]
 pub fn resolve_relative(base: &Path, relative: &str) -> PathBuf {
@@ -66,8 +78,12 @@ pub fn resolve_relative(base: &Path, relative: &str) -> PathBuf {
     }
     let mut resolved = base.to_path_buf();
     for component in relative.split('/') {
-        if !component.is_empty() {
-            resolved.push(component);
+        match component {
+            "" | "." => {}
+            ".." => {
+                resolved.pop();
+            }
+            other => resolved.push(other),
         }
     }
     resolved
@@ -100,5 +116,52 @@ pub fn resolve_source_path(src_path: &str, source_file: &Path) -> PathBuf {
     match source_file.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => resolve_relative(parent, src_path),
         _ => resolve_relative(Path::new(""), src_path),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{resolve_relative, resolve_source_path};
+
+    #[test]
+    fn resolve_relative_normalizes_dot_dotdot_and_empty_segments() {
+        // `.`/empty are dropped and `..` is resolved lexically, so displayed
+        // paths stay clean (no `proj/sub/../file`).
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "sub/../assets/./logo.png"),
+            Path::new("proj").join("assets").join("logo.png"),
+        );
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "a//b"),
+            Path::new("proj").join("a").join("b"),
+        );
+        // `..` may ascend past the base lexically (sibling directory).
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "../shared/x"),
+            Path::new("shared").join("x"),
+        );
+    }
+
+    #[test]
+    fn resolve_relative_passes_absolute_and_rooted_through() {
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "/etc/refs.bib"),
+            Path::new("/etc/refs.bib"),
+        );
+    }
+
+    #[test]
+    fn resolve_source_path_normalizes_against_source_dir_and_bare_filename() {
+        assert_eq!(
+            resolve_source_path("img/../logo.png", Path::new("proj/main.mos")),
+            Path::new("proj").join("logo.png"),
+        );
+        // Bare filename: parent is `Some("")`, so the base is the current dir.
+        assert_eq!(
+            resolve_source_path("a/./b.png", Path::new("main.mos")),
+            Path::new("a").join("b.png"),
+        );
     }
 }

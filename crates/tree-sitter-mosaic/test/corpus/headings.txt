@@ -95,3 +95,17 @@ heading: marker with no content is ERROR (inline_sequence is repeat1)
 (source_file
   (ERROR
     (heading_marker)))
+
+==================
+heading: escaped angle bracket is not a label
+==================
+= The \<head> element
+---
+
+(source_file
+  (heading
+    marker: (heading_marker)
+    content: (inline_sequence
+      (text)
+      (escaped_char)
+      (text))))

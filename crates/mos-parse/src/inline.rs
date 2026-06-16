@@ -143,7 +143,21 @@ impl Parser<'_> {
                     text_start = i;
                     continue;
                 }
-                // Backslash followed by anything other than `\` or `-`
+                if i + 1 < bytes.len() && bytes[i + 1] == b'<' {
+                    // `\<` -> literal `<`. Lets authors write angle-bracket text
+                    // (e.g. an HTML tag like `<head>`) in prose and headings
+                    // without `<...>` being read as label syntax. The heading
+                    // label scanners skip an escaped `<` to match.
+                    if pending_source_start.is_none() {
+                        pending_source_start = Some(text_start);
+                    }
+                    pending.push_str(&slice[text_start..i]);
+                    pending.push('<');
+                    i += 2;
+                    text_start = i;
+                    continue;
+                }
+                // Backslash followed by anything other than `\`, `-`, or `<`
                 // is left to fall through as a literal `\` byte (the
                 // slice path picks it up at the next flush). A lone
                 // trailing `\` at end-of-input gets a warning so the

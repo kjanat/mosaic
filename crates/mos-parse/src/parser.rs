@@ -648,6 +648,51 @@ mod tests {
     }
 
     #[test]
+    fn escaped_angle_in_heading_is_literal_not_a_label() {
+        // `\<head>` is escaped angle-bracket text: not a label, no MOS0048, and
+        // the rendered inline text carries a literal `<` (so "The <head> element"
+        // is writable as a heading).
+        let r = parse_str("= The \\<head> element\n");
+        assert_eq!(
+            r.tree.items[0].label(),
+            None,
+            "escaped `\\<` is not a label"
+        );
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0048.code()),
+            "escaped angle must not trip MOS0048: {:?}",
+            r.diagnostics
+        );
+        let (_, inlines, _) = r.tree.items[0].as_heading().unwrap();
+        let rendered: String = inlines.iter().map(|i| i.text.as_str()).collect();
+        assert_eq!(rendered, "The <head> element");
+    }
+
+    #[test]
+    fn escaped_trailing_angle_is_not_swallowed_as_label() {
+        // A `\<head>` at end of line must not be claimed by strip_trailing_label.
+        let r = parse_str("= ends with \\<head>\n");
+        assert_eq!(r.tree.items[0].label(), None);
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0048.code()),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn double_backslash_before_label_still_attaches() {
+        // Parity: `\\<intro>` is an escaped backslash (`\\`) followed by a real
+        // label, so the trailing label still registers (even backslash count).
+        let r = parse_str("= title \\\\<intro>\n");
+        assert_eq!(r.tree.items[0].label(), Some("intro"));
+    }
+
+    #[test]
     fn paragraph_with_leading_label_attaches() {
         let src = "<intro> body text\n";
         let r = parse_str(src);

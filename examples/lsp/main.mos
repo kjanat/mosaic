@@ -63,6 +63,21 @@ To watch diagnostics appear, introduce an error in the source: point a reference
 at a label that does not exist, or cite an unknown bibliography key. `mos-lsp`
 reports the problem inline; undo to clear it.
 
+== Figure labels <figures>
+
+Figures carry labels too, through the `label:` argument:
+
+#figure(
+  image: "demo.png",
+  caption: "A labelled figure you can reach with go-to-definition.",
+  label: "diagram",
+)
+
+The figure above is labelled `diagram`, and this sentence references it as
+@diagram (which the PDF prints as its `Figure N` number). Go-to-definition on the
+`@diagram` token jumps to the figure, and rename rewrites the figure's label and
+every reference together, exactly as for heading labels.
+
 = Setup <setup>
 
 Install the server so it lands on `PATH`: run `cargo mosils` from the
