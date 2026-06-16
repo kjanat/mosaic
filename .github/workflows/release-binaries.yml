@@ -48,10 +48,6 @@ permissions: { contents: read }
 defaults: { run: { shell: pwsh } }
 
 jobs:
-  # upload-rust-binary-action attaches to an existing release, so create it once
-  # up front before the matrix fans out. create-gh-release-action derives the body
-  # from the `changelog` version section (parse-changelog) and tolerates a missing
-  # entry rather than failing the binaries.
   create-release:
     name: "create release ${{ inputs.tag }}"
     runs-on: ubuntu-latest
@@ -83,13 +79,8 @@ jobs:
       - uses: taiki-e/upload-rust-binary-action@v1
         id: upload
         with:
-          # One binary per matrix job, so `$bin` stays valid and each job emits
-          # its own `<bin>-<target>` archive (a comma-list would force one bundled
-          # archive the Zed extension could not resolve).
           bin: ${{ matrix.bin }}
           target: ${{ matrix.target.target }}
-          # Versionless asset names so the Zed extension can resolve them without
-          # formatting the release version into the lookup (see crates/zed-mosaic).
           archive: $bin-$target
           tar: unix
           zip: windows
@@ -104,17 +95,12 @@ jobs:
         run: |
           $m = $env:MATRIX | ConvertFrom-Json
           $o = $env:OUTPUTS | ConvertFrom-Json
-          # `tar` is set for Unix archives, `zip` for Windows; the other is absent (null).
           $archive = $o.tar ?? $o.zip
-          $digest = if ($o.sha256 -and (Test-Path $o.sha256)) {
-            (-split (Get-Content $o.sha256 -TotalCount 1))[0]
-          } else {
-            $o.sha256
-          }
-          @(
-            "### $($m.bin) | $($m.target.target)"
-            ''
-            '| Asset | SHA-256 |'
-            '| ----- | ------- |'
-            "| $archive | $digest |"
-          ) -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          $digest = ($o.sha256 -and (Test-Path $o.sha256)) ? (-split (Get-Content $o.sha256 -TotalCount 1))[0] : $o.sha256
+          @"
+          ### $($m.bin) | $($m.target.target)
+
+          | Asset    | SHA-256 |
+          | -------- | ------- |
+          | $archive | $digest |
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
