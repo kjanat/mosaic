@@ -1,10 +1,12 @@
 # Labels and references
 
-This page documents the label and `@`-reference behavior that Mosaic ships **today**. Labels and
-references are resolved by a layout-free semantic pass that runs before layout and PDF emission, so
-a reference can resolve to a section number, a figure number, or label text, but never to a page
-number. Page references are **not** implemented; see [Not yet implemented](#not-yet-implemented).
-Where this page and `manifest.md` disagree, this page (and the compiler) win.
+This page documents the label and `@`-reference behavior that Mosaic ships **today**. Section,
+figure, and label references are resolved by a layout-free semantic pass that runs before layout and
+PDF emission. A `@page(label)` reference instead resolves to a printed **page number**, which
+`mos build` computes after layout through a bounded resolve↔layout fixpoint (see
+[Page references](#page-references-pagelabel)); `mos check` validates the label but, because it does
+not lay out, leaves the page number unresolved. Where this page and `manifest.md` disagree, this
+page (and the compiler) win.
 
 A label is an identifier attached to a block; an `@`-reference points back at it and is rewritten to
 the target's section number, a figure's `Figure N` text, or the bare label text.
@@ -222,11 +224,10 @@ warning[MOS0036]: stray `@` is not followed by a label identifier; treated as te
 
 ## Not yet implemented
 
-- **Page references and layout-dependent references.** A reference never resolves to a page number,
-  and nothing re-runs resolution after layout. This boundary is deliberate and documented in
-  [page-reference-fixpoint-boundary.md](./page-reference-fixpoint-boundary.md). Note that
-  `@page:foo` is **not** page-reference syntax: it is just a reference to a label named `page:foo`.
-  No `prefix:`-based page-reference form is reserved; do not rely on one.
+- **Prefix-style page references.** The only page-reference syntax is `@page(label)` (see
+  [Page references](#page-references-pagelabel)). `@page:foo` is **not** a page reference: it is an
+  ordinary reference to a label named `page:foo`, and no `prefix:`-based page-reference form is
+  reserved; do not rely on one.
 - **Kind-aware reference text for equations, tables, and theorems.** Figures resolve to kind-aware
   `Figure N` text and sections to a bare number, but there is no equation/table/theorem numbering or
   reference text yet. The remaining kind-aware rendering is future work (manifest-tracker.md →

@@ -98,9 +98,10 @@ impl SourceSpan {
     ///
     /// # Panics
     ///
-    /// Panics in debug builds if `start` would exceed the current `end`.
+    /// Panics if `start` would exceed the current `end`. Enforced in all
+    /// builds so an inverted span can never escape into release.
     pub fn set_start(&mut self, start: usize) {
-        debug_assert!(
+        assert!(
             start <= self.end,
             "SourceSpan start ({start}) must not exceed end ({})",
             self.end
@@ -112,9 +113,10 @@ impl SourceSpan {
     ///
     /// # Panics
     ///
-    /// Panics in debug builds if `end` would fall below the current `start`.
+    /// Panics if `end` would fall below the current `start`. Enforced in all
+    /// builds so an inverted span can never escape into release.
     pub fn set_end(&mut self, end: usize) {
-        debug_assert!(
+        assert!(
             self.start <= end,
             "SourceSpan end ({end}) must not fall below start ({})",
             self.start

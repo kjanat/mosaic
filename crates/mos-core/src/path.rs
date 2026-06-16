@@ -94,6 +94,9 @@ pub fn resolve_relative(base: &Path, relative: &str) -> PathBuf {
 /// ```
 #[must_use]
 pub fn resolve_source_path(src_path: &str, source_file: &Path) -> PathBuf {
+    // `Path::parent()` returns `Some("")` (not `None`) for a bare filename like
+    // `main.mos`, so the empty-component guard is required to fall back to the
+    // current directory rather than joining against an empty base.
     match source_file.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => resolve_relative(parent, src_path),
         _ => resolve_relative(Path::new(""), src_path),

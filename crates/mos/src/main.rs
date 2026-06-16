@@ -36,7 +36,7 @@ const MAX_PAGE_FIXPOINT_ITERATIONS: u32 = 8;
     bin_name = "mos",
     version,
     about = "Mosaic: semantic, incremental typesetting compiler",
-    long_about = "Mosaic compiles `.mos` source files to PDF, HTML, and EPUB.\n\
+    long_about = "Mosaic compiles `.mos` source files to PDF.\n\
                   See manifest.md in the repository root for the full design."
 )]
 struct Cli {
