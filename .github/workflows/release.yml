@@ -16,7 +16,7 @@ permissions: { contents: read }
 jobs:
   binaries:
     permissions: { contents: write }
-    uses: ./.github/workflows/release-binaries.yml
+    uses: kjanat/mosaic/.github/workflows/release-binaries.yml@master
     with:
       bins: '["mos-lsp"]'
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
