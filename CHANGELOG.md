@@ -116,6 +116,18 @@ All notable changes to this project will be documented here. The format is based
   slice). [`mos-bib`][mos-bib]'s `bibliography_content_hash` and the new page signatures both build
   on it instead of re-deriving FNV; bibliography hash values are unchanged.
 
+- Literal angle brackets via `\<`: [`mos-parse`][mos-parse] now treats `\<` as an escaped literal
+  `<`, the third inline escape alongside `\\` (hard break) and `\-` (soft hyphen). Prose and
+  headings can finally contain literal angle brackets -- e.g. a section titled
+  `The \<head>
+  element` -- which was previously impossible because a trailing `<name>` was
+  unconditionally eaten as a label. The label scanners honor the escape too: an escaped `\<name>` at
+  a heading's trailing position or a paragraph's leading position is literal text, not a label
+  declaration, so writing about markup no longer mints stray labels or trips `MOS0048`. The
+  misplaced-heading-label warning gains a hint pointing at the `\<` escape, and the
+  [`tree-sitter-mosaic`][tree-sitter-mosaic] grammar already tokenizes `\<` as `escaped_char`
+  (locked with a corpus test).
+
 ### Changed
 
 - Reference nodes now carry a stamped label-identifier span
@@ -153,6 +165,17 @@ All notable changes to this project will be documented here. The format is based
 - Crate packages now use explicit include allowlists: ordinary crates inherit workspace defaults for
   root licenses, README, examples, source, and tests, while data/build-script crates keep precise
   root-anchored package lists. This keeps agent/project files out of future crates.io tarballs.
+
+### Fixed
+
+- `resolve_relative` ([`mos-core`][mos-core]) no longer silently swallows excess `..`. It looped
+  `PathBuf::pop` over each `..`, so once the base was exhausted the extra `..` simply vanished:
+  `proj/sub` + `../../../x` collapsed to a bare `x` *inside* the base that the author never wrote.
+  Normalization is now correctly lexical -- a `..` that escapes a **relative** base is preserved as
+  a leading `..` (`-> ../x`), while a `..` at an **absolute** root is clamped (`/a` +
+  `../../x ->
+  /x`), matching the OS. Still filesystem-free and symlink-agnostic; identity-grade
+  canonicalization stays in `mos_cache::ProjectPath`.
 
 ## [0.0.1] - 2026-06-03
 
