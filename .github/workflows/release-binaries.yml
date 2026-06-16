@@ -1,4 +1,5 @@
 name: release-binaries
+run-name: "release-binaries ${{ inputs.tag }} ${{ inputs.bins }}"
 
 # Reusable cross-compile + release-upload pipeline.
 #
