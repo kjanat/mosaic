@@ -9,18 +9,82 @@ schema_version = 1
 authors        = ["Kaj Kowalski <info@kajkowalski.nl>"]
 description    = "Mosaic (.mos) typesetting language support."
 repository     = "https://github.com/kjanat/mosaic"
-languages      = ["Mosaic"]
+# Top-level `languages` are extension-relative directories containing
+# `config.toml`, not display names. The display name lives in that config.
+# This can be omitted because Zed also scans `languages/*/config.toml`.
+languages      = ["languages/mosaic"]
 
 [language_servers.mos-lsp]
-name     = "Mosaic Language Server"
-language = "Mosaic"
+name      = "Mosaic Language Server" # This does nothing
+# Language-server `languages` are display names from language config.toml.
+# The old singular `language = "Mosaic"` form is deprecated by Zed.
+languages = ["Mosaic"]
 
-[grammars.mosaic]
-repository = "https://github.com/kjanat/mosaic"
-rev        = "b83a0de72d8ab12c625e7355d9a3f2607e80d3fa"
-path       = "crates/tree-sitter-mosaic"
+# To auto-download `mos-lsp` from GitHub releases, the Rust extension code must
+# call `latest_github_release` / `download_file` and choose the platform asset.
+# The manifest only declares the download permission Zed should request.
+# GitHub release asset URLs look like:
+# https://github.com/kjanat/mosaic/releases/download/<tag>/<asset>
+#
+# [[capabilities]]
+# kind = "download_file"
+# host = "github.com"
+# path = ["kjanat", "mosaic", "releases", "download", "**"]
+#
+# If a future extension path installs a Node package, it must request npm too.
+# Keep this narrow: prefer the exact package over `*`.
+#
+# [[capabilities]]
+# kind = "npm:install"
+# package = "@scope/package-name"
 
-# [grammars.mosaic]  # TODO: during dev, set local shizz.
-# repository = "file:///home/kjanat/projects/mosaic"
-# rev        = "master"
-# path       = "crates/tree-sitter-mosaic"
+[grammars]
+########## TODO: during dev, set local shizz.  ############
+# mosaic.repository = "file:///home/kjanat/projects/mosaic"
+# mosaic.rev        = "master"
+###########################################################
+mosaic.path       = "crates/tree-sitter-mosaic"
+mosaic.repository = "https://github.com/kjanat/mosaic"
+mosaic.rev        = "b83a0de72d8ab12c625e7355d9a3f2607e80d3fa"
+
+##############################################
+# Recommended `mos-lsp` GitHub release assets:
+#
+# ```text
+# mos-lsp-aarch64-apple-darwin.tar.gz
+# mos-lsp-aarch64-pc-windows-msvc.zip
+# mos-lsp-aarch64-unknown-linux-gnu.tar.gz
+# mos-lsp-x86_64-apple-darwin.tar.gz
+# mos-lsp-x86_64-pc-windows-msvc.zip
+# mos-lsp-x86_64-unknown-linux-gnu.tar.gz
+# ```
+#
+# Minimum sane set if lazy:
+#
+# ```text
+# Linux x64
+# Windows x64
+# macOS arm64
+# macOS x64
+# ```
+#
+# But Zed’s platform API supports `Mac/Linux/Windows` + `Aarch64/X8664`,
+# so full 6-target matrix best.
+#
+# For manifest:
+#
+# ```toml
+# [[capabilities]]
+# kind = "download_file"
+# host = "github.com"
+# path = ["kjanat", "mosaic", "releases", "download", "**"]
+#
+# [[capabilities]]
+# kind = "npm:install"
+# package = "@scope/package-name"
+# ```
+#
+# Still need Rust code to choose asset by `current_platform()`,
+# call `download_file`, extract via `DownloadedFileType`,
+# and `make_file_executable`.
+##############################################
