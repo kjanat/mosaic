@@ -38,12 +38,23 @@ jobs:
       - name: Write crate index
         run: |
           $docDir = 'target/doc'
+          # name -> version for every workspace crate; the doc dir `mos_core`
+          # maps to package `mos-core`, so the index can show each version.
+          $version = @{}
+          (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).packages |
+            ForEach-Object { $version[$_.name] = $_.version }
+
           # One <li> per subdirectory that has its own index.html (a built crate),
           # sorted, with `_` shown as `-` to match crate display names.
           $list = (Get-ChildItem -LiteralPath $docDir -Directory |
             Where-Object { Test-Path (Join-Path $_.FullName 'index.html') } |
             Sort-Object Name |
-            ForEach-Object { "    <li><a href=""$($_.Name)/index.html"">$($_.Name -replace '_', '-')</a></li>" }) -join "`n"
+            ForEach-Object {
+              $name = $_.Name -replace '_', '-'
+              $ver = $version[$name]
+              $tag = if ($ver) { " <span class=""ver"">$ver</span>" } else { '' }
+              "    <li><a href=""$($_.Name)/index.html"">$name</a>$tag</li>"
+            }) -join "`n"
 
           @"
           <!DOCTYPE html>
@@ -63,6 +74,7 @@ jobs:
                 li:last-child { border-bottom: none; }
                 a { color: #2563eb; text-decoration: none; font-weight: 500; }
                 a:hover { text-decoration: underline; }
+                .ver { color: color-mix(in srgb, currentColor 50%, transparent); font-size: .9em; }
                 footer { margin-top: 2rem; font-size: .95rem; }
                 @media (prefers-color-scheme: dark) { a { color: #60a5fa; } }
               </style>
