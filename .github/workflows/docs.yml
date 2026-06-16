@@ -7,9 +7,8 @@ on:
     paths-ignore: ["**/*.md", "LICENSE", ".gitignore", ".dprint.jsonc", "tombi.toml"]
   workflow_dispatch:
 
-permissions: read-all
-
-concurrency: { group: pages, cancel-in-progress: true }
+defaults: { run: { shell: pwsh } }
+permissions: { contents: read }
 
 env:
   CARGO_TERM_COLOR: always
@@ -32,41 +31,51 @@ jobs:
 
       - name: Copy docs assets
         env: { TARGET: target/doc/assets, INPUT: design/A4.svg }
-        run: mkdir -p "$TARGET" && cp "$INPUT" "$TARGET"
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:TARGET | Out-Null
+          Copy-Item -LiteralPath $env:INPUT -Destination $env:TARGET
 
       - name: Write crate index
         run: |
-          cat<<HTML>target/doc/index.html
+          $docDir = 'target/doc'
+          # One <li> per subdirectory that has its own index.html (a built crate),
+          # sorted, with `_` shown as `-` to match crate display names.
+          $list = (Get-ChildItem -LiteralPath $docDir -Directory |
+            Where-Object { Test-Path (Join-Path $_.FullName 'index.html') } |
+            Sort-Object Name |
+            ForEach-Object { "    <li><a href=""$($_.Name)/index.html"">$($_.Name -replace '_', '-')</a></li>" }) -join "`n"
+
+          @"
           <!DOCTYPE html>
           <html lang="en">
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1">
-              <link rel="stylesheet" href="index.css">
               <link rel="icon" type="image/svg+xml" href="assets/A4.svg">
               <title>Mosaic API docs</title>
+              <style>
+                :root { color-scheme: light dark; }
+                body { font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+                       max-width: 720px; margin: 3rem auto; padding: 0 1.25rem; }
+                h1 { font-weight: 600; font-size: 1.6rem; margin: 0 0 1.5rem; }
+                ul { list-style: none; padding: 0; }
+                li { padding: .45rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+                li:last-child { border-bottom: none; }
+                a { color: #2563eb; text-decoration: none; font-weight: 500; }
+                a:hover { text-decoration: underline; }
+                footer { margin-top: 2rem; font-size: .95rem; }
+                @media (prefers-color-scheme: dark) { a { color: #60a5fa; } }
+              </style>
             </head>
             <body>
               <h1>Mosaic API docs</h1>
               <ul>
-            $(cd target/doc && for d in */index.html; do c=${d%/index.html}; n=${c//_/-}; printf '    <li><a href="%s">%s</a></li>\n' "$d" "$n"; done)
+          $list
               </ul>
+              <footer><a href="https://github.com/kjanat/mosaic">Source on GitHub</a></footer>
             </body>
           </html>
-          HTML
-
-          cat<<CSS>target/doc/index.css
-          :root { color-scheme: light dark; }
-          body { font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
-                 max-width: 720px; margin: 3rem auto; padding: 0 1.25rem; }
-          h1 { font-weight: 600; font-size: 1.6rem; margin: 0 0 1.5rem; }
-          ul { list-style: none; padding: 0; }
-          li { padding: .45rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
-          li:last-child { border-bottom: none; }
-          a { color: #2563eb; text-decoration: none; font-weight: 500; }
-          a:hover { text-decoration: underline; }
-          @media (prefers-color-scheme: dark) { a { color: #60a5fa; } }
-          CSS
+          "@ | Set-Content -LiteralPath "$docDir/index.html" -Encoding utf8
 
       - uses: actions/configure-pages@v6
 
@@ -76,10 +85,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency: { group: pages-deploy, cancel-in-progress: false }
+    permissions: { pages: write, id-token: write }
+    environment: { name: github-pages, url: "${{ steps.deployment.outputs.page_url }}" }
     steps: [{ uses: actions/deploy-pages@v5, id: deployment }]
