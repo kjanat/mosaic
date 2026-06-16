@@ -46,12 +46,16 @@ pub fn display_path(path: &Path) -> String {
 /// prefix-less, which `Path::is_absolute` alone misses, so `has_root` is
 /// checked too.
 ///
-/// `.` and empty (`a//b`) segments are dropped and `..` segments are resolved
-/// lexically, so the result is a clean path for display (`proj/file.txt`, not
-/// `proj/sub/../file.txt`). This stays filesystem-free: `..` is popped
-/// textually and does not consult symlinks, so callers that need link-aware
-/// resolution rely on the OS at access time, and identity/canonicalization for
-/// dependency tracking lives in `mos_cache::ProjectPath`.
+/// Normalization is lexical and stack-based: `.` and empty (`a//b`) segments are
+/// dropped; a `..` pops the last resolved *name*; a `..` that escapes a
+/// **relative** base is **preserved** as a leading `..` (`proj/sub` +
+/// `../../../shared/x` -> `../shared/x`), not silently swallowed; and a `..` at
+/// the root of an **absolute** base is clamped (`/a` + `../../x` -> `/x`),
+/// matching the OS. Nothing here touches the filesystem, so `..` is resolved
+/// textually and ignores symlinks; identity-grade canonicalization (NFC, escape
+/// rejection) lives in `mos_cache::ProjectPath`. Each `/`-delimited segment is
+/// appended as a single name -- manifest paths use `/` only; a segment that
+/// smuggles in a platform separator or drive prefix is out of contract.
 ///
 /// # Examples
 ///
@@ -64,10 +68,15 @@ pub fn display_path(path: &Path) -> String {
 ///     resolve_relative(Path::new("proj"), "sub/file.txt"),
 ///     Path::new("proj").join("sub").join("file.txt"),
 /// );
-/// // `.` and `..` segments are normalized away:
+/// // `.` and `..` segments are normalized away within the base:
 /// assert_eq!(
 ///     resolve_relative(Path::new("proj"), "sub/../assets/./logo.png"),
 ///     Path::new("proj").join("assets").join("logo.png"),
+/// );
+/// // `..` past a relative base is preserved, not eaten:
+/// assert_eq!(
+///     resolve_relative(Path::new("proj/sub"), "../../../shared/x"),
+///     Path::new("..").join("shared").join("x"),
 /// );
 /// ```
 #[must_use]
@@ -76,17 +85,35 @@ pub fn resolve_relative(base: &Path, relative: &str) -> PathBuf {
     if candidate.is_absolute() || candidate.has_root() {
         return candidate.to_path_buf();
     }
+    // `resolved` accumulates the path at or below `base`; `ascend` counts the
+    // leading `..` that escaped a relative base and must survive. `pop()` only
+    // removes a real component, so when it fails we ascend (relative base) or
+    // clamp at the root (absolute base) -- the `..` is never silently dropped.
     let mut resolved = base.to_path_buf();
-    for component in relative.split('/') {
-        match component {
+    let mut ascend = 0usize;
+    for segment in relative.split('/') {
+        match segment {
             "" | "." => {}
             ".." => {
-                resolved.pop();
+                if !resolved.pop() && !resolved.has_root() {
+                    ascend += 1;
+                }
             }
             other => resolved.push(other),
         }
     }
-    resolved
+    if ascend == 0 {
+        return resolved;
+    }
+    let mut out = PathBuf::new();
+    for _ in 0..ascend {
+        out.push("..");
+    }
+    // `resolved` is the (relative) remainder below the escape point, if any.
+    if !resolved.as_os_str().is_empty() {
+        out.push(resolved);
+    }
+    out
 }
 
 /// Resolve a portable, `/`-separated `src_path` (as written in a source file)
@@ -149,6 +176,44 @@ mod tests {
         assert_eq!(
             resolve_relative(Path::new("proj"), "/etc/refs.bib"),
             Path::new("/etc/refs.bib"),
+        );
+    }
+
+    #[test]
+    fn resolve_relative_preserves_excess_parents_past_a_relative_base() {
+        // More `..` than the base has components: the excess survives as leading
+        // `..` instead of being silently swallowed by `PathBuf::pop`.
+        assert_eq!(
+            resolve_relative(Path::new("proj/sub"), "../../../shared/x"),
+            Path::new("..").join("shared").join("x"),
+        );
+        // Exhausting the base with nothing below leaves bare `..`s.
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "../../.."),
+            Path::new("..").join(".."),
+        );
+        // An empty base ascends from the current directory.
+        assert_eq!(
+            resolve_relative(Path::new(""), "../x"),
+            Path::new("..").join("x")
+        );
+    }
+
+    #[test]
+    fn resolve_relative_clamps_parents_at_an_absolute_root() {
+        // You cannot ascend above `/`: extra `..` at the root are no-ops.
+        assert_eq!(
+            resolve_relative(Path::new("/a/b"), "../../../x"),
+            Path::new("/x"),
+        );
+    }
+
+    #[test]
+    fn resolve_source_path_preserves_parent_past_an_empty_base() {
+        // Bare filename -> empty base; `../x` must keep its leading `..`.
+        assert_eq!(
+            resolve_source_path("../x", Path::new("main.mos")),
+            Path::new("..").join("x"),
         );
     }
 
