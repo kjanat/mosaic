@@ -186,6 +186,8 @@ time, exactly like a bad `@ref`, so `mos check` catches it without laying the do
 > Note: page references are resolved by `mos build` (which lays out). `mos check` validates the
 > label but does not compute page numbers, since it does not run layout.
 
+<!-- separate the blocks -->
+
 > Compatibility note: before page references existed, `@page(intro)` parsed as a reference to a
 > label `page` followed by the literal text `(intro)`. It now parses as a single page reference.
 > This is a deliberate change while the language is pre-alpha.
