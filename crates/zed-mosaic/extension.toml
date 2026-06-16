@@ -20,16 +20,14 @@ name      = "Mosaic Language Server"  # This does nothing
 # The old singular `language = "Mosaic"` form is deprecated by Zed.
 languages = ["Mosaic"]
 
-# To auto-download `mos-lsp` from GitHub releases, the Rust extension code must
-# call `latest_github_release` / `download_file` and choose the platform asset.
-# The manifest only declares the download permission Zed should request.
-# GitHub release asset URLs look like:
-# https://github.com/kjanat/mosaic/releases/download/<tag>/<asset>
-#
-# [[capabilities]]
-# kind = "download_file"
-# host = "github.com"
-# path = ["kjanat", "mosaic", "releases", "download", "**"]
+# `src/lib.rs` auto-downloads `mos-lsp` from GitHub releases via
+# `latest_github_release` + `download_file`, choosing the asset by `current_platform()`.
+# This capability grants the host the download permission; asset URLs look like
+# https://github.com/kjanat/mosaic/releases/download/<tag>/<asset>.
+[[capabilities]]
+kind = "download_file"
+host = "github.com"
+path = ["kjanat", "mosaic", "releases", "download", "**"]
 #
 # If a future extension path installs a Node package, it must request npm too.
 # Keep this narrow: prefer the exact package over `*`.

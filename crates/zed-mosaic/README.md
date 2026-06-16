@@ -48,13 +48,22 @@ The extension locates `mos-lsp` in this order:
 
 1. `lsp."mos-lsp".binary.path` in your Zed settings (explicit override).
 2. `mos-lsp` on `PATH`.
+3. A release binary already downloaded by a previous run (cached on disk).
+4. The matching asset from the latest [`kjanat/mosaic`] GitHub release, downloaded automatically.
 
-If neither resolves, Zed surfaces an error telling you to install or configure the binary. For local
-development, install the server from the workspace so it lands on `PATH`:
+Steps 3–4 let installed-extension users (no local checkout) get the server without building it: the
+extension picks the `mos-lsp-<target-triple>.{tar.gz,zip}` asset for `current_platform()`, extracts
+it, and caches the path. The `download_file` capability in [`extension.toml`] grants that download.
+If a release asset for the platform is missing, Zed surfaces an error. For local development,
+install the server from the workspace so it lands on `PATH` (step 2, ahead of any download):
 
 ```bash
 cargo mosils   # cargo install --path=crates/mos-lsp --bin=mos-lsp --force
 ```
+
+The release assets are produced by [`.github/workflows/release.yml`], which calls the reusable
+[`release-binaries.yml`] pipeline to cross-compile `mos-lsp` for every Zed-supported target on each
+`v*` tag.
 
 To pin a specific binary instead, add to your Zed settings:
 
@@ -138,8 +147,11 @@ them[^semantic-tokens].
 [`brackets.scm`]: languages/mosaic/brackets.scm
 [`crates/tree-sitter-mosaic/queries/`]: ../tree-sitter-mosaic/queries/
 [`crates/tree-sitter-mosaic`]: ../tree-sitter-mosaic/
+[`.github/workflows/release.yml`]: ../../.github/workflows/release.yml
 [`crates/zed-mosaic/`]: ../zed-mosaic/
 [`extension.toml`]: extension.toml
+[`kjanat/mosaic`]: https://github.com/kjanat/mosaic
+[`release-binaries.yml`]: ../../.github/workflows/release-binaries.yml
 [`indents.scm`]: languages/mosaic/indents.scm
 [`languages/mosaic/config.toml`]: languages/mosaic/config.toml
 [`languages/mosaic/`]: languages/mosaic/

@@ -1,0 +1,111 @@
+name: release-binaries
+run-name: "release-binaries ${{ inputs.tag }} ${{ inputs.bins }}"
+
+# Reusable cross-compile + release-upload pipeline.
+#
+# Ensures the GitHub release for `tag` exists (created from the `changelog`
+# version section via taiki-e/create-gh-release-action if missing), then builds
+# each requested binary for each
+# requested target and attaches a per-(binary, target) archive
+# (`<bin>-<target>.tar.gz` on Unix, `<bin>-<target>.zip` on Windows) plus a
+# sha256 sum. Cross-compilation (e.g. aarch64 Linux, arm64 Windows) is handled by
+# taiki-e/upload-rust-binary-action, which installs the rustup target / `cross`
+# as needed -- no per-target shell scripting here.
+#
+# Repurpose by calling with a different `bins` (and optionally `targets`) list;
+# nothing below is Mosaic-specific.
+
+on:
+  workflow_call:
+    inputs:
+      bins:
+        description: 'JSON array of cargo binary names to build, e.g. ["mos-lsp","mos"].'
+        required: true
+        type: string
+      tag:
+        description: Release tag the archives are built from and attached to (e.g. v0.6.0).
+        required: true
+        type: string
+      changelog:
+        description: Path to a changelog whose `tag` section becomes the release notes. Empty = no notes.
+        required: false
+        type: string
+        default: ""
+      targets:
+        description: "JSON array of { target, runner } objects to cross-compile for."
+        required: false
+        type: string
+        default: >-
+          [
+            {"target": "x86_64-unknown-linux-gnu",  "runner": "ubuntu-latest"},
+            {"target": "aarch64-unknown-linux-gnu", "runner": "ubuntu-latest"},
+            {"target": "x86_64-apple-darwin",       "runner": "macos-15-intel"},
+            {"target": "aarch64-apple-darwin",      "runner": "macos-15"},
+            {"target": "x86_64-pc-windows-msvc",    "runner": "windows-latest"},
+            {"target": "aarch64-pc-windows-msvc",   "runner": "windows-latest"}
+          ]
+
+permissions: { contents: read }
+defaults: { run: { shell: pwsh } }
+
+env:
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  create-release:
+    name: "create release ${{ inputs.tag }}"
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v6
+        with: { ref: "refs/tags/${{ inputs.tag }}", persist-credentials: false }
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          changelog: ${{ inputs.changelog }}
+          allow-missing-changelog: true
+          ref: refs/tags/${{ inputs.tag }}
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+
+  upload:
+    name: "${{ matrix.bin }} | ${{ matrix.target.target }}"
+    needs: create-release
+    runs-on: ${{ matrix.target.runner }}
+    permissions: { contents: write }
+    strategy:
+      fail-fast: false
+      matrix:
+        bin: ${{ fromJSON(inputs.bins) }}
+        target: ${{ fromJSON(inputs.targets) }}
+    steps:
+      - uses: actions/checkout@v6
+        with: { ref: "refs/tags/${{ inputs.tag }}", persist-credentials: false }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/upload-rust-binary-action@v1
+        id: upload
+        with:
+          bin: ${{ matrix.bin }}
+          target: ${{ matrix.target.target }}
+          archive: $bin-$target
+          tar: unix
+          zip: windows
+          checksum: sha256
+          locked: true
+          ref: refs/tags/${{ inputs.tag }}
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: job summary
+        env:
+          MATRIX: ${{ toJSON(matrix) }}
+          OUTPUTS: ${{ toJSON(steps.upload.outputs) }}
+        run: |
+          $m = $env:MATRIX | ConvertFrom-Json
+          $o = $env:OUTPUTS | ConvertFrom-Json
+          $archive = $o.tar ?? $o.zip
+          $digest = ($o.sha256 -and (Test-Path $o.sha256)) ? (-split (Get-Content $o.sha256 -TotalCount 1))[0] : $o.sha256
+          @"
+          ### $($m.bin) | $($m.target.target)
+
+          | Asset    | SHA-256 |
+          | -------- | ------- |
+          | $archive | $digest |
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
