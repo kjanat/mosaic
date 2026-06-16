@@ -8,6 +8,18 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Zed language-server wiring (https://github.com/kjanat/mosaic/issues/118): the
+  [`zed-mosaic`][zed-mosaic] extension now declares and spawns [`mos-lsp`][mos-lsp] as the `Mosaic`
+  language server, so opening a `.mos` file in Zed gets compiler diagnostics, go-to-definition, and
+  label rename. Binary discovery order: the Zed setting `lsp."mos-lsp".binary.path` (with optional
+  `binary.arguments`), then `mos-lsp` on `PATH` (install via `cargo mosils`); when neither resolves
+  the extension surfaces a clear error pointing at both paths. `extension.toml` gains a
+  `[language_servers.mos-lsp]` declaration and `src/lib.rs` implements `language_server_command`
+  plus `initialization_options` / `workspace_configuration` passthrough from Zed settings. A new
+  `examples/lsp/` project demonstrates heading labels, `@label` / `@page(label)` references, and
+  `[@key]` citations for exercising the server. CI now type-checks the workspace-excluded extension
+  crate against `wasm32-wasip2` so the wiring cannot silently regress.
+
 - CLI structured suggestion rendering (https://github.com/kjanat/mosaic/issues/109): `mos check` and
   `mos build` now print existing machine-actionable [`mos-core`][mos-core] `Suggestion` payloads as
   `help:` fix-it lines after diagnostics. Unknown-label near misses show a concrete replacement like

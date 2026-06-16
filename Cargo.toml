@@ -35,7 +35,7 @@ tree-sitter-mosaic = { path = "crates/tree-sitter-mosaic", version = "0.0.1" }
 # External dependencies
 cc                    = "1.2"
 flate2                = "1.1"
-lopdf                 = "0.40"
+lopdf                 = "0.41"
 opener                = "0.8"
 pdf-writer            = "0.15"
 roxmltree             = "0.21"

@@ -429,7 +429,8 @@ example.
 - [ ] Complete [`mos-lsp`] beyond the current entry point.
 - [x] Publish diagnostics over LSP.
 - [x] Add go-to-definition for labels.
-- [ ] Add rename label.
+- [x] Add rename label.
+- [x] Spawn [`mos-lsp`] from the [`zed-mosaic`] extension (diagnostics, definition, rename).
 - [ ] Add citation autocomplete.
 - [ ] Add figure preview.
 - [ ] Add outline.

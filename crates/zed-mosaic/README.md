@@ -13,10 +13,11 @@ queries/tasks.
 - Editor config for two-space indentation, soft wrap, comments, bracket pairs, word characters,
   auto-closing/surround pairs, and list continuation.
 - Runnables/tasks for `mos build` and `mos build --open` on the current file.
+- Language server features through [`mos-lsp`]: diagnostics, go-to-definition, and label rename.
 - Reserved semantic token style rules for a future Mosaic language server.
 
-The Rust/WASM entrypoint in [`src/lib.rs`] only calls `register_extension!`; no LSP, commands, or
-runtime hooks are currently implemented.
+The Rust/WASM entrypoint in [`src/lib.rs`] registers the extension and spawns [`mos-lsp`] as the
+Mosaic language server (see [Language server](#language-server)). No compiler logic lives here.
 
 ## Grammar registration
 
@@ -33,6 +34,48 @@ During local grammar development, the commented `file:///home/kjanat/projects/mo
 2. Command palette → `zed: install dev extension`.
 3. Select this directory ([`crates/zed-mosaic/`]).
 4. Open any `examples/*/main.mos` to confirm highlighting and the language picker shows "Mosaic".
+
+## Language server
+
+Opening a `.mos` file starts [`mos-lsp`] for the `Mosaic` language. [`extension.toml`] declares the
+`mos-lsp` language server and [`src/lib.rs`] resolves the binary. Current features: compiler
+diagnostics on open/change, go-to-definition for `@label` / `@page(label)` references, and label
+rename via `textDocument/rename`.
+
+### Binary discovery
+
+The extension locates `mos-lsp` in this order:
+
+1. `lsp."mos-lsp".binary.path` in your Zed settings (explicit override).
+2. `mos-lsp` on `PATH`.
+
+If neither resolves, Zed surfaces an error telling you to install or configure the binary. For local
+development, install the server from the workspace so it lands on `PATH`:
+
+```bash
+cargo mosils   # cargo install --path=crates/mos-lsp --bin=mos-lsp --force
+```
+
+To pin a specific binary instead, add to your Zed settings:
+
+```json
+{
+	"lsp": {
+		"mos-lsp": {
+			"binary": { "path": "/absolute/path/to/mos-lsp" }
+		}
+	}
+}
+```
+
+### Verify the language server
+
+After installing the dev extension with `mos-lsp` available:
+
+1. Open a `.mos` file with an undeclared `[@key]` citation or a broken `@ref` → diagnostics appear.
+2. Place the cursor on a `@label` / `@page(label)` reference and go-to-definition → jumps to the
+   label declaration.
+3. Rename a label → the declaration and all `@label` / `@page(label)` references update together.
 
 ## Queries and config
 
@@ -75,17 +118,17 @@ Zed `tasks.json` files by binding their own task to the same runnable tags.
 ## Semantic tokens
 
 [`languages/mosaic/semantic_token_rules.json`] reserves the `mosaic*` custom token namespace for the
-future LSP and maps those semantic tokens to Zed theme styles. It is inactive until the extension
-registers `mos-lsp` and Zed has semantic tokens enabled (`combined` or `full`)[^semantic-tokens].
+future LSP and maps those semantic tokens to Zed theme styles. It is inactive because [`mos-lsp`]
+does not yet advertise a semantic tokens provider (it ships diagnostics, definition, and rename);
+enabling Zed semantic tokens (`combined` or `full`) has no effect until the server emits
+them[^semantic-tokens].
 
 ## Known non-goals
 
-- No language server integration yet. The workspace has a `mos-lsp` binary, but this extension does
-  not spawn or configure it.
-- No formatter, code actions, completion, diagnostics, package resolution, preview pane, or watch
-  mode.
-- No compiler behavior lives here. `mos check`/`mos build` remain owned by the main Mosaic crates
-  and CLI.
+- No formatter, code actions, completion, package resolution, preview pane, or watch mode. LSP
+  features are limited to what [`mos-lsp`] advertises today (diagnostics, definition, rename).
+- No compiler behavior lives here. `mos check`/`mos build` and [`mos-lsp`] remain owned by the main
+  Mosaic crates.
 
 <!-- sorted case-sensitive -->
 
@@ -102,6 +145,7 @@ registers `mos-lsp` and Zed has semantic tokens enabled (`combined` or `full`)[^
 [`languages/mosaic/`]: languages/mosaic/
 [`languages/mosaic/semantic_token_rules.json`]: languages/mosaic/semantic_token_rules.json
 [`languages/mosaic/tasks.json`]: languages/mosaic/tasks.json
+[`mos-lsp`]: ../mos-lsp/
 [`outline.scm`]: languages/mosaic/outline.scm
 [`overrides.scm`]: languages/mosaic/overrides.scm
 [`runnables.scm`]: languages/mosaic/runnables.scm

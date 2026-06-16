@@ -25,10 +25,11 @@
 		"mos-lsp": { // pre-wired... does fuck all at the moment...
 			"binary": {
 				"path": "cargo",
-				"arguments": ["run", "--bin", "mos-lsp"],
+				"arguments": ["mosls"],
 				"env": {
 					"CARGO_TERM_QUIET": "true",
-					"CARGO_PKG_VERSION_PRE": "zed"
+					"CARGO_PKG_VERSION_PRE": "zed",
+					"CARGO_TARGET_DIR": "target/zed"
 				}
 			},
 			"initialization_options": {},
