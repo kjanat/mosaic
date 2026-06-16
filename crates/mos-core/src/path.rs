@@ -6,7 +6,56 @@
 //! with forward slashes for user-facing output ([`display_path`]). Nothing
 //! here touches the filesystem; these are pure path-string operations.
 
-use std::path::{Path, PathBuf};
+use std::ffi::OsStr;
+use std::path::{Component, Path, PathBuf};
+
+/// Why a portable, `/`-separated path could not be resolved.
+///
+/// Resolution is infallible for well-formed manifest paths; the sole failure
+/// mode is a segment that would smuggle platform path semantics past the
+/// `/`-only lexical model in [`resolve_relative`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PathError {
+    /// A `/`-delimited segment was not a single portable name: it held a
+    /// platform separator (`\`), a drive prefix, or otherwise resolved to more
+    /// than one path component, so the OS would re-split it and bypass the
+    /// lexical `..` handling. The offending segment is reported verbatim.
+    UnsafeSegment(String),
+}
+
+impl core::fmt::Display for PathError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnsafeSegment(segment) => write!(
+                f,
+                "path segment `{segment}` is not a portable name; manifest paths use `/` as the \
+                 only separator and a segment may not contain a `\\`, a drive prefix, or an \
+                 absolute root"
+            ),
+        }
+    }
+}
+
+impl core::error::Error for PathError {}
+
+/// Whether `segment` is a single portable filename component: it holds no
+/// platform separator and parses to exactly one [`Component::Normal`] equal to
+/// itself.
+///
+/// Manifest paths spell separators with `/` only, so a `\` (a separator on
+/// Windows), a drive prefix (`C:`), or any rooted form would let the OS
+/// re-split the segment and slip past the lexical `..` normalization in
+/// [`resolve_relative`]. Backslash is rejected on every platform so a manifest
+/// resolves identically everywhere, not only where `\` happens to be a
+/// separator.
+fn is_plain_name(segment: &str) -> bool {
+    if segment.contains('\\') {
+        return false;
+    }
+    let mut components = Path::new(segment).components();
+    matches!(components.next(), Some(Component::Normal(name)) if name == OsStr::new(segment))
+        && components.next().is_none()
+}
 
 /// Render a filesystem path for user-facing output with forward slashes on
 /// every platform.
@@ -53,9 +102,17 @@ pub fn display_path(path: &Path) -> String {
 /// the root of an **absolute** base is clamped (`/a` + `../../x` -> `/x`),
 /// matching the OS. Nothing here touches the filesystem, so `..` is resolved
 /// textually and ignores symlinks; identity-grade canonicalization (NFC, escape
-/// rejection) lives in `mos_cache::ProjectPath`. Each `/`-delimited segment is
-/// appended as a single name -- manifest paths use `/` only; a segment that
-/// smuggles in a platform separator or drive prefix is out of contract.
+/// rejection) lives in `mos_cache::ProjectPath`. Each `/`-delimited segment must
+/// be a single portable name -- manifest paths use `/` only, so a segment that
+/// smuggles in a platform separator (`\`), a drive prefix, or an absolute root
+/// is rejected (see Errors) rather than handed to `PathBuf::push`, which would
+/// let the OS re-split it past this lexical model.
+///
+/// # Errors
+///
+/// Returns [`PathError::UnsafeSegment`] when a `/`-delimited segment is not a
+/// single portable component. An absolute or rooted `relative` is *not* a
+/// segment and still passes through unchanged.
 ///
 /// # Examples
 ///
@@ -66,24 +123,23 @@ pub fn display_path(path: &Path) -> String {
 ///
 /// assert_eq!(
 ///     resolve_relative(Path::new("proj"), "sub/file.txt"),
-///     Path::new("proj").join("sub").join("file.txt"),
+///     Ok(Path::new("proj").join("sub").join("file.txt")),
 /// );
 /// // `.` and `..` segments are normalized away within the base:
 /// assert_eq!(
 ///     resolve_relative(Path::new("proj"), "sub/../assets/./logo.png"),
-///     Path::new("proj").join("assets").join("logo.png"),
+///     Ok(Path::new("proj").join("assets").join("logo.png")),
 /// );
 /// // `..` past a relative base is preserved, not eaten:
 /// assert_eq!(
 ///     resolve_relative(Path::new("proj/sub"), "../../../shared/x"),
-///     Path::new("..").join("shared").join("x"),
+///     Ok(Path::new("..").join("shared").join("x")),
 /// );
 /// ```
-#[must_use]
-pub fn resolve_relative(base: &Path, relative: &str) -> PathBuf {
+pub fn resolve_relative(base: &Path, relative: &str) -> Result<PathBuf, PathError> {
     let candidate = Path::new(relative);
     if candidate.is_absolute() || candidate.has_root() {
-        return candidate.to_path_buf();
+        return Ok(candidate.to_path_buf());
     }
     // `resolved` accumulates the path at or below `base`; `ascend` counts the
     // leading `..` that escaped a relative base and must survive. `pop()` only
@@ -99,11 +155,16 @@ pub fn resolve_relative(base: &Path, relative: &str) -> PathBuf {
                     ascend += 1;
                 }
             }
-            other => resolved.push(other),
+            other => {
+                if !is_plain_name(other) {
+                    return Err(PathError::UnsafeSegment(other.to_owned()));
+                }
+                resolved.push(other);
+            }
         }
     }
     if ascend == 0 {
-        return resolved;
+        return Ok(resolved);
     }
     let mut out = PathBuf::new();
     for _ in 0..ascend {
@@ -113,7 +174,7 @@ pub fn resolve_relative(base: &Path, relative: &str) -> PathBuf {
     if !resolved.as_os_str().is_empty() {
         out.push(resolved);
     }
-    out
+    Ok(out)
 }
 
 /// Resolve a portable, `/`-separated `src_path` (as written in a source file)
@@ -122,6 +183,11 @@ pub fn resolve_relative(base: &Path, relative: &str) -> PathBuf {
 /// A convenience wrapper over [`resolve_relative`]: the base is `source_file`'s
 /// parent, or the current directory when `source_file` is a bare filename.
 /// Absolute or rooted `src_path` values pass through unchanged.
+///
+/// # Errors
+///
+/// Propagates [`PathError`] from [`resolve_relative`] when `src_path` has a
+/// segment that is not a single portable name.
 ///
 /// # Examples
 ///
@@ -132,11 +198,10 @@ pub fn resolve_relative(base: &Path, relative: &str) -> PathBuf {
 ///
 /// assert_eq!(
 ///     resolve_source_path("img/a.png", Path::new("proj/main.mos")),
-///     Path::new("proj").join("img").join("a.png"),
+///     Ok(Path::new("proj").join("img").join("a.png")),
 /// );
 /// ```
-#[must_use]
-pub fn resolve_source_path(src_path: &str, source_file: &Path) -> PathBuf {
+pub fn resolve_source_path(src_path: &str, source_file: &Path) -> Result<PathBuf, PathError> {
     // `Path::parent()` returns `Some("")` (not `None`) for a bare filename like
     // `main.mos`, so the empty-component guard is required to fall back to the
     // current directory rather than joining against an empty base.
@@ -150,7 +215,7 @@ pub fn resolve_source_path(src_path: &str, source_file: &Path) -> PathBuf {
 mod tests {
     use std::path::Path;
 
-    use super::{resolve_relative, resolve_source_path};
+    use super::{PathError, resolve_relative, resolve_source_path};
 
     #[test]
     fn resolve_relative_normalizes_dot_dotdot_and_empty_segments() {
@@ -158,16 +223,16 @@ mod tests {
         // paths stay clean (no `proj/sub/../file`).
         assert_eq!(
             resolve_relative(Path::new("proj"), "sub/../assets/./logo.png"),
-            Path::new("proj").join("assets").join("logo.png"),
+            Ok(Path::new("proj").join("assets").join("logo.png")),
         );
         assert_eq!(
             resolve_relative(Path::new("proj"), "a//b"),
-            Path::new("proj").join("a").join("b"),
+            Ok(Path::new("proj").join("a").join("b")),
         );
         // `..` may ascend past the base lexically (sibling directory).
         assert_eq!(
             resolve_relative(Path::new("proj"), "../shared/x"),
-            Path::new("shared").join("x"),
+            Ok(Path::new("shared").join("x")),
         );
     }
 
@@ -175,7 +240,7 @@ mod tests {
     fn resolve_relative_passes_absolute_and_rooted_through() {
         assert_eq!(
             resolve_relative(Path::new("proj"), "/etc/refs.bib"),
-            Path::new("/etc/refs.bib"),
+            Ok(Path::new("/etc/refs.bib").to_path_buf()),
         );
     }
 
@@ -185,17 +250,17 @@ mod tests {
         // `..` instead of being silently swallowed by `PathBuf::pop`.
         assert_eq!(
             resolve_relative(Path::new("proj/sub"), "../../../shared/x"),
-            Path::new("..").join("shared").join("x"),
+            Ok(Path::new("..").join("shared").join("x")),
         );
         // Exhausting the base with nothing below leaves bare `..`s.
         assert_eq!(
             resolve_relative(Path::new("proj"), "../../.."),
-            Path::new("..").join(".."),
+            Ok(Path::new("..").join("..")),
         );
         // An empty base ascends from the current directory.
         assert_eq!(
             resolve_relative(Path::new(""), "../x"),
-            Path::new("..").join("x")
+            Ok(Path::new("..").join("x")),
         );
     }
 
@@ -204,7 +269,23 @@ mod tests {
         // You cannot ascend above `/`: extra `..` at the root are no-ops.
         assert_eq!(
             resolve_relative(Path::new("/a/b"), "../../../x"),
-            Path::new("/x"),
+            Ok(Path::new("/x").to_path_buf()),
+        );
+    }
+
+    #[test]
+    fn resolve_relative_rejects_segments_that_smuggle_separators() {
+        // A backslash is rejected on every platform: manifest paths are
+        // `/`-only, and on Windows `\` would re-split the segment past the
+        // lexical model. The first offending segment is reported verbatim.
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "a\\b/c.png"),
+            Err(PathError::UnsafeSegment("a\\b".to_owned())),
+        );
+        // A bare absolute is not a segment, so it still passes through.
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "/abs/x"),
+            Ok(Path::new("/abs/x").to_path_buf()),
         );
     }
 
@@ -213,7 +294,7 @@ mod tests {
         // Bare filename -> empty base; `../x` must keep its leading `..`.
         assert_eq!(
             resolve_source_path("../x", Path::new("main.mos")),
-            Path::new("..").join("x"),
+            Ok(Path::new("..").join("x")),
         );
     }
 
@@ -221,12 +302,20 @@ mod tests {
     fn resolve_source_path_normalizes_against_source_dir_and_bare_filename() {
         assert_eq!(
             resolve_source_path("img/../logo.png", Path::new("proj/main.mos")),
-            Path::new("proj").join("logo.png"),
+            Ok(Path::new("proj").join("logo.png")),
         );
         // Bare filename: parent is `Some("")`, so the base is the current dir.
         assert_eq!(
             resolve_source_path("a/./b.png", Path::new("main.mos")),
-            Path::new("a").join("b.png"),
+            Ok(Path::new("a").join("b.png")),
+        );
+    }
+
+    #[test]
+    fn resolve_source_path_rejects_unsafe_segment() {
+        assert_eq!(
+            resolve_source_path("img\\scan.png", Path::new("proj/main.mos")),
+            Err(PathError::UnsafeSegment("img\\scan.png".to_owned())),
         );
     }
 }

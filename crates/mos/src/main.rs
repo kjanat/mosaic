@@ -377,8 +377,14 @@ fn resolve_entry(command: &str, entry: &Path) -> Result<ResolvedEntry, ()> {
                 return Err(());
             }
         };
+        let source = mos_core::resolve_relative(entry, &manifest.project.entry).map_err(|err| {
+            eprintln!(
+                "mos {command}: invalid project entry path `{}`: {err}",
+                manifest.project.entry
+            );
+        })?;
         return Ok(ResolvedEntry {
-            source: mos_core::resolve_relative(entry, &manifest.project.entry),
+            source,
             output_base: entry.to_path_buf(),
             output: match manifest.output.pdf.as_deref() {
                 Some(path) => Some(resolve_manifest_output(command, entry, path)?),
@@ -409,7 +415,9 @@ fn resolve_manifest_output(command: &str, project_dir: &Path, output: &str) -> R
         );
         return Err(());
     }
-    Ok(mos_core::resolve_relative(project_dir, output))
+    mos_core::resolve_relative(project_dir, output).map_err(|err| {
+        eprintln!("mos {command}: invalid PDF output path `{output}`: {err}");
+    })
 }
 
 #[derive(Debug, Clone, Copy)]

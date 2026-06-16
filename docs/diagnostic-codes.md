@@ -60,20 +60,21 @@ codes use the next free integer.
 
 ### Semantic
 
-| Code    | Slug                        | Default severity | Owner crate | Summary                                                             |
-| ------- | --------------------------- | ---------------- | ----------- | ------------------------------------------------------------------- |
-| MOS0011 | set-unknown-target          | Error            | mos-eval    | semantic: unknown #set target                                       |
-| MOS0015 | unknown-kwarg               | Error            | mos-eval    | semantic: unknown keyword argument                                  |
-| MOS0020 | arg-type-mismatch           | Error            | mos-eval    | semantic: argument type mismatch or non-positive length             |
-| MOS0024 | set-positional-rejected     | Error            | mos-eval    | semantic: #set rejects positional argument                          |
-| MOS0027 | set-sanity-floor            | Warning          | mos-eval    | semantic: #set value trips a sanity floor; value still applied      |
-| MOS0030 | label-duplicate             | Error            | mos-eval    | semantic: label declared more than once                             |
-| MOS0033 | label-missing               | Error            | mos-eval    | semantic: @reference to a label that does not exist                 |
-| MOS0037 | image-missing-path          | Error            | mos-eval    | semantic: #image/#figure missing a path argument                    |
-| MOS0040 | bibliography-missing-path   | Error            | mos-eval    | semantic: #bibliography missing a path argument                     |
-| MOS0042 | bibliography-duplicate-path | Error            | mos-eval    | semantic: #bibliography path argument declared more than once       |
-| MOS0045 | citation-missing            | Error            | mos-eval    | semantic: citation key does not exist in bibliography records       |
-| MOS0046 | bibliography-duplicate-key  | Error            | mos-eval    | semantic: citation key appears in more than one bibliography source |
+| Code    | Slug                        | Default severity | Owner crate | Summary                                                                     |
+| ------- | --------------------------- | ---------------- | ----------- | --------------------------------------------------------------------------- |
+| MOS0011 | set-unknown-target          | Error            | mos-eval    | semantic: unknown #set target                                               |
+| MOS0015 | unknown-kwarg               | Error            | mos-eval    | semantic: unknown keyword argument                                          |
+| MOS0020 | arg-type-mismatch           | Error            | mos-eval    | semantic: argument type mismatch or non-positive length                     |
+| MOS0024 | set-positional-rejected     | Error            | mos-eval    | semantic: #set rejects positional argument                                  |
+| MOS0027 | set-sanity-floor            | Warning          | mos-eval    | semantic: #set value trips a sanity floor; value still applied              |
+| MOS0030 | label-duplicate             | Error            | mos-eval    | semantic: label declared more than once                                     |
+| MOS0033 | label-missing               | Error            | mos-eval    | semantic: @reference to a label that does not exist                         |
+| MOS0037 | image-missing-path          | Error            | mos-eval    | semantic: #image/#figure missing a path argument                            |
+| MOS0040 | bibliography-missing-path   | Error            | mos-eval    | semantic: #bibliography missing a path argument                             |
+| MOS0042 | bibliography-duplicate-path | Error            | mos-eval    | semantic: #bibliography path argument declared more than once               |
+| MOS0045 | citation-missing            | Error            | mos-eval    | semantic: citation key does not exist in bibliography records               |
+| MOS0046 | bibliography-duplicate-key  | Error            | mos-eval    | semantic: citation key appears in more than one bibliography source         |
+| MOS0049 | path-unsafe-segment         | Error            | mos-eval    | semantic: path segment is not a portable name (manifest paths use `/` only) |
 
 ### Layout
 

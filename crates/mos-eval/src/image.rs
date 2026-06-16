@@ -43,7 +43,16 @@ pub(crate) fn load(
     source_file: &Path,
     call_span: &SourceSpan,
 ) -> Result<(PathBuf, DecodedImage), Box<Diagnostic>> {
-    let resolved = mos_core::resolve_source_path(src_path, source_file);
+    let resolved = mos_core::resolve_source_path(src_path, source_file).map_err(|err| {
+        Box::new(
+            Diagnostic::simple(
+                &codes::MOS0049,
+                None,
+                format!("cannot use image path `{src_path}`: {err}"),
+            )
+            .with_span(call_span.clone()),
+        )
+    })?;
     let bytes = std::fs::read(&resolved).map_err(|err| {
         Box::new(
             Diagnostic::simple(
@@ -197,13 +206,13 @@ mod tests {
     fn resolve_relative_path_uses_source_parent() {
         let src = Path::new("/tmp/proj/main.mos");
         let resolved = mos_core::resolve_source_path("img/scan.png", src);
-        assert_eq!(resolved, PathBuf::from("/tmp/proj/img/scan.png"));
+        assert_eq!(resolved, Ok(PathBuf::from("/tmp/proj/img/scan.png")));
     }
 
     #[test]
     fn resolve_absolute_path_passes_through() {
         let src = Path::new("/tmp/proj/main.mos");
         let resolved = mos_core::resolve_source_path("/abs/path.png", src);
-        assert_eq!(resolved, PathBuf::from("/abs/path.png"));
+        assert_eq!(resolved, Ok(PathBuf::from("/abs/path.png")));
     }
 }

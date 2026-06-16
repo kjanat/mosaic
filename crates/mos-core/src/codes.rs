@@ -446,6 +446,13 @@ define_codes! {
     /// Citation key appears in more than one declared bibliography source.
     MOS0046 = 46, Error, Semantic, "bibliography-duplicate-key", "mos-eval",
         "semantic: citation key appears in more than one bibliography source";
+    /// A `/`-separated `#image`/`#figure`/`#bibliography` (or manifest) path
+    /// has a segment that is not a portable name: it carries a platform
+    /// separator (`\`), a drive prefix, or otherwise resolves to more than a
+    /// single component, which the OS would re-split past lexical `..`
+    /// normalization. The path is rejected rather than resolved.
+    MOS0049 = 49, Error, Semantic, "path-unsafe-segment", "mos-eval",
+        "semantic: path segment is not a portable name (manifest paths use `/` only)";
 
     // ── filesystem / asset I/O ────────────────────────────────────────
     /// Image file cannot be read from disk.

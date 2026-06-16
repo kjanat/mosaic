@@ -45,7 +45,20 @@ pub(super) fn lower_bibliography_directive(
     let Some(path) = bibliography_path(args, span, diagnostics) else {
         return;
     };
-    let resolved = mos_core::resolve_source_path(&path, source_file);
+    let resolved = match mos_core::resolve_source_path(&path, source_file) {
+        Ok(resolved) => resolved,
+        Err(err) => {
+            diagnostics.push(
+                Diagnostic::simple(
+                    &codes::MOS0049,
+                    None,
+                    format!("cannot use bibliography path `{path}`: {err}"),
+                )
+                .with_span(span.clone()),
+            );
+            return;
+        }
+    };
     // The directive only *declares* the source in this slice, so a missing
     // file is a non-fatal warning rather than the hard error `#image(...)`
     // raises: the node is still emitted with its resolved path, and the

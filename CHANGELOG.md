@@ -177,6 +177,18 @@ All notable changes to this project will be documented here. The format is based
   /x`), matching the OS. Still filesystem-free and symlink-agnostic; identity-grade
   canonicalization stays in `mos_cache::ProjectPath`.
 
+- Unsafe path segments are now rejected, not silently re-split. `resolve_relative` /
+  `resolve_source_path` ([`mos-core`][mos-core]) split a `/`-separated path and handed each segment
+  to `PathBuf::push`, which on Windows re-parses a segment containing `\` (or a drive prefix) into
+  multiple components -- letting a `#image` / `#figure` / `#bibliography` or manifest path smuggle
+  traversal past the lexical `..` normalization. Both functions now return
+  `Result<PathBuf,
+  PathError>` and reject any segment that is not a single portable name (a
+  backslash is rejected on **every** platform so a manifest resolves identically everywhere). The
+  new **MOS0049** (`path-unsafe-segment`) reports the offending segment from
+  [`mos-eval`][mos-eval]'s image and bibliography lowering; the CLI surfaces it for malformed
+  `mosaic.toml` entry/output paths. Absolute and rooted paths still pass through unchanged.
+
 ## [0.0.1] - 2026-06-03
 
 ### Added
