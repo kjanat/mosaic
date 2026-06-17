@@ -52,9 +52,6 @@ cave around real compiler services
 ## ANTI-PATTERNS
 
 - Do not advertise `diagnosticProvider` until pull diagnostics are implemented.
-- Do not add completion, hover, formatting, code actions, workspace index, or preview sync by
-  manifesto gravity. (Go-to-definition and label rename for `@label` references are shipped, both
-  single-document; cross-file rename, `prepareRename`, and new-name validation are still out.)
 - Go-to-definition and rename for labels stay single-document and walk the lowered `Document`,
   mirror the resolver's first-declaration-wins rule, do not build a workspace index or cross-file
   label map. Citation go-to-definition may jump to the declared BibTeX source already read during

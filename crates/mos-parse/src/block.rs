@@ -57,7 +57,10 @@ impl Parser<'_> {
         if trailing.is_empty() {
             return;
         }
-        let before = self.src[start..label.start - 1].trim();
+        let Some(label_open) = label.start.checked_sub(1).filter(|open| *open >= start) else {
+            return;
+        };
+        let before = self.src[start..label_open].trim();
         let mut fixed = String::new();
         for part in [before, trailing] {
             if part.is_empty() {
@@ -81,7 +84,7 @@ impl Parser<'_> {
         let diagnostic = self
             .warn(&codes::MOS0048, &message, start, content_end)
             .with_suggestion(Suggestion::new(self.span(start, content_end), fixed))
-            .with_suggestion(Suggestion::new(self.span(label.start - 1, label.start), "\\<"))
+            .with_suggestion(Suggestion::new(self.span(label_open, label.start), "\\<"))
             .with_annotation(DiagnosticAnnotation::Hint(format!(
                 "if `<{label}>` is literal text (e.g. an HTML tag), escape the `<` as `\\<{label}>`",
                 label = label.text

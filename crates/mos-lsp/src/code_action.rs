@@ -28,7 +28,9 @@ pub(crate) fn code_actions_for_range(
             diagnostic
                 .suggestions()
                 .iter()
-                .filter(|suggestion| suggestion.span.file == file)
+                .filter(|suggestion| {
+                    suggestion.span.file == file && request.intersects(&suggestion.span)
+                })
                 .map(move |suggestion| action_for_suggestion(src, uri, diagnostic, suggestion))
         })
         .collect()
@@ -124,7 +126,7 @@ impl ByteRange {
 
     fn intersects(self, span: &SourceSpan) -> bool {
         if self.start == self.end {
-            return span.start() <= self.start && self.start <= span.end();
+            return span.start() <= self.start && self.start < span.end();
         }
         span.start() < self.end && self.start < span.end()
     }
@@ -134,7 +136,7 @@ impl ByteRange {
 mod tests {
     use std::path::PathBuf;
 
-    use mos_core::codes;
+    use mos_core::{Diagnostic, Document, SourceSpan, Suggestion, codes};
 
     use super::*;
     use crate::diagnostics::byte_to_position;
@@ -182,5 +184,79 @@ mod tests {
                 .and_then(Value::as_str)
                 .is_some_and(|title| title.contains(&codes::MOS0033.code().to_string()))
         );
+    }
+
+    #[test]
+    fn filters_each_suggestion_by_request_range() {
+        let file = PathBuf::from("/virtual/main.mos");
+        let src = "alpha beta";
+        let diagnostic = Diagnostic::simple(
+            &codes::MOS0033,
+            Some(SourceSpan::new(file.clone(), 0, src.len())),
+            "synthetic diagnostic with disjoint fixes",
+        )
+        .with_suggestion(Suggestion::new(
+            SourceSpan::new(file.clone(), 0, 5),
+            "ALPHA",
+        ))
+        .with_suggestion(Suggestion::new(
+            SourceSpan::new(file.clone(), 6, 10),
+            "BETA",
+        ));
+        let lowered = mos_eval::LowerResult {
+            document: Document::new(file.clone()),
+            diagnostics: vec![diagnostic],
+            metadata: mos_eval::DocumentMetadata::default(),
+            reads_external_resources: false,
+        };
+
+        let actions = code_actions_for_range(
+            &file,
+            src,
+            "file:///virtual/main.mos",
+            &lowered,
+            range_for(src, "alpha"),
+        );
+
+        assert_eq!(actions.len(), 1, "only the first fix overlaps: {actions:?}");
+        assert_eq!(
+            actions[0].get("title").and_then(Value::as_str),
+            Some("MOS0033: replace `alpha` with `ALPHA`")
+        );
+    }
+
+    #[test]
+    fn cursor_range_uses_half_open_span_end() {
+        let file = PathBuf::from("/virtual/main.mos");
+        let src = "alpha";
+        let diagnostic = Diagnostic::simple(
+            &codes::MOS0033,
+            Some(SourceSpan::new(file.clone(), 0, src.len())),
+            "synthetic diagnostic at span end",
+        )
+        .with_suggestion(Suggestion::new(
+            SourceSpan::new(file.clone(), 0, src.len()),
+            "ALPHA",
+        ));
+        let lowered = mos_eval::LowerResult {
+            document: Document::new(file.clone()),
+            diagnostics: vec![diagnostic],
+            metadata: mos_eval::DocumentMetadata::default(),
+            reads_external_resources: false,
+        };
+        let request_range = LspRange {
+            start: byte_to_position(src, src.len()),
+            end: byte_to_position(src, src.len()),
+        };
+
+        let actions = code_actions_for_range(
+            &file,
+            src,
+            "file:///virtual/main.mos",
+            &lowered,
+            request_range,
+        );
+
+        assert!(actions.is_empty(), "cursor just past span must not match");
     }
 }

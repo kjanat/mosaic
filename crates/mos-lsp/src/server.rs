@@ -224,9 +224,9 @@ fn document_symbol_result(state: &mut ServerState, message: &Value) -> Value {
 /// BibTeX key, or `null` when the request names no open document, carries no
 /// position, or the cursor is not on a resolvable reference/citation.
 ///
-/// The target always lives in the requested document; the server holds
-/// one source per URI and lowers it in isolation, so the response
-/// reuses the request URI verbatim.
+/// Label targets reuse the request document URI. Citation targets can
+/// resolve to an external `.bib` file already read during lowering, so
+/// the response URI may differ from the request URI.
 fn definition_result(state: &mut ServerState, message: &Value) -> Value {
     let Some(uri) = message
         .pointer("/params/textDocument/uri")

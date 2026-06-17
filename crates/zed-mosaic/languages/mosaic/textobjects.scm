@@ -13,11 +13,11 @@
 
 (pre_block
   body: (raw_body
-    (raw_body_content) @class.inside)) @class.around
+    (raw_body_content)? @class.inside)) @class.around
 
 (code_block
   body: (raw_body
-    (raw_body_content) @class.inside)) @class.around
+    (raw_body_content)? @class.inside)) @class.around
 
 (block_call
   (hash_call

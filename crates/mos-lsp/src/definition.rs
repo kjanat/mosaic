@@ -169,7 +169,7 @@ fn attr_usize(value: Option<&AttrValue>) -> Option<usize> {
 #[must_use]
 pub(crate) fn path_to_uri(path: &Path) -> String {
     let mut raw = path.to_string_lossy().replace('\\', "/");
-    if !raw.starts_with('/') && raw.as_bytes().get(1).is_none_or(|byte| *byte != b':') {
+    if !raw.starts_with('/') {
         raw.insert(0, '/');
     }
     format!("file://{}", percent_encode_uri_path(&raw))
@@ -332,6 +332,12 @@ mod tests {
         let src = "See @nope here.\n";
         let at = src.find("@nope").expect("reference present");
         assert!(definition_range(&file, src, byte_position(src, at + 1)).is_none());
+    }
+
+    #[test]
+    fn path_to_uri_formats_windows_drive_paths() {
+        let uri = path_to_uri(Path::new("C:/Users/kaj/main.mos"));
+        assert_eq!(uri, "file:///C:/Users/kaj/main.mos");
     }
 
     #[test]
