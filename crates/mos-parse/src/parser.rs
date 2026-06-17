@@ -395,6 +395,23 @@ mod tests {
     }
 
     #[test]
+    fn unterminated_code_with_long_plain_tail_suggests_closer() {
+        let src = concat!(
+            "Before `this code-like run keeps scanning through several words, ",
+            "punctuation, and @refs without meeting a styled delimiter\n",
+        );
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert_single_insertion(
+            diagnostic,
+            required_offset(src.find('\n'), "line ending", src),
+            "`",
+        );
+    }
+
+    #[test]
     fn unterminated_code_before_crlf_suggests_closer() {
         let src = "hi `there\r\n";
         let r = parse_str(src);
@@ -404,6 +421,34 @@ mod tests {
         assert_single_insertion(
             diagnostic,
             required_offset(src.find('\r'), "CRLF", src),
+            "`",
+        );
+    }
+
+    #[test]
+    fn unterminated_code_across_lf_lines_suggests_at_paragraph_end() {
+        let src = "hi `there\nstill code-like text\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert_single_insertion(
+            diagnostic,
+            required_offset(src.rfind('\n'), "paragraph line ending", src),
+            "`",
+        );
+    }
+
+    #[test]
+    fn unterminated_code_across_crlf_lines_suggests_at_paragraph_end() {
+        let src = "hi `there\r\nstill code-like text\r\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert_single_insertion(
+            diagnostic,
+            required_offset(src.rfind('\r'), "paragraph CRLF ending", src),
             "`",
         );
     }
@@ -432,6 +477,27 @@ mod tests {
     #[test]
     fn unterminated_code_inside_strong_suggests_before_outer_closer() {
         let src = "**a `b**\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert_single_insertion(
+            diagnostic,
+            required_offset(src.rfind("**"), "strong closer", src),
+            "`",
+        );
+        assert!(
+            r.diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.def().code() != codes::MOS0028.code()),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unterminated_code_inside_strong_across_lines_suggests_before_outer_closer() {
+        let src = "**a `b\ncontinued**\n";
         let r = parse_str(src);
         assert!(!r.has_errors());
         let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
@@ -490,6 +556,60 @@ mod tests {
     }
 
     #[test]
+    fn unterminated_code_with_long_styled_tail_suppresses_closer_suggestion() {
+        let src = concat!(
+            "Before `this code-like run keeps scanning through a longer ",
+            "sentence until it reaches *valid emphasis* later in the paragraph\n",
+        );
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert!(diagnostic.suggestions().is_empty());
+        assert!(
+            r.diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.def().code() != codes::MOS0031.code()),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unterminated_code_before_strong_suppresses_closer_suggestion() {
+        let src = "hi `a **b**\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert!(diagnostic.suggestions().is_empty());
+        assert!(
+            r.diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.def().code() != codes::MOS0028.code()),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unterminated_code_across_lines_before_emphasis_suppresses_closer_suggestion() {
+        let src = "hi `a\n*b*\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert!(diagnostic.suggestions().is_empty());
+        assert!(
+            r.diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.def().code() != codes::MOS0031.code()),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
     fn unterminated_code_before_nested_strong_suppresses_closer_suggestion() {
         let src = "*a `b **c** d*\n";
         let r = parse_str(src);
@@ -505,6 +625,34 @@ mod tests {
             "{:?}",
             r.diagnostics
         );
+    }
+
+    #[test]
+    fn unterminated_code_inside_strong_before_nested_emphasis_suppresses_closer_suggestion() {
+        let src = "**a `b *c* d**\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert!(diagnostic.suggestions().is_empty());
+        assert!(
+            r.diagnostics.iter().all(|diagnostic| {
+                diagnostic.def().code() != codes::MOS0028.code()
+                    && diagnostic.def().code() != codes::MOS0031.code()
+            }),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unterminated_code_before_literal_star_suppresses_closer_suggestion() {
+        let src = "hi `a * b\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert!(diagnostic.suggestions().is_empty());
     }
 
     #[test]

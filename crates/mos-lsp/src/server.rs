@@ -899,6 +899,24 @@ mod tests {
     }
 
     #[test]
+    fn code_action_request_omits_ambiguous_inline_closer() {
+        let src = "hi `a *b*\n";
+        let start = src.find('`').expect("code opener");
+        let actions = code_actions_for_source_range(src, start, start + 1);
+
+        assert!(actions.is_empty(), "ambiguous closer actions: {actions:?}");
+    }
+
+    #[test]
+    fn code_action_request_omits_multiline_ambiguous_inline_closer() {
+        let src = "hi `a\n*b*\n";
+        let start = src.find('`').expect("code opener");
+        let actions = code_actions_for_source_range(src, start, start + 1);
+
+        assert!(actions.is_empty(), "ambiguous closer actions: {actions:?}");
+    }
+
+    #[test]
     fn code_action_request_honors_context_only() {
         let src = "= Intro <intro>\n\nSee @intrp here.\n";
         let start = src.find("@intrp").expect("reference");
