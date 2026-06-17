@@ -25,6 +25,11 @@ See @intro for context.
 //  ^ punctuation.special
 //   ^ link_uri
 
+Cite [@smith2024] then normal text.
+//   ^ punctuation.bracket
+//    ^ punctuation.special
+//     ^ link_uri
+
 Refer to <anchor> label.
 //        ^ link_uri
 

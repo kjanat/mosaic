@@ -173,10 +173,12 @@ impl<'a> Parser<'a> {
             Some(_) => return Err(self.error_here(BibParseErrorKind::ExpectedCommaOrCloseBrace)),
             None => return Err(self.error_here(BibParseErrorKind::UnterminatedEntry)),
         }
+        let key_span = key.offset..key.offset + key.text.len();
         Ok(ParsedEntry {
             entry: BibEntry {
                 entry_type,
                 key: key.text,
+                key_span,
                 fields,
             },
             key_offset: key.offset,

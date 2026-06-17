@@ -8,6 +8,40 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- LSP go-to-definition for citations: a cursor on a resolved `[@key]` now jumps to that key in the
+  declared BibTeX source file. [`mos-bib`][mos-bib] records citation-key byte spans,
+  [`mos-eval`][mos-eval] stamps resolved citation target locations on semantic citation nodes, and
+  [`mos-lsp`][mos-lsp] returns a cross-file `Location` for the `.bib` entry key.
+
+- LSP document symbols for headings: [`mos-lsp`][mos-lsp] now advertises `documentSymbolProvider`
+  and returns a nested heading tree based on Mosaic heading levels, so editors can show a structured
+  document outline through the language server.
+
+- Zed grammar support for bracketed citations and richer editor structure: `[@key]` now parses as a
+  first-class citation in [`tree-sitter-mosaic`][tree-sitter-mosaic], so Zed highlights only the
+  citation key and returns following prose to normal text. The extension also matches quote/backtick
+  pairs without rainbow coloring them and exposes more useful Vim text objects for headings, lists,
+  raw/code/verse bodies, and block-call bodies. Tree-sitter heading nodes now live inside nested
+  `section1` through `section6` containers, so Zed's Tree-sitter outline can preserve heading
+  hierarchy instead of flattening every heading.
+
+- LSP quick fixes (https://github.com/kjanat/mosaic/issues/113): [`mos-lsp`][mos-lsp] now advertises
+  `codeActionProvider` and answers `textDocument/codeAction` with one `quickfix` per
+  compiler-provided [`mos-core`][mos-core] `Suggestion`. The server only projects existing compiler
+  suggestions into same-document `TextEdit`s; it does not synthesize editor-only fixes. Current
+  actions cover unknown-label replacements (`MOS0033`), duplicate-label renames (`MOS0030`),
+  heading-label fixes (`MOS0048`), and any future diagnostic that carries a concrete suggestion.
+
+- Citation-key typo suggestions (https://github.com/kjanat/mosaic/issues/127): missing citation
+  diagnostics (`MOS0045`) now suggest the nearest loaded bibliography key when the match is
+  conservative and unambiguous. The fix replaces only the citation key token inside `[@key]`; weak
+  matches, ties, or incomplete bibliography record sets produce no guess.
+
+- Literal-angle structured fixes (https://github.com/kjanat/mosaic/issues/123): `MOS0048` now offers
+  a second machine-applicable fix for headings such as `= The <head> element`, escaping the opening
+  angle bracket as `\<` when the author meant literal text. The existing reorder fix for real
+  misplaced heading labels is unchanged.
+
 - Sharper `@`-reference diagnostics: an `@key` reference that matches no label but exactly matches a
   bibliography key now reports that the author likely meant a citation and offers `[@key]` as a
   machine-applicable fix ([`mos-eval`][mos-eval] adds a `MOS0033` hint + suggestion). A heading
@@ -141,6 +175,12 @@ All notable changes to this project will be documented here. The format is based
 
 ### Changed
 
+- Workspace MSRV is now Rust 1.96 (https://github.com/kjanat/mosaic/issues/129). Product/compiler
+  crates inherit the workspace floor, the workspace-excluded [`zed-mosaic`][zed-mosaic] extension
+  declares the same floor explicitly, and CI checks it as the workspace MSRV. The reusable metric
+  crates `adobe-font-metrics` and `pdf-base14-metrics` now declare an explicit Rust 1.85 floor and
+  CI checks them separately on that lower toolchain.
+
 - Reference nodes now carry a stamped label-identifier span
   (https://github.com/kjanat/mosaic/issues/116): the [`mos-parse`][mos-parse] `Inline` records a
   `label_span` for `@label` / `@page(label)` (the bare identifier, excluding the `@` sigil and the
@@ -178,6 +218,9 @@ All notable changes to this project will be documented here. The format is based
   root-anchored package lists. This keeps agent/project files out of future crates.io tarballs.
 
 ### Fixed
+
+- LSP code actions now respect `context.only`: requests limited to non-quick-fix kinds return no
+  actions instead of surfacing Mosaic quick fixes under an unrelated action kind.
 
 - `resolve_relative` ([`mos-core`][mos-core]) no longer silently swallows excess `..`. It looped
   `PathBuf::pop` over each `..`, so once the base was exhausted the extra `..` simply vanished:

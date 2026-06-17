@@ -629,8 +629,34 @@ mod tests {
         // The label was not attached; it stays in the heading text.
         assert_eq!(r.tree.items[0].label(), None);
         let suggestions = diag.suggestions();
-        assert_eq!(suggestions.len(), 1, "one reorder fix, got {suggestions:?}");
+        assert_eq!(suggestions.len(), 2, "two safe fixes, got {suggestions:?}");
         assert_eq!(suggestions[0].replacement, "Title [@k] <intro>");
+        assert_eq!(
+            &src[suggestions[1].span.start()..suggestions[1].span.end()],
+            "<"
+        );
+        assert_eq!(suggestions[1].replacement, "\\<");
+    }
+
+    #[test]
+    fn misplaced_heading_label_can_suggest_literal_angle_escape() {
+        let src = "= The <head> element\n";
+        let r = parse_str(src);
+        let diag = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0048.code())
+            .expect("MOS0048 for the non-trailing angle token");
+
+        let suggestions = diag.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            2,
+            "reorder + escape fixes: {suggestions:?}"
+        );
+        let escaped = &suggestions[1];
+        assert_eq!(&src[escaped.span.start()..escaped.span.end()], "<");
+        assert_eq!(escaped.replacement, "\\<");
     }
 
     #[test]

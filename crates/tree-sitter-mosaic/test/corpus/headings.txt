@@ -5,10 +5,12 @@ heading: level 1
 ---
 
 (source_file
-  (heading
-    marker: (heading_marker)
-    content: (inline_sequence
-      (text))))
+  (section
+    (section1
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text))))))
 
 ==================
 heading: level 3
@@ -17,10 +19,12 @@ heading: level 3
 ---
 
 (source_file
-  (heading
-    marker: (heading_marker)
-    content: (inline_sequence
-      (text))))
+  (section
+    (section3
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text))))))
 
 ==================
 heading: trailing label
@@ -29,13 +33,15 @@ heading: trailing label
 ---
 
 (source_file
-  (heading
-    marker: (heading_marker)
-    content: (inline_sequence
-      (text))
-    label: (block_label
-      (label
-        name: (label_name)))))
+  (section
+    (section1
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text))
+        label: (block_label
+          (label
+            name: (label_name)))))))
 
 ==================
 heading: with inline emphasis
@@ -44,13 +50,15 @@ heading: with inline emphasis
 ---
 
 (source_file
-  (heading
-    marker: (heading_marker)
-    content: (inline_sequence
-      (text)
-      (emphasis
-        (emph_text))
-      (text))))
+  (section
+    (section2
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text)
+          (emphasis
+            (emph_text))
+          (text))))))
 
 ==================
 heading: max level (6)
@@ -59,10 +67,12 @@ heading: max level (6)
 ---
 
 (source_file
-  (heading
-    marker: (heading_marker)
-    content: (inline_sequence
-      (text))))
+  (section
+    (section6
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text))))))
 
 ==================
 heading: bare `=` without hspace is not a heading
@@ -103,9 +113,70 @@ heading: escaped angle bracket is not a label
 ---
 
 (source_file
-  (heading
-    marker: (heading_marker)
-    content: (inline_sequence
-      (text)
-      (escaped_char)
-      (text))))
+  (section
+    (section1
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text)
+          (escaped_char)
+          (text))))))
+
+==================
+heading: nested sections
+==================
+= Alpha
+Intro
+== Beta
+Body
+=== Gamma
+Deep
+== Delta
+More
+= Omega
+End
+---
+
+(source_file
+  (section
+    (section1
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text)))
+      (paragraph
+        (paragraph_segment
+          (text)))
+      (section2
+        (heading
+          marker: (heading_marker)
+          content: (inline_sequence
+            (text)))
+        (paragraph
+          (paragraph_segment
+            (text)))
+        (section3
+          (heading
+            marker: (heading_marker)
+            content: (inline_sequence
+              (text)))
+          (paragraph
+            (paragraph_segment
+              (text)))))
+        (section2
+          (heading
+            marker: (heading_marker)
+            content: (inline_sequence
+              (text)))
+          (paragraph
+            (paragraph_segment
+              (text))))))
+  (section
+    (section1
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text)))
+      (paragraph
+        (paragraph_segment
+          (text))))))

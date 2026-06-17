@@ -37,15 +37,11 @@ path = ["kjanat", "mosaic", "releases", "download", "**"]
 # package = "@scope/package-name"
 
 [grammars]
-########## TODO: during dev, set local shizz.  ############
-# mosaic.repository = "file:///home/kjanat/projects/mosaic"
-# mosaic.rev        = "master"
-###########################################################
-mosaic.path       = "crates/tree-sitter-mosaic"
 mosaic.repository = "https://github.com/kjanat/mosaic"
-mosaic.rev        = "b83a0de72d8ab12c625e7355d9a3f2607e80d3fa"
+mosaic.rev        = "7b9bdf8a75b7b1837513b12889c920982b25995a"
+mosaic.path       = "crates/tree-sitter-mosaic"
 
-##############################################
+###########################################################
 # Recommended `mos-lsp` GitHub release assets:
 #
 # ```text
@@ -85,4 +81,4 @@ mosaic.rev        = "b83a0de72d8ab12c625e7355d9a3f2607e80d3fa"
 # Still need Rust code to choose asset by `current_platform()`,
 # call `download_file`, extract via `DownloadedFileType`,
 # and `make_file_executable`.
-##############################################
+###########################################################

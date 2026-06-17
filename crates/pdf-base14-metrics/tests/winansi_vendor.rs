@@ -70,25 +70,39 @@ fn resolve_glyph_name(name: &str, agl: &HashMap<String, char>) -> Option<char> {
     if let Some(&ch) = agl.get(stripped) {
         return Some(ch);
     }
-    if let Some(hex) = stripped.strip_prefix("uni")
-        && hex.len() == 4
-        && hex
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'A'..=b'F').contains(&b))
-        && let Ok(scalar) = u32::from_str_radix(hex, 16)
-        && ((0x0000..=0xD7FF).contains(&scalar) || (0xE000..=0xFFFF).contains(&scalar))
-    {
-        return char::from_u32(scalar);
+    if let Some(hex) = stripped.strip_prefix("uni") {
+        let is_four_upper_hex = hex.len() == 4
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'A'..=b'F').contains(&b));
+        if is_four_upper_hex {
+            match u32::from_str_radix(hex, 16) {
+                Ok(scalar)
+                    if (0x0000..=0xD7FF).contains(&scalar)
+                        || (0xE000..=0xFFFF).contains(&scalar) =>
+                {
+                    return char::from_u32(scalar);
+                }
+                _ => {}
+            }
+        }
     }
-    if let Some(hex) = stripped.strip_prefix('u')
-        && (4..=6).contains(&hex.len())
-        && hex
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'A'..=b'F').contains(&b))
-        && let Ok(scalar) = u32::from_str_radix(hex, 16)
-        && ((0x0000..=0xD7FF).contains(&scalar) || (0xE000..=0x0010_FFFF).contains(&scalar))
-    {
-        return char::from_u32(scalar);
+    if let Some(hex) = stripped.strip_prefix('u') {
+        let is_upper_hex = (4..=6).contains(&hex.len())
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'A'..=b'F').contains(&b));
+        if is_upper_hex {
+            match u32::from_str_radix(hex, 16) {
+                Ok(scalar)
+                    if (0x0000..=0xD7FF).contains(&scalar)
+                        || (0xE000..=0x0010_FFFF).contains(&scalar) =>
+                {
+                    return char::from_u32(scalar);
+                }
+                _ => {}
+            }
+        }
     }
     None
 }

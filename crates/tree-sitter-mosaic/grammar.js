@@ -63,7 +63,45 @@ export default grammar({
 		// Document
 		// -------------------------------------------------------------------
 
-		source_file: $ => repeat(choice($.blank_line, $._block, $._line_end)),
+		source_file: $ => repeat(choice($.blank_line, $.section, $._block, $._line_end)),
+
+		section: $ =>
+			choice(
+				$.section1,
+				$.section2,
+				$.section3,
+				$.section4,
+				$.section5,
+				$.section6,
+			),
+
+		section1: $ =>
+			prec.right(seq(
+				alias($._heading1, $.heading),
+				repeat(choice($.blank_line, $.section2, $.section3, $.section4, $.section5, $.section6, $._block, $._line_end)),
+			)),
+
+		section2: $ =>
+			prec.right(seq(
+				alias($._heading2, $.heading),
+				repeat(choice($.blank_line, $.section3, $.section4, $.section5, $.section6, $._block, $._line_end)),
+			)),
+
+		section3: $ =>
+			prec.right(seq(
+				alias($._heading3, $.heading),
+				repeat(choice($.blank_line, $.section4, $.section5, $.section6, $._block, $._line_end)),
+			)),
+
+		section4: $ =>
+			prec.right(
+				seq(alias($._heading4, $.heading), repeat(choice($.blank_line, $.section5, $.section6, $._block, $._line_end))),
+			),
+
+		section5: $ =>
+			prec.right(seq(alias($._heading5, $.heading), repeat(choice($.blank_line, $.section6, $._block, $._line_end)))),
+
+		section6: $ => prec.right(seq(alias($._heading6, $.heading), repeat(choice($.blank_line, $._block, $._line_end)))),
 
 		_block: $ =>
 			choice(
@@ -71,7 +109,6 @@ export default grammar({
 				$.set_directive,
 				$.import_directive,
 				$.include_directive,
-				$.heading,
 				$.list,
 				$.verse_block,
 				$.pre_block,
@@ -131,9 +168,49 @@ export default grammar({
 		// Headings
 		// -------------------------------------------------------------------
 
-		heading: $ =>
+		_heading1: $ =>
 			prec.right(seq(
-				field('marker', $.heading_marker),
+				field('marker', alias($.heading_marker1, $.heading_marker)),
+				field('content', alias($._inline_sequence, $.inline_sequence)),
+				optional(field('label', $.block_label)),
+				optional($._line_end),
+			)),
+
+		_heading2: $ =>
+			prec.right(seq(
+				field('marker', alias($.heading_marker2, $.heading_marker)),
+				field('content', alias($._inline_sequence, $.inline_sequence)),
+				optional(field('label', $.block_label)),
+				optional($._line_end),
+			)),
+
+		_heading3: $ =>
+			prec.right(seq(
+				field('marker', alias($.heading_marker3, $.heading_marker)),
+				field('content', alias($._inline_sequence, $.inline_sequence)),
+				optional(field('label', $.block_label)),
+				optional($._line_end),
+			)),
+
+		_heading4: $ =>
+			prec.right(seq(
+				field('marker', alias($.heading_marker4, $.heading_marker)),
+				field('content', alias($._inline_sequence, $.inline_sequence)),
+				optional(field('label', $.block_label)),
+				optional($._line_end),
+			)),
+
+		_heading5: $ =>
+			prec.right(seq(
+				field('marker', alias($.heading_marker5, $.heading_marker)),
+				field('content', alias($._inline_sequence, $.inline_sequence)),
+				optional(field('label', $.block_label)),
+				optional($._line_end),
+			)),
+
+		_heading6: $ =>
+			prec.right(seq(
+				field('marker', alias($.heading_marker6, $.heading_marker)),
 				field('content', alias($._inline_sequence, $.inline_sequence)),
 				optional(field('label', $.block_label)),
 				optional($._line_end),
@@ -141,7 +218,12 @@ export default grammar({
 
 		// EBNF semantic restriction is 1..6 `=`; folded the required hspace1
 		// into the token so a bare run of `=` cannot start a heading.
-		heading_marker: _ => token(prec(PREC.heading_marker, /={1,6}[ \t]+/)),
+		heading_marker1: _ => token(prec(PREC.heading_marker, /=[ \t]+/)),
+		heading_marker2: _ => token(prec(PREC.heading_marker, /==[ \t]+/)),
+		heading_marker3: _ => token(prec(PREC.heading_marker, /===[ \t]+/)),
+		heading_marker4: _ => token(prec(PREC.heading_marker, /====[ \t]+/)),
+		heading_marker5: _ => token(prec(PREC.heading_marker, /=====[ \t]+/)),
+		heading_marker6: _ => token(prec(PREC.heading_marker, /======[ \t]+/)),
 
 		// -------------------------------------------------------------------
 		// Lists
@@ -212,6 +294,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -270,6 +353,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -287,6 +371,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -340,6 +425,7 @@ export default grammar({
 				$.strong,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -357,6 +443,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -374,6 +461,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -408,6 +496,8 @@ export default grammar({
 		math_text: _ => token(prec(-1, /[^$\\\n\r]+/)),
 
 		math_escape: _ => token(seq('\\', /[^\r\n]/)),
+
+		citation: $ => seq('[', '@', field('target', $.label_name), ']'),
 
 		reference: $ => seq('@', field('target', $.label_name)),
 
@@ -485,7 +575,7 @@ export default grammar({
 		content_body: $ =>
 			seq(
 				'[',
-				repeat(choice($.blank_line, $._block, $._line_end)),
+				repeat(choice($.blank_line, $.section, $._block, $._line_end)),
 				']',
 			),
 

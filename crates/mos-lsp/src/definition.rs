@@ -1,4 +1,5 @@
-//! `textDocument/definition` for `@label` cross-references (issue #71).
+//! `textDocument/definition` for `@label` cross-references (issue #71)
+//! and `[@key]` citation keys.
 //!
 //! Given a cursor position, this resolves a reference (`@label` or
 //! `@page(label)`) under the cursor to the source range of the label's
@@ -16,11 +17,21 @@
 //! definition always lands in the file the request names. Rename,
 //! source/PDF sync, and generated labels (issue #31) are out of scope.
 
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use mos_core::{AttrValue, Document, NodeKind, SourceSpan};
 
 use crate::diagnostics::{LspPosition, LspRange, span_to_range};
+
+/// A resolved definition target. Label references point back into the
+/// requested Mosaic source file; citation keys can point into a declared
+/// BibTeX source.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DefinitionTarget {
+    pub path: PathBuf,
+    pub range: LspRange,
+}
 
 /// Resolve the reference under `position` to the LSP range of its
 /// label's first declaration, lowering `src` on the spot.
@@ -38,7 +49,7 @@ use crate::diagnostics::{LspPosition, LspRange, span_to_range};
 #[must_use]
 pub fn definition_range(file: &Path, src: &str, position: LspPosition) -> Option<LspRange> {
     let lowered = mos_eval::lower(src, file);
-    definition_range_in(&lowered.document, file, src, position)
+    definition_target_in(&lowered.document, file, src, position).map(|target| target.range)
 }
 
 /// Resolve the reference under `position` against an already-lowered
@@ -55,10 +66,32 @@ pub fn definition_range_in(
     src: &str,
     position: LspPosition,
 ) -> Option<LspRange> {
+    definition_target_in(document, file, src, position).map(|target| target.range)
+}
+
+/// Resolve the reference or citation under `position` against an
+/// already-lowered `document`, returning the target file and range.
+#[must_use]
+pub(crate) fn definition_target_in(
+    document: &Document,
+    file: &Path,
+    src: &str,
+    position: LspPosition,
+) -> Option<DefinitionTarget> {
     let offset = position_to_byte(src, position);
-    let label = reference_label_at(document, file, offset)?;
-    let span = first_declaration_span(document, &label)?;
-    (span.file == file).then(|| span_to_range(src, &span))
+    if let Some(label) = reference_label_at(document, file, offset) {
+        let span = first_declaration_span(document, &label)?;
+        return (span.file == file).then(|| DefinitionTarget {
+            path: span.file.clone(),
+            range: span_to_range(src, &span),
+        });
+    }
+    let span = citation_target_span_at(document, file, offset)?;
+    let target_src = fs::read_to_string(&span.file).ok()?;
+    Some(DefinitionTarget {
+        path: span.file.clone(),
+        range: span_to_range(&target_src, &span),
+    })
 }
 
 /// The label consumed by the narrowest reference node whose span covers
@@ -75,6 +108,20 @@ fn reference_label_at(document: &Document, file: &Path, offset: usize) -> Option
             Some(AttrValue::Str(label)) => Some(label.clone()),
             _ => None,
         })
+}
+
+fn citation_target_span_at(document: &Document, file: &Path, offset: usize) -> Option<SourceSpan> {
+    let node = document
+        .nodes()
+        .filter(|node| node.kind == NodeKind::Citation)
+        .filter(|node| node.span.file == file && span_contains(&node.span, offset))
+        .min_by_key(|node| node.span.end().saturating_sub(node.span.start()))?;
+    let Some(AttrValue::Str(path)) = node.attributes.get("target_path") else {
+        return None;
+    };
+    let start = attr_usize(node.attributes.get("target_span.start"))?;
+    let end = attr_usize(node.attributes.get("target_span.end"))?;
+    (start <= end).then(|| SourceSpan::new(PathBuf::from(path), start, end))
 }
 
 /// The declaration span of the first block declaring `label`, in
@@ -107,15 +154,47 @@ fn first_declaration_span(document: &Document, label: &str) -> Option<SourceSpan
 /// rename fix-it). `None` when the attributes are absent or malformed,
 /// letting the caller fall back to the block span.
 fn label_token_span(node: &mos_core::Node) -> Option<SourceSpan> {
-    let start = match node.attributes.get("label_span.start") {
-        Some(AttrValue::Int(value)) => usize::try_from(*value).ok()?,
-        _ => return None,
-    };
-    let end = match node.attributes.get("label_span.end") {
-        Some(AttrValue::Int(value)) => usize::try_from(*value).ok()?,
-        _ => return None,
-    };
+    let start = attr_usize(node.attributes.get("label_span.start"))?;
+    let end = attr_usize(node.attributes.get("label_span.end"))?;
     (start <= end).then(|| SourceSpan::new(node.span.file.clone(), start, end))
+}
+
+fn attr_usize(value: Option<&AttrValue>) -> Option<usize> {
+    match value {
+        Some(AttrValue::Int(value)) => usize::try_from(*value).ok(),
+        _ => None,
+    }
+}
+
+#[must_use]
+pub(crate) fn path_to_uri(path: &Path) -> String {
+    let mut raw = path.to_string_lossy().replace('\\', "/");
+    if !raw.starts_with('/') {
+        raw.insert(0, '/');
+    }
+    format!("file://{}", percent_encode_uri_path(&raw))
+}
+
+fn percent_encode_uri_path(path: &str) -> String {
+    let mut encoded = String::new();
+    for byte in path.bytes() {
+        if matches!(byte, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' | b':')
+        {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(hex_digit(byte >> 4));
+            encoded.push(hex_digit(byte & 0x0f));
+        }
+    }
+    encoded
+}
+
+const fn hex_digit(value: u8) -> char {
+    match value {
+        0..=9 => (b'0' + value) as char,
+        _ => (b'A' + (value - 10)) as char,
+    }
 }
 
 /// Whether `span` covers `offset`. The end is exclusive: a cursor
@@ -253,6 +332,12 @@ mod tests {
         let src = "See @nope here.\n";
         let at = src.find("@nope").expect("reference present");
         assert!(definition_range(&file, src, byte_position(src, at + 1)).is_none());
+    }
+
+    #[test]
+    fn path_to_uri_formats_windows_drive_paths() {
+        let uri = path_to_uri(Path::new("C:/Users/kaj/main.mos"));
+        assert_eq!(uri, "file:///C:/Users/kaj/main.mos");
     }
 
     #[test]

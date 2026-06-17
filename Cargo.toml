@@ -6,7 +6,7 @@ exclude  = ["crates/node_modules", "crates/zed-mosaic"]
 [workspace.package]
 version      = "0.0.1"
 edition      = "2024"
-rust-version = "1.95"
+rust-version = "1.96"
 readme       = "README.md"
 homepage     = "https://github.com/kjanat/mosaic#mosaic"
 repository   = "https://github.com/kjanat/mosaic"

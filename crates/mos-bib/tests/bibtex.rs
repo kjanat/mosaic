@@ -22,6 +22,7 @@ fn parses_minimal_article() {
     let entry = bib.entries.get("knuth1984").expect("entry present");
     assert_eq!(entry.entry_type, "article");
     assert_eq!(entry.key, "knuth1984");
+    assert_eq!(&entry.key_span, &(9..18));
     assert_eq!(
         entry.fields.get("title").map(String::as_str),
         Some("Literate Programming")

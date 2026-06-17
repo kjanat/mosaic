@@ -3,7 +3,8 @@
 ## OVERVIEW
 
 `mos-lsp` is a thin stdio LSP server: it publishes compiler diagnostics and answers
-`textDocument/definition` for `@label` references. Tiny protocol cave around real compiler services
+`textDocument/definition` for `@label` references and resolved `[@key]` citations. Tiny protocol
+cave around real compiler services
 
 - it re-shapes their output into LSP, never owns parse/lower/resolve policy.
 
@@ -25,7 +26,10 @@
 - Handles full-sync `textDocument/didOpen`, `didChange`, `didClose`.
 - Publishes parse/lower/resolve diagnostics after open/change; close clears diagnostics.
 - Answers `textDocument/definition`: cursor on `@label` / `@page(label)` → label's first declaration
-  span as a `Location`; undeclared label or cursor off a reference → `null`.
+  span as a `Location`; cursor on a resolved `[@key]` citation → the matching BibTeX key span;
+  undeclared label, unresolved citation, or cursor off a reference/citation → `null`.
+- Answers `textDocument/documentSymbol`: nested heading outline by Mosaic heading level, with ranges
+  extending to the next same-or-higher-level heading.
 - Answers `textDocument/rename`: cursor on a label (declaration token or reference) →
   `WorkspaceEdit` rewriting the first declaration token + every reference identifier to `newName`;
   cursor off a label → `null`. Single-document, first-declaration-wins, no new-name validation.
@@ -35,7 +39,8 @@
   it). Invalidated on open/change/close. Only **pure** lowerings are cached: a `LowerResult` with
   `reads_external_resources` (`#image` / `#figure` / `#bibliography` read files) is never stored, so
   those docs re-lower per request and reflect the live filesystem.
-- Advertises UTF-16 position encoding, full text sync, `definitionProvider`, and `renameProvider`.
+- Advertises UTF-16 position encoding, full text sync, `definitionProvider`,
+  `documentSymbolProvider`, `renameProvider`, and `codeActionProvider`.
 
 ## BOUNDARY RULES
 
@@ -47,10 +52,9 @@
 ## ANTI-PATTERNS
 
 - Do not advertise `diagnosticProvider` until pull diagnostics are implemented.
-- Do not add completion, hover, formatting, code actions, workspace index, or preview sync by
-  manifesto gravity. (Go-to-definition and label rename for `@label` references are shipped, both
-  single-document; cross-file rename, `prepareRename`, and new-name validation are still out.)
-- Go-to-definition and rename stay single-document and walk the lowered `Document`, mirror the
-  resolver's first-declaration-wins rule, do not build a workspace index or cross-file label map.
+- Go-to-definition and rename for labels stay single-document and walk the lowered `Document`,
+  mirror the resolver's first-declaration-wins rule, do not build a workspace index or cross-file
+  label map. Citation go-to-definition may jump to the declared BibTeX source already read during
+  lowering.
 - Do not treat byte offsets as LSP columns; positions are UTF-16.
 - Do not make LSP own parse/lower/resolve policy.

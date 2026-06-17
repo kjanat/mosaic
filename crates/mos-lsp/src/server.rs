@@ -14,8 +14,12 @@ use mos_eval::LowerResult;
 use serde_json::{Value, json};
 
 use crate::cache::LoweringCache;
-use crate::definition::definition_range_in;
-use crate::diagnostics::{LspDiagnostic, LspPosition, diagnostics_from_result, path_from_uri};
+use crate::code_action::code_actions_for_range;
+use crate::definition::{definition_target_in, path_to_uri};
+use crate::diagnostics::{
+    LspDiagnostic, LspPosition, LspRange, diagnostics_from_result, path_from_uri,
+};
+use crate::document_symbol::document_symbols;
 use crate::rename::rename_ranges;
 
 /// Errors surfaced by the LSP server runtime. Compiler diagnostics
@@ -108,6 +112,14 @@ fn handle_message<W: Write>(
             write_response(writer, id, &rename_result(state, message))?;
             Ok(false)
         }
+        (Some("textDocument/codeAction"), Some(id)) => {
+            write_response(writer, id, &code_action_result(state, message))?;
+            Ok(false)
+        }
+        (Some("textDocument/documentSymbol"), Some(id)) => {
+            write_response(writer, id, &document_symbol_result(state, message))?;
+            Ok(false)
+        }
         (Some("textDocument/didOpen"), _) => {
             if let Some(doc) = message.pointer("/params/textDocument")
                 && let (Some(uri), Some(text)) = (
@@ -180,8 +192,12 @@ fn initialize_result() -> Value {
             "positionEncoding": "utf-16",
             // Go-to-definition for `@label` references (issue #71).
             "definitionProvider": true,
+            // Nested headings for editor outlines and breadcrumbs.
+            "documentSymbolProvider": true,
             // Rename a label across its declaration and references.
             "renameProvider": true,
+            // Quick fixes are projected from compiler `Suggestion`s.
+            "codeActionProvider": true,
         },
         "serverInfo": {
             "name": "mos-lsp",
@@ -190,14 +206,27 @@ fn initialize_result() -> Value {
     })
 }
 
+fn document_symbol_result(state: &mut ServerState, message: &Value) -> Value {
+    let Some(uri) = message
+        .pointer("/params/textDocument/uri")
+        .and_then(Value::as_str)
+    else {
+        return Value::Array(Vec::new());
+    };
+    let symbols = with_lowering(state, uri, |lowered, _path, src| {
+        document_symbols(&lowered.document, src)
+    });
+    Value::Array(symbols.unwrap_or_default())
+}
+
 /// Build the `textDocument/definition` response for `message`: a single
-/// LSP `Location` pointing at the referenced label's declaration, or
-/// `null` when the request names no open document, carries no position,
-/// the cursor is not on a reference, or the label is undeclared.
+/// LSP `Location` pointing at the referenced label declaration or cited
+/// BibTeX key, or `null` when the request names no open document, carries no
+/// position, or the cursor is not on a resolvable reference/citation.
 ///
-/// The target always lives in the requested document; the server holds
-/// one source per URI and lowers it in isolation, so the response
-/// reuses the request URI verbatim.
+/// Label targets reuse the request document URI. Citation targets can
+/// resolve to an external `.bib` file already read during lowering, so
+/// the response URI may differ from the request URI.
 fn definition_result(state: &mut ServerState, message: &Value) -> Value {
     let Some(uri) = message
         .pointer("/params/textDocument/uri")
@@ -208,13 +237,17 @@ fn definition_result(state: &mut ServerState, message: &Value) -> Value {
     let Some(position) = read_position(message) else {
         return Value::Null;
     };
-    let range = with_lowering(state, uri, |lowered, path, src| {
-        definition_range_in(&lowered.document, path, src, position)
+    let target = with_lowering(state, uri, |lowered, path, src| {
+        definition_target_in(&lowered.document, path, src, position).map(|target| {
+            let target_uri = if target.path == *path {
+                uri.to_owned()
+            } else {
+                path_to_uri(&target.path)
+            };
+            json!({ "uri": target_uri, "range": target.range })
+        })
     });
-    match range.flatten() {
-        Some(range) => json!({ "uri": uri, "range": range }),
-        None => Value::Null,
-    }
+    target.flatten().unwrap_or(Value::Null)
 }
 
 /// Run `f` against the lowering for `uri`: a cached one when present, else a
@@ -249,6 +282,38 @@ fn with_lowering<T>(
         lowerings.store(uri, fresh);
     }
     Some(result)
+}
+
+/// Build the `textDocument/codeAction` response: one `quickfix` per
+/// compiler-provided [`mos_core::Suggestion`] whose diagnostic/suggestion span
+/// intersects the requested range.
+fn code_action_result(state: &mut ServerState, message: &Value) -> Value {
+    if !code_action_context_allows_quickfix(message) {
+        return Value::Array(Vec::new());
+    }
+    let Some(uri) = message
+        .pointer("/params/textDocument/uri")
+        .and_then(Value::as_str)
+    else {
+        return Value::Array(Vec::new());
+    };
+    let Some(range) = read_range(message) else {
+        return Value::Array(Vec::new());
+    };
+    let actions = with_lowering(state, uri, |lowered, path, src| {
+        code_actions_for_range(path, src, uri, lowered, range)
+    });
+    Value::Array(actions.unwrap_or_default())
+}
+
+fn code_action_context_allows_quickfix(message: &Value) -> bool {
+    let Some(only) = message.pointer("/params/context/only") else {
+        return true;
+    };
+    let Some(kinds) = only.as_array() else {
+        return true;
+    };
+    kinds.iter().any(|kind| kind.as_str() == Some("quickfix"))
 }
 
 /// Build the `textDocument/rename` response: a `WorkspaceEdit` rewriting the
@@ -301,6 +366,39 @@ fn read_position(message: &Value) -> Option<LspPosition> {
     Some(LspPosition {
         line: u32::try_from(line).unwrap_or(u32::MAX),
         character: u32::try_from(character).unwrap_or(u32::MAX),
+    })
+}
+
+fn read_range(message: &Value) -> Option<LspRange> {
+    Some(LspRange {
+        start: LspPosition {
+            line: u32::try_from(
+                message
+                    .pointer("/params/range/start/line")
+                    .and_then(Value::as_u64)?,
+            )
+            .unwrap_or(u32::MAX),
+            character: u32::try_from(
+                message
+                    .pointer("/params/range/start/character")
+                    .and_then(Value::as_u64)?,
+            )
+            .unwrap_or(u32::MAX),
+        },
+        end: LspPosition {
+            line: u32::try_from(
+                message
+                    .pointer("/params/range/end/line")
+                    .and_then(Value::as_u64)?,
+            )
+            .unwrap_or(u32::MAX),
+            character: u32::try_from(
+                message
+                    .pointer("/params/range/end/character")
+                    .and_then(Value::as_u64)?,
+            )
+            .unwrap_or(u32::MAX),
+        },
     })
 }
 
@@ -444,6 +542,73 @@ mod tests {
             out.push(msg);
         }
         out
+    }
+
+    fn range_json(src: &str, start: usize, end: usize) -> Value {
+        let start = byte_to_position(src, start);
+        let end = byte_to_position(src, end);
+        json!({
+            "start": { "line": start.line, "character": start.character },
+            "end": { "line": end.line, "character": end.character },
+        })
+    }
+
+    fn code_actions_for_source_range(src: &str, start: usize, end: usize) -> Vec<Value> {
+        code_actions_for_source_range_with_context(src, start, end, &json!({ "diagnostics": [] }))
+    }
+
+    fn code_actions_for_source_range_with_context(
+        src: &str,
+        start: usize,
+        end: usize,
+        context: &Value,
+    ) -> Vec<Value> {
+        let uri = "file:///virtual/main.mos";
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "mosaic", "version": 1, "text": src,
+            } },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 90,
+            "method": "textDocument/codeAction",
+            "params": {
+                "textDocument": { "uri": uri },
+                "range": range_json(src, start, end),
+                "context": context,
+            },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        decode_messages(&writer)
+            .into_iter()
+            .find(|m| m.get("id") == Some(&json!(90)))
+            .and_then(|reply| reply.get("result").and_then(Value::as_array).cloned())
+            .expect("code action response")
+    }
+
+    fn code_action_new_texts(actions: &[Value]) -> Vec<&str> {
+        let uri = "file:///virtual/main.mos";
+        actions
+            .iter()
+            .filter_map(|action| {
+                action
+                    .pointer("/edit/changes")
+                    .and_then(|changes| changes.get(uri))
+                    .and_then(Value::as_array)
+                    .and_then(|edits| edits.first())
+                    .and_then(|edit| edit.get("newText"))
+                    .and_then(Value::as_str)
+            })
+            .collect()
     }
 
     #[test]
@@ -657,7 +822,116 @@ mod tests {
             .and_then(|m| m.pointer("/result/capabilities"))
             .expect("initialize response with capabilities");
         assert_eq!(capabilities.get("definitionProvider"), Some(&json!(true)));
+        assert_eq!(
+            capabilities.get("documentSymbolProvider"),
+            Some(&json!(true))
+        );
         assert_eq!(capabilities.get("renameProvider"), Some(&json!(true)));
+        assert_eq!(capabilities.get("codeActionProvider"), Some(&json!(true)));
+    }
+
+    #[test]
+    fn document_symbol_request_returns_nested_headings() {
+        let uri = "file:///virtual/main.mos";
+        let src = "= Intro\n\n== Setup\n\n=== Deep\n\n== Next\n\n= Appendix\n";
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "mosaic", "version": 1, "text": src,
+            } },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 18,
+            "method": "textDocument/documentSymbol",
+            "params": { "textDocument": { "uri": uri } },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        let result = messages
+            .iter()
+            .find(|m| m.get("id") == Some(&json!(18)))
+            .and_then(|reply| reply.get("result"))
+            .and_then(Value::as_array)
+            .expect("document symbol response");
+        assert_eq!(result.len(), 2, "top-level Intro + Appendix: {result:?}");
+        assert_eq!(result[0].get("name"), Some(&json!("Intro")));
+        assert_eq!(result[1].get("name"), Some(&json!("Appendix")));
+        let intro_children = result[0]
+            .get("children")
+            .and_then(Value::as_array)
+            .expect("Intro children");
+        assert_eq!(intro_children.len(), 2, "Setup + Next: {intro_children:?}");
+        assert_eq!(intro_children[0].get("name"), Some(&json!("Setup")));
+        assert_eq!(intro_children[1].get("name"), Some(&json!("Next")));
+        let setup_children = intro_children[0]
+            .get("children")
+            .and_then(Value::as_array)
+            .expect("Setup children");
+        assert_eq!(setup_children.len(), 1, "Deep child: {setup_children:?}");
+        assert_eq!(setup_children[0].get("name"), Some(&json!("Deep")));
+        assert_eq!(result[0].get("kind"), Some(&json!(3)));
+    }
+
+    #[test]
+    fn code_action_request_returns_unknown_reference_fix() {
+        let src = "= Intro <intro>\n\nSee @intrp here.\n";
+        let start = src.find("@intrp").expect("reference");
+        let actions = code_actions_for_source_range(src, start, start + "@intrp".len());
+
+        assert_eq!(code_action_new_texts(&actions), vec!["@intro"]);
+    }
+
+    #[test]
+    fn code_action_request_honors_context_only() {
+        let src = "= Intro <intro>\n\nSee @intrp here.\n";
+        let start = src.find("@intrp").expect("reference");
+        let source_actions = code_actions_for_source_range_with_context(
+            src,
+            start,
+            start + "@intrp".len(),
+            &json!({ "diagnostics": [], "only": ["source"] }),
+        );
+        let quickfix_actions = code_actions_for_source_range_with_context(
+            src,
+            start,
+            start + "@intrp".len(),
+            &json!({ "diagnostics": [], "only": ["quickfix"] }),
+        );
+
+        assert!(
+            source_actions.is_empty(),
+            "source-only request got {source_actions:?}"
+        );
+        assert_eq!(code_action_new_texts(&quickfix_actions), vec!["@intro"]);
+    }
+
+    #[test]
+    fn code_action_request_returns_duplicate_label_fix() {
+        let src = "= One <dup>\n= Two <dup>\n";
+        let start = src.rfind("dup").expect("duplicate label token");
+        let actions = code_actions_for_source_range(src, start, start + "dup".len());
+
+        assert_eq!(code_action_new_texts(&actions), vec!["dup-2"]);
+    }
+
+    #[test]
+    fn code_action_request_returns_each_heading_label_fix() {
+        let src = "= Title <intro> [@k]\n";
+        let start = src.find("<intro>").expect("misplaced label");
+        let actions = code_actions_for_source_range(src, start, start + "<intro>".len());
+
+        assert_eq!(
+            code_action_new_texts(&actions),
+            vec!["Title [@k] <intro>", "\\<"]
+        );
     }
 
     #[test]
@@ -807,6 +1081,71 @@ mod tests {
             .expect("definition response");
         assert_eq!(reply.pointer("/result/uri"), Some(&json!(uri)));
         assert_eq!(reply.pointer("/result/range/start/line"), Some(&json!(0)));
+    }
+
+    #[test]
+    fn definition_request_returns_citation_bib_entry_location() {
+        let dir = std::env::temp_dir().join(format!(
+            "mos-lsp-citation-def-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let bib = dir.join("refs.bib");
+        let main = dir.join("main.mos");
+        std::fs::write(
+            &bib,
+            "@book{other, title={Other}}\n@article{patashnik1988, title={BibTeXing}}\n",
+        )
+        .expect("write bib");
+        let src = "#bibliography(\"refs.bib\")\n\nCite [@patashnik1988].\n";
+        std::fs::write(&main, src).expect("write source");
+        let uri = path_to_uri(&main);
+        let bib_uri = path_to_uri(&bib);
+        let cursor = src.find("patashnik1988").map_or(0, |at| at + 1);
+        let position = byte_to_position(src, cursor);
+
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "mosaic", "version": 1, "text": src,
+            } },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 19,
+            "method": "textDocument/definition",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": position.line, "character": position.character },
+            },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        let reply = messages
+            .iter()
+            .find(|m| m.get("id") == Some(&json!(19)))
+            .expect("definition response");
+        assert_eq!(reply.pointer("/result/uri"), Some(&json!(bib_uri)));
+        assert_eq!(reply.pointer("/result/range/start/line"), Some(&json!(1)));
+        assert_eq!(
+            reply.pointer("/result/range/start/character"),
+            Some(&json!(9))
+        );
+        assert_eq!(
+            reply.pointer("/result/range/end/character"),
+            Some(&json!(22))
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

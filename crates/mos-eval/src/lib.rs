@@ -1362,6 +1362,18 @@ mod tests {
             Some(&AttrValue::Str("[1]".to_owned())),
             "a resolved citation renders its first-use numeric label"
         );
+        assert_eq!(
+            citation.attributes.get("target_path"),
+            Some(&AttrValue::Str(bib.to_string_lossy().into_owned()))
+        );
+        assert_eq!(
+            citation.attributes.get("target_span.start"),
+            Some(&AttrValue::Int(9))
+        );
+        assert_eq!(
+            citation.attributes.get("target_span.end"),
+            Some(&AttrValue::Int(18))
+        );
 
         let reference = r
             .document
@@ -1531,6 +1543,61 @@ mod tests {
             "unknown citations keep visible placeholder text"
         );
         assert_eq!(citation.attributes.get("resolved"), None);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn unknown_citation_key_suggests_nearest_loaded_key() {
+        let dir = unique_temp_dir("citation-nearest-key");
+        let bib = dir.join("refs.bib");
+        std::fs::write(&bib, "@article{smith2024, title={Known}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let source_text = "#bibliography(\"refs.bib\")\n\nsee [@smit2024]\n";
+        std::fs::write(&source, source_text).unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        let diagnostic = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0045.code())
+            .expect("MOS0045 for missing citation key");
+        let suggestions = diagnostic.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "expected one nearest-key suggestion, got {suggestions:?}"
+        );
+        assert_eq!(suggestions[0].replacement, "smith2024");
+        assert_eq!(
+            &source_text[suggestions[0].span.start()..suggestions[0].span.end()],
+            "smit2024",
+            "suggestion should replace only the citation key token"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn unknown_citation_key_tie_has_no_suggestion() {
+        let dir = unique_temp_dir("citation-nearest-key-tie");
+        let bib = dir.join("refs.bib");
+        std::fs::write(&bib, "@article{abx, title={X}}\n@article{aby, title={Y}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let source_text = "#bibliography(\"refs.bib\")\n\nsee [@abc]\n";
+        std::fs::write(&source, source_text).unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        let diagnostic = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0045.code())
+            .expect("MOS0045 for missing citation key");
+        assert!(
+            diagnostic.suggestions().is_empty(),
+            "ties should not produce a guess: {:?}",
+            diagnostic.suggestions()
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }

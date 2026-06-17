@@ -72,9 +72,9 @@ jobs:
         run: cargo check --manifest-path crates/zed-mosaic/Cargo.toml --target wasm32-wasip2
 
   msrv:
-    name: build on MSRV
+    name: build on workspace MSRV
     runs-on: ubuntu-latest
-    env: { RUSTUP_TOOLCHAIN: 1.95 }
+    env: { RUSTUP_TOOLCHAIN: 1.96 }
     steps:
       - uses: actions/checkout@v6
 
@@ -87,3 +87,20 @@ jobs:
 
       - name: build
         run: cargo bwa
+
+  reusable-msrv:
+    name: build reusable crates on lower MSRV
+    runs-on: ubuntu-latest
+    env: { RUSTUP_TOOLCHAIN: 1.85.0 }
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust ${{ env.RUSTUP_TOOLCHAIN }}
+        uses: dtolnay/rust-toolchain@master
+        with: { toolchain: "${{ env.RUSTUP_TOOLCHAIN }}" }
+
+      - uses: Swatinem/rust-cache@v2
+        with: { key: reusable-msrv }
+
+      - name: build
+        run: cargo check -p adobe-font-metrics -p pdf-base14-metrics --all-targets

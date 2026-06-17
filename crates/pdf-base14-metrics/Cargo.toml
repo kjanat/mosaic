@@ -1,12 +1,12 @@
 [package]
-name                   = "pdf-base14-metrics"
-version.workspace      = true
-edition.workspace      = true
-rust-version.workspace = true
-description            = "Pre-parsed Adobe Core 14 PDF font metrics (Helvetica, Times, Courier, Symbol, ZapfDingbats) baked into `&'static FontMetrics` constants at compile time."
-readme                 = "README.md"
-homepage.workspace     = true
-repository.workspace   = true
+name                 = "pdf-base14-metrics"
+version.workspace    = true
+edition.workspace    = true
+rust-version         = "1.85"
+description          = "Pre-parsed Adobe Core 14 PDF font metrics (Helvetica, Times, Courier, Symbol, ZapfDingbats) baked into `&'static FontMetrics` constants at compile time."
+readme               = "README.md"
+homepage.workspace   = true
+repository.workspace = true
 # Both components are SPDX-registered identifiers (v3.6+):
 # - MIT: our own code. License text in `LICENSE-MIT`.
 # - APAFML: Adobe PostScript AFM License; the Core 14 AFM data (`data/afm/*.afm`).
@@ -18,12 +18,12 @@ repository.workspace   = true
 # The build script no longer reads it; the byte→`char` `WinAnsi` map
 # is hand-transcribed from PDF 1.7 Annex D.2 into
 # `src/winansi_char_map.rs`.
-license                = "MIT AND APAFML"
-keywords.workspace     = true
-categories.workspace   = true
+license              = "MIT AND APAFML"
+keywords.workspace   = true
+categories.workspace = true
 # Vendored-data crate: publish only runtime AFM data and tests that work without
 # the AGL test oracle (`data/agl/**`, `LICENSE-AGL`, `tests/winansi_vendor.rs`).
-include                = [
+include              = [
   "/LICENSE",
   "/LICENSE-APAFML",
   "/LICENSE-MIT",

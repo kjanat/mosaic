@@ -22,6 +22,20 @@ See @sec:intro with *emph* and **strong** and `code`.
       (text))))
 
 ==================
+inline: citation
+==================
+See [@smith2024] for details.
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (citation
+        target: (label_name))
+      (text))))
+
+==================
 inline: code span spans soft breaks
 ==================
 Use `a sad student wrote
