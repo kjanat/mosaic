@@ -32,6 +32,13 @@ All notable changes to this project will be documented here. The format is based
   actions cover unknown-label replacements (`MOS0033`), duplicate-label renames (`MOS0030`),
   heading-label fixes (`MOS0048`), and any future diagnostic that carries a concrete suggestion.
 
+- Inline closer structured fixes (https://github.com/kjanat/mosaic/issues/124): unterminated inline
+  emphasis, strong, and code diagnostics now carry conservative insertion suggestions for the
+  missing `*`, `**`, or `` ` `` closer (`MOS0031`, `MOS0028`, `MOS0034`). Fixes insert at the line
+  or active styled-span boundary and are intentionally suppressed when nested delimiter runs make
+  the repair ambiguous. Existing CLI suggestion rendering and LSP quick-fix plumbing surface these
+  parser suggestions automatically.
+
 - Citation-key typo suggestions (https://github.com/kjanat/mosaic/issues/127): missing citation
   diagnostics (`MOS0045`) now suggest the nearest loaded bibliography key when the match is
   conservative and unambiguous. The fix replaces only the citation key token inside `[@key]`; weak
@@ -221,6 +228,14 @@ All notable changes to this project will be documented here. The format is based
 
 - LSP code actions now respect `context.only`: requests limited to non-quick-fix kinds return no
   actions instead of surfacing Mosaic quick fixes under an unrelated action kind.
+
+- LSP code actions for insertion fixes now remain visible from the diagnostic range. A cursor on the
+  highlighted opener for an unterminated inline run can request the quick fix even when the actual
+  zero-width edit lands later in the line.
+
+- Unterminated code-run suggestions no longer create ambiguous or unsafe repairs inside styled text:
+  safe nested fixes insert before the active `*` / `**` / `***` closer, and conflicting later star
+  runs suppress the machine-applicable suggestion instead of guessing.
 
 - `resolve_relative` ([`mos-core`][mos-core]) no longer silently swallows excess `..`. It looped
   `PathBuf::pop` over each `..`, so once the base was exhausted the extra `..` simply vanished:
