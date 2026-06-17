@@ -1,3 +1,5 @@
+#!/usr/bin/env -S mos build --open
+
 #set document(
   title: "Code in Mosaic",
   author: "Mosaic contributors",
