@@ -5,8 +5,9 @@
 //! Protocol so editors can show them inline, answers
 //! `textDocument/definition` to jump from an `@label` reference to its
 //! declaration, and answers `textDocument/rename` to rewrite a label
-//! across its declaration and references. Future slices add citation
-//! autocomplete, source ↔ PDF sync, and live preview. MVP 6.
+//! across its declaration and references. It also exposes compiler
+//! suggestions through `textDocument/codeAction`. Future slices add
+//! citation autocomplete, source ↔ PDF sync, and live preview. MVP 6.
 
 #![doc(
     html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
@@ -14,6 +15,7 @@
 )]
 
 mod cache;
+mod code_action;
 mod definition;
 mod diagnostics;
 mod rename;

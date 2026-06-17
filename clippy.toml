@@ -5,10 +5,6 @@
 # - https://doc.rust-lang.org/clippy/configuration.html
 # - https://rust-lang.github.io/rust-clippy/master/index.html#Configuration
 
-# Match the workspace MSRV. Lints that gate suggestions on the
-# minimum-supported Rust version (e.g. `manual_let_else`) honour this.
-msrv = "1.95"
-
 # We're pre-1.0 (version 0.0.0). Let lints suggest API-breaking
 # improvements rather than skipping them.
 avoid-breaking-exported-api = false

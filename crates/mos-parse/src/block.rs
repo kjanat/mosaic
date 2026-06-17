@@ -81,6 +81,7 @@ impl Parser<'_> {
         let diagnostic = self
             .warn(&codes::MOS0048, &message, start, content_end)
             .with_suggestion(Suggestion::new(self.span(start, content_end), fixed))
+            .with_suggestion(Suggestion::new(self.span(label.start - 1, label.start), "\\<"))
             .with_annotation(DiagnosticAnnotation::Hint(format!(
                 "if `<{label}>` is literal text (e.g. an HTML tag), escape the `<` as `\\<{label}>`",
                 label = label.text

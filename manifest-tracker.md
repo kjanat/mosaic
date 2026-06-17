@@ -206,7 +206,7 @@ example.
         builder, and accessor
   - [x] Emit structured suggestions from duplicate-label diagnostics (#52)
   - [x] Render suggestions in CLI diagnostics (#109)
-  - [ ] Render suggestions in LSP output/code actions (#113)
+  - [x] Render suggestions in LSP output/code actions (#113)
 - [ ] Add layout warnings.
 - [ ] Add float placement diagnostics.
 - [ ] Add performance diagnostics.
@@ -430,7 +430,8 @@ example.
 - [x] Publish diagnostics over LSP.
 - [x] Add go-to-definition for labels.
 - [x] Add rename label.
-- [x] Spawn [`mos-lsp`] from the [`zed-mosaic`] extension (diagnostics, definition, rename).
+- [x] Spawn [`mos-lsp`] from the [`zed-mosaic`] extension (diagnostics, definition, rename, code
+      actions).
 - [ ] Add citation autocomplete.
 - [ ] Add figure preview.
 - [ ] Add outline.

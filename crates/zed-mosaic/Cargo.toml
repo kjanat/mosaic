@@ -1,13 +1,14 @@
 [package]
-name        = "zed-mosaic"
+name         = "zed-mosaic"
 # Keep in sync with: crates/zed-mosaic/extension.toml#version
-version     = "0.0.1"
-edition     = "2024"
-description = "Zed editor extension for the Mosaic typesetting language"
-readme      = "README.md"
-repository  = "https://github.com/kjanat/mosaic"
-license     = "MIT"
-publish     = false
+version      = "0.0.1"
+edition      = "2024"
+rust-version = "1.96"
+description  = "Zed editor extension for the Mosaic typesetting language"
+readme       = "README.md"
+repository   = "https://github.com/kjanat/mosaic"
+license      = "MIT"
+publish      = false
 
 [lib]
 crate-type = ["cdylib"]

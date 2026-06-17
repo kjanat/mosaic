@@ -8,6 +8,23 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- LSP quick fixes (https://github.com/kjanat/mosaic/issues/113): [`mos-lsp`][mos-lsp] now advertises
+  `codeActionProvider` and answers `textDocument/codeAction` with one `quickfix` per
+  compiler-provided [`mos-core`][mos-core] `Suggestion`. The server only projects existing compiler
+  suggestions into same-document `TextEdit`s; it does not synthesize editor-only fixes. Current
+  actions cover unknown-label replacements (`MOS0033`), duplicate-label renames (`MOS0030`),
+  heading-label fixes (`MOS0048`), and any future diagnostic that carries a concrete suggestion.
+
+- Citation-key typo suggestions (https://github.com/kjanat/mosaic/issues/127): missing citation
+  diagnostics (`MOS0045`) now suggest the nearest loaded bibliography key when the match is
+  conservative and unambiguous. The fix replaces only the citation key token inside `[@key]`; weak
+  matches, ties, or incomplete bibliography record sets produce no guess.
+
+- Literal-angle structured fixes (https://github.com/kjanat/mosaic/issues/123): `MOS0048` now offers
+  a second machine-applicable fix for headings such as `= The <head> element`, escaping the opening
+  angle bracket as `\<` when the author meant literal text. The existing reorder fix for real
+  misplaced heading labels is unchanged.
+
 - Sharper `@`-reference diagnostics: an `@key` reference that matches no label but exactly matches a
   bibliography key now reports that the author likely meant a citation and offers `[@key]` as a
   machine-applicable fix ([`mos-eval`][mos-eval] adds a `MOS0033` hint + suggestion). A heading
@@ -140,6 +157,12 @@ All notable changes to this project will be documented here. The format is based
   (locked with a corpus test).
 
 ### Changed
+
+- Workspace MSRV is now Rust 1.96 (https://github.com/kjanat/mosaic/issues/129). Product/compiler
+  crates inherit the workspace floor, the workspace-excluded [`zed-mosaic`][zed-mosaic] extension
+  declares the same floor explicitly, and CI checks it as the workspace MSRV. The reusable metric
+  crates `adobe-font-metrics` and `pdf-base14-metrics` now declare an explicit Rust 1.85 floor and
+  CI checks them separately on that lower toolchain.
 
 - Reference nodes now carry a stamped label-identifier span
   (https://github.com/kjanat/mosaic/issues/116): the [`mos-parse`][mos-parse] `Inline` records a

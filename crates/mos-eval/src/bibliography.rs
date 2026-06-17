@@ -24,7 +24,8 @@ use std::path::{Path, PathBuf};
 
 use mos_bib::Bibliography;
 use mos_core::{
-    AttrMap, AttrValue, Diagnostic, Document, NodeId, NodeKind, NodeSpec, SourceSpan, codes,
+    AttrMap, AttrValue, Diagnostic, Document, NodeId, NodeKind, NodeSpec, SourceSpan, Suggestion,
+    codes,
 };
 use mos_parse::{SetArg, SetValue};
 
@@ -258,19 +259,84 @@ pub(super) fn resolve_citations(
         if !bibliography.complete {
             continue;
         }
-        diagnostics.push(
-            Diagnostic::simple(
-                &codes::MOS0045,
-                Some(node.span.clone()),
-                format!("unknown citation key `{key}` in bibliography records"),
-            )
-            .with_annotation(mos_core::DiagnosticAnnotation::Hint(
-                "declare the key in a `#bibliography(...)` BibTeX source".to_owned(),
-            )),
-        );
+        let mut diagnostic = Diagnostic::simple(
+            &codes::MOS0045,
+            Some(node.span.clone()),
+            format!("unknown citation key `{key}` in bibliography records"),
+        )
+        .with_annotation(mos_core::DiagnosticAnnotation::Hint(
+            "declare the key in a `#bibliography(...)` BibTeX source".to_owned(),
+        ));
+        if let Some(candidate) = nearest_citation_key(&key, &bibliography.records.entries)
+            && let Some(span) = citation_key_span(node, &key)
+        {
+            diagnostic = diagnostic.with_suggestion(Suggestion::new(span, candidate));
+        }
+        diagnostics.push(diagnostic);
     }
 
     bibliography.records.entries.into_keys().collect()
+}
+
+fn citation_key_span(node: &mos_core::Node, key: &str) -> Option<SourceSpan> {
+    let start = node.span.start().checked_add(2)?;
+    let end = start.checked_add(key.len())?;
+    (end < node.span.end()).then(|| SourceSpan::new(node.span.file.clone(), start, end))
+}
+
+fn is_citation_key(key: &str) -> bool {
+    !key.is_empty()
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':' | b'.'))
+}
+
+fn edit_distance(a: &str, b: &str) -> usize {
+    let b = b.as_bytes();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, &ai) in a.as_bytes().iter().enumerate() {
+        let mut diag = row[0];
+        row[0] = i + 1;
+        for (j, &bj) in b.iter().enumerate() {
+            let cost = usize::from(ai != bj);
+            let sub = diag + cost;
+            diag = row[j + 1];
+            row[j + 1] = sub.min(row[j + 1] + 1).min(row[j] + 1);
+        }
+    }
+    row[b.len()]
+}
+
+fn nearest_citation_key(
+    unknown: &str,
+    records: &BTreeMap<String, mos_bib::BibEntry>,
+) -> Option<String> {
+    if unknown.len() < 3 {
+        return None;
+    }
+    let max_distance = unknown.len() / 3;
+    let mut best: Option<(usize, &str)> = None;
+    let mut tied = false;
+    for key in records.keys().filter(|key| is_citation_key(key)) {
+        let distance = edit_distance(unknown, key);
+        if distance > max_distance {
+            continue;
+        }
+        match best {
+            None => {
+                best = Some((distance, key.as_str()));
+                tied = false;
+            }
+            Some((best_distance, _)) if distance < best_distance => {
+                best = Some((distance, key.as_str()));
+                tied = false;
+            }
+            Some((best_distance, _)) if distance == best_distance => tied = true,
+            Some(_) => {}
+        }
+    }
+    let (_, key) = best?;
+    (!tied).then(|| key.to_owned())
 }
 
 struct LoadedBibliography {

@@ -14,8 +14,11 @@ use mos_eval::LowerResult;
 use serde_json::{Value, json};
 
 use crate::cache::LoweringCache;
+use crate::code_action::code_actions_for_range;
 use crate::definition::definition_range_in;
-use crate::diagnostics::{LspDiagnostic, LspPosition, diagnostics_from_result, path_from_uri};
+use crate::diagnostics::{
+    LspDiagnostic, LspPosition, LspRange, diagnostics_from_result, path_from_uri,
+};
 use crate::rename::rename_ranges;
 
 /// Errors surfaced by the LSP server runtime. Compiler diagnostics
@@ -108,6 +111,10 @@ fn handle_message<W: Write>(
             write_response(writer, id, &rename_result(state, message))?;
             Ok(false)
         }
+        (Some("textDocument/codeAction"), Some(id)) => {
+            write_response(writer, id, &code_action_result(state, message))?;
+            Ok(false)
+        }
         (Some("textDocument/didOpen"), _) => {
             if let Some(doc) = message.pointer("/params/textDocument")
                 && let (Some(uri), Some(text)) = (
@@ -182,6 +189,8 @@ fn initialize_result() -> Value {
             "definitionProvider": true,
             // Rename a label across its declaration and references.
             "renameProvider": true,
+            // Quick fixes are projected from compiler `Suggestion`s.
+            "codeActionProvider": true,
         },
         "serverInfo": {
             "name": "mos-lsp",
@@ -251,6 +260,25 @@ fn with_lowering<T>(
     Some(result)
 }
 
+/// Build the `textDocument/codeAction` response: one `quickfix` per
+/// compiler-provided [`mos_core::Suggestion`] whose diagnostic/suggestion span
+/// intersects the requested range.
+fn code_action_result(state: &mut ServerState, message: &Value) -> Value {
+    let Some(uri) = message
+        .pointer("/params/textDocument/uri")
+        .and_then(Value::as_str)
+    else {
+        return Value::Array(Vec::new());
+    };
+    let Some(range) = read_range(message) else {
+        return Value::Array(Vec::new());
+    };
+    let actions = with_lowering(state, uri, |lowered, path, src| {
+        code_actions_for_range(path, src, uri, lowered, range)
+    });
+    Value::Array(actions.unwrap_or_default())
+}
+
 /// Build the `textDocument/rename` response: a `WorkspaceEdit` rewriting the
 /// label under the cursor: its first declaration's token and every reference
 ///: to the request's `newName`. Returns `null` when the cursor is not on a
@@ -301,6 +329,39 @@ fn read_position(message: &Value) -> Option<LspPosition> {
     Some(LspPosition {
         line: u32::try_from(line).unwrap_or(u32::MAX),
         character: u32::try_from(character).unwrap_or(u32::MAX),
+    })
+}
+
+fn read_range(message: &Value) -> Option<LspRange> {
+    Some(LspRange {
+        start: LspPosition {
+            line: u32::try_from(
+                message
+                    .pointer("/params/range/start/line")
+                    .and_then(Value::as_u64)?,
+            )
+            .unwrap_or(u32::MAX),
+            character: u32::try_from(
+                message
+                    .pointer("/params/range/start/character")
+                    .and_then(Value::as_u64)?,
+            )
+            .unwrap_or(u32::MAX),
+        },
+        end: LspPosition {
+            line: u32::try_from(
+                message
+                    .pointer("/params/range/end/line")
+                    .and_then(Value::as_u64)?,
+            )
+            .unwrap_or(u32::MAX),
+            character: u32::try_from(
+                message
+                    .pointer("/params/range/end/character")
+                    .and_then(Value::as_u64)?,
+            )
+            .unwrap_or(u32::MAX),
+        },
     })
 }
 
@@ -444,6 +505,64 @@ mod tests {
             out.push(msg);
         }
         out
+    }
+
+    fn range_json(src: &str, start: usize, end: usize) -> Value {
+        let start = byte_to_position(src, start);
+        let end = byte_to_position(src, end);
+        json!({
+            "start": { "line": start.line, "character": start.character },
+            "end": { "line": end.line, "character": end.character },
+        })
+    }
+
+    fn code_actions_for_source_range(src: &str, start: usize, end: usize) -> Vec<Value> {
+        let uri = "file:///virtual/main.mos";
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "mosaic", "version": 1, "text": src,
+            } },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 90,
+            "method": "textDocument/codeAction",
+            "params": {
+                "textDocument": { "uri": uri },
+                "range": range_json(src, start, end),
+                "context": { "diagnostics": [] },
+            },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        decode_messages(&writer)
+            .into_iter()
+            .find(|m| m.get("id") == Some(&json!(90)))
+            .and_then(|reply| reply.get("result").and_then(Value::as_array).cloned())
+            .expect("code action response")
+    }
+
+    fn code_action_new_texts(actions: &[Value]) -> Vec<&str> {
+        let uri = "file:///virtual/main.mos";
+        actions
+            .iter()
+            .filter_map(|action| {
+                action
+                    .pointer("/edit/changes")
+                    .and_then(|changes| changes.get(uri))
+                    .and_then(Value::as_array)
+                    .and_then(|edits| edits.first())
+                    .and_then(|edit| edit.get("newText"))
+                    .and_then(Value::as_str)
+            })
+            .collect()
     }
 
     #[test]
@@ -658,6 +777,37 @@ mod tests {
             .expect("initialize response with capabilities");
         assert_eq!(capabilities.get("definitionProvider"), Some(&json!(true)));
         assert_eq!(capabilities.get("renameProvider"), Some(&json!(true)));
+        assert_eq!(capabilities.get("codeActionProvider"), Some(&json!(true)));
+    }
+
+    #[test]
+    fn code_action_request_returns_unknown_reference_fix() {
+        let src = "= Intro <intro>\n\nSee @intrp here.\n";
+        let start = src.find("@intrp").expect("reference");
+        let actions = code_actions_for_source_range(src, start, start + "@intrp".len());
+
+        assert_eq!(code_action_new_texts(&actions), vec!["@intro"]);
+    }
+
+    #[test]
+    fn code_action_request_returns_duplicate_label_fix() {
+        let src = "= One <dup>\n= Two <dup>\n";
+        let start = src.rfind("dup").expect("duplicate label token");
+        let actions = code_actions_for_source_range(src, start, start + "dup".len());
+
+        assert_eq!(code_action_new_texts(&actions), vec!["dup-2"]);
+    }
+
+    #[test]
+    fn code_action_request_returns_each_heading_label_fix() {
+        let src = "= Title <intro> [@k]\n";
+        let start = src.find("<intro>").expect("misplaced label");
+        let actions = code_actions_for_source_range(src, start, start + "<intro>".len());
+
+        assert_eq!(
+            code_action_new_texts(&actions),
+            vec!["Title [@k] <intro>", "\\<"]
+        );
     }
 
     #[test]

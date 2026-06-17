@@ -3,8 +3,8 @@
 Language-server crate for Mosaic `.mos` files.
 
 The current slice publishes the same parse / lower / resolve diagnostics that `mos check` renders,
-but over the Language Server Protocol so editors can show them inline. Everything else listed under
-non-goals stays unbuilt.
+but over the Language Server Protocol so editors can show them inline and apply compiler-provided
+quick fixes.
 
 ## Current Behavior
 
@@ -12,7 +12,7 @@ non-goals stays unbuilt.
 - `run()` drives a stdio LSP server over JSON-RPC 2.0 framed with `Content-Length` headers.
 - Implemented requests/notifications: `initialize`, `initialized`, `shutdown`, `exit`,
   `textDocument/didOpen`, `textDocument/didChange` (full sync), `textDocument/didClose`,
-  `textDocument/definition`, `textDocument/rename`.
+  `textDocument/definition`, `textDocument/rename`, `textDocument/codeAction`.
 - After every open/change the server sends `textDocument/publishDiagnostics` with the compiler
   diagnostics for that document; close clears them.
 - `textDocument/definition` resolves a cursor on an `@label` / `@page(label)` reference to a single
@@ -25,9 +25,13 @@ non-goals stays unbuilt.
   (never the `@` sigil, the `<>` brackets, or the `@page(`…`)` delimiters). A cursor off any label
   returns `null`. Single-document, first-declaration-wins (a duplicate later declaration is left
   untouched); the new name is not validated.
+- `textDocument/codeAction` returns `quickfix` actions for compiler diagnostics that carry concrete
+  `mos-core::Suggestion` edits. The server projects existing compiler suggestions only; it does not
+  synthesize editor-side fixes.
 - Unknown requests get a JSON-RPC `MethodNotFound` (-32601); unknown notifications are dropped.
 - Advertised capabilities are intentionally narrow: full text sync, UTF-16 position encoding,
-  `definitionProvider`, and `renameProvider`. Pull diagnostics are not advertised.
+  `definitionProvider`, `renameProvider`, and `codeActionProvider`. Pull diagnostics are not
+  advertised.
 - Binary: `mos-lsp`, defined in `Cargo.toml`, calls `mos_lsp::run()`.
 
 ### Manual smoke test
@@ -71,10 +75,11 @@ Automated coverage for the same path lives in
 ## Boundary
 
 `mos-lsp` is the thin protocol boundary around compiler services. Diagnostic messages, codes, and
-spans come from `mos-core` / `mos-parse` / `mos-eval`; this crate only re-shapes them into LSP
-positions and dispatches JSON-RPC. Go-to-definition follows the same rule: it walks the lowered
-`mos-eval` `Document` (label declarations and reference spans) and translates spans to LSP ranges,
-mirroring the resolver's first-declaration-wins index rather than reimplementing label policy.
+spans, and suggestions come from `mos-core` / `mos-parse` / `mos-eval`; this crate only re-shapes
+them into LSP positions/edits and dispatches JSON-RPC. Go-to-definition follows the same rule: it
+walks the lowered `mos-eval` `Document` (label declarations and reference spans) and translates
+spans to LSP ranges, mirroring the resolver's first-declaration-wins index rather than
+reimplementing label policy.
 
 To avoid re-lowering the same source repeatedly, the server keeps an in-memory per-document cache of
 `mos_eval::lower` output (`src/cache.rs`). Both paths share it: publishing diagnostics on `didOpen`
@@ -102,9 +107,9 @@ Compiler phase ownership stays elsewhere:
 
 ## Known Non-Goals Today
 
-- No completion, hover, formatting, or code actions. Navigation/editing is limited to
-  go-to-definition and label rename for `@label` references: both single-document. Rename does no
-  cross-file work, no `prepareRename` validation, and no new-name checking.
+- No completion, hover, or formatting. Navigation/editing is limited to go-to-definition, label
+  rename, and compiler-suggestion code actions: all single-document. Rename does no cross-file work,
+  no `prepareRename` validation, and no new-name checking.
 - No incremental document sync: `didChange` replaces the buffer wholesale.
 - No source-to-PDF sync or live preview.
 - No persistent or cross-session compilation cache, and no workspace indexing. The only caching is

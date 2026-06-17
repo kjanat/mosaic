@@ -47,8 +47,9 @@ Implemented now:
 - PDF: Base-14 metrics, bundled Noto Sans embedding/subsetting, ToUnicode, images, metadata,
   deterministic provenance stamp.
 - LSP: `mos-lsp` stdio server publishes current compiler parse/lower/resolve diagnostics for opened
-  and changed documents, plus go-to-definition and rename for labels. The `zed-mosaic` extension
-  spawns `mos-lsp` (binary discovered via Zed settings `binary.path` or `PATH`).
+  and changed documents, plus go-to-definition, rename for labels, and code actions from compiler
+  suggestions. The `zed-mosaic` extension spawns `mos-lsp` (binary discovered via Zed settings
+  `binary.path`, `PATH`, or downloaded release asset fallback).
 
 Treat as aspirational/stub unless user asks:
 
@@ -115,7 +116,7 @@ Treat as aspirational/stub unless user asks:
 
 ## CONVENTIONS
 
-- Rust stable, edition 2024, MSRV 1.95, workspace resolver 3.
+- Rust stable, edition 2024, workspace/product MSRV 1.96, workspace resolver 3.
 - Workspace lints are strict. `unsafe_code = "forbid"`; CI uses `-D warnings -D clippy::all`.
 - Clippy set is curated. Do not enable whole pedantic/nursery/restriction groups.
 - Formatting runs through local `dprint`; TOML via `tombi`; Rust via `rustfmt`; `justfile` via
