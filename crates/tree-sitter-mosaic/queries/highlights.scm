@@ -81,6 +81,7 @@
 
 (label) @label
 (block_label) @label
+(citation) @link_text
 (reference) @link_text
 (label_name) @link_uri
 

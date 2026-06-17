@@ -212,6 +212,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -270,6 +271,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -287,6 +289,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -340,6 +343,7 @@ export default grammar({
 				$.strong,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -357,6 +361,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -374,6 +379,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.citation,
 				$.reference,
 				$.linebreak_call,
 				$.inline_call,
@@ -408,6 +414,8 @@ export default grammar({
 		math_text: _ => token(prec(-1, /[^$\\\n\r]+/)),
 
 		math_escape: _ => token(seq('\\', /[^\r\n]/)),
+
+		citation: $ => seq('[', '@', field('target', $.label_name), ']'),
 
 		reference: $ => seq('@', field('target', $.label_name)),
 

@@ -224,6 +224,22 @@
     }
   },
   {
+    "type": "citation",
+    "named": true,
+    "fields": {
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "label_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "code_block",
     "named": true,
     "fields": {
@@ -314,6 +330,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "citation",
+          "named": true
+        },
         {
           "type": "code_span",
           "named": true
@@ -541,6 +561,10 @@
       "required": true,
       "types": [
         {
+          "type": "citation",
+          "named": true
+        },
+        {
           "type": "code_span",
           "named": true
         },
@@ -755,6 +779,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "citation",
+          "named": true
+        },
         {
           "type": "code_span",
           "named": true
@@ -983,6 +1011,10 @@
       "required": true,
       "types": [
         {
+          "type": "citation",
+          "named": true
+        },
+        {
           "type": "code_span",
           "named": true
         },
@@ -1045,6 +1077,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "citation",
+          "named": true
+        },
         {
           "type": "code_span",
           "named": true
@@ -1159,6 +1195,10 @@
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "citation",
+          "named": true
+        },
         {
           "type": "code_span",
           "named": true

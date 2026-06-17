@@ -264,6 +264,9 @@ fn with_lowering<T>(
 /// compiler-provided [`mos_core::Suggestion`] whose diagnostic/suggestion span
 /// intersects the requested range.
 fn code_action_result(state: &mut ServerState, message: &Value) -> Value {
+    if !code_action_context_allows_quickfix(message) {
+        return Value::Array(Vec::new());
+    }
     let Some(uri) = message
         .pointer("/params/textDocument/uri")
         .and_then(Value::as_str)
@@ -277,6 +280,16 @@ fn code_action_result(state: &mut ServerState, message: &Value) -> Value {
         code_actions_for_range(path, src, uri, lowered, range)
     });
     Value::Array(actions.unwrap_or_default())
+}
+
+fn code_action_context_allows_quickfix(message: &Value) -> bool {
+    let Some(only) = message.pointer("/params/context/only") else {
+        return true;
+    };
+    let Some(kinds) = only.as_array() else {
+        return true;
+    };
+    kinds.iter().any(|kind| kind.as_str() == Some("quickfix"))
 }
 
 /// Build the `textDocument/rename` response: a `WorkspaceEdit` rewriting the
@@ -517,6 +530,15 @@ mod tests {
     }
 
     fn code_actions_for_source_range(src: &str, start: usize, end: usize) -> Vec<Value> {
+        code_actions_for_source_range_with_context(src, start, end, json!({ "diagnostics": [] }))
+    }
+
+    fn code_actions_for_source_range_with_context(
+        src: &str,
+        start: usize,
+        end: usize,
+        context: Value,
+    ) -> Vec<Value> {
         let uri = "file:///virtual/main.mos";
         let mut input: Vec<u8> = Vec::new();
         input.extend(frame(&json!({
@@ -533,7 +555,7 @@ mod tests {
             "params": {
                 "textDocument": { "uri": uri },
                 "range": range_json(src, start, end),
-                "context": { "diagnostics": [] },
+                "context": context,
             },
         })));
         input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
@@ -787,6 +809,30 @@ mod tests {
         let actions = code_actions_for_source_range(src, start, start + "@intrp".len());
 
         assert_eq!(code_action_new_texts(&actions), vec!["@intro"]);
+    }
+
+    #[test]
+    fn code_action_request_honors_context_only() {
+        let src = "= Intro <intro>\n\nSee @intrp here.\n";
+        let start = src.find("@intrp").expect("reference");
+        let source_actions = code_actions_for_source_range_with_context(
+            src,
+            start,
+            start + "@intrp".len(),
+            json!({ "diagnostics": [], "only": ["source"] }),
+        );
+        let quickfix_actions = code_actions_for_source_range_with_context(
+            src,
+            start,
+            start + "@intrp".len(),
+            json!({ "diagnostics": [], "only": ["quickfix"] }),
+        );
+
+        assert!(
+            source_actions.is_empty(),
+            "source-only request got {source_actions:?}"
+        );
+        assert_eq!(code_action_new_texts(&quickfix_actions), vec!["@intro"]);
     }
 
     #[test]

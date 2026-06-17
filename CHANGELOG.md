@@ -8,6 +8,12 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Zed grammar support for bracketed citations and richer editor structure: `[@key]` now parses as a
+  first-class citation in [`tree-sitter-mosaic`][tree-sitter-mosaic], so Zed highlights only the
+  citation key and returns following prose to normal text. The extension also matches quote/backtick
+  pairs without rainbow coloring them and exposes more useful Vim text objects for headings, lists,
+  raw/code/verse bodies, and block-call bodies.
+
 - LSP quick fixes (https://github.com/kjanat/mosaic/issues/113): [`mos-lsp`][mos-lsp] now advertises
   `codeActionProvider` and answers `textDocument/codeAction` with one `quickfix` per
   compiler-provided [`mos-core`][mos-core] `Suggestion`. The server only projects existing compiler
@@ -201,6 +207,9 @@ All notable changes to this project will be documented here. The format is based
   root-anchored package lists. This keeps agent/project files out of future crates.io tarballs.
 
 ### Fixed
+
+- LSP code actions now respect `context.only`: requests limited to non-quick-fix kinds return no
+  actions instead of surfacing Mosaic quick fixes under an unrelated action kind.
 
 - `resolve_relative` ([`mos-core`][mos-core]) no longer silently swallows excess `..`. It looped
   `PathBuf::pop` over each `..`, so once the base was exhausted the extra `..` simply vanished:

@@ -769,6 +769,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "citation"
+        },
+        {
+          "type": "SYMBOL",
           "name": "reference"
         },
         {
@@ -947,6 +951,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "citation"
+        },
+        {
+          "type": "SYMBOL",
           "name": "reference"
         },
         {
@@ -1001,6 +1009,10 @@
         {
           "type": "SYMBOL",
           "name": "inline_math"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "citation"
         },
         {
           "type": "SYMBOL",
@@ -1133,6 +1145,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "citation"
+        },
+        {
+          "type": "SYMBOL",
           "name": "reference"
         },
         {
@@ -1190,6 +1206,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "citation"
+        },
+        {
+          "type": "SYMBOL",
           "name": "reference"
         },
         {
@@ -1244,6 +1264,10 @@
         {
           "type": "SYMBOL",
           "name": "inline_math"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "citation"
         },
         {
           "type": "SYMBOL",
@@ -1409,6 +1433,31 @@
           }
         ]
       }
+    },
+    "citation": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "["
+        },
+        {
+          "type": "STRING",
+          "value": "@"
+        },
+        {
+          "type": "FIELD",
+          "name": "target",
+          "content": {
+            "type": "SYMBOL",
+            "name": "label_name"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "]"
+        }
+      ]
     },
     "reference": {
       "type": "SEQ",
