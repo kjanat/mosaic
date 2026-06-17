@@ -1362,6 +1362,18 @@ mod tests {
             Some(&AttrValue::Str("[1]".to_owned())),
             "a resolved citation renders its first-use numeric label"
         );
+        assert_eq!(
+            citation.attributes.get("target_path"),
+            Some(&AttrValue::Str(bib.to_string_lossy().into_owned()))
+        );
+        assert_eq!(
+            citation.attributes.get("target_span.start"),
+            Some(&AttrValue::Int(9))
+        );
+        assert_eq!(
+            citation.attributes.get("target_span.end"),
+            Some(&AttrValue::Int(18))
+        );
 
         let reference = r
             .document

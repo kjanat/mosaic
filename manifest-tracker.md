@@ -77,8 +77,8 @@ example.
   - [x] raster image directives
   - [x] simple figure directives
 - [x] `mos-lsp` publishes parse/lower/resolve diagnostics for opened and changed documents, resolves
-      `textDocument/definition` for `@label` references, renames labels in-document, and surfaces
-      compiler suggestions as quick-fix code actions.
+      `textDocument/definition` for `@label` references and resolved `[@key]` citations, renames
+      labels in-document, and surfaces compiler suggestions as quick-fix code actions.
 - [x] Layout supports:
   - [x] greedy text flow
   - [x] headings

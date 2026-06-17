@@ -247,12 +247,27 @@ pub(super) fn resolve_citations(
         };
         if bibliography.records.entries.contains_key(&key) {
             let next_number = numbers.len() + 1;
-            let number = *numbers.entry(key).or_insert(next_number);
+            let number = *numbers.entry(key.clone()).or_insert(next_number);
             if let Some(node) = document.get_mut(citation_id) {
                 node.attributes
                     .insert("resolved".to_owned(), AttrValue::Bool(true));
                 node.attributes
                     .insert("text".to_owned(), AttrValue::Str(format!("[{number}]")));
+                if let Some(origin) = bibliography.origins.get(&key) {
+                    node.attributes.insert(
+                        "target_path".to_owned(),
+                        AttrValue::Str(origin.path.to_string_lossy().into_owned()),
+                    );
+                    if let (Ok(start), Ok(end)) = (
+                        i64::try_from(origin.key_span.start()),
+                        i64::try_from(origin.key_span.end()),
+                    ) {
+                        node.attributes
+                            .insert("target_span.start".to_owned(), AttrValue::Int(start));
+                        node.attributes
+                            .insert("target_span.end".to_owned(), AttrValue::Int(end));
+                    }
+                }
             }
             continue;
         }
@@ -275,7 +290,7 @@ pub(super) fn resolve_citations(
         diagnostics.push(diagnostic);
     }
 
-    bibliography.records.entries.into_keys().collect()
+    bibliography.records.entries.keys().cloned().collect()
 }
 
 fn citation_key_span(node: &mos_core::Node, key: &str) -> Option<SourceSpan> {
@@ -341,12 +356,18 @@ fn nearest_citation_key(
 
 struct LoadedBibliography {
     records: Bibliography,
+    origins: BTreeMap<String, BibliographyOrigin>,
     complete: bool,
+}
+
+struct BibliographyOrigin {
+    path: PathBuf,
+    key_span: SourceSpan,
 }
 
 fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> LoadedBibliography {
     let mut merged = Bibliography::default();
-    let mut origins: BTreeMap<String, (PathBuf, SourceSpan)> = BTreeMap::new();
+    let mut origins: BTreeMap<String, BibliographyOrigin> = BTreeMap::new();
     let mut complete = true;
     for node in document
         .nodes()
@@ -379,7 +400,9 @@ fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> 
         match mos_bib::parse_bibtex(&source) {
             Ok(parsed) => {
                 for (key, entry) in parsed.entries {
-                    if let Some((first_path, first_span)) = origins.get(&key) {
+                    let key_span =
+                        SourceSpan::new(path_buf.clone(), entry.key_span.start, entry.key_span.end);
+                    if let Some(first) = origins.get(&key) {
                         diagnostics.push(
                             Diagnostic::simple(
                                 &codes::MOS0046,
@@ -390,10 +413,10 @@ fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> 
                                 ),
                             )
                             .with_annotation(mos_core::DiagnosticAnnotation::Related {
-                                span: first_span.clone(),
+                                span: first.key_span.clone(),
                                 message: format!(
                                     "first bibliography source for `{key}` was `{}`",
-                                    mos_core::display_path(first_path)
+                                    mos_core::display_path(&first.path)
                                 ),
                             })
                             .with_annotation(mos_core::DiagnosticAnnotation::Hint(
@@ -402,7 +425,13 @@ fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> 
                             )),
                         );
                     } else {
-                        origins.insert(key.clone(), (path_buf.clone(), node.span.clone()));
+                        origins.insert(
+                            key.clone(),
+                            BibliographyOrigin {
+                                path: path_buf.clone(),
+                                key_span,
+                            },
+                        );
                         merged.entries.insert(key, entry);
                     }
                 }
@@ -415,6 +444,7 @@ fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> 
     }
     LoadedBibliography {
         records: merged,
+        origins,
         complete,
     }
 }

@@ -3,7 +3,8 @@
 ## OVERVIEW
 
 `mos-lsp` is a thin stdio LSP server: it publishes compiler diagnostics and answers
-`textDocument/definition` for `@label` references. Tiny protocol cave around real compiler services
+`textDocument/definition` for `@label` references and resolved `[@key]` citations. Tiny protocol
+cave around real compiler services
 
 - it re-shapes their output into LSP, never owns parse/lower/resolve policy.
 
@@ -25,7 +26,8 @@
 - Handles full-sync `textDocument/didOpen`, `didChange`, `didClose`.
 - Publishes parse/lower/resolve diagnostics after open/change; close clears diagnostics.
 - Answers `textDocument/definition`: cursor on `@label` / `@page(label)` → label's first declaration
-  span as a `Location`; undeclared label or cursor off a reference → `null`.
+  span as a `Location`; cursor on a resolved `[@key]` citation → the matching BibTeX key span;
+  undeclared label, unresolved citation, or cursor off a reference/citation → `null`.
 - Answers `textDocument/rename`: cursor on a label (declaration token or reference) →
   `WorkspaceEdit` rewriting the first declaration token + every reference identifier to `newName`;
   cursor off a label → `null`. Single-document, first-declaration-wins, no new-name validation.
@@ -50,7 +52,9 @@
 - Do not add completion, hover, formatting, code actions, workspace index, or preview sync by
   manifesto gravity. (Go-to-definition and label rename for `@label` references are shipped, both
   single-document; cross-file rename, `prepareRename`, and new-name validation are still out.)
-- Go-to-definition and rename stay single-document and walk the lowered `Document`, mirror the
-  resolver's first-declaration-wins rule, do not build a workspace index or cross-file label map.
+- Go-to-definition and rename for labels stay single-document and walk the lowered `Document`,
+  mirror the resolver's first-declaration-wins rule, do not build a workspace index or cross-file
+  label map. Citation go-to-definition may jump to the declared BibTeX source already read during
+  lowering.
 - Do not treat byte offsets as LSP columns; positions are UTF-16.
 - Do not make LSP own parse/lower/resolve policy.

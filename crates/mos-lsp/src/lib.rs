@@ -4,10 +4,11 @@
 //! diagnostics that `mos check` renders, but over the Language Server
 //! Protocol so editors can show them inline, answers
 //! `textDocument/definition` to jump from an `@label` reference to its
-//! declaration, and answers `textDocument/rename` to rewrite a label
-//! across its declaration and references. It also exposes compiler
-//! suggestions through `textDocument/codeAction`. Future slices add
-//! citation autocomplete, source ↔ PDF sync, and live preview. MVP 6.
+//! declaration or from a resolved `[@key]` citation to the BibTeX key,
+//! and answers `textDocument/rename` to rewrite a label across its
+//! declaration and references. It also exposes compiler suggestions
+//! through `textDocument/codeAction`. Future slices add citation
+//! autocomplete, source ↔ PDF sync, and live preview. MVP 6.
 
 #![doc(
     html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",

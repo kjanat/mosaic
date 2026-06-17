@@ -8,6 +8,11 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- LSP go-to-definition for citations: a cursor on a resolved `[@key]` now jumps to that key in the
+  declared BibTeX source file. [`mos-bib`][mos-bib] records citation-key byte spans,
+  [`mos-eval`][mos-eval] stamps resolved citation target locations on semantic citation nodes, and
+  [`mos-lsp`][mos-lsp] returns a cross-file `Location` for the `.bib` entry key.
+
 - Zed grammar support for bracketed citations and richer editor structure: `[@key]` now parses as a
   first-class citation in [`tree-sitter-mosaic`][tree-sitter-mosaic], so Zed highlights only the
   citation key and returns following prose to normal text. The extension also matches quote/backtick

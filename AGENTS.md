@@ -47,9 +47,9 @@ Implemented now:
 - PDF: Base-14 metrics, bundled Noto Sans embedding/subsetting, ToUnicode, images, metadata,
   deterministic provenance stamp.
 - LSP: `mos-lsp` stdio server publishes current compiler parse/lower/resolve diagnostics for opened
-  and changed documents, plus go-to-definition, rename for labels, and code actions from compiler
-  suggestions. The `zed-mosaic` extension spawns `mos-lsp` (binary discovered via Zed settings
-  `binary.path`, `PATH`, or downloaded release asset fallback).
+  and changed documents, plus go-to-definition for labels and resolved citations, rename for labels,
+  and code actions from compiler suggestions. The `zed-mosaic` extension spawns `mos-lsp` (binary
+  discovered via Zed settings `binary.path`, `PATH`, or downloaded release asset fallback).
 
 Treat as aspirational/stub unless user asks:
 

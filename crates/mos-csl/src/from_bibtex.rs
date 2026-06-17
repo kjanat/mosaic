@@ -184,6 +184,7 @@ mod tests {
         BibEntry {
             entry_type: entry_type.to_owned(),
             key: key.to_owned(),
+            key_span: 0..key.len(),
             fields: fields
                 .iter()
                 .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))

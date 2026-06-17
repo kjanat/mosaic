@@ -2,6 +2,7 @@
 //! the document-body [`Citation`] reference.
 
 use std::collections::BTreeMap;
+use std::ops::Range;
 
 /// A parsed bibliography: every [`BibEntry`] keyed by its citation key.
 ///
@@ -53,6 +54,8 @@ pub struct BibEntry {
     pub entry_type: String,
     /// The citation key, preserved verbatim (e.g. `knuth1984`).
     pub key: String,
+    /// Byte range of [`key`](Self::key) inside the parsed BibTeX source.
+    pub key_span: Range<usize>,
     /// Field name (lowercased) to raw value text, in sorted name order.
     pub fields: BTreeMap<String, String>,
 }

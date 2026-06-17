@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 use crate::cache::LoweringCache;
 use crate::code_action::code_actions_for_range;
-use crate::definition::definition_range_in;
+use crate::definition::{definition_target_in, path_to_uri};
 use crate::diagnostics::{
     LspDiagnostic, LspPosition, LspRange, diagnostics_from_result, path_from_uri,
 };
@@ -200,9 +200,9 @@ fn initialize_result() -> Value {
 }
 
 /// Build the `textDocument/definition` response for `message`: a single
-/// LSP `Location` pointing at the referenced label's declaration, or
-/// `null` when the request names no open document, carries no position,
-/// the cursor is not on a reference, or the label is undeclared.
+/// LSP `Location` pointing at the referenced label declaration or cited
+/// BibTeX key, or `null` when the request names no open document, carries no
+/// position, or the cursor is not on a resolvable reference/citation.
 ///
 /// The target always lives in the requested document; the server holds
 /// one source per URI and lowers it in isolation, so the response
@@ -217,13 +217,17 @@ fn definition_result(state: &mut ServerState, message: &Value) -> Value {
     let Some(position) = read_position(message) else {
         return Value::Null;
     };
-    let range = with_lowering(state, uri, |lowered, path, src| {
-        definition_range_in(&lowered.document, path, src, position)
+    let target = with_lowering(state, uri, |lowered, path, src| {
+        definition_target_in(&lowered.document, path, src, position).map(|target| {
+            let target_uri = if target.path == *path {
+                uri.to_owned()
+            } else {
+                path_to_uri(&target.path)
+            };
+            json!({ "uri": target_uri, "range": target.range })
+        })
     });
-    match range.flatten() {
-        Some(range) => json!({ "uri": uri, "range": range }),
-        None => Value::Null,
-    }
+    target.flatten().unwrap_or(Value::Null)
 }
 
 /// Run `f` against the lowering for `uri`: a cached one when present, else a
@@ -1003,6 +1007,71 @@ mod tests {
             .expect("definition response");
         assert_eq!(reply.pointer("/result/uri"), Some(&json!(uri)));
         assert_eq!(reply.pointer("/result/range/start/line"), Some(&json!(0)));
+    }
+
+    #[test]
+    fn definition_request_returns_citation_bib_entry_location() {
+        let dir = std::env::temp_dir().join(format!(
+            "mos-lsp-citation-def-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let bib = dir.join("refs.bib");
+        let main = dir.join("main.mos");
+        std::fs::write(
+            &bib,
+            "@book{other, title={Other}}\n@article{patashnik1988, title={BibTeXing}}\n",
+        )
+        .expect("write bib");
+        let src = "#bibliography(\"refs.bib\")\n\nCite [@patashnik1988].\n";
+        std::fs::write(&main, src).expect("write source");
+        let uri = path_to_uri(&main);
+        let bib_uri = path_to_uri(&bib);
+        let cursor = src.find("patashnik1988").map_or(0, |at| at + 1);
+        let position = byte_to_position(src, cursor);
+
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "mosaic", "version": 1, "text": src,
+            } },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 19,
+            "method": "textDocument/definition",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": position.line, "character": position.character },
+            },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        let reply = messages
+            .iter()
+            .find(|m| m.get("id") == Some(&json!(19)))
+            .expect("definition response");
+        assert_eq!(reply.pointer("/result/uri"), Some(&json!(bib_uri)));
+        assert_eq!(reply.pointer("/result/range/start/line"), Some(&json!(1)));
+        assert_eq!(
+            reply.pointer("/result/range/start/character"),
+            Some(&json!(9))
+        );
+        assert_eq!(
+            reply.pointer("/result/range/end/character"),
+            Some(&json!(22))
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
