@@ -169,7 +169,7 @@ fn attr_usize(value: Option<&AttrValue>) -> Option<usize> {
 #[must_use]
 pub(crate) fn path_to_uri(path: &Path) -> String {
     let mut raw = path.to_string_lossy().replace('\\', "/");
-    if !raw.starts_with('/') && !raw.as_bytes().get(1).is_some_and(|byte| *byte == b':') {
+    if !raw.starts_with('/') && raw.as_bytes().get(1).is_none_or(|byte| *byte != b':') {
         raw.insert(0, '/');
     }
     format!("file://{}", percent_encode_uri_path(&raw))

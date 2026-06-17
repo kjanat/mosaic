@@ -554,14 +554,14 @@ mod tests {
     }
 
     fn code_actions_for_source_range(src: &str, start: usize, end: usize) -> Vec<Value> {
-        code_actions_for_source_range_with_context(src, start, end, json!({ "diagnostics": [] }))
+        code_actions_for_source_range_with_context(src, start, end, &json!({ "diagnostics": [] }))
     }
 
     fn code_actions_for_source_range_with_context(
         src: &str,
         start: usize,
         end: usize,
-        context: Value,
+        context: &Value,
     ) -> Vec<Value> {
         let uri = "file:///virtual/main.mos";
         let mut input: Vec<u8> = Vec::new();
@@ -897,13 +897,13 @@ mod tests {
             src,
             start,
             start + "@intrp".len(),
-            json!({ "diagnostics": [], "only": ["source"] }),
+            &json!({ "diagnostics": [], "only": ["source"] }),
         );
         let quickfix_actions = code_actions_for_source_range_with_context(
             src,
             start,
             start + "@intrp".len(),
-            json!({ "diagnostics": [], "only": ["quickfix"] }),
+            &json!({ "diagnostics": [], "only": ["quickfix"] }),
         );
 
         assert!(

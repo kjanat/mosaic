@@ -40,7 +40,7 @@ path = ["kjanat", "mosaic", "releases", "download", "**"]
 ########## TODO: during dev, set local shizz.  ############
 # mosaic.repository = "https://github.com/kjanat/mosaic"
 mosaic.repository = "file:///home/kjanat/projects/mosaic"
-mosaic.rev        = "4c3b98907ce172e705a38554b1b0e51bbfa560dd"
+mosaic.rev        = "f29f6b0f1c1743f35791adb63ad03975e802c276"
 mosaic.path       = "crates/tree-sitter-mosaic"
 ###########################################################
 

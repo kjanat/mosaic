@@ -83,12 +83,12 @@ fn build_children(sections: &[SectionSymbol], index: &mut usize, parent_level: u
         }
         *index += 1;
         let nested = build_children(sections, index, section.level);
-        children.push(symbol_json(section, nested));
+        children.push(symbol_json(section, &nested));
     }
     children
 }
 
-fn symbol_json(section: &SectionSymbol, children: Vec<Value>) -> Value {
+fn symbol_json(section: &SectionSymbol, children: &[Value]) -> Value {
     json!({
         "name": section.name,
         "kind": 3,
