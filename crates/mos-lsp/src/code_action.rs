@@ -125,6 +125,12 @@ impl ByteRange {
     }
 
     fn intersects(self, span: &SourceSpan) -> bool {
+        if span.start() == span.end() {
+            if self.start == self.end {
+                return self.start == span.start();
+            }
+            return self.start <= span.start() && span.start() < self.end;
+        }
         if self.start == self.end {
             return span.start() <= self.start && self.start < span.end();
         }
@@ -258,5 +264,44 @@ mod tests {
         );
 
         assert!(actions.is_empty(), "cursor just past span must not match");
+    }
+
+    #[test]
+    fn cursor_range_matches_zero_length_insertion_suggestion() {
+        let file = PathBuf::from("/virtual/main.mos");
+        let src = "alpha";
+        let diagnostic = Diagnostic::simple(
+            &codes::MOS0034,
+            Some(SourceSpan::new(file.clone(), 0, 1)),
+            "synthetic diagnostic with insertion fix",
+        )
+        .with_suggestion(Suggestion::new(
+            SourceSpan::new(file.clone(), src.len(), src.len()),
+            "!",
+        ));
+        let lowered = mos_eval::LowerResult {
+            document: Document::new(file.clone()),
+            diagnostics: vec![diagnostic],
+            metadata: mos_eval::DocumentMetadata::default(),
+            reads_external_resources: false,
+        };
+        let request_range = LspRange {
+            start: byte_to_position(src, src.len()),
+            end: byte_to_position(src, src.len()),
+        };
+
+        let actions = code_actions_for_range(
+            &file,
+            src,
+            "file:///virtual/main.mos",
+            &lowered,
+            request_range,
+        );
+
+        assert_eq!(actions.len(), 1, "insertion action: {actions:?}");
+        assert_eq!(
+            actions[0].get("title").and_then(Value::as_str),
+            Some("MOS0034: insert `!`")
+        );
     }
 }

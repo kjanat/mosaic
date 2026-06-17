@@ -1,6 +1,6 @@
 use crate::parser::Parser;
 use crate::support::{find_byte, scan_label_chars};
-use mos_core::codes;
+use mos_core::{Suggestion, codes};
 
 use crate::{Inline, InlineKind};
 
@@ -56,6 +56,13 @@ impl Delimiter {
         match self {
             Self::Emphasis => 1,
             Self::Strong => 2,
+        }
+    }
+
+    fn closing_text(self) -> &'static str {
+        match self {
+            Self::Emphasis => "*",
+            Self::Strong => "**",
         }
     }
 }
@@ -235,7 +242,7 @@ impl Parser<'_> {
 
                 self.diagnostics.truncate(diagnostic_checkpoint);
                 if close.is_none() {
-                    self.warn_unterminated_delimiter(base, i, delimiter);
+                    self.warn_unterminated_delimiter(slice, base, i, delimiter);
                 }
                 i += delimiter.width();
                 continue;
@@ -262,12 +269,16 @@ impl Parser<'_> {
                     text_start = i;
                     continue;
                 }
-                self.diagnostics.push(self.warn(
-                    &codes::MOS0034,
-                    "unterminated `` `code` `` run; treated as text",
-                    base + i,
-                    base + i + 1,
-                ));
+                let insertion = base + bytes.len();
+                self.diagnostics.push(
+                    self.warn(
+                        &codes::MOS0034,
+                        "unterminated `` `code` `` run; treated as text",
+                        base + i,
+                        base + i + 1,
+                    )
+                    .with_suggestion(Suggestion::new(self.span(insertion, insertion), "`")),
+                );
                 i += 1;
                 continue;
             }
@@ -480,21 +491,46 @@ impl Parser<'_> {
         }
     }
 
-    fn warn_unterminated_delimiter(&mut self, base: usize, i: usize, delimiter: Delimiter) {
-        match delimiter {
-            Delimiter::Strong => self.diagnostics.push(self.warn(
+    fn warn_unterminated_delimiter(
+        &mut self,
+        slice: &str,
+        base: usize,
+        i: usize,
+        delimiter: Delimiter,
+    ) {
+        let (def, message) = match delimiter {
+            Delimiter::Strong => (
                 &codes::MOS0028,
                 "unterminated `**strong**` run; treated as text",
-                base + i,
-                base + i + 2,
-            )),
-            Delimiter::Emphasis => self.diagnostics.push(self.warn(
+            ),
+            Delimiter::Emphasis => (
                 &codes::MOS0031,
                 "unterminated `*emphasis*` run; treated as text",
-                base + i,
-                base + i + 1,
-            )),
+            ),
+        };
+        let mut diagnostic = self.warn(def, message, base + i, base + i + delimiter.width());
+        if let Some(suggestion) = self.closing_delimiter_suggestion(slice, base, i, delimiter) {
+            diagnostic = diagnostic.with_suggestion(suggestion);
         }
+        self.diagnostics.push(diagnostic);
+    }
+
+    fn closing_delimiter_suggestion(
+        &self,
+        slice: &str,
+        base: usize,
+        i: usize,
+        delimiter: Delimiter,
+    ) -> Option<Suggestion> {
+        let after_opener = i + delimiter.width();
+        if slice.as_bytes()[after_opener..].contains(&b'*') {
+            return None;
+        }
+        let insertion = base + slice.len();
+        Some(Suggestion::new(
+            self.span(insertion, insertion),
+            delimiter.closing_text(),
+        ))
     }
 }
 

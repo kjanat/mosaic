@@ -141,7 +141,7 @@ impl<'a> Parser<'a> {
 mod tests {
     use std::path::PathBuf;
 
-    use mos_core::{CollectingSink, Severity, codes};
+    use mos_core::{CollectingSink, Diagnostic, DiagnosticCode, Severity, codes};
 
     use crate::*;
 
@@ -161,6 +161,26 @@ mod tests {
             tree,
             diagnostics: sink.into_diagnostics(),
         }
+    }
+
+    fn diagnostic_for(r: &ParseResult, code: DiagnosticCode) -> &Diagnostic {
+        r.diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.def().code() == code)
+            .expect("diagnostic for code")
+    }
+
+    fn assert_single_insertion(diagnostic: &Diagnostic, offset: usize, replacement: &str) {
+        let suggestions = diagnostic.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "expected one suggestion, got {suggestions:?}"
+        );
+        let suggestion = &suggestions[0];
+        assert_eq!(suggestion.span.start(), offset);
+        assert_eq!(suggestion.span.end(), offset);
+        assert_eq!(suggestion.replacement, replacement);
     }
 
     #[test]
@@ -300,26 +320,48 @@ mod tests {
 
     #[test]
     fn unterminated_emphasis_warns() {
-        let r = parse_str("hi *there\n");
+        let src = "hi *there\n";
+        let r = parse_str(src);
         assert!(!r.has_errors());
-        assert!(
-            r.diagnostics
-                .iter()
-                .any(|d| d.def().code() == codes::MOS0031.code()
-                    && d.severity() == Severity::Warning)
-        );
+        let diagnostic = diagnostic_for(&r, codes::MOS0031.code());
+        assert_eq!(diagnostic.severity(), Severity::Warning);
+        assert_single_insertion(diagnostic, src.find('\n').expect("line ending"), "*");
     }
 
     #[test]
     fn unterminated_strong_warns() {
-        let r = parse_str("hi **there\n");
+        let src = "hi **there\n";
+        let r = parse_str(src);
         assert!(!r.has_errors());
-        assert!(
-            r.diagnostics
-                .iter()
-                .any(|d| d.def().code() == codes::MOS0028.code()
-                    && d.severity() == Severity::Warning)
-        );
+        let diagnostic = diagnostic_for(&r, codes::MOS0028.code());
+        assert_eq!(diagnostic.severity(), Severity::Warning);
+        assert_single_insertion(diagnostic, src.find('\n').expect("line ending"), "**");
+    }
+
+    #[test]
+    fn unterminated_code_warns_and_suggests_closer() {
+        let src = "hi `there\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+        assert_eq!(diagnostic.severity(), Severity::Warning);
+        assert_single_insertion(diagnostic, src.find('\n').expect("line ending"), "`");
+    }
+
+    #[test]
+    fn nested_unterminated_emphasis_warns_without_suggestion() {
+        let r = parse_str("hi *a **b**\n");
+        let diagnostic = diagnostic_for(&r, codes::MOS0031.code());
+
+        assert!(diagnostic.suggestions().is_empty());
+    }
+
+    #[test]
+    fn nested_unterminated_strong_warns_without_suggestion() {
+        let r = parse_str("hi **a *b\n");
+        let diagnostic = diagnostic_for(&r, codes::MOS0028.code());
+
+        assert!(diagnostic.suggestions().is_empty());
     }
 
     #[test]
