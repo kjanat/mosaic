@@ -4,28 +4,45 @@
   "word": "identifier",
   "rules": {
     "source_file": {
-      "type": "REPEAT",
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "SYMBOL",
-            "name": "blank_line"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "section"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "_block"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "_line_end"
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "shebang"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "blank_line"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "section"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_block"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_line_end"
+              }
+            ]
           }
-        ]
-      }
+        }
+      ]
     },
     "section": {
       "type": "CHOICE",
@@ -453,6 +470,46 @@
             ]
           }
         ]
+      }
+    },
+    "shebang": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 2,
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "#!"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[^\\n\\r]*"
+            }
+          ]
+        }
+      }
+    },
+    "_hash_bang_text": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 1,
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "#!"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[^\\n\\r]*"
+            }
+          ]
+        }
       }
     },
     "set_directive": {
@@ -1674,6 +1731,15 @@
           "name": "loose_backslash"
         },
         {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_hash_bang_text"
+          },
+          "named": true,
+          "value": "text"
+        },
+        {
           "type": "SYMBOL",
           "name": "text"
         }
@@ -1733,6 +1799,15 @@
         {
           "type": "SYMBOL",
           "name": "loose_backslash"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_hash_bang_text"
+          },
+          "named": true,
+          "value": "text"
         },
         {
           "type": "SYMBOL",

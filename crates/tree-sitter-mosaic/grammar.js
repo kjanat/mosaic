@@ -63,7 +63,11 @@ export default grammar({
 		// Document
 		// -------------------------------------------------------------------
 
-		source_file: $ => repeat(choice($.blank_line, $.section, $._block, $._line_end)),
+		source_file: $ =>
+			seq(
+				optional($.shebang),
+				repeat(choice($.blank_line, $.section, $._block, $._line_end)),
+			),
 
 		section: $ =>
 			choice(
@@ -134,6 +138,10 @@ export default grammar({
 				seq('//', /[^\n\r]*/),
 				seq('/*', /[^*]*\*+([^/*][^*]*\*+)*/, '/'),
 			)),
+
+		shebang: _ => token(prec(2, seq('#!', /[^\n\r]*/))),
+
+		_hash_bang_text: _ => token(prec(1, seq('#!', /[^\n\r]*/))),
 
 		// -------------------------------------------------------------------
 		// Block directives
@@ -361,6 +369,7 @@ export default grammar({
 				$.soft_hyphen_escape,
 				$.escaped_char,
 				$.loose_backslash,
+				alias($._hash_bang_text, $.text),
 				$.text,
 			),
 
@@ -379,6 +388,7 @@ export default grammar({
 				$.soft_hyphen_escape,
 				$.escaped_char,
 				$.loose_backslash,
+				alias($._hash_bang_text, $.text),
 				$.text,
 			),
 

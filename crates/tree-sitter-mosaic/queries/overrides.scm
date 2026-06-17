@@ -1,6 +1,9 @@
 ; Mosaic syntax scopes for Zed config overrides.
 
-(comment) @comment.inclusive
+[
+  (comment)
+  (shebang)
+] @comment.inclusive
 (string) @string
 
 [

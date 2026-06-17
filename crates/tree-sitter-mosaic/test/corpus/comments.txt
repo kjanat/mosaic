@@ -53,3 +53,50 @@ comment: block comment is trivia
         marker: (heading_marker)
         content: (inline_sequence
           (text))))))
+
+==================
+comment: byte-zero shebang is trivia
+==================
+#!/usr/bin/env -S mos build --open
+= Hello
+---
+
+(source_file
+  (shebang)
+  (section
+    (section1
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text))))))
+
+==================
+comment: byte-zero shebang with crlf is trivia
+==================
+#!/usr/bin/env -S mos build --open
+= Hello
+---
+
+(source_file
+  (shebang)
+  (section
+    (section1
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text))))))
+
+==================
+comment: later shebang stays ordinary paragraph text
+==================
+Before
+#! not script metadata
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))
+    (soft_break)
+    (paragraph_segment
+      (text))))

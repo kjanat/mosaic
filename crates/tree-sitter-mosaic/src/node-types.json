@@ -1212,6 +1212,10 @@
         {
           "type": "section",
           "named": true
+        },
+        {
+          "type": "shebang",
+          "named": true
         }
       ]
     }
@@ -1681,6 +1685,10 @@
   },
   {
     "type": "raw_body_open",
+    "named": true
+  },
+  {
+    "type": "shebang",
     "named": true
   },
   {
