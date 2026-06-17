@@ -25,11 +25,18 @@ pub(crate) fn code_actions_for_range(
         .iter()
         .filter(|diagnostic| diagnostic_has_actions_in_range(file, diagnostic, request))
         .flat_map(|diagnostic| {
+            let diagnostic_matches_request =
+                diagnostic_span_intersects_request(file, diagnostic, request);
             diagnostic
                 .suggestions()
                 .iter()
-                .filter(|suggestion| {
-                    suggestion.span.file == file && request.intersects(&suggestion.span)
+                .filter(move |suggestion| {
+                    suggestion_matches_request(
+                        file,
+                        suggestion,
+                        request,
+                        diagnostic_matches_request,
+                    )
                 })
                 .map(move |suggestion| action_for_suggestion(src, uri, diagnostic, suggestion))
         })
@@ -48,16 +55,36 @@ fn diagnostic_has_actions_in_range(
     {
         return false;
     }
-    if diagnostic
-        .span()
-        .is_some_and(|span| span.file == file && request.intersects(span))
-    {
+    if diagnostic_span_intersects_request(file, diagnostic, request) {
         return true;
     }
     diagnostic
         .suggestions()
         .iter()
         .any(|suggestion| suggestion.span.file == file && request.intersects(&suggestion.span))
+}
+
+fn diagnostic_span_intersects_request(
+    file: &Path,
+    diagnostic: &Diagnostic,
+    request: ByteRange,
+) -> bool {
+    diagnostic
+        .span()
+        .is_some_and(|span| span.file == file && request.intersects(span))
+}
+
+fn suggestion_matches_request(
+    file: &Path,
+    suggestion: &Suggestion,
+    request: ByteRange,
+    diagnostic_matches_request: bool,
+) -> bool {
+    if suggestion.span.file != file {
+        return false;
+    }
+    request.intersects(&suggestion.span)
+        || (diagnostic_matches_request && suggestion.span.start() == suggestion.span.end())
 }
 
 fn action_for_suggestion(
@@ -302,6 +329,41 @@ mod tests {
         assert_eq!(
             actions[0].get("title").and_then(Value::as_str),
             Some("MOS0034: insert `!`")
+        );
+    }
+
+    #[test]
+    fn diagnostic_range_includes_remote_insertion_suggestion() {
+        let file = PathBuf::from("/virtual/main.mos");
+        let src = "`alpha";
+        let diagnostic = Diagnostic::simple(
+            &codes::MOS0034,
+            Some(SourceSpan::new(file.clone(), 0, 1)),
+            "synthetic diagnostic with insertion fix at line end",
+        )
+        .with_suggestion(Suggestion::new(
+            SourceSpan::new(file.clone(), src.len(), src.len()),
+            "`",
+        ));
+        let lowered = mos_eval::LowerResult {
+            document: Document::new(file.clone()),
+            diagnostics: vec![diagnostic],
+            metadata: mos_eval::DocumentMetadata::default(),
+            reads_external_resources: false,
+        };
+
+        let actions = code_actions_for_range(
+            &file,
+            src,
+            "file:///virtual/main.mos",
+            &lowered,
+            range_for(src, "`"),
+        );
+
+        assert_eq!(actions.len(), 1, "insertion action: {actions:?}");
+        assert_eq!(
+            actions[0].get("title").and_then(Value::as_str),
+            Some("MOS0034: insert ```")
         );
     }
 }

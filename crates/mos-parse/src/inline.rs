@@ -269,7 +269,8 @@ impl Parser<'_> {
                     text_start = i;
                     continue;
                 }
-                let insertion = base + bytes.len();
+                let insertion =
+                    base + Self::code_closing_insertion(slice, i, close).unwrap_or(bytes.len());
                 self.diagnostics.push(
                     self.warn(
                         &codes::MOS0034,
@@ -531,6 +532,24 @@ impl Parser<'_> {
             self.span(insertion, insertion),
             delimiter.closing_text(),
         ))
+    }
+
+    fn code_closing_insertion(slice: &str, i: usize, close: Option<Delimiter>) -> Option<usize> {
+        let delimiter = close?;
+        let bytes = slice.as_bytes();
+        let mut cursor = i + 1;
+        while cursor < bytes.len() {
+            if bytes[cursor] == b'*' {
+                let run_len = star_run_len(bytes, cursor);
+                if delimiter_closes(delimiter, run_len) {
+                    return Some(cursor);
+                }
+                cursor += run_len;
+            } else {
+                cursor += 1;
+            }
+        }
+        None
     }
 }
 

@@ -890,6 +890,15 @@ mod tests {
     }
 
     #[test]
+    fn code_action_request_returns_inline_closer_at_diagnostic() {
+        let src = "*unclosed\n";
+        let start = src.find('*').expect("emphasis opener");
+        let actions = code_actions_for_source_range(src, start, start + 1);
+
+        assert_eq!(code_action_new_texts(&actions), vec!["*"]);
+    }
+
+    #[test]
     fn code_action_request_honors_context_only() {
         let src = "= Intro <intro>\n\nSee @intrp here.\n";
         let start = src.find("@intrp").expect("reference");

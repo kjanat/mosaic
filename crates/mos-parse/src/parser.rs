@@ -349,6 +349,95 @@ mod tests {
     }
 
     #[test]
+    fn terminated_code_does_not_warn() {
+        let r = parse_str("hi `there`\n");
+
+        assert!(
+            r.diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.def().code() != codes::MOS0034.code()),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unterminated_code_at_eof_suggests_closer() {
+        let src = "hi `there";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert_single_insertion(diagnostic, src.len(), "`");
+    }
+
+    #[test]
+    fn unterminated_code_before_crlf_suggests_closer() {
+        let src = "hi `there\r\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert_single_insertion(diagnostic, src.find('\r').expect("CRLF"), "`");
+    }
+
+    #[test]
+    fn unterminated_code_inside_emphasis_suggests_before_outer_closer() {
+        let src = "*a `b*\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert_single_insertion(diagnostic, src.rfind('*').expect("outer closer"), "`");
+        assert!(
+            r.diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.def().code() != codes::MOS0031.code()),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unterminated_code_inside_strong_suggests_before_outer_closer() {
+        let src = "**a `b**\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert_single_insertion(diagnostic, src.rfind("**").expect("strong closer"), "`");
+        assert!(
+            r.diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.def().code() != codes::MOS0028.code()),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unterminated_code_inside_bold_italic_suggests_before_outer_closer() {
+        let src = "***a `b***\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert_single_insertion(
+            diagnostic,
+            src.rfind("***").expect("bold italic closer"),
+            "`",
+        );
+        assert!(
+            r.diagnostics.iter().all(|diagnostic| {
+                diagnostic.def().code() != codes::MOS0028.code()
+                    && diagnostic.def().code() != codes::MOS0031.code()
+            }),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
     fn nested_unterminated_emphasis_warns_without_suggestion() {
         let r = parse_str("hi *a **b**\n");
         let diagnostic = diagnostic_for(&r, codes::MOS0031.code());

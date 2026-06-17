@@ -80,13 +80,16 @@ jobs:
 
       - name: Install Rust ${{ env.RUSTUP_TOOLCHAIN }}
         uses: dtolnay/rust-toolchain@master
-        with: { toolchain: "${{ env.RUSTUP_TOOLCHAIN }}" }
+        with: { toolchain: "${{ env.RUSTUP_TOOLCHAIN }}", targets: wasm32-wasip2 }
 
       - uses: Swatinem/rust-cache@v2
         with: { key: msrv }
 
       - name: build
         run: cargo bwa
+
+      - name: check zed extension
+        run: cargo check --manifest-path crates/zed-mosaic/Cargo.toml --target wasm32-wasip2
 
   reusable-msrv:
     name: build reusable crates on lower MSRV
