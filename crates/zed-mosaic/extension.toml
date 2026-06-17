@@ -38,7 +38,7 @@ path = ["kjanat", "mosaic", "releases", "download", "**"]
 
 [grammars]
 mosaic.repository = "https://github.com/kjanat/mosaic"
-mosaic.rev        = "f29f6b0f1c1743f35791adb63ad03975e802c276"
+mosaic.rev        = "7b9bdf8a75b7b1837513b12889c920982b25995a"
 mosaic.path       = "crates/tree-sitter-mosaic"
 
 ###########################################################
