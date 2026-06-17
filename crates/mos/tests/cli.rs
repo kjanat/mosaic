@@ -122,8 +122,8 @@ fn check_warns_on_unterminated_emphasis_but_succeeds() {
     assert_eq!(code, 0);
     assert!(stderr.contains("warning[MOS0031]"), "stderr={stderr:?}");
     assert!(
-        !stderr.contains("help:"),
-        "diagnostics without structured suggestions should not grow fix-its: {stderr:?}"
+        stderr.contains("help: insert `*`"),
+        "unterminated emphasis should render its structured insertion fix: {stderr:?}"
     );
 }
 

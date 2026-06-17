@@ -1,6 +1,6 @@
 use crate::parser::Parser;
 use crate::support::{find_byte, scan_label_chars};
-use mos_core::codes;
+use mos_core::{Suggestion, codes};
 
 use crate::{Inline, InlineKind};
 
@@ -56,6 +56,13 @@ impl Delimiter {
         match self {
             Self::Emphasis => 1,
             Self::Strong => 2,
+        }
+    }
+
+    fn closing_text(self) -> &'static str {
+        match self {
+            Self::Emphasis => "*",
+            Self::Strong => "**",
         }
     }
 }
@@ -235,7 +242,7 @@ impl Parser<'_> {
 
                 self.diagnostics.truncate(diagnostic_checkpoint);
                 if close.is_none() {
-                    self.warn_unterminated_delimiter(base, i, delimiter);
+                    self.warn_unterminated_delimiter(slice, base, i, delimiter);
                 }
                 i += delimiter.width();
                 continue;
@@ -262,12 +269,18 @@ impl Parser<'_> {
                     text_start = i;
                     continue;
                 }
-                self.diagnostics.push(self.warn(
+                let mut diagnostic = self.warn(
                     &codes::MOS0034,
                     "unterminated `` `code` `` run; treated as text",
                     base + i,
                     base + i + 1,
-                ));
+                );
+                if let Some(insertion) = Self::code_closing_insertion(slice, i, close) {
+                    let insertion = base + insertion;
+                    diagnostic = diagnostic
+                        .with_suggestion(Suggestion::new(self.span(insertion, insertion), "`"));
+                }
+                self.diagnostics.push(diagnostic);
                 i += 1;
                 continue;
             }
@@ -480,21 +493,62 @@ impl Parser<'_> {
         }
     }
 
-    fn warn_unterminated_delimiter(&mut self, base: usize, i: usize, delimiter: Delimiter) {
-        match delimiter {
-            Delimiter::Strong => self.diagnostics.push(self.warn(
+    fn warn_unterminated_delimiter(
+        &mut self,
+        slice: &str,
+        base: usize,
+        i: usize,
+        delimiter: Delimiter,
+    ) {
+        let (def, message) = match delimiter {
+            Delimiter::Strong => (
                 &codes::MOS0028,
                 "unterminated `**strong**` run; treated as text",
-                base + i,
-                base + i + 2,
-            )),
-            Delimiter::Emphasis => self.diagnostics.push(self.warn(
+            ),
+            Delimiter::Emphasis => (
                 &codes::MOS0031,
                 "unterminated `*emphasis*` run; treated as text",
-                base + i,
-                base + i + 1,
-            )),
+            ),
+        };
+        let mut diagnostic = self.warn(def, message, base + i, base + i + delimiter.width());
+        if let Some(suggestion) = self.closing_delimiter_suggestion(slice, base, i, delimiter) {
+            diagnostic = diagnostic.with_suggestion(suggestion);
         }
+        self.diagnostics.push(diagnostic);
+    }
+
+    fn closing_delimiter_suggestion(
+        &self,
+        slice: &str,
+        base: usize,
+        i: usize,
+        delimiter: Delimiter,
+    ) -> Option<Suggestion> {
+        let after_opener = i + delimiter.width();
+        if slice.as_bytes()[after_opener..].contains(&b'*') {
+            return None;
+        }
+        let insertion = base + slice.len();
+        Some(Suggestion::new(
+            self.span(insertion, insertion),
+            delimiter.closing_text(),
+        ))
+    }
+
+    fn code_closing_insertion(slice: &str, i: usize, close: Option<Delimiter>) -> Option<usize> {
+        let bytes = slice.as_bytes();
+        let mut cursor = i + 1;
+        while cursor < bytes.len() {
+            if bytes[cursor] == b'*' {
+                let run_len = star_run_len(bytes, cursor);
+                if close.is_some_and(|delimiter| delimiter_closes(delimiter, run_len)) {
+                    return Some(cursor);
+                }
+                return None;
+            }
+            cursor += 1;
+        }
+        Some(bytes.len())
     }
 }
 
