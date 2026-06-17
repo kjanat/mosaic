@@ -164,10 +164,21 @@ mod tests {
     }
 
     fn diagnostic_for(r: &ParseResult, code: DiagnosticCode) -> &Diagnostic {
-        r.diagnostics
+        let diagnostic = r
+            .diagnostics
             .iter()
-            .find(|diagnostic| diagnostic.def().code() == code)
-            .expect("diagnostic for code")
+            .find(|diagnostic| diagnostic.def().code() == code);
+        assert!(
+            diagnostic.is_some(),
+            "expected diagnostic {code}, got {:?}",
+            r.diagnostics
+        );
+        diagnostic.unwrap_or_else(|| &r.diagnostics[0])
+    }
+
+    fn required_offset(offset: Option<usize>, label: &str, src: &str) -> usize {
+        assert!(offset.is_some(), "expected {label} in {src:?}");
+        offset.unwrap_or(0)
     }
 
     fn assert_single_insertion(diagnostic: &Diagnostic, offset: usize, replacement: &str) {
@@ -325,7 +336,11 @@ mod tests {
         assert!(!r.has_errors());
         let diagnostic = diagnostic_for(&r, codes::MOS0031.code());
         assert_eq!(diagnostic.severity(), Severity::Warning);
-        assert_single_insertion(diagnostic, src.find('\n').expect("line ending"), "*");
+        assert_single_insertion(
+            diagnostic,
+            required_offset(src.find('\n'), "line ending", src),
+            "*",
+        );
     }
 
     #[test]
@@ -335,7 +350,11 @@ mod tests {
         assert!(!r.has_errors());
         let diagnostic = diagnostic_for(&r, codes::MOS0028.code());
         assert_eq!(diagnostic.severity(), Severity::Warning);
-        assert_single_insertion(diagnostic, src.find('\n').expect("line ending"), "**");
+        assert_single_insertion(
+            diagnostic,
+            required_offset(src.find('\n'), "line ending", src),
+            "**",
+        );
     }
 
     #[test]
@@ -345,7 +364,11 @@ mod tests {
         assert!(!r.has_errors());
         let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
         assert_eq!(diagnostic.severity(), Severity::Warning);
-        assert_single_insertion(diagnostic, src.find('\n').expect("line ending"), "`");
+        assert_single_insertion(
+            diagnostic,
+            required_offset(src.find('\n'), "line ending", src),
+            "`",
+        );
     }
 
     #[test]
@@ -378,7 +401,11 @@ mod tests {
         assert!(!r.has_errors());
         let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
 
-        assert_single_insertion(diagnostic, src.find('\r').expect("CRLF"), "`");
+        assert_single_insertion(
+            diagnostic,
+            required_offset(src.find('\r'), "CRLF", src),
+            "`",
+        );
     }
 
     #[test]
@@ -388,7 +415,11 @@ mod tests {
         assert!(!r.has_errors());
         let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
 
-        assert_single_insertion(diagnostic, src.rfind('*').expect("outer closer"), "`");
+        assert_single_insertion(
+            diagnostic,
+            required_offset(src.rfind('*'), "outer closer", src),
+            "`",
+        );
         assert!(
             r.diagnostics
                 .iter()
@@ -405,7 +436,11 @@ mod tests {
         assert!(!r.has_errors());
         let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
 
-        assert_single_insertion(diagnostic, src.rfind("**").expect("strong closer"), "`");
+        assert_single_insertion(
+            diagnostic,
+            required_offset(src.rfind("**"), "strong closer", src),
+            "`",
+        );
         assert!(
             r.diagnostics
                 .iter()
@@ -424,9 +459,44 @@ mod tests {
 
         assert_single_insertion(
             diagnostic,
-            src.rfind("***").expect("bold italic closer"),
+            required_offset(src.rfind("***"), "bold italic closer", src),
             "`",
         );
+        assert!(
+            r.diagnostics.iter().all(|diagnostic| {
+                diagnostic.def().code() != codes::MOS0028.code()
+                    && diagnostic.def().code() != codes::MOS0031.code()
+            }),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unterminated_code_before_emphasis_suppresses_closer_suggestion() {
+        let src = "hi `a *b*\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert!(diagnostic.suggestions().is_empty());
+        assert!(
+            r.diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.def().code() != codes::MOS0031.code()),
+            "{:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unterminated_code_before_nested_strong_suppresses_closer_suggestion() {
+        let src = "*a `b **c** d*\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0034.code());
+
+        assert!(diagnostic.suggestions().is_empty());
         assert!(
             r.diagnostics.iter().all(|diagnostic| {
                 diagnostic.def().code() != codes::MOS0028.code()

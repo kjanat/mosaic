@@ -269,17 +269,18 @@ impl Parser<'_> {
                     text_start = i;
                     continue;
                 }
-                let insertion =
-                    base + Self::code_closing_insertion(slice, i, close).unwrap_or(bytes.len());
-                self.diagnostics.push(
-                    self.warn(
-                        &codes::MOS0034,
-                        "unterminated `` `code` `` run; treated as text",
-                        base + i,
-                        base + i + 1,
-                    )
-                    .with_suggestion(Suggestion::new(self.span(insertion, insertion), "`")),
+                let mut diagnostic = self.warn(
+                    &codes::MOS0034,
+                    "unterminated `` `code` `` run; treated as text",
+                    base + i,
+                    base + i + 1,
                 );
+                if let Some(insertion) = Self::code_closing_insertion(slice, i, close) {
+                    let insertion = base + insertion;
+                    diagnostic = diagnostic
+                        .with_suggestion(Suggestion::new(self.span(insertion, insertion), "`"));
+                }
+                self.diagnostics.push(diagnostic);
                 i += 1;
                 continue;
             }
@@ -535,21 +536,19 @@ impl Parser<'_> {
     }
 
     fn code_closing_insertion(slice: &str, i: usize, close: Option<Delimiter>) -> Option<usize> {
-        let delimiter = close?;
         let bytes = slice.as_bytes();
         let mut cursor = i + 1;
         while cursor < bytes.len() {
             if bytes[cursor] == b'*' {
                 let run_len = star_run_len(bytes, cursor);
-                if delimiter_closes(delimiter, run_len) {
+                if close.is_some_and(|delimiter| delimiter_closes(delimiter, run_len)) {
                     return Some(cursor);
                 }
-                cursor += run_len;
-            } else {
-                cursor += 1;
+                return None;
             }
+            cursor += 1;
         }
-        None
+        Some(bytes.len())
     }
 }
 
