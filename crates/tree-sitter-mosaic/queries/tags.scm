@@ -28,6 +28,14 @@
 (reference
   target: (label_name) @name) @reference.label
 
+; `@page(intro:setup)`: page-reference label use.
+(page_reference
+  target: (label_name) @name) @reference.label
+
+; `[@knuth1984]`: bibliography key use.
+(citation
+  target: (label_name) @name) @reference.citation
+
 ; `#import "lib.mos"` / `#include "..."`: module references by path.
 (import_directive
   path: (string) @name) @reference.import

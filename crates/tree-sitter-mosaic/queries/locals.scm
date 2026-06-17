@@ -25,6 +25,10 @@
 (reference
   target: (label_name) @local.reference)
 
+; `@page(intro:setup)`: page-reference label use.
+(page_reference
+  target: (label_name) @local.reference)
+
 ; `#name(...)`: block / inline call site.
 (hash_call
   function: (qualified_name) @local.reference)

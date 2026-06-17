@@ -1,6 +1,6 @@
 // External scanner for tree-sitter-mosaic.
 //
-// Emits four tokens that pure regex tokenisation cannot express cleanly:
+// Emits five tokens that pure regex tokenisation cannot express cleanly:
 //
 //   BLANK_LINE        : two or more line terminators (optionally separated by
 //                       horizontal whitespace). A single line_end is left to
@@ -9,6 +9,12 @@
 //                       BLANK_LINE is only requested at block-boundary
 //                       positions, but emitting only at >=2 line_ends keeps
 //                       us safe under any future grammar tweak.
+//
+//   SOFT_BREAK        : one line terminator that joins prose lines inside a
+//                       paragraph or inline delimiter. It is only emitted when
+//                       the next non-space character cannot start a block.
+//
+//   LINE_END          : one line terminator that ends a block-level construct.
 //
 //   RAW_BODY_OPEN     : Lua-style long-bracket opener (`[=[`, `[[`, etc.).
 //
@@ -24,6 +30,8 @@
 
 enum TokenType {
     BLANK_LINE,
+    SOFT_BREAK,
+    LINE_END,
     RAW_BODY_OPEN,
     RAW_BODY_CONTENT,
     RAW_BODY_CLOSE,
@@ -94,51 +102,111 @@ static bool consume_line_end(TSLexer *lexer) {
     return false;
 }
 
-/**
- * Scan for a blank line consisting of two or more line terminators (each possibly
- * preceded by horizontal whitespace) and emit the `BLANK_LINE` external token.
- *
- * The scanner skips leading horizontal space, requires at least one line terminator,
- * then requires at least one additional `(hspace* line_end)` sequence before
- * emitting `BLANK_LINE`. A single line terminator is not consumed by this scanner
- * so that the internal `_line_end` rule can still match.
- *
- * @returns `true` if a `BLANK_LINE` was matched and `lexer->result_symbol` was set,
- *          `false` otherwise.
- */
-static bool scan_blank_line(TSLexer *lexer) {
-    // Skip leading hspace; do not consume the first line_end yet.
-    while (is_hspace(lexer->lookahead)) {
-        skip(lexer);
+static bool starts_heading(TSLexer *lexer) {
+    uint32_t marker_count = 0;
+    while (lexer->lookahead == '=') {
+        marker_count++;
+        advance(lexer);
     }
+    return marker_count >= 1 && marker_count <= 6 && is_hspace(lexer->lookahead);
+}
+
+static bool starts_unordered_list(TSLexer *lexer) {
+    if (lexer->lookahead != '-') {
+        return false;
+    }
+    advance(lexer);
+    return is_hspace(lexer->lookahead);
+}
+
+static bool starts_ordered_list(TSLexer *lexer) {
+    if (lexer->lookahead < '0' || lexer->lookahead > '9') {
+        return false;
+    }
+    do {
+        advance(lexer);
+    } while (lexer->lookahead >= '0' && lexer->lookahead <= '9');
+    if (lexer->lookahead != '.') {
+        return false;
+    }
+    advance(lexer);
+    return is_hspace(lexer->lookahead);
+}
+
+static bool starts_hash_block(TSLexer *lexer) {
+    if (lexer->lookahead != '#') {
+        return false;
+    }
+    advance(lexer);
+    return lexer->lookahead != '!';
+}
+
+static bool starts_block_after_line(TSLexer *lexer) {
+    switch (lexer->lookahead) {
+        case '#':
+            return starts_hash_block(lexer);
+        case '=':
+            return starts_heading(lexer);
+        case '-':
+            return starts_unordered_list(lexer);
+        default:
+            return starts_ordered_list(lexer);
+    }
+}
+
+static bool scan_line_ending(TSLexer *lexer, const bool *valid_symbols) {
     if (!is_line_end(lexer->lookahead)) {
         return false;
     }
-    // Consume the first line_end.
+
     consume_line_end(lexer);
-    // Try to match >=1 additional (hspace* line_end) sequences. Only emit
-    // BLANK_LINE if we found at least one extra line terminator, otherwise a
-    // single newline must stay available as the internal `_line_end` token
-    // (paragraph soft break).
-    int extra = 0;
-    for (;;) {
-        // Mark a checkpoint after each accepted line_end so we don't roll
-        // back over an already-consumed blank tail.
-        lexer->mark_end(lexer);
+    lexer->mark_end(lexer);
+
+    bool has_extra_line = false;
+    if (valid_symbols[BLANK_LINE]) {
+        for (;;) {
+            while (is_hspace(lexer->lookahead)) {
+                advance(lexer);
+            }
+            if (!is_line_end(lexer->lookahead)) {
+                break;
+            }
+            consume_line_end(lexer);
+            lexer->mark_end(lexer);
+            has_extra_line = true;
+        }
+    } else {
         while (is_hspace(lexer->lookahead)) {
             advance(lexer);
         }
-        if (!is_line_end(lexer->lookahead)) {
-            break;
-        }
-        consume_line_end(lexer);
-        extra++;
     }
-    if (extra == 0) {
-        return false;
+
+    if (has_extra_line) {
+        lexer->result_symbol = BLANK_LINE;
+        return true;
     }
-    lexer->result_symbol = BLANK_LINE;
-    return true;
+
+    bool const block_boundary_context = valid_symbols[BLANK_LINE] || valid_symbols[LINE_END];
+    bool const can_continue = !lexer->eof(lexer)
+        && !is_line_end(lexer->lookahead)
+        && (!block_boundary_context || !starts_block_after_line(lexer));
+
+    if (valid_symbols[SOFT_BREAK] && can_continue) {
+        lexer->result_symbol = SOFT_BREAK;
+        return true;
+    }
+
+    if (valid_symbols[LINE_END]) {
+        lexer->result_symbol = LINE_END;
+        return true;
+    }
+
+    if (valid_symbols[SOFT_BREAK]) {
+        lexer->result_symbol = SOFT_BREAK;
+        return true;
+    }
+
+    return false;
 }
 
 static bool scan_raw_body_open(Scanner *scanner, TSLexer *lexer) {
@@ -258,8 +326,8 @@ bool tree_sitter_mosaic_external_scanner_scan(
         }
     }
 
-    if (valid_symbols[BLANK_LINE]) {
-        if (scan_blank_line(lexer)) {
+    if (valid_symbols[BLANK_LINE] || valid_symbols[SOFT_BREAK] || valid_symbols[LINE_END]) {
+        if (scan_line_ending(lexer, valid_symbols)) {
             return true;
         }
     }

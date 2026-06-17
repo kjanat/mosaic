@@ -367,6 +367,10 @@
           "named": true
         },
         {
+          "type": "page_reference",
+          "named": true
+        },
+        {
           "type": "reference",
           "named": true
         },
@@ -597,6 +601,10 @@
           "named": true
         },
         {
+          "type": "page_reference",
+          "named": true
+        },
+        {
           "type": "reference",
           "named": true
         },
@@ -732,6 +740,22 @@
     }
   },
   {
+    "type": "page_reference",
+    "named": true,
+    "fields": {
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "label_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "paragraph",
     "named": true,
     "fields": {
@@ -813,6 +837,10 @@
         },
         {
           "type": "loose_backslash",
+          "named": true
+        },
+        {
+          "type": "page_reference",
           "named": true
         },
         {
@@ -1188,11 +1216,6 @@
     }
   },
   {
-    "type": "soft_break",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "source_file",
     "named": true,
     "root": true,
@@ -1292,6 +1315,10 @@
           "named": true
         },
         {
+          "type": "page_reference",
+          "named": true
+        },
+        {
           "type": "reference",
           "named": true
         },
@@ -1356,6 +1383,10 @@
         },
         {
           "type": "loose_backslash",
+          "named": true
+        },
+        {
+          "type": "page_reference",
           "named": true
         },
         {
@@ -1473,6 +1504,10 @@
           "named": true
         },
         {
+          "type": "page_reference",
+          "named": true
+        },
+        {
           "type": "reference",
           "named": true
         },
@@ -1496,51 +1531,11 @@
     }
   },
   {
-    "type": "\n",
-    "named": false
-  },
-  {
-    "type": "\r",
-    "named": false
-  },
-  {
-    "type": "\r\n",
-    "named": false
-  },
-  {
     "type": "\"",
     "named": false
   },
   {
     "type": "#",
-    "named": false
-  },
-  {
-    "type": "#code",
-    "named": false
-  },
-  {
-    "type": "#import",
-    "named": false
-  },
-  {
-    "type": "#include",
-    "named": false
-  },
-  {
-    "type": "#linebreak",
-    "named": false
-  },
-  {
-    "type": "#pre",
-    "named": false
-  },
-  {
-    "type": "#set",
-    "named": false
-  },
-  {
-    "type": "#verse",
     "named": false
   },
   {
@@ -1596,6 +1591,10 @@
     "named": false
   },
   {
+    "type": "@page(",
+    "named": false
+  },
+  {
     "type": "[",
     "named": false
   },
@@ -1610,6 +1609,10 @@
   {
     "type": "blank_line",
     "named": true
+  },
+  {
+    "type": "code",
+    "named": false
   },
   {
     "type": "code_text",
@@ -1656,6 +1659,10 @@
     "named": true
   },
   {
+    "type": "linebreak",
+    "named": false
+  },
+  {
     "type": "loose_backslash",
     "named": true
   },
@@ -1676,6 +1683,10 @@
     "named": true
   },
   {
+    "type": "pre",
+    "named": false
+  },
+  {
     "type": "raw_body_close",
     "named": true
   },
@@ -1689,6 +1700,10 @@
   },
   {
     "type": "shebang",
+    "named": true
+  },
+  {
+    "type": "soft_break",
     "named": true
   },
   {
@@ -1714,6 +1729,10 @@
   {
     "type": "unordered_list_marker",
     "named": true
+  },
+  {
+    "type": "verse",
+    "named": false
   },
   {
     "type": "verse_text",

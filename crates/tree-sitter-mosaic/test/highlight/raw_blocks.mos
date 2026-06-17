@@ -1,10 +1,10 @@
 #verse[Line one]
-// <- keyword
+// <- punctuation.special
 //     ^ text.literal
 
 #verse[*italic* line]
 //      ^ emphasis
 
 #pre[[raw text here]]
-// <- keyword
+// <- punctuation.special
 //    ^ text.literal
