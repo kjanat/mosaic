@@ -78,7 +78,8 @@ example.
   - [x] simple figure directives
 - [x] `mos-lsp` publishes parse/lower/resolve diagnostics for opened and changed documents, resolves
       `textDocument/definition` for `@label` references and resolved `[@key]` citations, renames
-      labels in-document, and surfaces compiler suggestions as quick-fix code actions.
+      labels in-document, exposes nested heading document symbols, and surfaces compiler suggestions
+      as quick-fix code actions.
 - [x] Layout supports:
   - [x] greedy text flow
   - [x] headings
@@ -435,7 +436,7 @@ example.
       actions).
 - [ ] Add citation autocomplete.
 - [ ] Add figure preview.
-- [ ] Add outline.
+- [x] Add nested heading outline.
 - [ ] Add symbol search.
 - [ ] Add hover docs.
 - [ ] Add format-document support.

@@ -7,10 +7,12 @@ comment: line comment is trivia
 
 (source_file
   (comment)
-  (heading
-    marker: (heading_marker)
-    content: (inline_sequence
-      (text))))
+  (section
+    (section1
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text))))))
 
 ==================
 comment: url slash pair stays prose
@@ -45,7 +47,9 @@ comment: block comment is trivia
 
 (source_file
   (comment)
-  (heading
-    marker: (heading_marker)
-    content: (inline_sequence
-      (text))))
+  (section
+    (section1
+      (heading
+        marker: (heading_marker)
+        content: (inline_sequence
+          (text))))))

@@ -19,6 +19,7 @@ mod cache;
 mod code_action;
 mod definition;
 mod diagnostics;
+mod document_symbol;
 mod rename;
 mod server;
 

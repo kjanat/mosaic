@@ -44,6 +44,8 @@ cargo test -p tree-sitter-mosaic
 - Edit `grammar.js` and `src/scanner.c`; regenerate parser artifacts deliberately.
 - Keep `queries/*.scm` canonical; Zed copies come from these files.
 - Newlines are not `extras`; single newline matters for soft breaks.
+- Headings are exposed as `(heading ...)` nodes inside level-specific `section1`..`section6`
+  containers; Zed outline nesting depends on this containment.
 - Raw `#pre` / `#code` bodies use Lua-style long brackets.
 - Labels are not generic inline atoms; this avoids greedy inline capture problems.
 

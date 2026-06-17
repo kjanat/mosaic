@@ -19,6 +19,7 @@ use crate::definition::{definition_target_in, path_to_uri};
 use crate::diagnostics::{
     LspDiagnostic, LspPosition, LspRange, diagnostics_from_result, path_from_uri,
 };
+use crate::document_symbol::document_symbols;
 use crate::rename::rename_ranges;
 
 /// Errors surfaced by the LSP server runtime. Compiler diagnostics
@@ -115,6 +116,10 @@ fn handle_message<W: Write>(
             write_response(writer, id, &code_action_result(state, message))?;
             Ok(false)
         }
+        (Some("textDocument/documentSymbol"), Some(id)) => {
+            write_response(writer, id, &document_symbol_result(state, message))?;
+            Ok(false)
+        }
         (Some("textDocument/didOpen"), _) => {
             if let Some(doc) = message.pointer("/params/textDocument")
                 && let (Some(uri), Some(text)) = (
@@ -187,6 +192,8 @@ fn initialize_result() -> Value {
             "positionEncoding": "utf-16",
             // Go-to-definition for `@label` references (issue #71).
             "definitionProvider": true,
+            // Nested headings for editor outlines and breadcrumbs.
+            "documentSymbolProvider": true,
             // Rename a label across its declaration and references.
             "renameProvider": true,
             // Quick fixes are projected from compiler `Suggestion`s.
@@ -197,6 +204,19 @@ fn initialize_result() -> Value {
             "version": env!("CARGO_PKG_VERSION"),
         },
     })
+}
+
+fn document_symbol_result(state: &mut ServerState, message: &Value) -> Value {
+    let Some(uri) = message
+        .pointer("/params/textDocument/uri")
+        .and_then(Value::as_str)
+    else {
+        return Value::Array(Vec::new());
+    };
+    let symbols = with_lowering(state, uri, |lowered, _path, src| {
+        document_symbols(&lowered.document, src)
+    });
+    Value::Array(symbols.unwrap_or_default())
 }
 
 /// Build the `textDocument/definition` response for `message`: a single
@@ -802,8 +822,62 @@ mod tests {
             .and_then(|m| m.pointer("/result/capabilities"))
             .expect("initialize response with capabilities");
         assert_eq!(capabilities.get("definitionProvider"), Some(&json!(true)));
+        assert_eq!(
+            capabilities.get("documentSymbolProvider"),
+            Some(&json!(true))
+        );
         assert_eq!(capabilities.get("renameProvider"), Some(&json!(true)));
         assert_eq!(capabilities.get("codeActionProvider"), Some(&json!(true)));
+    }
+
+    #[test]
+    fn document_symbol_request_returns_nested_headings() {
+        let uri = "file:///virtual/main.mos";
+        let src = "= Intro\n\n== Setup\n\n=== Deep\n\n== Next\n\n= Appendix\n";
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "mosaic", "version": 1, "text": src,
+            } },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 18,
+            "method": "textDocument/documentSymbol",
+            "params": { "textDocument": { "uri": uri } },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        let result = messages
+            .iter()
+            .find(|m| m.get("id") == Some(&json!(18)))
+            .and_then(|reply| reply.get("result"))
+            .and_then(Value::as_array)
+            .expect("document symbol response");
+        assert_eq!(result.len(), 2, "top-level Intro + Appendix: {result:?}");
+        assert_eq!(result[0].get("name"), Some(&json!("Intro")));
+        assert_eq!(result[1].get("name"), Some(&json!("Appendix")));
+        let intro_children = result[0]
+            .get("children")
+            .and_then(Value::as_array)
+            .expect("Intro children");
+        assert_eq!(intro_children.len(), 2, "Setup + Next: {intro_children:?}");
+        assert_eq!(intro_children[0].get("name"), Some(&json!("Setup")));
+        assert_eq!(intro_children[1].get("name"), Some(&json!("Next")));
+        let setup_children = intro_children[0]
+            .get("children")
+            .and_then(Value::as_array)
+            .expect("Setup children");
+        assert_eq!(setup_children.len(), 1, "Deep child: {setup_children:?}");
+        assert_eq!(setup_children[0].get("name"), Some(&json!("Deep")));
+        assert_eq!(result[0].get("kind"), Some(&json!(3)));
     }
 
     #[test]

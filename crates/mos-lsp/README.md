@@ -12,7 +12,8 @@ quick fixes.
 - `run()` drives a stdio LSP server over JSON-RPC 2.0 framed with `Content-Length` headers.
 - Implemented requests/notifications: `initialize`, `initialized`, `shutdown`, `exit`,
   `textDocument/didOpen`, `textDocument/didChange` (full sync), `textDocument/didClose`,
-  `textDocument/definition`, `textDocument/rename`, `textDocument/codeAction`.
+  `textDocument/definition`, `textDocument/documentSymbol`, `textDocument/rename`,
+  `textDocument/codeAction`.
 - After every open/change the server sends `textDocument/publishDiagnostics` with the compiler
   diagnostics for that document; close clears them.
 - `textDocument/definition` resolves a cursor on an `@label` / `@page(label)` reference to a single
@@ -29,10 +30,13 @@ quick fixes.
 - `textDocument/codeAction` returns `quickfix` actions for compiler diagnostics that carry concrete
   `mos-core::Suggestion` edits. The server projects existing compiler suggestions only; it does not
   synthesize editor-side fixes.
+- `textDocument/documentSymbol` returns nested heading symbols from the lowered document. Symbol
+  ranges extend until the next same-or-higher-level heading, so editor outlines and breadcrumbs
+  follow Mosaic section structure rather than flat syntax nodes.
 - Unknown requests get a JSON-RPC `MethodNotFound` (-32601); unknown notifications are dropped.
 - Advertised capabilities are intentionally narrow: full text sync, UTF-16 position encoding,
-  `definitionProvider`, `renameProvider`, and `codeActionProvider`. Pull diagnostics are not
-  advertised.
+  `definitionProvider`, `documentSymbolProvider`, `renameProvider`, and `codeActionProvider`. Pull
+  diagnostics are not advertised.
 - Binary: `mos-lsp`, defined in `Cargo.toml`, calls `mos_lsp::run()`.
 
 ### Manual smoke test

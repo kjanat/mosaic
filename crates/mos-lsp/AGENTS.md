@@ -28,6 +28,8 @@ cave around real compiler services
 - Answers `textDocument/definition`: cursor on `@label` / `@page(label)` → label's first declaration
   span as a `Location`; cursor on a resolved `[@key]` citation → the matching BibTeX key span;
   undeclared label, unresolved citation, or cursor off a reference/citation → `null`.
+- Answers `textDocument/documentSymbol`: nested heading outline by Mosaic heading level, with ranges
+  extending to the next same-or-higher-level heading.
 - Answers `textDocument/rename`: cursor on a label (declaration token or reference) →
   `WorkspaceEdit` rewriting the first declaration token + every reference identifier to `newName`;
   cursor off a label → `null`. Single-document, first-declaration-wins, no new-name validation.
@@ -37,7 +39,8 @@ cave around real compiler services
   it). Invalidated on open/change/close. Only **pure** lowerings are cached: a `LowerResult` with
   `reads_external_resources` (`#image` / `#figure` / `#bibliography` read files) is never stored, so
   those docs re-lower per request and reflect the live filesystem.
-- Advertises UTF-16 position encoding, full text sync, `definitionProvider`, and `renameProvider`.
+- Advertises UTF-16 position encoding, full text sync, `definitionProvider`,
+  `documentSymbolProvider`, `renameProvider`, and `codeActionProvider`.
 
 ## BOUNDARY RULES
 

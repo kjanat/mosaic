@@ -48,8 +48,9 @@ Implemented now:
   deterministic provenance stamp.
 - LSP: `mos-lsp` stdio server publishes current compiler parse/lower/resolve diagnostics for opened
   and changed documents, plus go-to-definition for labels and resolved citations, rename for labels,
-  and code actions from compiler suggestions. The `zed-mosaic` extension spawns `mos-lsp` (binary
-  discovered via Zed settings `binary.path`, `PATH`, or downloaded release asset fallback).
+  nested heading document symbols, and code actions from compiler suggestions. The `zed-mosaic`
+  extension spawns `mos-lsp` (binary discovered via Zed settings `binary.path`, `PATH`, or
+  downloaded release asset fallback).
 
 Treat as aspirational/stub unless user asks:
 

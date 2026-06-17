@@ -13,11 +13,17 @@ All notable changes to this project will be documented here. The format is based
   [`mos-eval`][mos-eval] stamps resolved citation target locations on semantic citation nodes, and
   [`mos-lsp`][mos-lsp] returns a cross-file `Location` for the `.bib` entry key.
 
+- LSP document symbols for headings: [`mos-lsp`][mos-lsp] now advertises `documentSymbolProvider`
+  and returns a nested heading tree based on Mosaic heading levels, so editors can show a structured
+  document outline through the language server.
+
 - Zed grammar support for bracketed citations and richer editor structure: `[@key]` now parses as a
   first-class citation in [`tree-sitter-mosaic`][tree-sitter-mosaic], so Zed highlights only the
   citation key and returns following prose to normal text. The extension also matches quote/backtick
   pairs without rainbow coloring them and exposes more useful Vim text objects for headings, lists,
-  raw/code/verse bodies, and block-call bodies.
+  raw/code/verse bodies, and block-call bodies. Tree-sitter heading nodes now live inside nested
+  `section1` through `section6` containers, so Zed's Tree-sitter outline can preserve heading
+  hierarchy instead of flattening every heading.
 
 - LSP quick fixes (https://github.com/kjanat/mosaic/issues/113): [`mos-lsp`][mos-lsp] now advertises
   `codeActionProvider` and answers `textDocument/codeAction` with one `quickfix` per
