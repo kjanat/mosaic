@@ -835,7 +835,7 @@ function classifyPullRequest(pr: JsonRecord, issues: ReadonlyArray<IssueSummary>
 }
 
 export const list_open = tool({
-	description: 'List open pull requests for Mosaic with review, merge, and check signals.',
+	description: 'Read-only: list open pull requests for Mosaic with review, merge, and check signals.',
 	args: {
 		limit: tool.schema.number().default(DEFAULT_PR_LIMIT).describe('Maximum PRs to list.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('Repository owner.'),
@@ -854,7 +854,7 @@ export const list_open = tool({
 });
 
 export const view = tool({
-	description: 'View one pull request with files, linked issues, and review signals.',
+	description: 'Read-only: view one pull request with files, linked issues, and review signals.',
 	args: {
 		pr: tool.schema.number().describe('Pull request number to inspect.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('Repository owner.'),
@@ -878,7 +878,7 @@ export const view = tool({
 });
 
 export const related_issues = tool({
-	description: 'Find issues related to a pull request via closing refs and body mentions.',
+	description: 'Read-only: find issues related to a pull request via closing refs and body mentions.',
 	args: {
 		pr: tool.schema.number().describe('Pull request number to inspect.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('Repository owner.'),
@@ -896,7 +896,7 @@ export const related_issues = tool({
 });
 
 export const classify = tool({
-	description: 'Classify a Mosaic pull request into likely Project 5 fields from title and changed files.',
+	description: 'Read-only: classify a Mosaic pull request into likely Project 5 fields from title and changed files.',
 	args: {
 		pr: tool.schema.number().describe('Pull request number to classify.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('Repository owner.'),
@@ -921,7 +921,7 @@ export const classify = tool({
 });
 
 export const triage = tool({
-	description: 'Produce a pull-request triage summary with classification and related issues.',
+	description: 'Read-only: produce a pull-request triage summary with classification and related issues.',
 	args: {
 		pr: tool.schema.number().describe('Pull request number to triage.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('Repository owner.'),

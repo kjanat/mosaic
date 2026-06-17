@@ -79,6 +79,8 @@ const PROJECT_FIELD_CHOICES = [
 	'Type',
 	'claude-code',
 ].join(', ');
+const CLAUDE_CODE_FIELD_GUIDE =
+	'`claude-code` may only contain a cloud VM hosted session URL found in user input or the issue/PR body; otherwise leave it empty. Do not use it for notes, instructions, or summaries.';
 const SELECT_OPTION_GUIDE = [
 	`Area: ${AREA_OPTIONS}`,
 	`Phase: ${PHASE_OPTIONS.join(', ')}`,
@@ -1424,7 +1426,7 @@ function formatFields(fields: ReadonlyArray<ProjectField>, iteration: IterationF
 }
 
 export const list = tool({
-	description: 'List GitHub Project 5 items for Mosaic, with optional status/sprint filters.',
+	description: 'Read-only: list GitHub Project 5 items for Mosaic, with optional status/sprint filters.',
 	args: {
 		status: tool.schema.enum(STATUS_FILTER_OPTIONS).default('all').describe('Optional status filter.'),
 		sprint: tool.schema.enum(SPRINT_FILTER_OPTIONS).default('all').describe('Optional sprint title filter.'),
@@ -1444,7 +1446,7 @@ export const list = tool({
 });
 
 export const queue = tool({
-	description: 'Show the active Mosaic Project 5 queue, sorted by status and priority.',
+	description: 'Read-only: show the active Mosaic Project 5 queue, sorted by status and priority.',
 	args: {
 		includeBacklog: tool.schema.boolean().default(false).describe('Include Backlog items.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
@@ -1462,7 +1464,7 @@ export const queue = tool({
 });
 
 export const fields = tool({
-	description: 'List Mosaic GitHub Project 5 fields, options, and sprint choices.',
+	description: 'Read-only: list Mosaic GitHub Project 5 fields, options, and sprint choices.',
 	args: {
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
 		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
@@ -1482,7 +1484,7 @@ export const fields = tool({
 });
 
 export const view = tool({
-	description: 'View one GitHub Project 5 item by issue, PR, or item id.',
+	description: 'Read-only: view one GitHub Project 5 item by issue, PR, or item id.',
 	args: {
 		issue: tool.schema.number().default(0).describe('Issue number to inspect. Use 0 when targeting PR or itemId.'),
 		pr: tool.schema.number().default(0).describe(
@@ -1507,7 +1509,7 @@ export const view = tool({
 });
 
 export const add_issue = tool({
-	description: 'Add a Mosaic GitHub issue to Project 5, optionally setting status and sprint.',
+	description: 'Mutates Project 5: add an existing Mosaic GitHub issue, optionally setting status and sprint.',
 	args: {
 		issue: tool.schema.number().describe('Issue number to add to Project 5.'),
 		status: tool.schema.enum(STATUS_OPTIONAL_OPTIONS).default('none').describe('Optional status to set.'),
@@ -1551,7 +1553,7 @@ export const add_issue = tool({
 });
 
 export const create_issue = tool({
-	description: 'Create a Mosaic GitHub issue, add it to Project 5, and set planning fields in one call.',
+	description: 'Mutates GitHub and Project 5: create a Mosaic issue, add it to Project 5, and set planning fields.',
 	args: {
 		title: tool.schema.string().describe('Issue title.'),
 		body: tool.schema.string().default('').describe('Issue body in Markdown.'),
@@ -1566,7 +1568,7 @@ export const create_issue = tool({
 		phase: tool.schema.enum(PHASE_OPTIONAL_OPTIONS).default('none').describe('Optional project Phase.'),
 		area: tool.schema.enum(AREA_OPTIONAL_OPTIONS).default('none').describe('Optional project Area.'),
 		type: tool.schema.enum(TYPE_OPTIONAL_OPTIONS).default('none').describe('Optional project Type.'),
-		claudeCode: tool.schema.string().default('').describe('Optional `claude-code` project field value.'),
+		claudeCode: tool.schema.string().default('').describe(CLAUDE_CODE_FIELD_GUIDE),
 		repository: tool.schema.string().default(repositoryNameDefault()).describe('Repository name to create issue in.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
 		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
@@ -1634,7 +1636,7 @@ export const create_issue = tool({
 });
 
 export const set_field = tool({
-	description: 'Set or clear any supported GitHub Project 5 field by issue, PR, or item id.',
+	description: 'Low-level mutating setter: set or clear any supported GitHub Project 5 field by issue, PR, or item id.',
 	args: {
 		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
 		pr: tool.schema.number().default(0).describe(
@@ -1645,7 +1647,7 @@ export const set_field = tool({
 		),
 		field: tool.schema.string().describe(`Project field name. Known fields: ${PROJECT_FIELD_CHOICES}.`),
 		value: tool.schema.string().default('').describe(
-			`Value to set. Use empty string only when clear is true. Select guides: ${SELECT_OPTION_GUIDE}.`,
+			`Value to set. Use empty string only when clear is true. Select guides: ${SELECT_OPTION_GUIDE}. ${CLAUDE_CODE_FIELD_GUIDE}`,
 		),
 		clear: tool.schema.boolean().default(false).describe('Clear the field instead of setting a value.'),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
@@ -1671,7 +1673,8 @@ export const set_field = tool({
 });
 
 export const set_fields = tool({
-	description: 'Set or clear multiple GitHub Project 5 fields on one issue, PR, or item id.',
+	description:
+		'Low-level mutating batch setter: set or clear multiple GitHub Project 5 fields on one issue, PR, or item id.',
 	args: {
 		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
 		pr: tool.schema.number().default(0).describe(
@@ -1681,7 +1684,7 @@ export const set_fields = tool({
 			'Project item id to update. Use empty string when targeting issue or PR.',
 		),
 		updates: tool.schema.string().describe(
-			`JSON array of updates, e.g. [{"field":"Priority","value":"P1"},{"field":"Sprint","value":"Sprint 2"}]. Known fields: ${PROJECT_FIELD_CHOICES}. Select guides: ${SELECT_OPTION_GUIDE}. Use {"field":"Sprint","clear":true} to clear.`,
+			`JSON array of updates, e.g. [{"field":"Priority","value":"P1"},{"field":"Sprint","value":"Sprint 2"}]. Known fields: ${PROJECT_FIELD_CHOICES}. Select guides: ${SELECT_OPTION_GUIDE}. ${CLAUDE_CODE_FIELD_GUIDE} Use {"field":"Sprint","clear":true} to clear.`,
 		),
 		owner: tool.schema.string().default(repositoryOwnerDefault()).describe('GitHub Project owner.'),
 		projectNumber: tool.schema.number().default(DEFAULT_PROJECT_NUMBER).describe('GitHub Project number.'),
@@ -1698,7 +1701,7 @@ export const set_fields = tool({
 });
 
 export const create_field = tool({
-	description: 'Create a GitHub Project 5 custom field.',
+	description: 'Admin mutation: create a GitHub Project 5 custom field. Use only when explicitly requested.',
 	args: {
 		name: tool.schema.string().describe('New field name.'),
 		dataType: tool.schema.enum(FIELD_TYPE_OPTIONS).describe('Field type.'),
@@ -1718,7 +1721,7 @@ export const create_field = tool({
 });
 
 export const set_status = tool({
-	description: 'Set the Status field for a Mosaic GitHub Project 5 item.',
+	description: 'Mutates Project 5: set the Status field for a Mosaic item.',
 	args: {
 		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
 		pr: tool.schema.number().default(0).describe(
@@ -1743,7 +1746,7 @@ export const set_status = tool({
 });
 
 export const set_select = tool({
-	description: 'Set any single-select field for a Mosaic GitHub Project 5 item.',
+	description: 'Mutates Project 5: set any supported single-select field for a Mosaic item.',
 	args: {
 		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
 		pr: tool.schema.number().default(0).describe(
@@ -1769,7 +1772,7 @@ export const set_select = tool({
 });
 
 export const set_sprint = tool({
-	description: 'Set or clear the Sprint/Iteration field for a Mosaic GitHub Project 5 item.',
+	description: 'Mutates Project 5: set or clear the Sprint/Iteration field for a Mosaic item.',
 	args: {
 		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
 		pr: tool.schema.number().default(0).describe(
@@ -1796,7 +1799,7 @@ export const set_sprint = tool({
 });
 
 export const set_estimate = tool({
-	description: 'Set the Estimate number field, measured in hours, for a Mosaic GitHub Project 5 item.',
+	description: 'Mutates Project 5: set the Estimate number field, measured in hours, for a Mosaic item.',
 	args: {
 		issue: tool.schema.number().default(0).describe('Issue number to update. Use 0 when targeting PR or itemId.'),
 		pr: tool.schema.number().default(0).describe(
