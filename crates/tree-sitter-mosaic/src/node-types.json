@@ -693,8 +693,18 @@
     "type": "list_item",
     "named": true,
     "fields": {
+      "children": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "list",
+            "named": true
+          }
+        ]
+      },
       "content": {
-        "multiple": false,
+        "multiple": true,
         "required": true,
         "types": [
           {
@@ -717,6 +727,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "soft_break",
+          "named": true
+        }
+      ]
     }
   },
   {

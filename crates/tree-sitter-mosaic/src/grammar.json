@@ -1146,7 +1146,7 @@
               "members": [
                 {
                   "type": "SYMBOL",
-                  "name": "_line_end"
+                  "name": "_list_item_break"
                 },
                 {
                   "type": "SYMBOL",
@@ -1159,24 +1159,64 @@
       }
     },
     "list_item": {
+      "type": "PREC_RIGHT",
+      "value": 0,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "marker",
+            "content": {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "unordered_list_marker"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "ordered_list_marker"
+                }
+              ]
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "content",
+            "content": {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_inline_sequence"
+              },
+              "named": true,
+              "value": "inline_sequence"
+            }
+          },
+          {
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_list_continuation"
+            }
+          },
+          {
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_list_child_block"
+            }
+          }
+        ]
+      }
+    },
+    "_list_continuation": {
       "type": "SEQ",
       "members": [
         {
-          "type": "FIELD",
-          "name": "marker",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "unordered_list_marker"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "ordered_list_marker"
-              }
-            ]
-          }
+          "type": "SYMBOL",
+          "name": "soft_break"
         },
         {
           "type": "FIELD",
@@ -1193,27 +1233,62 @@
         }
       ]
     },
-    "unordered_list_marker": {
-      "type": "TOKEN",
+    "_list_child_block": {
+      "type": "PREC_RIGHT",
+      "value": 0,
       "content": {
-        "type": "PREC",
-        "value": 1,
-        "content": {
-          "type": "PATTERN",
-          "value": "-[ \\t]+"
-        }
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "_nested_list_break"
+          },
+          {
+            "type": "FIELD",
+            "name": "children",
+            "content": {
+              "type": "SYMBOL",
+              "name": "list"
+            }
+          },
+          {
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_list_tail_after_child"
+            }
+          }
+        ]
       }
     },
-    "ordered_list_marker": {
-      "type": "TOKEN",
-      "content": {
-        "type": "PREC",
-        "value": 1,
-        "content": {
-          "type": "PATTERN",
-          "value": "[0-9]+\\.[ \\t]+"
+    "_list_tail_after_child": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_list_tail_break"
+        },
+        {
+          "type": "FIELD",
+          "name": "content",
+          "content": {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_inline_sequence"
+            },
+            "named": true,
+            "value": "inline_sequence"
+          }
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_list_continuation"
+          }
         }
-      }
+      ]
     },
     "verse_block": {
       "type": "PREC_DYNAMIC",
@@ -3335,6 +3410,26 @@
     {
       "type": "SYMBOL",
       "name": "_line_end"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_nested_list_break"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_list_item_break"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_list_tail_break"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "unordered_list_marker"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "ordered_list_marker"
     },
     {
       "type": "SYMBOL",

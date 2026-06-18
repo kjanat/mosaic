@@ -4,10 +4,10 @@
 /**
  * Tree-sitter grammar for the Mosaic `.mos` document language.
  *
- * Mirrors `mosaic.ebnf` (also rendered in `EBNF.md`) 1:1 in structure. The
- * four tokens that regex-only lexing cannot express cleanly (`blank_line`
- * and raw `#pre`/`#code` long-bracket delimiters/content) are emitted by
- * the external scanner in `src/scanner.c`.
+ * Tracks `mosaic.ebnf` (also rendered in `EBNF.md`) with editor-oriented node
+ * names. Tokens that regex-only lexing cannot express cleanly (`blank_line`,
+ * list line joins, and raw `#pre`/`#code` long-bracket delimiters/content) are
+ * emitted by the external scanner in `src/scanner.c`.
  *
  * @file Mosaic grammar for Tree-sitter
  * @author Kaj Kowalski <info@kajkowalski.nl>
@@ -37,6 +37,11 @@ export default grammar({
 		$.blank_line,
 		$.soft_break,
 		$._line_end,
+		$._nested_list_break,
+		$._list_item_break,
+		$._list_tail_break,
+		$.unordered_list_marker,
+		$.ordered_list_marker,
 		$.raw_body_open,
 		$.raw_body_content,
 		$.raw_body_close,
@@ -243,17 +248,35 @@ export default grammar({
 		// Lists
 		// -------------------------------------------------------------------
 
-		list: $ => prec.right(seq($.list_item, repeat(seq($._line_end, $.list_item)))),
+		list: $ => prec.right(seq($.list_item, repeat(seq($._list_item_break, $.list_item)))),
 
 		list_item: $ =>
-			seq(
+			prec.right(seq(
 				field('marker', choice($.unordered_list_marker, $.ordered_list_marker)),
+				field('content', alias($._inline_sequence, $.inline_sequence)),
+				repeat($._list_continuation),
+				repeat($._list_child_block),
+			)),
+
+		_list_continuation: $ =>
+			seq(
+				$.soft_break,
 				field('content', alias($._inline_sequence, $.inline_sequence)),
 			),
 
-		unordered_list_marker: _ => token(prec(PREC.list_marker, /-[ \t]+/)),
+		_list_child_block: $ =>
+			prec.right(seq(
+				$._nested_list_break,
+				field('children', $.list),
+				repeat($._list_tail_after_child),
+			)),
 
-		ordered_list_marker: _ => token(prec(PREC.list_marker, /[0-9]+\.[ \t]+/)),
+		_list_tail_after_child: $ =>
+			seq(
+				$._list_tail_break,
+				field('content', alias($._inline_sequence, $.inline_sequence)),
+				repeat($._list_continuation),
+			),
 
 		// -------------------------------------------------------------------
 		// Verse / Pre / Code blocks
