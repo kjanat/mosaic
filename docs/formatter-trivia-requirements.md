@@ -14,7 +14,8 @@ exercised by tests in `crates/mos-parse/src/parser.rs`:
 - Paragraphs with inline emphasis `*…*`, strong `**…**`, nested bold-italic `***…***`, inline code
   `` `…` `` (single-backtick delimiters only)
 - Leading `<label>` on paragraphs; post-body `<label>` on raw blocks; `@label` cross-references
-- Unordered (`-`) and ordered (`N.`) lists with hanging-indent nesting of further marker lines
+- Unordered (`-`) and ordered (`N.`) lists with hanging-indent nesting of further marker lines and
+  indented continuation lines
 - `#set name(key: value, …)` directives with double-quoted strings, int, float, length, ident
   values; string escapes `\\`, `\"`, `\n`, `\t`, `\r` inside `"…"`
 - `#image("path", …)`, `#figure(…)`
@@ -36,10 +37,9 @@ already models several trivia tokens (`comment`, `blank_line`) that the Rust par
 
 `manifest-tracker.md` already lists the relevant gaps:
 
-- “Preserve comments in the CST if formatter or tooling needs them.” (line 142)
-- “Preserve useful formatting trivia for formatter support.” (line 143)
-- “Define formatting rules for current syntax.” / “Preserve comments and meaningful trivia.” (lines
-  382, 384)
+- “Preserve comments in the CST if formatter or tooling needs them.”
+- “Preserve useful formatting trivia for formatter support.”
+- “Define formatting rules for current syntax.” / “Preserve comments and meaningful trivia.”
 
 This note refines those bullets into per-construct requirements.
 
@@ -93,14 +93,14 @@ For each shipped construct, R = required to preserve, N = normalize, ? = open qu
 
 ### Lists
 
-| Trivia                                | Decision | Notes                                                                                                                                                                                                                                             |
-| ------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Marker kind (`-` vs `N.`)             | R        | Ordered vs unordered is structural.                                                                                                                                                                                                               |
-| Source number digits in ordered lists | ?        | Parser normalizes numbering and discards source digits. **Gap**: cannot round-trip `1.`/`2.`/`10.` author choices vs forced `1.` style.                                                                                                           |
-| Indentation depth                     | R        | Hanging-indent nesting depth determines structure.                                                                                                                                                                                                |
-| Indentation width (spaces per level)  | N        | Formatter picks one (recommended: two spaces) from the AST tree. Current parser uses exact indent equality for siblings and greater indent for nesting, so source width itself is not structural after parsing.                                   |
-| Blank line between list blocks        | R        | The parser breaks list collection on any blank line (`list_terminated_by_blank_line`), producing separate `Item::List` blocks. Formatter must preserve that block separation, not merge the runs.                                                 |
-| Continuation lines under an item      | n/a      | **Not shipped.** `collect_list_lines` stops at the first non-marker line; an indented line without a marker breaks the list rather than continuing the previous item. Formatter contract for continuation is deferred until parser support lands. |
+| Trivia                                | Decision | Notes                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Marker kind (`-` vs `N.`)             | R        | Ordered vs unordered is structural.                                                                                                                                                                                                                                                                     |
+| Source number digits in ordered lists | ?        | Parser normalizes numbering and discards source digits. **Gap**: cannot round-trip `1.`/`2.`/`10.` author choices vs forced `1.` style.                                                                                                                                                                 |
+| Indentation depth                     | R        | Hanging-indent nesting depth determines structure.                                                                                                                                                                                                                                                      |
+| Indentation width (spaces per level)  | N        | Formatter picks one (recommended: two spaces) from the AST tree. Current parser uses exact indent equality for siblings and greater indent for nesting, so source width itself is not structural after parsing.                                                                                         |
+| Blank line between list blocks        | R        | The parser breaks list collection on any blank line (`list_terminated_by_blank_line`), producing separate `Item::List` blocks. Formatter must preserve that block separation, not merge the runs.                                                                                                       |
+| Continuation lines under an item      | R/N      | **Shipped.** A nonblank, non-marker line indented with spaces to at least the item text column belongs to the current item. The newline+indent lowers to soft whitespace; an explicit `\\` stays a hard break. Formatter may rewrap, but must not emit lazy unindented continuation or tab indentation. |
 
 ### `#set` and other directives
 
@@ -155,8 +155,8 @@ them today. Adding any of them is a prerequisite, not a formatter task.
 - Multi-backtick code spans (`…`, `` ```…``` ``): only single-backtick `` `…` `` is shipped.
 - Single-quoted string literals (`'…'`) inside directive arguments: only `"…"` is shipped
   (`parse_set_value`).
-- Lazy paragraph continuation lines inside list items: `collect_list_lines` breaks list collection
-  on any non-marker line.
+- Lazy unindented list continuation lines and tab indentation for list continuation: continuation
+  must be space-indented to at least the item text column.
 - Footnotes, tables, theorems, glossary, bibliography, templates, scripting, package imports:
   manifest only.
 - Per-output styling controls beyond `#set` keyed values: manifest only.
@@ -192,8 +192,10 @@ Each bullet is a concrete follow-up. None of them are resolved by this PR.
    really starts with one or more blank lines, that information is partly gone. Decide whether to
    keep current trimming and document it as canonical, or extend the AST to remember the original
    leading line-ending count.
-8. **No list continuation support.** Adding lazy / indented continuation lines to list items is
-   itself a parser feature, not just a formatter follow-up. Track separately.
+8. **List continuation formatting policy is not defined.** Indented list continuation is shipped,
+   but the future formatter still needs a policy for preserving exact source columns versus emitting
+   canonical continuation indentation. Lazy unindented continuation and tab indentation remain
+   unsupported syntax.
 9. **No comment fixtures.** Once the parser supports comments, add round-trip tests for the
    formatter contract.
 10. **Tree-sitter parity drift.** `grammar.js` defines constructs the compiler parser does not
@@ -225,7 +227,7 @@ Each bullet is a concrete follow-up. None of them are resolved by this PR.
 - Choosing a final indentation width, line length, or argument-wrapping policy.
 - Adding comment syntax to the compiler parser.
 - Changing tree-sitter grammar.
-- Updating `manifest-tracker.md`; the relevant gaps are already listed there.
+- Changing compiler/parser behavior.
 
 ## Acceptance check
 

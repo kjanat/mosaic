@@ -20,76 +20,68 @@
 
 = Dear LaTeX,
 
-It has been ***eleven years***. Eleven years of `\begin{document}`,
-of mysterious vertical-mode errors, of citations rendered as
-`[?]` because BibTeX had Opinions about the .bib file I had not
-yet finished saving. Eleven years of you greeting every PDF I
-make with the same Computer Modern serif that everyone,
-everywhere, immediately recognises as *a sad student wrote
-this*.
+It has been ***eleven years***. Eleven years of `\begin{document}`, of mysterious
+vertical-mode errors, of citations rendered as `[?]` because BibTeX had Opinions about
+the .bib file I had not yet finished saving. Eleven years of you greeting every PDF I make
+with the same Computer Modern serif that everyone, everywhere, immediately
+recognises as *a sad student wrote this*.
 
-I have moved on. The new arrangement embeds **real** TrueType
-outlines, Noto Sans in this case, through a Type 0 CID font
-with a /ToUnicode CMap, which is a sentence I should not have to
-know, but here we are. Copy-paste round-trips. Search works. The
-Polish co-author gets **Łódź** instead of *L*, a space, and an
-apostrophe. The Czech reviewer gets **Příliš žluťoučký kůň**
-without three preamble lines of `\usepackage{}` ritual. The
-Russian correspondents get **Привет, Мозаика**. The Greek
-desk gets **Καλημέρα, κόσμε**. None of them get an email from
-me asking which encoding their text editor was using when they
-sent the draft.
+I have moved on. The new arrangement embeds **real** TrueType outlines, Noto Sans in
+this case, through a Type 0 CID font with a /ToUnicode CMap, which is a sentence I
+should not have to know, but here we are. Copy-paste round-trips. Search works. The
+Polish co-author gets **Łódź** instead of *L*, a space, and an apostrophe. The Czech reviewer
+gets **Příliš žluťoučký kůň** without three preamble lines of `\usepackage{}` ritual. The
+Russian correspondents get **Привет, Мозаика**. The Greek desk gets **Καλημέρα, κόσμε**
+. None of them get an email from me asking which encoding their text editor was using
+when they sent the draft.
 
-The math, fine, you were good at math. I will give you that. But
-I am also done feeling like a fraud for pasting a single ≤ into
-a paragraph and being forced to load amsmath, amssymb, and a
-third package whose name I have forgotten because the universe
-took it from me. Mosaic shapes math operators (≤ ≥ ≠ √ ∂ ∑)
-through automatic per-glyph fallback to the bundled Noto Sans
-Math cut, mid-word, mid-sentence, with no `#set text(font: ...)`,
-no `\usepackage{}`, no `$ … $`. The body face does not contain
-them; the fallback face does; the layout engine notices on its
-own and routes the cluster. The result reads like prose because
-it *is* prose; ∂f/∂x ≠ 0 sits in this line the same way "the"
-does.
+The math, fine, you were good at math. I will give you that. But I am also done feeling
+like a fraud for pasting a single ≤ into a paragraph and being forced to load amsmath,
+amssymb, and a third package whose name I have forgotten because the universe took
+it from me. Mosaic shapes math operators (≤ ≥ ≠ √ ∂ ∑) through automatic per-glyph
+fallback to the bundled Noto Sans Math cut, mid-word, mid-sentence, with no `#set
+text(font: ...)`, no `\usepackage{}`, no `$ … $`. The body face does not contain
+them; the fallback face does; the layout engine notices on its own and routes the cluster.
+The result reads like prose because it *is* prose; ∂f/∂x ≠ 0 sits in this line the same way
+"the" does.
 
-My grievances, in no particular order except the one I wrote
-them in:
-
-# TODO: Get hanging indents working
+My grievances, in no particular order except the one I wrote them in:
 
 5. The error messages. **Especially** the one about `\par`.
-9. The figure handling. One `#figure(image: "...", caption: "...")` block here, and forty minutes of `\begin{figure}[!htbp]` float-placement bargaining there. I have aged out of caring which letters do which.
-27. The fi/fl ligatures, which you handled but never let me actually *see* without diagnostic incantations. Mine ship as one glyph in the PDF the way the typographer intended. Copy "figment" or "flicker" out of this document and paste it somewhere; the ligature collapses back into the source codepoints on the way out. It is shaping, not a font hack.
+9. The figure handling. One `#figure(image: "...", caption: "...")` block here,
+   and forty minutes of `\begin{figure}[!htbp]` float-placement bargaining there. I
+   have aged out of caring which letters do which.
+27. The fi/fl ligatures, which you handled but never let me actually *see* without diagnostic
+    incantations. Mine ship as one glyph in the PDF the way the typographer intended.
+    Copy "figment" or "flicker" out of this document and paste it somewhere; the ligature
+    collapses back into the source codepoints on the way out. It is shaping, not a font
+    hack.
 
 Sub-grievances, indented because that is also a thing now:
 
-- The way you treated quotation marks. We have em dashes — like that — without three hyphens, and no, I will not be installing a package for it.
+- The way you treated quotation marks. We have em dashes — like that — without
+  three hyphens, and no, I will not be installing a package for it.
 - The way `verbatim` and `code` could never quite agree about whitespace.
-  - Yes, I know it was the package's fault.
-  - I do not care whose fault it was.
-- The bibliography. I am still angry about the bibliography.
+   - Yes, I know it was the package's fault.
+   - I do not care whose fault it was.
+- The bibliography. I am still angry about the bibliography.\\\\\\
 
-== Some good news
+== Some good news <good-news>
 
-*Italic* still means italic. **Bold** still means bold. They
-route through the real designed cuts of Noto Sans, not a faux-
-slant transformation, and the same is true in Cyrillic
-(*курсив*, **жирный**) and Greek (*πλάγια*, **έντονα**). If
-anyone needs the Adobe Core 14 fonts (you, mostly, when you are
-nostalgic), `#set text(font: "Helvetica")` is still there. It
-will look exactly like the 1985 you remember.
+*Italic* still means italic. **Bold** still means bold. They route through the real designed cuts
+of Noto Sans, not a faux-slant transformation, and the same is true in Cyrillic (*курсив*,
+**жирный**) and Greek (*πλάγια*, **έντονα**). If anyone needs the Adobe Core 14 fonts (you,
+mostly, when you are nostalgic), `#set text(font: "Helvetica")` is still there. It will
+look exactly like the 1985 you remember.
 
-I am attaching a screenshot of what the README promised, so we
-can compare it later with what shipped. You will notice it does
-not say `\documentclass{article}` anywhere.
+I am attaching a screenshot of what the README promised, so we can compare it later
+with what shipped. You will notice it does not say `\documentclass{article}`
+anywhere.
 
 #figure(
   image: "demo.png",
   caption: "Exhibit A. A PNG, appearing here, below the sentence that references it, as God intended and LaTeX refused.",
 )
 
-Yours, with twenty-three open browser tabs of Stack Exchange
-threads from 2007,
-
+Yours, with twenty-three open browser tabs of Stack Exchange threads from 2007,\\
 Mosaic

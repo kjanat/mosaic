@@ -4,10 +4,11 @@
 
 The live [kjanat/mosaic](https://github.com/kjanat/mosaic) repo is already a real pre-alpha
 compiler/parser, but its surface syntax is intentionally narrower than the broader language sketched
-in the repo’s manifest. Today the parser documents support for headings, paragraphs, inline
-emphasis/strong/code, `#set`, `#image`, `#figure`, labels and `@label` references, while the
-manifest sketches richer constructs such as `#import`, `#include`, block bodies, broader expression
-forms, and a larger long-term language design.
+in the repo’s manifest. Today the parser documents support for headings, paragraphs, unordered and
+ordered lists with indented continuation lines, inline emphasis/strong/code, `#set`, `#image`,
+`#figure`, labels and `@label` references, while the manifest sketches richer constructs such as
+`#import`, `#include`, block bodies, broader expression forms, and a larger long-term language
+design.
 
 The EBNF below is therefore intentionally reference-first: conservative enough to drive an actual
 Tree-sitter grammar, but broad enough to cover the requested editor-facing language. It adopts
@@ -20,9 +21,9 @@ Tree-sitter’s documented precedence/conflict/external-scanner constraints.
 I grounded this specification in the live repo, the official Tree-sitter documentation and external
 scanner guide, the CommonMark spec, the Typst syntax reference, and the Asciidoctor block
 documentation plus its more specific verse and literal-block pages. The repo README and examples
-make clear that lists are already implemented too, but I have intentionally omitted list productions
-because your requested reference scope centers on directives, headings, labels/references,
-paragraphs, line breaks, calls, and expressions rather than list layout.
+make clear that lists are implemented too; the productions below document marker lines, nested
+lists, and the shipped indented continuation rule while intentionally excluding lazy unindented
+continuation and tab indentation.
 
 I also intentionally keep inline math opaque and do **not** admit Typst-style content literals as
 ordinary expression values in this first EBNF, even though the manifest sketches richer scripting.
@@ -33,14 +34,18 @@ manifest’s goal of normalizing math into structured data rather than glyph sou
 
 ## Reference EBNF
 
-Read the grammar below with four contextual rules in mind. First, headings, directives, and block
+Read the grammar below with five contextual rules in mind. First, headings, directives, and block
 calls are block forms only at the start of a logical line. Second, comments are lexical trivia, but
 line endings are significant and must **not** be placed in Tree-sitter `extras`. Third, a single
 newline between nonblank paragraph lines is a soft break, while `\\` inside inline text is a hard
 line break (`\-` expands to a U+00AD soft hyphen, a break opportunity consumed by the line-breaker;
 a bare trailing `\` is literal, with compiler diagnostic `MOS0038`). Fourth, `#verse[...]` preserves
 line endings while `#pre[...]` and `#code[...]` preserve raw text; that mirrors CommonMark’s
-paragraph/hard-break model and AsciiDoc’s verse-vs-literal distinction.
+paragraph/hard-break model and AsciiDoc’s verse-vs-literal distinction. Fifth, list containment is
+column-sensitive: a nonblank, non-marker line indented with spaces to at least the current item text
+column continues that item. Newline plus that indent becomes soft whitespace unless preceded by
+`\\`, which remains a hard visual break. Lazy unindented continuation and tab indentation are not
+list continuation syntax.
 
 ```ebnf
 (* Mosaic reference grammar, tree-sitter oriented.
@@ -64,6 +69,7 @@ block               = set_directive
                     | pre_block
                     | code_block
                     | block_call
+                    | list_block
                     | paragraph
                     ;
 
@@ -119,6 +125,28 @@ block_label         = label ;
 paragraph_segment   = inline_sequence ;
 paragraph_join      = soft_break ;
 soft_break          = line_end ;             (* contextual: not a blank_line *)
+
+list_block          = list_item, { line_end, list_item } ;
+
+list_item           = item_indent, list_marker, space1, inline_sequence,
+                      { list_continuation | nested_list } ;
+
+list_continuation   = line_end, continuation_indent, inline_sequence ;
+                      (* contextual: continuation line is nonblank, is not a
+                         list marker, and uses only spaces with column >= the
+                         current item text column. The newline+indent lowers
+                         to soft whitespace. *)
+
+nested_list         = line_end, list_block ;
+                      (* contextual: first nested marker has a greater indent
+                         than the parent marker. Parent-tail continuation after
+                         the child list returns to the parent item text column. *)
+
+list_marker         = unordered_marker | ordered_marker ;
+unordered_marker    = "-" ;
+ordered_marker      = digit, { digit }, "." ;
+item_indent         = { space } ;
+continuation_indent = space1 ;
 
 hash_call           = "#", qualified_name,
                       [ opt_hspace, argument_list ],
@@ -287,7 +315,9 @@ object              = "{",
 
 line_end            = "\r\n" | "\n" | "\r" ;
 
-hspace              = " " | "\t" ;
+space               = " " ;
+space1              = space, { space } ;
+hspace              = space | "\t" ;
 hspace1             = hspace, { hspace } ;
 
 opt_hspace          = { hspace | comment } ;
@@ -348,26 +378,28 @@ verse_char          = ? any Unicode scalar except line_end and "]" ? ;
 ## Construct examples and tree-sitter mapping
 
 The first group of examples below comes directly from the live repo and manifest surface syntax:
-`#set`, headings, `#figure`, labels/references, `#import`, and `#include`. The verse/pre/code rows
-are normative examples for the extended reference grammar because those block forms are not yet
+`#set`, headings, lists, `#figure`, labels/references, `#import`, and `#include`. The verse/pre/code
+rows are normative examples for the extended reference grammar because those block forms are not yet
 visible in the pre-alpha repo but are needed for a complete newline-aware editor grammar.
 
-| EBNF construct                            | Example `.mos` snippet                          | Status   | Suggested CST nodes                                                      |
-| ----------------------------------------- | ----------------------------------------------- | -------- | ------------------------------------------------------------------------ |
-| `set_directive`                           | `#set page(margin: 24mm)`                       | repo     | `set_directive`, `identifier`, `argument_list`, `attribute`, `dimension` |
-| `heading` + `block_label`                 | `= Methods <sec:methods>`                       | manifest | `heading`, `heading_marker`, `text`, `label`                             |
-| `paragraph` + `reference` + inline styles | `See @fig:scan with *emphasis* and **strong**.` | manifest | `paragraph`, `reference`, `emphasis`, `strong`                           |
-| `block_call`                              | `#figure(caption: "CTPA") <fig:ctpa>`           | repo     | `block_call`, `hash_call`, `argument_list`, `label`                      |
-| `import_directive`                        | `#import "@mosaic/templates/article": article`  | manifest | `import_directive`, `string`, `import_items`                             |
-| `include_directive`                       | `#include "sections/introduction.mos"`          | manifest | `include_directive`, `string`                                            |
-| `verse_block`                             | `#verse[First line`<br>`Second *line*]`         | proposed | `verse_block`, `verse_body`, `emphasis`                                  |
-| `pre_block`                               | `#pre[  exact spacing]`                         | proposed | `pre_block`, `raw_body`                                                  |
-| `code_block`                              | `#code(lang: "rust")[fn main() {}]`             | proposed | `code_block`, `argument_list`, `raw_body`                                |
+| EBNF construct                            | Example `.mos` snippet                                                   | Status   | Suggested CST nodes                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------ | -------- | ------------------------------------------------------------------------ |
+| `set_directive`                           | `#set page(margin: 24mm)`                                                | repo     | `set_directive`, `identifier`, `argument_list`, `attribute`, `dimension` |
+| `heading` + `block_label`                 | `= Methods <sec:methods>`                                                | manifest | `heading`, `heading_marker`, `text`, `label`                             |
+| `paragraph` + `reference` + inline styles | `See @fig:scan with *emphasis* and **strong**.`                          | manifest | `paragraph`, `reference`, `emphasis`, `strong`                           |
+| `list_block`                              | <code>- parent<br>&nbsp;&nbsp;continuation<br>&nbsp;&nbsp;- child</code> | repo     | `list_block`, `list_item`, `list_marker`, `list_continuation`            |
+| `block_call`                              | `#figure(caption: "CTPA") <fig:ctpa>`                                    | repo     | `block_call`, `hash_call`, `argument_list`, `label`                      |
+| `import_directive`                        | `#import "@mosaic/templates/article": article`                           | manifest | `import_directive`, `string`, `import_items`                             |
+| `include_directive`                       | `#include "sections/introduction.mos"`                                   | manifest | `include_directive`, `string`                                            |
+| `verse_block`                             | `#verse[First line`<br>`Second *line*]`                                  | proposed | `verse_block`, `verse_body`, `emphasis`                                  |
+| `pre_block`                               | `#pre[  exact spacing]`                                                  | proposed | `pre_block`, `raw_body`                                                  |
+| `code_block`                              | `#code(lang: "rust")[fn main() {}]`                                      | proposed | `code_block`, `argument_list`, `raw_body`                                |
 
 For Tree-sitter naming, keep the CST shallow and stable. A first grammar only needs `source_file`,
-`heading`, `paragraph`, `set_directive`, `import_directive`, `include_directive`, `block_call`,
-`content_body`, `verse_block`, `pre_block`, `code_block`, `argument_list`, `attribute`, `array`,
-`object`, `call_expr`, `label`, `reference`, `emphasis`, `strong`, `strong_emphasis`, `code_span`,
+`heading`, `paragraph`, `list_block`, `list_item`, `list_marker`, `list_continuation`,
+`set_directive`, `import_directive`, `include_directive`, `block_call`, `content_body`,
+`verse_block`, `pre_block`, `code_block`, `argument_list`, `attribute`, `array`, `object`,
+`call_expr`, `label`, `reference`, `emphasis`, `strong`, `strong_emphasis`, `code_span`,
 `inline_math`, `text`, `string`, `number`, `dimension`, `identifier`, and `comment`. Use
 `word: $.identifier`, keep `newline` explicit rather than in `extras`, and use `supertypes` only for
 abstract buckets such as `_block`, `_inline`, and `_expression`.
@@ -392,6 +424,7 @@ that are impossible or simply too inconvenient to express with regexes alone.
 | ------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `***x***` vs nested `**` + `*`                         | Three delimiter lengths compete on the same prefix                     | Give `***` highest lexical precedence, then `**`, then `*`; retain parse conflicts between `strong` and `strong_emphasis` and between `emphasis` and `strong_emphasis`                                                                                                                                                                           |
 | soft paragraph break vs blank line                     | Paragraphs are line-oriented; blank lines terminate blocks             | Treat `blank_line` as its own token; parse paragraphs from contiguous nonblank lines only                                                                                                                                                                                                                                                        |
+| list continuation vs new block                         | List item continuation depends on indentation and marker absence       | Continue the current item only for a nonblank, non-marker line indented with spaces to at least the item text column; do not accept lazy unindented continuation or tab indentation                                                                                                                                                              |
 | `\\` / `\-` / `\X` / bare `\`                          | One leading char overlaps four distinct inline atoms                   | Define `hard_break = "\\\\"` and `soft_hyphen_escape = "\\-"` as 2-char tokens that win the lexer's longest-match; `escaped_char` matches `\X` with `\` and `-` excluded from `X`; a bare `\` (typically before `line_end`) falls through to length-1 `loose_backslash` and is literal text (compiler emits `MOS0038` in the trailing-line case) |
 | `<label>` vs literal `<` text                          | Labels reuse angle brackets                                            | Recognize label only for `<` + valid `label_name` + `>` with no interior whitespace; otherwise leave `<` to text or require `\<`                                                                                                                                                                                                                 |
 | `@label` vs email-like prose                           | `@` is used for references                                             | Recognize references only outside raw/code/math blocks and only when followed by `label_name`; require escaping for literal email-like text until autolink/email syntax exists                                                                                                                                                                   |
@@ -414,18 +447,19 @@ This corpus is deliberately small but high-yield: each example isolates one bloc
 and keeps the expected CST obvious. It is suitable both as a prose reference set and as
 `tree-sitter test` corpus input for the first parser iteration.
 
-| Case                | Snippet                                                                           | Expected parse highlight                                                                                                                                    |
-| ------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| settings            | `#set text(font: "Noto Sans", size: 11pt)`                                        | one `set_directive` with two `attribute` children                                                                                                           |
-| heading label       | `= Intro <sec:intro>`                                                             | one `heading`, one trailing `label`                                                                                                                         |
-| soft break          | `Line one`<br>`line two`                                                          | one `paragraph`, one `soft_break`, **not** two paragraphs                                                                                                   |
-| explicit line break | `Line one \\`<br>`Line two`                                                       | one `paragraph` containing a `hard_break` inline atom between the two text runs (a bare trailing `\` is `loose_backslash` + `soft_break`, not a hard break) |
-| refs and styles     | `See @sec:intro with *emph* and **strong** and \`code\`.`                         | one `paragraph` containing `reference`, `emphasis`, `strong`, `code_span`                                                                                   |
-| import/include      | `#import "@mosaic/templates/article": article`<br>`#include "sections/intro.mos"` | two top-level directive nodes                                                                                                                               |
-| labeled call        | `#figure(image: "demo.png", caption: "Demo") <fig:demo>`                          | one `block_call` with `argument_list` and trailing `label`                                                                                                  |
-| verse               | `#verse[First line`<br>`Second *line*]`                                           | one `verse_block`; line boundaries preserved; inline emphasis still parsed                                                                                  |
-| code                | `#code(lang: "rust")[fn main() {}`<br>`]`                                         | one `code_block`; body remains raw; no inline parsing inside                                                                                                |
-| arrays and objects  | `#set layout(allowed: [top, bottom], opts: {widows: true})`                       | nested `array` and `object` expressions inside one `argument_list`                                                                                          |
+| Case                | Snippet                                                                                           | Expected parse highlight                                                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| settings            | `#set text(font: "Noto Sans", size: 11pt)`                                                        | one `set_directive` with two `attribute` children                                                                                                           |
+| heading label       | `= Intro <sec:intro>`                                                                             | one `heading`, one trailing `label`                                                                                                                         |
+| soft break          | `Line one`<br>`line two`                                                                          | one `paragraph`, one `soft_break`, **not** two paragraphs                                                                                                   |
+| explicit line break | `Line one \\`<br>`Line two`                                                                       | one `paragraph` containing a `hard_break` inline atom between the two text runs (a bare trailing `\` is `loose_backslash` + `soft_break`, not a hard break) |
+| list continuation   | <code>- Line one<br>&nbsp;&nbsp;line two<br>&nbsp;&nbsp;- child<br>&nbsp;&nbsp;parent tail</code> | one parent `list_item`; `line two` and `parent tail` continue the parent item, while `child` is a nested `list_item`                                        |
+| refs and styles     | `See @sec:intro with *emph* and **strong** and \`code\`.`                                         | one `paragraph` containing `reference`, `emphasis`, `strong`, `code_span`                                                                                   |
+| import/include      | `#import "@mosaic/templates/article": article`<br>`#include "sections/intro.mos"`                 | two top-level directive nodes                                                                                                                               |
+| labeled call        | `#figure(image: "demo.png", caption: "Demo") <fig:demo>`                                          | one `block_call` with `argument_list` and trailing `label`                                                                                                  |
+| verse               | `#verse[First line`<br>`Second *line*]`                                                           | one `verse_block`; line boundaries preserved; inline emphasis still parsed                                                                                  |
+| code                | `#code(lang: "rust")[fn main() {}`<br>`]`                                                         | one `code_block`; body remains raw; no inline parsing inside                                                                                                |
+| arrays and objects  | `#set layout(allowed: [top, bottom], opts: {widows: true})`                                       | nested `array` and `object` expressions inside one `argument_list`                                                                                          |
 
 The parsing pipeline should mirror the repo’s own architecture: parse source into a concrete syntax
 tree, lower to semantic nodes, resolve imports/labels/references/counters, and only then enter

@@ -64,6 +64,30 @@ than one:
 - a bullet item, which ends this list,
 1. and an ordered item, which starts a fresh one.
 
+== Continuation lines
+
+List items can keep their source readable without becoming
+body-left paragraphs. A nonblank line that is not a marker and
+is indented with spaces to the item text column belongs to the
+current item.
+
+- Soft continuation starts as one physical source line,
+  then this indented line joins it as soft whitespace in the
+  same list item. The hanging indent still applies when the
+  rendered prose wraps across several visual lines.
+- Explicit hard break keeps the reimbursement stamp on line one \\
+  and puts the approval initials on line two while keeping both
+  visual lines inside the same hanging list item.
+- Nested child list:
+  - Child receipt photo instruction continues here,
+    because this line reaches the child item text column.
+  - Child supervisor note stays a sibling child item.
+- Parent tail after nested child:
+  - Child detail one.
+  - Child detail two.
+  Parent tail resumes after the child list and still hangs from
+  the parent marker, not from the child marker.
+
 == Right-aligned markers
 
 Long claims involve many items. The numbered-list marker right-

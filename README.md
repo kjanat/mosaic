@@ -24,8 +24,8 @@ Pre-alpha (`0.0.0`). The 16-crate workspace skeleton is in place, plus an exclud
 under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed:
 
 - [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline `*emphasis*` / `**strong**` /
-      `` `code` `` / `[@key]` citations, `-` / `N.` lists with hanging indents, and `#set name(...)`
-      blocks;
+      `` `code` `` / `[@key]` citations, `-` / `N.` lists with hanging indents and indented
+      continuation lines, and `#set name(...)` blocks;
 - [x] author-facing line-break controls (issue #26 pieces 1/2/3): a literal U+00A0 NBSP that the
       greedy breaker never splits, a `\\` hard line break for forced mid-paragraph breaks, and a
       `\-` (or literal U+00AD) soft hyphen that stays invisible when the word fits and otherwise
@@ -93,7 +93,7 @@ ships a committed `<name>.pdf` snapshot so GitHub previews render inline:
 | --------------------- | --------------------------------------------------------------- |
 | `examples/code`       | inline code, `#pre`, `#code`, long-bracket raw blocks           |
 | `examples/hello`      | bundled Noto Sans, multilingual coverage, real italic/bold cuts |
-| `examples/lists`      | bullet / numbered lists, hanging indent, adaptive gutter        |
+| `examples/lists`      | bullet / numbered lists, hanging indent, continuation, gutter   |
 | `examples/math`       | Base-14 Helvetica via `/Differences`, math operators            |
 | `examples/polish`     | Polish diacritics through Noto Sans                             |
 | `examples/linebreaks` | NBSP (U+00A0), hard line break (`\\`), soft hyphen (`\-`)       |
