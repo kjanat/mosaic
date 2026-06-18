@@ -456,7 +456,7 @@
       }
     },
     "shebang": {
-      "type": "TOKEN",
+      "type": "IMMEDIATE_TOKEN",
       "content": {
         "type": "PREC",
         "value": 2,

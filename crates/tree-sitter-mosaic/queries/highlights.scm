@@ -88,11 +88,11 @@
 
 (reference) @link_text
 (reference
-  target: (label_name) @label)
+  target: (label_name) @string.special.symbol)
 
 (page_reference) @link_text
 (page_reference
-  target: (label_name) @label)
+  target: (label_name) @string.special.symbol)
 
 ; --- Escapes ----------------------------------------------------------------
 

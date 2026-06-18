@@ -138,7 +138,7 @@ export default grammar({
 				seq('/*', /[^*]*\*+([^/*][^*]*\*+)*/, '/'),
 			)),
 
-		shebang: _ => token(prec(2, seq('#!', /[^\n\r]*/))),
+		shebang: _ => token.immediate(prec(2, seq('#!', /[^\n\r]*/))),
 
 		_hash_bang_text: _ => token(prec(1, seq('#!', /[^\n\r]*/))),
 

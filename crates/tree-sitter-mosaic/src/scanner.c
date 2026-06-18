@@ -71,15 +71,6 @@ static void advance(TSLexer *lexer) {
 }
 
 /**
- * Advance the lexer by one codepoint and mark that input as skipped (not part of the current token).
- *
- * @param lexer The lexer to advance.
- */
-static void skip(TSLexer *lexer) {
-    lexer->advance(lexer, true);
-}
-
-/**
  * Consume a single line terminator sequence from the lexer input.
  *
  * Recognizes LF (`\n`), CR (`\r`), or CR+LF (`\r\n`) and advances the lexer past the terminator.
@@ -141,6 +132,46 @@ static bool starts_hash_block(TSLexer *lexer) {
     return lexer->lookahead != '!';
 }
 
+static bool is_label_start(int32_t code) {
+    return (code >= 'A' && code <= 'Z') || (code >= 'a' && code <= 'z') || code == '_';
+}
+
+static bool is_label_continue(int32_t code) {
+    return is_label_start(code) || (code >= '0' && code <= '9') || code == '-';
+}
+
+static bool starts_label(TSLexer *lexer) {
+    if (lexer->lookahead != '<') {
+        return false;
+    }
+    advance(lexer);
+
+    if (!is_label_start(lexer->lookahead)) {
+        return false;
+    }
+
+    for (;;) {
+        do {
+            advance(lexer);
+        } while (is_label_continue(lexer->lookahead));
+
+        if (lexer->lookahead != ':') {
+            break;
+        }
+
+        advance(lexer);
+        if (!is_label_start(lexer->lookahead)) {
+            return false;
+        }
+    }
+
+    return lexer->lookahead == '>';
+}
+
+static bool starts_content_body_close(TSLexer *lexer) {
+    return lexer->lookahead == ']';
+}
+
 static bool starts_block_after_line(TSLexer *lexer) {
     switch (lexer->lookahead) {
         case '#':
@@ -149,6 +180,10 @@ static bool starts_block_after_line(TSLexer *lexer) {
             return starts_heading(lexer);
         case '-':
             return starts_unordered_list(lexer);
+        case '<':
+            return starts_label(lexer);
+        case ']':
+            return starts_content_body_close(lexer);
         default:
             return starts_ordered_list(lexer);
     }
