@@ -1,3 +1,5 @@
+#!/usr/bin/env -S mos build --open
+
 #set document(
   title: "From the desk of Localization",
   author: "Mosaic contributors",
