@@ -7,19 +7,27 @@
 //! `@label` cross-references (§6 stage 3, MVP 1).
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
-
-mod bibliography;
-mod image;
-mod image_lower;
-mod inline;
-mod list;
-mod pageref;
-mod resolve;
-mod set;
-mod set_schema;
+#[doc(hidden)]
+pub mod bibliography;
+#[doc(hidden)]
+pub mod image;
+#[doc(hidden)]
+pub mod image_lower;
+#[doc(hidden)]
+pub mod inline;
+#[doc(hidden)]
+pub mod list;
+#[doc(hidden)]
+pub mod pageref;
+#[doc(hidden)]
+pub mod resolve;
+#[doc(hidden)]
+pub mod set;
+#[doc(hidden)]
+pub mod set_schema;
 
 use std::collections::BTreeMap;
 
@@ -35,7 +43,7 @@ pub use resolve::resolve;
 use bibliography::{lower_bibliography_directive, resolve_citations};
 use image_lower::{lower_figure_directive, lower_image_directive};
 use inline::lower_inlines;
-use list::lower_list;
+use list::lower as lower_list;
 use set::lower_set_directive;
 
 const LABEL_SPAN_START_ATTR: &str = "label_span.start";
@@ -57,6 +65,7 @@ fn insert_label_attributes(attributes: &mut AttrMap, label: &str, label_span: Op
 }
 
 /// Document-level metadata harvested from `#set document(...)` directives.
+///
 /// The PDF backend writes `title` and `author` to the Info dictionary;
 /// `language` is captured for the catalog `/Lang` entry that the next
 /// PDF-metadata slice will wire up.
@@ -98,7 +107,7 @@ pub struct DocumentMetadata {
 ///     "parse structurally aborted: {parse_result:?}"
 /// );
 /// if let Ok(tree) = parse_result {
-///     let result: LowerResult = Evaluator::new().evaluate(&tree);
+///     let result: LowerResult = Evaluator::evaluate(&tree);
 ///
 ///     assert!(!result.has_errors());
 /// }
@@ -150,7 +159,7 @@ impl LowerResult {
 ///
 /// assert_eq!(format!("{evaluator:?}"), "Evaluator");
 /// ```
-#[derive(Default, Debug)]
+#[derive(Copy, Clone, Default, Debug)]
 pub struct Evaluator;
 
 impl Evaluator {
@@ -166,7 +175,7 @@ impl Evaluator {
     /// assert_eq!(format!("{evaluator:?}"), "Evaluator");
     /// ```
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 
@@ -187,153 +196,198 @@ impl Evaluator {
     ///     "parse structurally aborted: {parse_result:?}"
     /// );
     /// if let Ok(tree) = parse_result {
-    ///     let result = Evaluator::new().evaluate(&tree);
+    ///     let result = Evaluator::evaluate(&tree);
     ///
     ///     assert_eq!(result.document.len(), 3);
     /// }
     /// ```
-    pub fn evaluate(&self, tree: &SyntaxTree) -> LowerResult {
-        let mut document = Document::new(tree.file.clone());
-        let mut diagnostics: Vec<Diagnostic> = Vec::new();
-        let mut metadata = DocumentMetadata::default();
-        // Tracks the most-recently-set body text size in pt so `em`
-        // literals on later directives resolve against the right unit.
-        // Defaults to 11pt to match `mos-layout`'s `BODY_SIZE_PT`.
-        let mut current_text_size_pt: f64 = 11.0;
-        // Set when a directive reads the filesystem (`#image` / `#figure`
-        // image loads, `#bibliography` source reads), marking this lowering
-        // impure over `(src, file)` so time-based caches don't reuse it.
-        let mut reads_external_resources = false;
-        let root = document.root;
-
+    #[must_use]
+    pub fn evaluate(tree: &SyntaxTree) -> LowerResult {
+        let mut state = EvaluationState::new(tree);
         for item in &tree.items {
-            match item {
-                Item::Heading {
-                    level,
-                    inlines,
-                    label,
-                    label_span,
-                    span,
-                } => {
-                    let mut attributes: AttrMap = BTreeMap::new();
-                    attributes.insert("level".to_owned(), AttrValue::Int(i64::from(*level)));
-                    if let Some(id) = label {
-                        insert_label_attributes(&mut attributes, id, label_span.as_ref());
-                    }
-                    let heading = document.alloc_child(
-                        root,
-                        NodeSpec::new(NodeKind::Section, span.clone()).with_attributes(attributes),
-                    );
-                    lower_inlines(&mut document, heading, inlines);
-                }
-                Item::Paragraph {
-                    inlines,
-                    label,
-                    label_span,
-                    span,
-                } => {
-                    let mut attributes: AttrMap = BTreeMap::new();
-                    if let Some(id) = label {
-                        insert_label_attributes(&mut attributes, id, label_span.as_ref());
-                    }
-                    let para = document.alloc_child(
-                        root,
-                        NodeSpec::new(NodeKind::Paragraph, span.clone())
-                            .with_attributes(attributes),
-                    );
-                    lower_inlines(&mut document, para, inlines);
-                }
-                Item::List {
-                    ordered,
-                    items,
-                    span,
-                } => {
-                    lower_list(&mut document, root, *ordered, items, span);
-                }
-                Item::RawBlock {
-                    kind,
+            state.lower_item(item, &tree.file);
+        }
+        state.finish()
+    }
+}
+
+struct EvaluationState {
+    document: Document,
+    diagnostics: Vec<Diagnostic>,
+    metadata: DocumentMetadata,
+    current_text_size_pt: f64,
+    reads_external_resources: bool,
+}
+
+impl EvaluationState {
+    fn new(tree: &SyntaxTree) -> Self {
+        Self {
+            document: Document::new(tree.file.clone()),
+            diagnostics: Vec::new(),
+            metadata: DocumentMetadata::default(),
+            current_text_size_pt: 11.0,
+            reads_external_resources: false,
+        }
+    }
+
+    fn finish(self) -> LowerResult {
+        LowerResult {
+            document: self.document,
+            diagnostics: self.diagnostics,
+            metadata: self.metadata,
+            reads_external_resources: self.reads_external_resources,
+        }
+    }
+
+    fn lower_item(&mut self, item: &Item, source_file: &std::path::Path) {
+        match item {
+            Item::Heading {
+                level,
+                inlines,
+                label,
+                label_span,
+                span,
+            } => self.lower_heading(*level, inlines, label.as_deref(), label_span.as_ref(), span),
+            Item::Paragraph {
+                inlines,
+                label,
+                label_span,
+                span,
+            } => self.lower_paragraph(inlines, label.as_deref(), label_span.as_ref(), span),
+            Item::List {
+                ordered,
+                items,
+                span,
+            } => {
+                let root = self.document.root;
+                lower_list(&mut self.document, root, *ordered, items, span);
+            }
+            Item::RawBlock {
+                kind,
+                text,
+                label,
+                label_span,
+                span,
+                ..
+            } => {
+                let root = self.document.root;
+                lower_raw_block(
+                    &mut self.document,
+                    root,
+                    *kind,
                     text,
-                    label,
-                    label_span,
+                    label.as_deref(),
+                    label_span.as_ref(),
                     span,
-                    ..
-                } => {
-                    lower_raw_block(
-                        &mut document,
-                        root,
-                        *kind,
-                        text,
-                        label.as_deref(),
-                        label_span.as_ref(),
-                        span,
-                    );
-                }
-                Item::Set {
-                    kind,
+                );
+            }
+            Item::Set {
+                kind,
+                name,
+                args,
+                span,
+            } => self.lower_directive(*kind, name, args, span, source_file),
+        }
+    }
+
+    fn lower_heading(
+        &mut self,
+        level: u8,
+        inlines: &[mos_parse::Inline],
+        label: Option<&str>,
+        label_span: Option<&SourceSpan>,
+        span: &SourceSpan,
+    ) {
+        let mut attributes: AttrMap = BTreeMap::new();
+        attributes.insert("level".to_owned(), AttrValue::Int(i64::from(level)));
+        if let Some(id) = label {
+            insert_label_attributes(&mut attributes, id, label_span);
+        }
+        let heading = self.document.alloc_child(
+            self.document.root,
+            NodeSpec::new(NodeKind::Section, span.clone()).with_attributes(attributes),
+        );
+        lower_inlines(&mut self.document, heading, inlines);
+    }
+
+    fn lower_paragraph(
+        &mut self,
+        inlines: &[mos_parse::Inline],
+        label: Option<&str>,
+        label_span: Option<&SourceSpan>,
+        span: &SourceSpan,
+    ) {
+        let mut attributes: AttrMap = BTreeMap::new();
+        if let Some(id) = label {
+            insert_label_attributes(&mut attributes, id, label_span);
+        }
+        let para = self.document.alloc_child(
+            self.document.root,
+            NodeSpec::new(NodeKind::Paragraph, span.clone()).with_attributes(attributes),
+        );
+        lower_inlines(&mut self.document, para, inlines);
+    }
+
+    fn lower_directive(
+        &mut self,
+        kind: DirectiveKind,
+        name: &str,
+        args: &[mos_parse::SetArg],
+        span: &SourceSpan,
+        source_file: &std::path::Path,
+    ) {
+        match kind {
+            DirectiveKind::Image => {
+                let root = self.document.root;
+                lower_image_directive(
+                    &mut self.document,
+                    root,
+                    args,
+                    span,
+                    source_file,
+                    self.current_text_size_pt,
+                    &mut self.diagnostics,
+                );
+                self.reads_external_resources = true;
+            }
+            DirectiveKind::Figure => {
+                let root = self.document.root;
+                lower_figure_directive(
+                    &mut self.document,
+                    root,
+                    args,
+                    span,
+                    source_file,
+                    self.current_text_size_pt,
+                    &mut self.diagnostics,
+                );
+                self.reads_external_resources = true;
+            }
+            DirectiveKind::Bibliography => {
+                let root = self.document.root;
+                lower_bibliography_directive(
+                    &mut self.document,
+                    root,
+                    args,
+                    span,
+                    source_file,
+                    &mut self.diagnostics,
+                );
+                self.reads_external_resources = true;
+            }
+            DirectiveKind::Set => {
+                let root = self.document.root;
+                lower_set_directive(
+                    &mut self.document,
+                    root,
                     name,
                     args,
                     span,
-                } => match kind {
-                    // `DirectiveKind` (set by the parser) is the
-                    // discriminator here, *not* `name`: `#set image(...)`
-                    // and `#image(...)` are both parsed with `name ==
-                    // "image"`, and dispatching on the string would
-                    // route `#set image(width: 200pt)` into the image
-                    // loader and incorrectly raise MOS0037 "missing path".
-                    DirectiveKind::Image => {
-                        lower_image_directive(
-                            &mut document,
-                            root,
-                            args,
-                            span,
-                            &tree.file,
-                            current_text_size_pt,
-                            &mut diagnostics,
-                        );
-                        reads_external_resources = true;
-                    }
-                    DirectiveKind::Figure => {
-                        lower_figure_directive(
-                            &mut document,
-                            root,
-                            args,
-                            span,
-                            &tree.file,
-                            current_text_size_pt,
-                            &mut diagnostics,
-                        );
-                        reads_external_resources = true;
-                    }
-                    DirectiveKind::Bibliography => {
-                        lower_bibliography_directive(
-                            &mut document,
-                            root,
-                            args,
-                            span,
-                            &tree.file,
-                            &mut diagnostics,
-                        );
-                        reads_external_resources = true;
-                    }
-                    DirectiveKind::Set => lower_set_directive(
-                        &mut document,
-                        root,
-                        name,
-                        args,
-                        span,
-                        &mut metadata,
-                        &mut current_text_size_pt,
-                        &mut diagnostics,
-                    ),
-                },
+                    &mut self.metadata,
+                    &mut self.current_text_size_pt,
+                    &mut self.diagnostics,
+                );
             }
-        }
-
-        LowerResult {
-            document,
-            diagnostics,
-            metadata,
-            reads_external_resources,
         }
     }
 }
@@ -381,6 +435,7 @@ fn lower_raw_block(
 /// assert!(!result.has_errors());
 /// assert_eq!(result.document.len(), 3);
 /// ```
+#[must_use]
 pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
     let mut sink = CollectingSink::new();
     let tree = match mos_parse::parse(src, file, &mut sink) {
@@ -408,10 +463,12 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
     }
 }
 
-/// Lower an already-parsed [`SyntaxTree`]: evaluate it, then run the
-/// §6 stage-3 resolver. The CLI calls this *after* `mos_parse::parse`
-/// so a phase barrier can sit between parsing and lowering; [`lower`]
-/// is the parse-and-lower convenience used by tests and embedders.
+/// Lower an already-parsed [`SyntaxTree`].
+///
+/// This evaluates it, then runs the §6 stage-3 resolver. The CLI calls this
+/// *after* `mos_parse::parse` so a phase barrier can sit between parsing and
+/// lowering; [`lower`] is the parse-and-lower convenience used by tests and
+/// embedders.
 ///
 /// # Examples
 ///
@@ -431,7 +488,7 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
 /// ```
 #[must_use]
 pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
-    let mut lowered = Evaluator::new().evaluate(tree);
+    let mut lowered = Evaluator::evaluate(tree);
     let mut diagnostics = std::mem::take(&mut lowered.diagnostics);
     let bib_keys = resolve_citations(&mut lowered.document, &mut diagnostics);
     diagnostics.extend(resolve(&mut lowered.document, &bib_keys));
@@ -1785,8 +1842,8 @@ mod tests {
         let dir = unique_temp_dir("duplicate-path");
         let first = dir.join("first.bib");
         let second = dir.join("second.bib");
-        std::fs::write(&first, "@book{first}\n").unwrap();
-        std::fs::write(&second, "@book{second}\n").unwrap();
+        std::fs::write(&first, "@book{{first}}\n").unwrap();
+        std::fs::write(&second, "@book{{second}}\n").unwrap();
         let source = dir.join("main.mos");
         let source_text = "#bibliography(\"first.bib\", path: \"second.bib\")\n";
         std::fs::write(&source, source_text).unwrap();
