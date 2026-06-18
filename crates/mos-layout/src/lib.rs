@@ -9,8 +9,8 @@
 //! (§22.3, §33) is also out of scope here.
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
 
 pub use boundary::{PageBoundarySignature, PageGraphSignature};
@@ -33,13 +33,20 @@ use support::{blank_page, expand_tabs, read_level, read_str_attr};
 use types::BODY_LEADING;
 use word::{ShyBreak, Word, WordItem, split_soft_hyphens, try_shy_break, word_clusters};
 
-mod boundary;
-mod image;
-mod list;
-mod style;
-mod support;
-mod types;
-mod word;
+#[doc(hidden)]
+pub mod boundary;
+#[doc(hidden)]
+pub mod image;
+#[doc(hidden)]
+pub mod list;
+#[doc(hidden)]
+pub mod style;
+#[doc(hidden)]
+pub mod support;
+#[doc(hidden)]
+pub mod types;
+#[doc(hidden)]
+pub mod word;
 
 /// Heading sizes by level (1-indexed). Anything beyond level 3 falls
 /// back to body size: counters and section numbering land in MVP 1.
@@ -73,7 +80,7 @@ const RAW_BLOCK_TAB_WIDTH: usize = 4;
 ///
 /// assert_eq!(format!("{engine:?}"), "LayoutEngine");
 /// ```
-#[derive(Debug, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct LayoutEngine;
 
 impl LayoutEngine {
@@ -89,7 +96,7 @@ impl LayoutEngine {
     /// assert_eq!(format!("{engine:?}"), "LayoutEngine");
     /// ```
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 
@@ -110,7 +117,9 @@ impl LayoutEngine {
     ///
     /// assert_eq!(result.graph.pages.len(), 1);
     /// ```
-    pub fn layout(&mut self, document: &Document) -> LayoutResult {
+    #[must_use]
+    pub fn layout(self, document: &Document) -> LayoutResult {
+        let Self = self;
         let (page_style, text_style, mut diagnostics) = resolve_styles(document);
         let mut state = LayoutState::new(page_style, text_style);
         state.diagnostics.append(&mut diagnostics);
@@ -170,7 +179,7 @@ struct LayoutState {
     /// directives that reference the same on-disk file share one
     /// [`ImageHandle`] (and therefore one `XObject` in the emitted PDF).
     image_handles: Vec<ImageHandle>,
-    /// Left edge of the current text column. Equals `page.margin_pt`
+    /// Left edge of the current text column. Equals `page.margin`
     /// at the top level; list layout pushes this rightward so item
     /// text hangs into the gutter under its marker.
     current_left_pt: f32,
@@ -199,18 +208,24 @@ struct PendingMarker {
     word: Word,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct PendingSpace {
+    width_pt: f32,
+    from_line_break: bool,
+}
+
 impl LayoutState {
-    fn new(page: PageStyle, text: TextStyle) -> Self {
+    const fn new(page: PageStyle, text: TextStyle) -> Self {
         Self {
             pages: Vec::new(),
             current_page: blank_page(1, page),
-            cursor_y: page.margin_pt,
+            cursor_y: page.margin,
             page_has_content: false,
             diagnostics: Vec::new(),
             page,
             text,
             image_handles: Vec::new(),
-            current_left_pt: page.margin_pt,
+            current_left_pt: page.margin,
             pending_marker: None,
             pending_labels: Vec::new(),
             label_pages: BTreeMap::new(),
@@ -250,7 +265,7 @@ impl LayoutState {
     }
 
     fn column_width_pt(&self) -> f32 {
-        self.page.width_pt - self.page.margin_pt - self.current_left_pt
+        self.page.width - self.page.margin - self.current_left_pt
     }
 
     fn finish(mut self) -> LayoutResult {
@@ -296,6 +311,7 @@ impl LayoutState {
                 WordItem::Word(Word {
                     text: prefix,
                     actual_text: None,
+                    space_before_pt: 0.0,
                     font: bold,
                     size_pt: size,
                     width_pt,
@@ -303,6 +319,11 @@ impl LayoutState {
                     shy_break_offsets: Vec::new(),
                 }),
             );
+            if let Some(WordItem::Word(first_title_word)) = words.get_mut(1)
+                && first_title_word.space_before_pt <= f32::EPSILON
+            {
+                first_title_word.space_before_pt = text_width(bold, size, " ");
+            }
         }
         self.flow_words(&words, BODY_LEADING);
         self.cursor_y += space_after;
@@ -328,10 +349,10 @@ impl LayoutState {
         for line in text.lines() {
             if line.is_empty() {
                 if !self.page_has_content {
-                    self.cursor_y = self.page.margin_pt + ascent(font, size);
+                    self.cursor_y = self.page.margin + ascent(font, size);
                     self.page_has_content = true;
                 }
-                self.cursor_y += size * leading;
+                self.cursor_y = size.mul_add(leading, self.cursor_y);
                 continue;
             }
             let expanded_line = expand_tabs(line, RAW_BLOCK_TAB_WIDTH);
@@ -346,6 +367,7 @@ impl LayoutState {
             let word = Word {
                 text: expanded_line.into_owned(),
                 actual_text,
+                space_before_pt: 0.0,
                 font,
                 size_pt: size,
                 width_pt,
@@ -361,28 +383,31 @@ impl LayoutState {
     }
 
     /// Walk `parent`'s inline children and produce a flat list of
-    /// [`WordItem`]s. Inline whitespace inside text runs collapses to
-    /// a single split point (`split_ascii_whitespace` handles
-    /// `\n`/`\r`/`\t` uniformly **and intentionally preserves U+00A0
-    /// NBSP**: non-ASCII whitespace stays inside the word so the
-    /// breaker never splits at NBSP). Each word is shaped once here;
-    /// the resulting glyphs and width flow through to [`TextRun`]
-    /// without re-shaping during line breaking. `NodeKind::HardBreak`
-    /// children are emitted as `WordItem::HardBreak` sentinels.
+    /// [`WordItem`]s. Source ASCII whitespace becomes explicit collapsed
+    /// glue on the following word; inline style/font boundaries alone
+    /// produce no glue and no break opportunity. A source line wrap before
+    /// closing punctuation is formatting only and attaches to the previous
+    /// word. U+00A0 NBSP is intentionally preserved inside the word. Each
+    /// visible fragment is shaped once here, and no-source-space fragments
+    /// merge into one unbreakable layout word even when their fonts differ.
     fn collect_words(
-        &mut self,
+        &self,
         document: &Document,
         parent: &Node,
         default_font: Font,
         size: f32,
     ) -> Vec<WordItem> {
         let mut out: Vec<WordItem> = Vec::new();
+        let mut current_word: Option<Word> = None;
+        let mut pending_space: Option<PendingSpace> = None;
         for child_id in &parent.children {
             let Some(child) = document.get(*child_id) else {
                 continue;
             };
             if matches!(child.kind, NodeKind::HardBreak) {
+                Self::flush_pending_word(&mut current_word, &mut out);
                 out.push(WordItem::HardBreak);
+                pending_space = None;
                 continue;
             }
             let font = match child.kind {
@@ -400,44 +425,160 @@ impl LayoutState {
                 Some(AttrValue::Str(s)) => s.as_str(),
                 _ => continue,
             };
-            // U+00A0 NBSP is intentionally preserved by
-            // `split_ascii_whitespace` (it only splits on ASCII
-            // whitespace), keeping `Mr.\u{A0}Smith` as one logical
-            // word. This is the documented contract.
-            for piece in raw.split_ascii_whitespace() {
-                if piece.is_empty() {
-                    continue;
+            self.collect_text_words(
+                raw,
+                font,
+                size,
+                &mut current_word,
+                &mut pending_space,
+                &mut out,
+            );
+        }
+        Self::flush_pending_word(&mut current_word, &mut out);
+        out
+    }
+
+    fn collect_text_words(
+        &self,
+        raw: &str,
+        font: Font,
+        size: f32,
+        current_word: &mut Option<Word>,
+        pending_space: &mut Option<PendingSpace>,
+        out: &mut Vec<WordItem>,
+    ) {
+        let mut word_start: Option<usize> = None;
+        for (idx, ch) in raw.char_indices() {
+            if ch.is_ascii_whitespace() {
+                if let Some(start) = word_start.take() {
+                    self.append_word_piece(
+                        &raw[start..idx],
+                        font,
+                        size,
+                        current_word,
+                        pending_space,
+                        out,
+                    );
                 }
-                let piece = nfc_text(piece);
-                let piece = piece.as_ref();
-                // Strip U+00AD before shaping so SHY never renders as
-                // a visible hyphen on either the embedded or Base-14
-                // path. Keep the codepoint offsets so a future
-                // Knuth-Plass breaker can hyphenate at the author's
-                // marked positions.
-                let (stripped, shy_offsets) = split_soft_hyphens(piece);
-                // A piece that was entirely SHY codepoints leaves
-                // nothing to shape; skip it so we don't emit a
-                // phantom zero-width word that would inflate the
-                // interword gap on either side.
-                if stripped.is_empty() {
-                    continue;
+                let from_line_break = matches!(ch, '\n' | '\r');
+                let width_pt = text_width(font, size, " ");
+                if let Some(space) = pending_space {
+                    space.width_pt = width_pt;
+                    space.from_line_break |= from_line_break;
+                } else {
+                    *pending_space = Some(PendingSpace {
+                        width_pt,
+                        from_line_break,
+                    });
                 }
-                let subruns =
-                    shape_with_fallback(font, self.text.family.fallbacks, size, &stripped);
-                let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
-                out.push(WordItem::Word(Word {
-                    text: stripped,
-                    actual_text: None,
-                    font,
-                    size_pt: size,
-                    width_pt,
-                    subruns,
-                    shy_break_offsets: shy_offsets,
-                }));
+            } else if word_start.is_none() {
+                word_start = Some(idx);
             }
         }
-        out
+        if let Some(start) = word_start {
+            self.append_word_piece(&raw[start..], font, size, current_word, pending_space, out);
+        }
+    }
+
+    fn append_word_piece(
+        &self,
+        piece: &str,
+        font: Font,
+        size: f32,
+        current_word: &mut Option<Word>,
+        pending_space: &mut Option<PendingSpace>,
+        out: &mut Vec<WordItem>,
+    ) {
+        let piece = nfc_text(piece);
+        let piece = piece.as_ref();
+        // Strip U+00AD before shaping so SHY never renders as a visible
+        // hyphen on either the embedded or Base-14 path. Offsets remain
+        // attached to the merged layout word for the current greedy SHY
+        // breaker and later Knuth-Plass penalties.
+        let (stripped, shy_offsets) = split_soft_hyphens(piece);
+        if stripped.is_empty() {
+            if pending_space.is_none()
+                && let Some(word) = current_word
+            {
+                let offset = word.text.len();
+                word.shy_break_offsets
+                    .extend(shy_offsets.into_iter().map(|idx| offset + idx));
+            }
+            return;
+        }
+        let subruns = shape_with_fallback(font, self.text.family.fallbacks, size, &stripped);
+        let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
+        if let Some(space) = pending_space.take() {
+            if space.from_line_break && starts_with_closing_punctuation(&stripped) {
+                Self::append_to_current_word(
+                    current_word,
+                    stripped,
+                    font,
+                    size,
+                    width_pt,
+                    subruns,
+                    shy_offsets,
+                );
+                return;
+            }
+            Self::flush_pending_word(current_word, out);
+            *current_word = Some(Word {
+                text: stripped,
+                actual_text: None,
+                space_before_pt: space.width_pt,
+                font,
+                size_pt: size,
+                width_pt,
+                subruns,
+                shy_break_offsets: shy_offsets,
+            });
+            return;
+        }
+        Self::append_to_current_word(
+            current_word,
+            stripped,
+            font,
+            size,
+            width_pt,
+            subruns,
+            shy_offsets,
+        );
+    }
+
+    fn append_to_current_word(
+        current_word: &mut Option<Word>,
+        text: String,
+        font: Font,
+        size: f32,
+        width_pt: f32,
+        subruns: Vec<WordSubRun>,
+        shy_offsets: Vec<usize>,
+    ) {
+        if let Some(word) = current_word {
+            let offset = word.text.len();
+            word.text.push_str(&text);
+            word.width_pt += width_pt;
+            word.subruns.extend(subruns);
+            word.shy_break_offsets
+                .extend(shy_offsets.into_iter().map(|idx| offset + idx));
+            return;
+        }
+        *current_word = Some(Word {
+            text,
+            actual_text: None,
+            space_before_pt: 0.0,
+            font,
+            size_pt: size,
+            width_pt,
+            subruns,
+            shy_break_offsets: shy_offsets,
+        });
+    }
+
+    fn flush_pending_word(current_word: &mut Option<Word>, out: &mut Vec<WordItem>) {
+        if let Some(word) = current_word.take() {
+            out.push(WordItem::Word(word));
+        }
     }
 
     /// Greedy line-break `items` and emit text runs onto the page,
@@ -494,7 +635,7 @@ impl LayoutState {
                             // and remain in the "just hard-broke"
                             // state so a third break emits another
                             // blank.
-                            self.cursor_y += self.text.size_pt * leading;
+                            self.cursor_y = self.text.size_pt.mul_add(leading, self.cursor_y);
                         } else if paragraph_emitted_line {
                             // First hard break after an implicit
                             // break (oversize chunk or soft-wrap
@@ -519,12 +660,18 @@ impl LayoutState {
             let space_w = if line.is_empty() {
                 0.0
             } else {
-                text_width(word_owned.font, word_owned.size_pt, " ")
+                word_owned.space_before_pt
             };
 
             // Word fits on the current line: append and continue.
             if line_width_used + space_w + word_owned.width_pt <= line_width {
                 line_width_used += space_w + word_owned.width_pt;
+                line.push(word_owned);
+                continue;
+            }
+
+            if !line.is_empty() && space_w <= f32::EPSILON {
+                line_width_used += word_owned.width_pt;
                 line.push(word_owned);
                 continue;
             }
@@ -619,13 +766,13 @@ impl LayoutState {
         // First line on a page: drop the baseline by the line's
         // ascent so the glyph tops sit at the top margin.
         if !self.page_has_content {
-            self.cursor_y = self.page.margin_pt + max_ascent;
+            self.cursor_y = self.page.margin + max_ascent;
         }
         // Page break if the baseline would fall below the bottom
         // margin. Descent is small and absorbed by the bottom margin.
-        if self.cursor_y > self.page.height_pt - self.page.margin_pt {
+        if self.cursor_y > self.page.height - self.page.margin {
             self.start_new_page();
-            self.cursor_y = self.page.margin_pt + max_ascent;
+            self.cursor_y = self.page.margin + max_ascent;
         }
 
         // The page is now settled for this line; bind any labels waiting on
@@ -655,7 +802,7 @@ impl LayoutState {
         let mut x = self.current_left_pt;
         for (i, word) in line.iter().enumerate() {
             if i > 0 {
-                x += text_width(word.font, word.size_pt, " ");
+                x += word.space_before_pt;
             }
             // One TextRun per sub-run: same baseline, x advances by
             // each sub-run's `advance_pt`. PDF emit's per-run `Tf`
@@ -675,7 +822,7 @@ impl LayoutState {
             }
         }
         self.page_has_content = true;
-        self.cursor_y += max_size * leading;
+        self.cursor_y = max_size.mul_add(leading, self.cursor_y);
     }
 
     /// Emit a word that's wider than the column by chopping it on
@@ -719,6 +866,7 @@ impl LayoutState {
             &[Word {
                 text,
                 actual_text: None,
+                space_before_pt: 0.0,
                 font: source.font,
                 size_pt: source.size_pt,
                 width_pt,
@@ -734,9 +882,16 @@ impl LayoutState {
         let finished =
             std::mem::replace(&mut self.current_page, blank_page(next_number, self.page));
         self.pages.push(finished);
-        self.cursor_y = self.page.margin_pt;
+        self.cursor_y = self.page.margin;
         self.page_has_content = false;
     }
+}
+
+fn starts_with_closing_punctuation(text: &str) -> bool {
+    matches!(
+        text.chars().next(),
+        Some('.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}' | '”' | '’' | '»')
+    )
 }
 
 #[cfg(test)]
@@ -746,6 +901,7 @@ mod tests {
         clippy::expect_used,
         reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
     )]
+    use std::fmt::Write as _;
     use std::path::PathBuf;
 
     use mos_core::{AttrMap, AttrValue, Document, NodeId, NodeKind, NodeSpec, SourceSpan};
@@ -841,6 +997,27 @@ mod tests {
         )
     }
 
+    fn run_text<'a>(runs: &'a [TextRun], text: &str) -> &'a TextRun {
+        runs.iter()
+            .find(|run| run.text == text)
+            .expect("run text not found")
+    }
+
+    fn assert_runs_touch(left: &TextRun, right: &TextRun) {
+        assert!(
+            (left.baseline_from_top_pt - right.baseline_from_top_pt).abs() < 0.01,
+            "runs are on different baselines: left={left:?}, right={right:?}"
+        );
+        let expected_x = left.x_pt + text_width(left.font, left.size_pt, &left.text);
+        assert!(
+            (right.x_pt - expected_x).abs() < 0.01,
+            "expected {:?} to touch {:?}: expected x {expected_x:.3}, got {:.3}",
+            right.text,
+            left.text,
+            right.x_pt
+        );
+    }
+
     #[test]
     fn heading_then_paragraph_emits_runs_in_order() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
@@ -873,7 +1050,7 @@ mod tests {
         // space, so we expect ≥ 3 pages.
         let mut text = String::new();
         for i in 0..1500 {
-            text.push_str(&format!("word{i} "));
+            let _ = write!(text, "word{i} ");
         }
         make_paragraph(&mut doc, text.trim());
         let result = LayoutEngine::new().layout(&doc);
@@ -890,7 +1067,7 @@ mod tests {
             let mut doc = Document::new(PathBuf::from("test.mos"));
             let mut text = String::new();
             for i in 0..word_count {
-                text.push_str(&format!("word{i} "));
+                let _ = write!(text, "word{i} ");
             }
             make_paragraph(&mut doc, text.trim());
             LayoutEngine::new().layout(&doc)
@@ -938,7 +1115,7 @@ mod tests {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         let mut filler = String::new();
         for i in 0..1500 {
-            filler.push_str(&format!("word{i} "));
+            let _ = write!(filler, "word{i} ");
         }
         make_paragraph(&mut doc, filler.trim());
         make_labelled_paragraph(&mut doc, "ZZUNIQUE", "tail");
@@ -1038,6 +1215,144 @@ mod tests {
             both.font,
             Font::Base14(Base14Font::HelveticaBoldOblique)
         ));
+    }
+
+    #[test]
+    fn styled_and_code_punctuation_do_not_get_synthetic_glue() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_inline(&mut doc, para, NodeKind::Text, "See ");
+        alloc_inline(&mut doc, para, NodeKind::Strong, "bold");
+        alloc_inline(&mut doc, para, NodeKind::Text, ". ");
+        alloc_inline(&mut doc, para, NodeKind::Emphasis, "italic");
+        alloc_inline(&mut doc, para, NodeKind::Text, ", ");
+        alloc_inline(&mut doc, para, NodeKind::Raw, "code");
+        alloc_inline(&mut doc, para, NodeKind::Text, "?");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_runs_touch(run_text(runs, "bold"), run_text(runs, "."));
+        assert_runs_touch(run_text(runs, "italic"), run_text(runs, ","));
+        assert_runs_touch(run_text(runs, "code"), run_text(runs, "?"));
+    }
+
+    #[test]
+    fn references_citations_and_brackets_do_not_get_synthetic_glue() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_inline(&mut doc, para, NodeKind::Text, "See ");
+        alloc_inline(&mut doc, para, NodeKind::Reference, "1.2");
+        alloc_inline(&mut doc, para, NodeKind::Text, ", ");
+        alloc_inline(&mut doc, para, NodeKind::Citation, "[1]");
+        alloc_inline(&mut doc, para, NodeKind::Text, ". (");
+        alloc_inline(&mut doc, para, NodeKind::Strong, "bold");
+        alloc_inline(&mut doc, para, NodeKind::Text, ") [");
+        alloc_inline(&mut doc, para, NodeKind::Emphasis, "italic");
+        alloc_inline(&mut doc, para, NodeKind::Text, "]");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_runs_touch(run_text(runs, "1.2"), run_text(runs, ","));
+        assert_runs_touch(run_text(runs, "[1]"), run_text(runs, "."));
+        assert_runs_touch(run_text(runs, "("), run_text(runs, "bold"));
+        assert_runs_touch(run_text(runs, "bold"), run_text(runs, ")"));
+        assert_runs_touch(run_text(runs, "["), run_text(runs, "italic"));
+        assert_runs_touch(run_text(runs, "italic"), run_text(runs, "]"));
+    }
+
+    #[test]
+    fn leading_and_trailing_ascii_whitespace_do_not_emit_empty_runs() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        make_paragraph(&mut doc, " \n\t foo  \n");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_eq!(
+            runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            vec!["foo"],
+            "got {runs:?}"
+        );
+    }
+
+    #[test]
+    fn multiple_ascii_whitespace_runs_collapse_to_one_glue() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        make_paragraph(&mut doc, "foo  \n\t  bar");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let foo = run_text(runs, "foo");
+        let bar = run_text(runs, "bar");
+        let foo_w = text_width(foo.font, foo.size_pt, "foo");
+        let space_w = text_width(foo.font, foo.size_pt, " ");
+        let gap = bar.x_pt - (foo.x_pt + foo_w);
+        assert!(
+            (gap - space_w).abs() < 0.01,
+            "expected one collapsed space ({space_w:.3}pt), got {gap:.3}pt"
+        );
+    }
+
+    #[test]
+    fn punctuation_without_source_space_does_not_wrap_alone() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let font = Font::Base14(Base14Font::Helvetica);
+        let bold = Font::Base14(Base14Font::HelveticaBold);
+        let target =
+            text_width(bold, BODY_SIZE_PT, "word") + text_width(font, BODY_SIZE_PT, ".") + 0.5;
+        pin_narrow_margin(&mut doc, (A4_WIDTH_PT - target) / 2.0);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_inline(&mut doc, para, NodeKind::Text, "lead ");
+        alloc_inline(&mut doc, para, NodeKind::Strong, "word");
+        alloc_inline(&mut doc, para, NodeKind::Text, ".");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let lead = run_text(runs, "lead");
+        let word = run_text(runs, "word");
+        let dot = run_text(runs, ".");
+        assert!(word.baseline_from_top_pt > lead.baseline_from_top_pt);
+        assert_runs_touch(word, dot);
+    }
+
+    #[test]
+    fn source_line_wrap_before_closing_punctuation_does_not_create_glue() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let para = make_empty_paragraph(&mut doc);
+        alloc_inline(&mut doc, para, NodeKind::Strong, "κόσμε");
+        alloc_inline(&mut doc, para, NodeKind::Text, "\n. None");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_runs_touch(run_text(runs, "κόσμε"), run_text(runs, "."));
+    }
+
+    #[test]
+    fn hard_break_after_pending_source_space_drops_that_space() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_inline(&mut doc, para, NodeKind::Text, "foo ");
+        alloc_hardbreak(&mut doc, para);
+        alloc_inline(&mut doc, para, NodeKind::Text, "bar");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        let foo = run_text(runs, "foo");
+        let bar = run_text(runs, "bar");
+        assert!((foo.x_pt - bar.x_pt).abs() < 0.01, "got {runs:?}");
+        assert!(bar.baseline_from_top_pt > foo.baseline_from_top_pt);
     }
 
     #[test]
@@ -1225,9 +1540,10 @@ mod tests {
             .runs
             .first()
             .expect("raw block should emit text after the leading blank");
-        let expected_baseline = MARGIN_PT
-            + ascent(FontFamily::noto_sans().monospace, BODY_SIZE_PT)
-            + BODY_SIZE_PT * BODY_LEADING;
+        let expected_baseline = BODY_SIZE_PT.mul_add(
+            BODY_LEADING,
+            MARGIN_PT + ascent(FontFamily::noto_sans().monospace, BODY_SIZE_PT),
+        );
         assert!(
             (first_run.baseline_from_top_pt - expected_baseline).abs() < 0.01,
             "baseline {}, expected {expected_baseline}",
@@ -1246,9 +1562,9 @@ mod tests {
         let h1 = runs.iter().find(|r| r.text == "H1").expect("H1 run");
         let h2 = runs.iter().find(|r| r.text == "H2").expect("H2 run");
         let h3 = runs.iter().find(|r| r.text == "H3").expect("H3 run");
-        assert_eq!(h1.size_pt, HEADING_SIZES_PT[0]);
-        assert_eq!(h2.size_pt, HEADING_SIZES_PT[1]);
-        assert_eq!(h3.size_pt, HEADING_SIZES_PT[2]);
+        assert!((h1.size_pt - HEADING_SIZES_PT[0]).abs() < f32::EPSILON);
+        assert!((h2.size_pt - HEADING_SIZES_PT[1]).abs() < f32::EPSILON);
+        assert!((h3.size_pt - HEADING_SIZES_PT[2]).abs() < f32::EPSILON);
         // Each level is strictly smaller than the one above it.
         assert!(h1.size_pt > h2.size_pt);
         assert!(h2.size_pt > h3.size_pt);
@@ -1267,7 +1583,7 @@ mod tests {
         pin_helvetica(&mut doc);
         let mut text = String::new();
         for i in 0..1500 {
-            text.push_str(&format!("word{i} "));
+            let _ = write!(text, "word{i} ");
         }
         make_paragraph(&mut doc, text.trim());
         make_section(&mut doc, 1, "After");
@@ -1331,6 +1647,36 @@ mod tests {
         // they live on the same line.
         let title = runs.iter().find(|r| r.text == "Background").unwrap();
         assert!((runs[0].baseline_from_top_pt - title.baseline_from_top_pt).abs() < 1e-3);
+    }
+
+    #[test]
+    fn numbered_heading_prefix_and_title_have_one_space_gap() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let mut attrs = AttrMap::new();
+        attrs.insert("level".to_owned(), AttrValue::Int(2));
+        attrs.insert("number".to_owned(), AttrValue::Str("2.1".to_owned()));
+        let section = doc.alloc_child(
+            doc.root,
+            NodeSpec::new(
+                NodeKind::Section,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
+        );
+        alloc_inline(&mut doc, section, NodeKind::Text, "Background");
+
+        let result = LayoutEngine::new().layout(&doc);
+        let runs = &result.graph.pages[0].runs;
+        let prefix = run_text(runs, "2.1.");
+        let title = run_text(runs, "Background");
+        let prefix_w = text_width(prefix.font, prefix.size_pt, &prefix.text);
+        let expected_gap = text_width(prefix.font, prefix.size_pt, " ");
+        let gap = title.x_pt - (prefix.x_pt + prefix_w);
+        assert!(
+            (gap - expected_gap).abs() < 0.01,
+            "expected one heading space ({expected_gap:.3}pt), got {gap:.3}pt"
+        );
     }
 
     #[test]
@@ -1610,6 +1956,71 @@ mod tests {
                 SourceSpan::placeholder(PathBuf::from("test.mos")),
             )
             .with_attributes(attrs),
+        );
+    }
+
+    #[test]
+    fn shy_only_styled_child_preserves_break_opportunity() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let font = Font::Base14(Base14Font::Helvetica);
+        let target = text_width(font, BODY_SIZE_PT, "foo-") + 0.5;
+        pin_narrow_margin(&mut doc, (A4_WIDTH_PT - target) / 2.0);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_inline(&mut doc, para, NodeKind::Text, "foo");
+        alloc_inline(&mut doc, para, NodeKind::Emphasis, "\u{AD}");
+        alloc_inline(&mut doc, para, NodeKind::Text, "bar");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_eq!(
+            runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            vec!["foo-", "bar"],
+            "got {runs:?}"
+        );
+        assert!(
+            run_text(runs, "bar").baseline_from_top_pt
+                > run_text(runs, "foo-").baseline_from_top_pt
+        );
+    }
+
+    #[test]
+    fn styled_soft_hyphen_split_preserves_subrun_fonts() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        pin_helvetica(&mut doc);
+        let regular = Font::Base14(Base14Font::Helvetica);
+        let bold = Font::Base14(Base14Font::HelveticaBold);
+        let target =
+            text_width(regular, BODY_SIZE_PT, "pre") + text_width(bold, BODY_SIZE_PT, "su-") + 0.5;
+        pin_narrow_margin(&mut doc, (A4_WIDTH_PT - target) / 2.0);
+        let para = make_empty_paragraph(&mut doc);
+        alloc_inline(&mut doc, para, NodeKind::Text, "pre");
+        alloc_inline(&mut doc, para, NodeKind::Strong, "su\u{AD}per");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs = &result.graph.pages[0].runs;
+        assert_eq!(
+            runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            vec!["pre", "su-", "per"],
+            "got {runs:?}"
+        );
+        assert!(matches!(
+            run_text(runs, "pre").font,
+            Font::Base14(Base14Font::Helvetica)
+        ));
+        assert!(matches!(
+            run_text(runs, "su-").font,
+            Font::Base14(Base14Font::HelveticaBold)
+        ));
+        assert!(matches!(
+            run_text(runs, "per").font,
+            Font::Base14(Base14Font::HelveticaBold)
+        ));
+        assert_runs_touch(run_text(runs, "pre"), run_text(runs, "su-"));
+        assert!(
+            run_text(runs, "per").baseline_from_top_pt > run_text(runs, "su-").baseline_from_top_pt
         );
     }
 
