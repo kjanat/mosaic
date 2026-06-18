@@ -11,20 +11,21 @@ Implemented:
 
 - Headings: `=`, `==`, `===`.
 - Paragraphs.
-- Inline: `*emphasis*`, `**strong**`, backtick code, `@label` references, `[@key]` citations.
+- Inline: `*emphasis*`, `**strong**`, backtick code, `@label` and `@page(label)` references,
+  `[@key]` citations.
 - Inline line-break controls: `\\` hard break (emits `InlineKind::HardBreak`), `\-` soft-hyphen
   shorthand (expands to literal U+00AD in the text payload), literal U+00A0 NBSP (preserved verbatim
   through to layout).
 - Labels on headings and paragraph starts.
 - Lists: `-` and `N.`, nesting by spaces.
-- Directives: `#set name(...)`, `#image(...)`, `#figure(...)`.
+- Directives: `#set name(...)`, `#image(...)`, `#figure(...)`, `#bibliography(...)`.
 - Raw blocks: `#pre[[...]]` and `#code[[...]]`, with `[=[...]=]` delimiters for nested `]]`.
 - Values: string, int, float, length `mm`/`pt`/`em`, ident.
 
 Not implemented despite manifest examples:
 
 - General function calls, `#let`, `if`, custom scripting, math `$...$`, equations, tables, citation
-  clusters/resolution, includes, comments-preserving formatter CST.
+  clusters, semantic citation resolution, includes, comments-preserving formatter CST.
 
 ## WHERE TO LOOK
 

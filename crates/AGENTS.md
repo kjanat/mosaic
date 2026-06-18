@@ -18,9 +18,9 @@ adobe-font-metrics
 mos-core
 ├── mos-parse
 │   └── mos-eval
+│       └── mos-lsp
 ├── mos-cache
 ├── mos-packages
-├── mos-lsp
 └── mos-bib
     └── mos-csl
 
@@ -39,7 +39,7 @@ backend. `mos-lsp` may consume current compiler phases, but should stay a thin p
 | --------------------- | -------------------- | -------------------------------------------------------------- |
 | Document model/errors | `mos-core`           | Lowest Mosaic layer. No parse/layout/backend deps.             |
 | Source syntax         | `mos-parse`          | CST + spans only. No semantic lowering.                        |
-| Lower/resolve         | `mos-eval`           | Parse tree to `Document`; refs/images/figures.                 |
+| Lower/resolve         | `mos-eval`           | Parse tree to `Document`; refs/images/figures/citations.       |
 | Text/font metrics     | `mos-fonts`          | Base-14 + bundled Noto Sans.                                   |
 | Page layout           | `mos-layout`         | Consumes `Document`; emits `PageGraph`.                        |
 | PDF output            | `mos-pdf`            | Consumes `PageGraph`; emits files/bytes.                       |
@@ -52,7 +52,7 @@ backend. `mos-lsp` may consume current compiler phases, but should stay a thin p
 | Zed extension         | `zed-mosaic`         | Excluded from workspace; query copies and tasks.               |
 | Cache                 | `mos-cache`          | Trait/in-memory stub; no persistence yet; see crate guide.     |
 | LSP                   | `mos-lsp`            | Stdio diagnostic publisher; see crate guide for protocol edge. |
-| Bibliography          | `mos-bib`            | Minimal BibTeX record parser; no resolution/rendering yet.     |
+| Bibliography          | `mos-bib`            | Minimal BibTeX parser + content hash; no rendering here.       |
 | CSL styling           | `mos-csl`            | CSL item model + BibTeX mapping + style parser; no processor.  |
 
 ## BOUNDARY RULES
@@ -60,6 +60,8 @@ backend. `mos-lsp` may consume current compiler phases, but should stay a thin p
 - `mos-core`: IDs, nodes, spans, diagnostics. No higher-layer dependencies.
 - `mos-parse`: bytes to syntax. Preserve spans. Report recoverable parse errors.
 - `mos-eval`: syntax to semantic graph. No layout/page/PDF decisions.
+- `mos-bib`/`mos-csl`: parser/data foundations only. File IO and citation integration live in
+  `mos-eval`.
 - `mos-layout`: semantic graph to page graph. No source parsing. No file emission.
 - `mos-pdf`/`mos-html`: backend sinks. No lowering or layout policy.
 - `mos`: orchestrate, print diagnostics, map errors to exit codes. No compiler logic.

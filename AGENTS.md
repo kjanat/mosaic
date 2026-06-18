@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-06-03 **Commit:** b6efdf5 **Branch:** master
+**Generated:** 2026-06-18 **Commit:** 4652e5c **Branch:** feat/hanging-list-syntax
 
 ## OVERVIEW
 
@@ -18,46 +18,23 @@ Mosaic is a pre-alpha Rust 2024 workspace for a `.mos` typesetting compiler. Cur
 If `manifest.md` disagrees with code, trust code. Mention mismatch. Do not silently build future MVP
 features because manifest dreams loudly.
 
-## MAINTENANCE
-
-- Update this file when repo structure, commands, shipped scope, or hard-won conventions change.
-- Keep GitHub Project 5 as the planning cockpit: milestones are phases, issues are concrete work.
-- Update `manifest-tracker.md` when shipped features or public roadmap/status changes.
-- Update child `AGENTS.md` files when local crate/example rules change enough to help future agents.
-- `CLAUDE.md` is a symlink, edit `AGENTS.md` only.
-
 ## CURRENT STATUS
 
-Implemented now:
+Shipped slice:
 
-- `mos check`: parse, lower, resolve, source diagnostics; accepts `.mos` files or project dirs.
-- `mos build`: parse, lower, layout, emit PDF under `build/<entry-stem>.pdf` for direct files or
-  project-declared `[output].pdf` paths.
-- Parser: headings, paragraphs, inline emphasis/strong/code, refs/citations, lists, `#set`, images,
-  figures, hard breaks, soft hyphen, NBSP.
-- Lowerer/resolver: semantic `Document`, metadata, section numbering, labels/refs, single-key
-  citations, bibliography source loading/key checks, images/figures, hard-break semantic nodes.
-- Bibliography foundations: `#bibliography("refs.bib")`, minimal BibTeX parsing, citation-key
-  resolution diagnostics, and CSL data/style parsing. Resolved `[@key]` markers render numeric
-  labels (`[1]`, `[2]`, ... by first-use order); bibliography-list rendering is not shipped yet.
-  Dependency tracking: `BibliographyDependency` pairs a `Bibliography` id with a content-hash
-  boundary (`mos_bib::bibliography_content_hash`); identity/boundary only, no cache graph yet.
-- Layout: greedy text flow, headings, paragraphs, lists, images, simple figures/captions, pages,
-  paper/margin/style controls, Unicode/glyph fallback basics.
-- PDF: Base-14 metrics, bundled Noto Sans embedding/subsetting, ToUnicode, images, metadata,
-  deterministic provenance stamp.
-- LSP: `mos-lsp` stdio server publishes current compiler parse/lower/resolve diagnostics for opened
-  and changed documents, plus go-to-definition for labels and resolved citations, rename for labels,
-  nested heading document symbols, and code actions from compiler suggestions. The `zed-mosaic`
-  extension spawns `mos-lsp` (binary discovered via Zed settings `binary.path`, `PATH`, or
-  downloaded release asset fallback).
+- `mos check`: parse, lower, resolve, source diagnostics for files/projects.
+- `mos build`: parse, lower, layout, PDF output under direct-file or `[output].pdf` paths.
+- Parser/eval: headings, paragraphs, lists, inline styling/code/refs/citations, `#set`, images,
+  figures, hard breaks, soft hyphen, NBSP, `#bibliography`.
+- Bibliography: minimal BibTeX + CSL data/style parsing, citation-key checks, numeric `[@key]`
+  labels by first use. Bibliography-list rendering is not shipped.
+- Layout/PDF: greedy flow, pages, figures/images, Base-14 + Noto embedding/subsetting, ToUnicode,
+  deterministic provenance.
+- LSP: diagnostics, definition for labels/citations, label rename, document symbols, code actions.
 
-Treat as aspirational/stub unless user asks:
-
-- HTML/EPUB/SVG backends, richer LSP, bibliography rendering, persistent cache, watch mode.
-- Package registry/lockfile, formatter, scripting/templates, math/tables/footnotes/index/glossary.
-- Float solver, TOC/page refs, pagination fixpoints, Knuth-Plass, automatic hyphenation.
-- Reproducible/frozen build semantics and import/conversion tools.
+Aspirational/stub unless user asks: HTML/EPUB/SVG, persistent cache, watch/formatter/package
+systems, math/tables/footnotes/index/glossary, float solver, TOC/page refs, pagination fixpoints,
+Knuth-Plass, automatic hyphenation, reproducible/frozen builds, import/conversion tools.
 
 ## STRUCTURE
 
@@ -72,8 +49,8 @@ Treat as aspirational/stub unless user asks:
 ├── examples/           # self-contained .mos projects + committed PDF snapshots
 ├── justfile            # runner-backed fmt/examples/docs recipes
 ├── package.json        # Bun workspace + local formatter/runner tooling
-├── .cargo/config.toml  # cargo aliases: bw/cw/tw/dw/lint/mos
-├── .github/workflows/  # CI/docs/release on master and v* tags
+├── .cargo/             # cargo aliases + nightly doc config
+├── .github/            # CI/docs/release workflows + Pages action
 └── .opencode/          # Bun/TypeScript OpenCode helper tools
 ```
 
@@ -81,13 +58,9 @@ Treat as aspirational/stub unless user asks:
 
 | Task               | Location                              | Notes                                                       |
 | ------------------ | ------------------------------------- | ----------------------------------------------------------- |
-| Current status     | `README.md`                           | More accurate than manifest for shipped behavior.           |
-| Active planning    | GitHub Project 5                      | Milestones are phases; issues are concrete work records.    |
-| Roadmap status     | `manifest-tracker.md`                 | Public roadmap/status; keep aligned with code and README.   |
-| Product direction  | `manifest.md`                         | Design intent; many features not built.                     |
 | CLI behavior       | `crates/mos/src/main.rs`              | `check` and `build` real; other subcommands fail by design. |
 | Syntax             | `crates/mos-parse/src/lib.rs`         | CST, spans, recoverable parse diagnostics.                  |
-| Semantic lowering  | `crates/mos-eval/src/lib.rs`          | Directives, images, figures, metadata.                      |
+| Semantic lowering  | `crates/mos-eval/src/lib.rs`          | Directives, images, figures, metadata, citations.           |
 | References         | `crates/mos-eval/src/resolve.rs`      | Labels/refs, section/figure numbering.                      |
 | Bibliography eval  | `crates/mos-eval/src/bibliography.rs` | `#bibliography`, `.bib` loading, citation-key checks.       |
 | BibTeX parser      | `crates/mos-bib/src/`                 | Minimal records; no rendering/styling.                      |
@@ -103,21 +76,22 @@ Treat as aspirational/stub unless user asks:
 | Zed extension      | `crates/zed-mosaic/`                  | Excluded from workspace; copied query bundle.               |
 | Examples           | `examples/`                           | Snapshot PDFs regenerated by `just examples`.               |
 | Developer docs     | `docs/`                               | Design notes; do not overclaim shipped behavior.            |
-| CI/release         | `.github/workflows/`                  | CI path ignores, docs deploy, crates.io publish.            |
+| Cargo aliases      | `.cargo/config.toml`                  | `bw`/`bwa`/`cw`/`tw`/`lint`/`mos`/`mosls`.                  |
+| CI/release         | `.github/`                            | CI path ignores, Pages action, crates.io, binaries.         |
 | Agent tooling      | `.opencode/tools/`                    | GitHub Project 5 and PR helper tools.                       |
 
 ## CRATE FLOW
 
 - Core path: `mos-core -> mos-parse -> mos-eval -> mos-layout -> mos-pdf`; `mos` orchestrates.
 - Font path: `adobe-font-metrics -> pdf-base14-metrics -> mos-fonts -> mos-layout`.
-- Partial/integration-pending: `mos-html`, `mos-cache`, parts of `mos-packages`, most LSP features,
-  bibliography rendering, and the CSL processor. `mos-bib` parsing and `mos-csl` data/style parsing
-  are real shipped foundations.
+- Partial: `mos-html`, persistent cache wiring, `mos-packages`, bibliography-list rendering, CSL
+  processor. Numeric citation labels are real.
 - Editor side worlds: `tree-sitter-mosaic` syntax infrastructure; `zed-mosaic` excluded extension.
 
 ## CONVENTIONS
 
 - Rust stable, edition 2024, workspace/product MSRV 1.96, workspace resolver 3.
+- `CLAUDE.md` is a symlink; edit `AGENTS.md` only.
 - Workspace lints are strict. `unsafe_code = "forbid"`; CI uses `-D warnings -D clippy::all`.
 - Clippy set is curated. Do not enable whole pedantic/nursery/restriction groups.
 - Formatting runs through local `dprint`; TOML via `tombi`; Rust via `rustfmt`; `justfile` via
@@ -142,6 +116,8 @@ Treat as aspirational/stub unless user asks:
 - Do not assume `crates/zed-mosaic` participates in workspace Cargo commands.
 - Do not claim *bibliography-list* rendering is shipped: resolved `[@key]` markers now render
   numeric labels (`[1]`, ...), but the sorted bibliography entry list is not rendered yet.
+- Do not search or edit `crates/zed-mosaic/grammars/mosaic` as source; it is an ignored local clone
+  trap from Zed grammar setup.
 
 ## COMMANDS
 
@@ -150,6 +126,7 @@ cargo bw
 cargo cw
 cargo tw
 cargo lint
+cargo bwa
 cargo mos check examples/hello/main.mos
 cargo mos build examples/hello/main.mos
 cargo mosls
@@ -168,7 +145,6 @@ just doc-nightly
   bootstraps it.
 - `just examples` mutates committed snapshot PDFs via `runner mos build examples/*`.
 - `just sync-zed-queries` overwrites copied Zed query files from Tree-sitter query sources.
-- Base-14 unsupported codepoints can become `?`; embedded Noto path covers more Latin/Unicode.
-- Release hygiene: cut `CHANGELOG.md` into a version section before tagging, then create the signed
-  `v*` tag on that release commit. The crates.io workflow publishes the whole workspace in
-  dependency order; GitHub release notes should preserve the generated `What's Changed` section.
+- `crates/tree-sitter-mosaic/src/parser.c`, `src/grammar.json`, and `src/node-types.json` are
+  generated from `grammar.js` and scanner code.
+- Release: cut `CHANGELOG.md`, tag signed `v*` on work commit, preserve generated release notes.

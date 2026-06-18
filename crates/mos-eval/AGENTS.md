@@ -21,13 +21,13 @@ Implemented:
   declared bibliography sources.
 - Label index, duplicate label diagnostics, unknown reference diagnostics.
 - Section numbering; figure numbering with kind-aware `Figure N` references and stamped `Figure N:`
-  caption labels; generic reference text rewrite and citation placeholder text.
+  caption labels; generic reference text rewrite and numeric citation labels.
 
 Not implemented yet:
 
-- User functions, `#let`, scripting, templates, bibliography rendering, citation display numbering,
-  citation clusters, math/equation semantics, equation numbering, package resolution, full fixpoint
-  over layout/page references.
+- User functions, `#let`, scripting, templates, bibliography-list rendering, CSL citation
+  formatting, citation clusters, math/equation semantics, equation numbering, package resolution,
+  full fixpoint over layout/page references.
 
 ## WHERE TO LOOK
 
@@ -40,7 +40,7 @@ Not implemented yet:
 | Figures       | `lower_figure_directive`         | Image + caption semantic node.                                                                                                             |
 | References    | `src/resolve.rs`                 | Label index, section/figure numbering, figure-aware refs.                                                                                  |
 | Page refs     | `src/pageref.rs`                 | `@page(label)`: `resolve_page_references` + `resolve_page_reference_fixpoint` (injected layout); undeclared-label MOS0033 in `resolve.rs`. |
-| Bibliography  | `src/bibliography.rs`            | Source paths, `.bib` loading, citation-key diagnostics.                                                                                    |
+| Bibliography  | `src/bibliography.rs`            | Source paths, `.bib` loading, citation-key diagnostics, numeric labels.                                                                    |
 | Unit coercion | length helpers                   | `em` depends on current text size.                                                                                                         |
 
 ## CONVENTIONS

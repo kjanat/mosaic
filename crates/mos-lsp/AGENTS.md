@@ -2,23 +2,22 @@
 
 ## OVERVIEW
 
-`mos-lsp` is a thin stdio LSP server: it publishes compiler diagnostics and answers
-`textDocument/definition` for `@label` references and resolved `[@key]` citations. Tiny protocol
-cave around real compiler services
-
-- it re-shapes their output into LSP, never owns parse/lower/resolve policy.
+`mos-lsp` is a thin stdio LSP server. It reshapes compiler services into LSP responses; it never
+owns parse/lower/resolve policy.
 
 ## WHERE TO LOOK
 
-| Task              | Location             | Notes                                                   |
-| ----------------- | -------------------- | ------------------------------------------------------- |
-| Server loop       | `src/server.rs`      | JSON-RPC framing, state, request dispatch.              |
-| LSP diagnostics   | `src/diagnostics.rs` | Compiler diagnostic to LSP range conversion.            |
-| Go-to-definition  | `src/definition.rs`  | `@label` reference → declaration span; position↔byte.   |
-| Label rename      | `src/rename.rs`      | Label occurrences (decl token + refs) → WorkspaceEdit.  |
-| Lowering cache    | `src/cache.rs`       | Per-URI memo of `mos_eval::lower`; invalidated on edit. |
-| Binary entry      | `src/main.rs`        | Calls `mos_lsp::run()`.                                 |
-| Behavior contract | `README.md`          | Current supported messages and non-goals.               |
+| Task              | Location                 | Notes                                                   |
+| ----------------- | ------------------------ | ------------------------------------------------------- |
+| Server loop       | `src/server.rs`          | JSON-RPC framing, state, request dispatch.              |
+| LSP diagnostics   | `src/diagnostics.rs`     | Compiler diagnostic to LSP range conversion.            |
+| Go-to-definition  | `src/definition.rs`      | `@label` reference → declaration span; position↔byte.   |
+| Label rename      | `src/rename.rs`          | Label occurrences (decl token + refs) → WorkspaceEdit.  |
+| Code actions      | `src/code_action.rs`     | Compiler suggestions → LSP quick fixes.                 |
+| Document symbols  | `src/document_symbol.rs` | Heading tree → nested LSP symbols.                      |
+| Lowering cache    | `src/cache.rs`           | Per-URI memo of `mos_eval::lower`; invalidated on edit. |
+| Binary entry      | `src/main.rs`            | Calls `mos_lsp::run()`.                                 |
+| Behavior contract | `README.md`              | Current supported messages and non-goals.               |
 
 ## CURRENT SLICE
 
@@ -33,6 +32,8 @@ cave around real compiler services
 - Answers `textDocument/rename`: cursor on a label (declaration token or reference) →
   `WorkspaceEdit` rewriting the first declaration token + every reference identifier to `newName`;
   cursor off a label → `null`. Single-document, first-declaration-wins, no new-name validation.
+- Answers `textDocument/codeAction`: compiler suggestions become quick fixes where replacement spans
+  map into the current document.
 - Unknown requests return JSON-RPC `MethodNotFound`; unknown notifications drop.
 - Caches each open document's `mos-eval` lowering (`src/cache.rs`), shared by diagnostics and
   `textDocument/definition`: an edit lowers once (publish populates the cache, definition reuses
