@@ -35,25 +35,25 @@ backend. `mos-lsp` may consume current compiler phases, but should stay a thin p
 
 ## WHERE TO LOOK
 
-| Task                  | Crate                | Notes                                                          |
-| --------------------- | -------------------- | -------------------------------------------------------------- |
-| Document model/errors | `mos-core`           | Lowest Mosaic layer. No parse/layout/backend deps.             |
-| Source syntax         | `mos-parse`          | CST + spans only. No semantic lowering.                        |
-| Lower/resolve         | `mos-eval`           | Parse tree to `Document`; refs/images/figures/citations.       |
-| Text/font metrics     | `mos-fonts`          | Base-14 + bundled Noto Sans.                                   |
-| Page layout           | `mos-layout`         | Consumes `Document`; emits `PageGraph`.                        |
-| PDF output            | `mos-pdf`            | Consumes `PageGraph`; emits files/bytes.                       |
-| HTML output           | `mos-html`           | Stub backend; see crate guide before touching.                 |
-| CLI                   | `mos`                | Pipeline glue and user diagnostics.                            |
-| AFM parser            | `adobe-font-metrics` | Zero-dep parser below metrics crate.                           |
-| Core-14 metrics       | `pdf-base14-metrics` | Vendored data + build-generated table.                         |
-| Manifest schema       | `mos-packages`       | Parses `mosaic.toml`; no registry yet.                         |
-| Tree-sitter grammar   | `tree-sitter-mosaic` | Editor syntax and queries; separate from compiler.             |
-| Zed extension         | `zed-mosaic`         | Excluded from workspace; query copies and tasks.               |
-| Cache                 | `mos-cache`          | Trait/in-memory stub; no persistence yet; see crate guide.     |
-| LSP                   | `mos-lsp`            | Stdio diagnostic publisher; see crate guide for protocol edge. |
-| Bibliography          | `mos-bib`            | Minimal BibTeX parser + content hash; no rendering here.       |
-| CSL styling           | `mos-csl`            | CSL item model + BibTeX mapping + style parser; no processor.  |
+| Task                  | Crate                | Notes                                                         |
+| --------------------- | -------------------- | ------------------------------------------------------------- |
+| Document model/errors | `mos-core`           | Lowest Mosaic layer. No parse/layout/backend deps.            |
+| Source syntax         | `mos-parse`          | CST + spans only. No semantic lowering.                       |
+| Lower/resolve         | `mos-eval`           | Parse tree to `Document`; refs/images/figures/citations.      |
+| Text/font metrics     | `mos-fonts`          | Base-14 + bundled Noto Sans.                                  |
+| Page layout           | `mos-layout`         | Consumes `Document`; emits `PageGraph`.                       |
+| PDF output            | `mos-pdf`            | Consumes `PageGraph`; emits files/bytes.                      |
+| HTML output           | `mos-html`           | Stub backend; see crate guide before touching.                |
+| CLI                   | `mos`                | Pipeline glue and user diagnostics.                           |
+| AFM parser            | `adobe-font-metrics` | Zero-dep parser below metrics crate.                          |
+| Core-14 metrics       | `pdf-base14-metrics` | Vendored data + build-generated table.                        |
+| Manifest schema       | `mos-packages`       | Parses `mosaic.toml`; no registry yet.                        |
+| Tree-sitter grammar   | `tree-sitter-mosaic` | Editor syntax and queries; separate from compiler.            |
+| Zed extension         | `zed-mosaic`         | Excluded from workspace; query copies and tasks.              |
+| Cache                 | `mos-cache`          | Trait/in-memory stub; no persistence yet; see crate guide.    |
+| LSP                   | `mos-lsp`            | Diagnostics, definition, rename, symbols, code actions.       |
+| Bibliography          | `mos-bib`            | Minimal BibTeX parser + content hash; no rendering here.      |
+| CSL styling           | `mos-csl`            | CSL item model + BibTeX mapping + style parser; no processor. |
 
 ## BOUNDARY RULES
 

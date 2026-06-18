@@ -14,12 +14,14 @@ Implemented:
 - Greedy word wrapping and oversized-word character wrapping.
 - Unordered/ordered lists with hanging indents and nesting.
 - Images and simple figures with caption keep-together when possible.
+- Raw blocks with monospace flow, tab expansion, and original text preservation.
 - Page breaking and layout diagnostics for invalid config.
 
 Not implemented here yet:
 
 - Constraint graph, Knuth-Plass, hyphenation, float solver, tables, equations, footnotes.
-- Widow/orphan/keep-with-next constraints, TOC/page-ref fixpoint, incremental reflow/cache.
+- Widow/orphan/keep-with-next constraints, TOC generation, broad pagination stabilization,
+  incremental reflow/cache.
 
 ## WHERE TO LOOK
 
@@ -34,6 +36,7 @@ Not implemented here yet:
 | Images           | `layout_image`             | Sizing, page breaks, image placement.                                                     |
 | Figures          | `layout_figure`            | Dry-run measurement must match real flow.                                                 |
 | Lists            | `layout_list`              | Nesting, marker gutter, pending marker restore.                                           |
+| Raw blocks       | raw block layout helpers   | Monospace, tab expansion, hard line preservation.                                         |
 | Text flow        | `flow_words`, `flush_line` | Core wrapping and pagination behavior.                                                    |
 | Word/break items | `src/word.rs`              | `Word`, `WordItem`, `split_soft_hyphens`.                                                 |
 
