@@ -29,13 +29,11 @@ use mos_core::{
 };
 use mos_parse::{SetArg, SetValue};
 
-/// Lower a top-level `#bibliography("refs.bib")` directive into a single
-/// [`NodeKind::Bibliography`] node hanging off the document root. The
-/// literal path is recorded under `src`; the path resolved against the
-/// source file's directory is recorded under `resolved_path` so the
-/// later BibTeX reader can open the database without re-deriving the
-/// location.
-pub(super) fn lower_bibliography_directive(
+/// Lower `#bibliography("refs.bib")` into a bibliography node.
+///
+/// The literal path is recorded under `src`; the path resolved against the
+/// source file's directory is recorded under `resolved_path`.
+pub fn lower_bibliography_directive(
     document: &mut Document,
     root: NodeId,
     args: &[SetArg],
@@ -205,10 +203,10 @@ fn bibliography_path(
     Some(path)
 }
 
-/// Load every declared bibliography source, mark citation nodes whose keys
-/// exist in any parsed record set, and rewrite their visible text to a
-/// numeric label assigned by first-use order. Unknown citation keys emit
-/// `MOS0045` once per citation node and keep their `[?key?]` placeholder.
+/// Resolve citation keys against declared bibliography sources.
+///
+/// Known citations are rewritten to dense numeric labels assigned by first-use
+/// order. Unknown keys emit `MOS0045` and keep `[?key?]` placeholders.
 ///
 /// Numbering is dense over *known* citations: a key consumes a number only
 /// when it resolves, and repeated uses of the same key reuse its first
@@ -221,7 +219,7 @@ fn bibliography_path(
 /// tell an `@key` label reference that *misses* the label index but *matches*
 /// a bibliography key apart -- a near-certain "meant a citation" mistake --
 /// from a plain unknown label (see [`crate::resolve::resolve`]).
-pub(super) fn resolve_citations(
+pub fn resolve_citations(
     document: &mut Document,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> BTreeSet<String> {

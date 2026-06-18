@@ -81,7 +81,7 @@ const FNV_PRIME: u128 = 0x0000_0000_0100_0000_0000_0000_0000_013b;
 /// c.field(b"example/v1").u32(8).field(b"payload");
 /// assert_ne!(a.finish(), c.finish());
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct ContentHasher {
     state: u128,
 }
@@ -164,7 +164,7 @@ impl ContentHasher {
     /// assert_ne!(hash, ContentHash::default());
     /// ```
     #[must_use]
-    pub fn finish(&self) -> ContentHash {
+    pub const fn finish(&self) -> ContentHash {
         ContentHash(self.state)
     }
 

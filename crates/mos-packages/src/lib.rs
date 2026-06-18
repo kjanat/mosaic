@@ -4,8 +4,8 @@
 //! For now this crate only defines the manifest schema and parses it.
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
 
 use std::collections::BTreeMap;
@@ -145,6 +145,11 @@ pub enum ManifestError {
 
 impl ProjectManifest {
     /// Load and parse a `mosaic.toml` from disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestError::Io`] when the file cannot be read and
+    /// [`ManifestError::Parse`] when TOML decoding fails.
     ///
     /// # Examples
     ///

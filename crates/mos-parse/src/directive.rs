@@ -94,24 +94,7 @@ impl Parser<'_> {
                 span: self.span(line_start, after_label),
             });
             self.pos = after_label;
-            while self.pos < bytes.len() && (bytes[self.pos] == b' ' || bytes[self.pos] == b'\t') {
-                self.pos += 1;
-            }
-            if self.pos >= bytes.len() {
-            } else if bytes[self.pos] == b'\n' {
-                self.pos += 1;
-            } else if bytes[self.pos] == b'\r' && bytes.get(self.pos + 1) == Some(&b'\n') {
-                self.pos += 2;
-            } else {
-                self.diagnostics.push(
-                    Diagnostic::simple(
-                        &codes::MOS0019,
-                        None,
-                        format!("unexpected trailing content after raw `#{kw}` block"),
-                    )
-                    .with_span(self.span(self.pos, content_end)),
-                );
-            }
+            self.finish_raw_block_line(bytes, kw, content_end);
         } else {
             self.diagnostics.push(
                 Diagnostic::simple(
@@ -122,6 +105,27 @@ impl Parser<'_> {
                 .with_span(self.span(line_start, bytes.len())),
             );
             self.pos = bytes.len();
+        }
+    }
+
+    fn finish_raw_block_line(&mut self, bytes: &[u8], kw: &'static str, content_end: usize) {
+        while self.pos < bytes.len() && (bytes[self.pos] == b' ' || bytes[self.pos] == b'\t') {
+            self.pos += 1;
+        }
+        if self.pos >= bytes.len() {
+        } else if bytes[self.pos] == b'\n' {
+            self.pos += 1;
+        } else if bytes[self.pos] == b'\r' && bytes.get(self.pos + 1) == Some(&b'\n') {
+            self.pos += 2;
+        } else {
+            self.diagnostics.push(
+                Diagnostic::simple(
+                    &codes::MOS0019,
+                    None,
+                    format!("unexpected trailing content after raw `#{kw}` block"),
+                )
+                .with_span(self.span(self.pos, content_end)),
+            );
         }
     }
 

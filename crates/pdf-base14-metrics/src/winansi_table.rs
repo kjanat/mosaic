@@ -25,7 +25,7 @@
 // 256-entry table mapping each byte to its PostScript glyph name,
 // or `None` for unmapped slots (control characters 0x00..=0x1F and
 // the six WinAnsi gaps).
-pub(crate) const WINANSI_TABLE: [Option<&str>; 256] = [
+const WINANSI_TABLE: [Option<&str>; 256] = [
     // 0x00..=0x1F: C0 control characters: unmapped in PDF WinAnsi.
     None,
     None,

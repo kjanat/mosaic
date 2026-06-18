@@ -3,11 +3,12 @@ use mos_fonts::FontFamily;
 
 use crate::{PageStyle, TextStyle};
 
-/// Walk root children in source order and fold each `#set page(...)`
-/// and `#set text(...)` into a [`PageStyle`] / [`TextStyle`]. Later
-/// directives win (last-write-wins). `#set document(...)` is consumed
-/// by the lowerer for PDF metadata and ignored here.
-pub(crate) fn resolve_styles(document: &Document) -> (PageStyle, TextStyle, Vec<Diagnostic>) {
+/// Resolve page and text styles from root-level `#set` blocks.
+///
+/// Later directives win. `#set document(...)` is consumed by the lowerer for
+/// PDF metadata and ignored here.
+#[must_use]
+pub fn resolve_styles(document: &Document) -> (PageStyle, TextStyle, Vec<Diagnostic>) {
     let mut page = PageStyle::default();
     let mut text = TextStyle::default();
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
@@ -49,8 +50,8 @@ fn apply_page_set(
     let mut next = *page;
     if let Some(AttrValue::Str(name)) = node.attributes.get("set.arg.paper") {
         if let Some((w, h)) = paper_size_pt(name) {
-            next.width_pt = w;
-            next.height_pt = h;
+            next.width = w;
+            next.height = h;
         } else {
             diagnostics.push(
                 Diagnostic::simple(
@@ -65,28 +66,28 @@ fn apply_page_set(
         }
     }
     if let Some(AttrValue::Length(pt)) = node.attributes.get("set.arg.margin") {
-        next.margin_pt = pt_to_f32(*pt);
+        next.margin = pt_to_f32(*pt);
     }
     // Reject geometrically impossible margins.
-    if next.margin_pt < 0.0 || 2.0 * next.margin_pt >= next.width_pt {
+    if next.margin < 0.0 || 2.0 * next.margin >= next.width {
         diagnostics.push(reject(
             node,
             format!(
                 "page margin {:.2}pt is invalid for a {:.0}pt-wide page; previous value retained",
-                next.margin_pt, next.width_pt
+                next.margin, next.width
             ),
         ));
         return;
     }
     // Reject page changes that would make the carried text.size_pt
     // overflow the page's vertical margin gap.
-    let available_pt = next.height_pt - 2.0 * next.margin_pt;
+    let available_pt = 2.0f32.mul_add(-next.margin, next.height);
     if available_pt > 0.0 && text.size_pt > available_pt {
         diagnostics.push(reject(
             node,
             format!(
                 "page change to {:.0}×{:.0}pt leaves text size {:.2}pt too large for {:.2}pt of vertical space; previous page geometry retained",
-                next.width_pt, next.height_pt, text.size_pt, available_pt
+                next.width, next.height, text.size_pt, available_pt
             ),
         ));
         return;
@@ -136,13 +137,13 @@ fn apply_text_set(
     // gap; otherwise `flush_line` would page-break repeatedly into
     // the same off-page state. text.size_pt is a safe upper bound on
     // a line's ascent for our standard fonts (ascent < size).
-    let available_pt = page.height_pt - 2.0 * page.margin_pt;
+    let available_pt = 2.0f32.mul_add(-page.margin, page.height);
     if available_pt > 0.0 && next.size_pt > available_pt {
         diagnostics.push(reject(
             node,
             format!(
                 "text size {:.2}pt does not fit in {:.2}pt of vertical space on the {:.0}×{:.0}pt page; previous value retained",
-                next.size_pt, available_pt, page.width_pt, page.height_pt
+                next.size_pt, available_pt, page.width, page.height
             ),
         ));
         return;
@@ -157,16 +158,16 @@ fn reject(node: &Node, message: String) -> Diagnostic {
     Diagnostic::simple(&codes::MOS0023, None, message).with_span(node.span.clone())
 }
 
-/// Narrow an `f64` measurement (always a small positive page-pt or
-/// dimensionless leading multiplier) to `f32`. Values arriving here
-/// are bounded above by the largest ISO-216 size (~4000pt), so the
-/// cast cannot overflow and any lost precision sits well below a
-/// typographic point.
+/// Narrow a page/style measurement to `f32`.
+///
+/// Values arriving here are bounded to typographic ranges, so lost precision
+/// sits well below a point.
 #[allow(
     clippy::cast_possible_truncation,
     reason = "values bounded to typographic ranges; loss is sub-pt"
 )]
-pub(crate) fn pt_to_f32(v: f64) -> f32 {
+#[must_use]
+pub const fn pt_to_f32(v: f64) -> f32 {
     v as f32
 }
 
@@ -181,6 +182,7 @@ pub(crate) fn pt_to_f32(v: f64) -> f32 {
     clippy::cast_precision_loss,
     reason = "ISO 216 dimensions max out at ~4000mm, well inside f32's 23-bit mantissa"
 )]
+#[must_use]
 pub fn paper_size_pt(name: &str) -> Option<(f32, f32)> {
     let mm_to_pt = 72.0_f32 / 25.4_f32;
     if let Some(rest) = name.strip_prefix(['A', 'a'])
@@ -261,7 +263,7 @@ mod tests {
 
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let expected = 50.0_f32 * 72.0 / 25.4;
-        assert!((page.margin_pt - expected).abs() < 0.05);
+        assert!((page.margin - expected).abs() < 0.05);
     }
 
     #[test]
@@ -278,15 +280,11 @@ mod tests {
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let expected_w = 148.0_f32 * 72.0 / 25.4;
         let expected_h = 210.0_f32 * 72.0 / 25.4;
+        assert!((page.width - expected_w).abs() < 1.0, "w = {}", page.width);
         assert!(
-            (page.width_pt - expected_w).abs() < 1.0,
-            "w = {}",
-            page.width_pt
-        );
-        assert!(
-            (page.height_pt - expected_h).abs() < 1.0,
+            (page.height - expected_h).abs() < 1.0,
             "h = {}",
-            page.height_pt
+            page.height
         );
     }
 
@@ -313,7 +311,7 @@ mod tests {
                 .iter()
                 .any(|d| d.def().code() == codes::MOS0023.code())
         );
-        assert!((page.margin_pt - MARGIN_PT).abs() < 0.5);
+        assert!((page.margin - MARGIN_PT).abs() < 0.5);
     }
 
     #[test]
@@ -355,11 +353,7 @@ mod tests {
                 .any(|d| d.def().code() == codes::MOS0023.code()),
             "expected MOS0023 from paper shrink, got {diagnostics:?}"
         );
-        assert!(
-            (page.width_pt - 2383.94).abs() < 1.0,
-            "w = {}",
-            page.width_pt
-        );
+        assert!((page.width - 2383.94).abs() < 1.0, "w = {}", page.width);
     }
 
     #[test]
@@ -397,7 +391,7 @@ mod tests {
                     && d.message().contains("page change")),
             "expected MOS0023 about page change, got {diagnostics:?}"
         );
-        assert!((page.width_pt - A4_WIDTH_PT).abs() < 0.5);
+        assert!((page.width - A4_WIDTH_PT).abs() < 0.5);
         assert!((text.size_pt - 100.0).abs() < 0.01);
     }
 
@@ -415,7 +409,7 @@ mod tests {
                     && d.message().contains("vertical space")),
             "expected MOS0023 about vertical space, got {diagnostics:?}"
         );
-        assert_eq!(text.size_pt, crate::types::BODY_SIZE_PT);
+        assert!((text.size_pt - crate::types::BODY_SIZE_PT).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -467,7 +461,7 @@ mod tests {
                 .iter()
                 .any(|d| d.def().code() == codes::MOS0017.code())
         );
-        assert!((page.width_pt - A4_WIDTH_PT).abs() < 0.5);
+        assert!((page.width - A4_WIDTH_PT).abs() < 0.5);
     }
 
     #[test]

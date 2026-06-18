@@ -24,7 +24,7 @@ fn approx_eq(a: f32, b: f32) -> bool {
     (a - b).abs() < f32::EPSILON
 }
 
-fn is_static<T: 'static>(_: &T) {}
+const fn is_static<T: 'static>(_: &T) {}
 
 #[test]
 fn parses_helvetica() {

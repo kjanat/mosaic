@@ -325,8 +325,8 @@ pub(crate) fn encode_glyph_run(
     plan: &EmbeddedFontPlan,
     glyphs: &[ShapedGlyph],
     size_pt: f32,
-    origin_x_pt: f32,
-    origin_y_pt: f32,
+    baseline_left_pt: f32,
+    baseline_top_pt: f32,
 ) -> Vec<ContentOp> {
     let font = plan.id.data();
     let upem = f32::from(font.units_per_em);
@@ -336,12 +336,10 @@ pub(crate) fn encode_glyph_run(
     let mut normal_group_open = false;
 
     for (index, glyph) in glyphs.iter().enumerate() {
-        let cid = if let Some(cid) = plan.remapper.get(glyph.gid) {
-            cid
-        } else {
+        let cid = plan.remapper.get(glyph.gid).unwrap_or_else(|| {
             debug_assert!(false, "GID {} missing from subset remapper", glyph.gid);
             0
-        };
+        });
         let has_offset = glyph.x_offset_units != 0 || glyph.y_offset_units != 0;
         if has_offset {
             flush_cids(&mut pending, &mut ops);
@@ -351,8 +349,8 @@ pub(crate) fn encode_glyph_run(
                 0.0,
                 0.0,
                 1.0,
-                origin_x_pt + units_to_pt(offset_pen[0], size_pt, upem),
-                origin_y_pt + units_to_pt(offset_pen[1], size_pt, upem),
+                baseline_left_pt + units_to_pt(offset_pen[0], size_pt, upem),
+                baseline_top_pt + units_to_pt(offset_pen[1], size_pt, upem),
             ]));
             pending.push(cid);
             flush_cids(&mut pending, &mut ops);
@@ -367,8 +365,8 @@ pub(crate) fn encode_glyph_run(
                 0.0,
                 0.0,
                 1.0,
-                origin_x_pt + units_to_pt(pen_units, size_pt, upem),
-                origin_y_pt,
+                baseline_left_pt + units_to_pt(pen_units, size_pt, upem),
+                baseline_top_pt,
             ]));
             normal_group_open = true;
         }
@@ -418,6 +416,6 @@ fn units_to_text_adjust(units: i32, upem: f32) -> f32 {
     clippy::cast_precision_loss,
     reason = "PDF coordinates are f32; i32 font-unit positions must not be clamped before scaling"
 )]
-fn units_to_f32(units: i32) -> f32 {
+const fn units_to_f32(units: i32) -> f32 {
     units as f32
 }

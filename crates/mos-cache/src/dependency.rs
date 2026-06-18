@@ -163,6 +163,11 @@ impl ProjectPath {
     /// Canonicalize a project-relative path into a [`ProjectPath`]. Absolute
     /// paths must be relativized against the project root before calling this.
     ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectPathError`] when `path` is empty, absolute, or escapes
+    /// above the project root with `..`.
+    ///
     /// # Examples
     ///
     /// ```
@@ -277,6 +282,11 @@ pub enum DependencyId {
 impl DependencyId {
     /// A `.mos` source-file dependency.
     ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectPathError`] when `path` is not a valid project-relative
+    /// path.
+    ///
     /// # Examples
     ///
     /// ```
@@ -293,6 +303,11 @@ impl DependencyId {
 
     /// An asset dependency, such as an image.
     ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectPathError`] when `path` is not a valid project-relative
+    /// path.
+    ///
     /// # Examples
     ///
     /// ```
@@ -308,6 +323,11 @@ impl DependencyId {
     }
 
     /// A bibliography-input dependency, such as a `.bib` file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectPathError`] when `path` is not a valid project-relative
+    /// path.
     ///
     /// # Examples
     ///
@@ -451,6 +471,11 @@ impl BibliographyDependency {
     /// equal paths yield equal dependencies; an invalid path returns
     /// [`ProjectPathError`].
     ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectPathError`] when `path` is not a valid project-relative
+    /// path.
+    ///
     /// # Examples
     ///
     /// ```
@@ -547,7 +572,9 @@ impl BibliographyDependency {
     /// ```
     #[must_use]
     pub const fn kind(&self) -> DependencyKind {
-        DependencyKind::Bibliography
+        match self {
+            Self { .. } => DependencyKind::Bibliography,
+        }
     }
 }
 

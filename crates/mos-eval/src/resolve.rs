@@ -353,7 +353,7 @@ fn read_str_attr(document: &Document, id: mos_core::NodeId, key: &str) -> Option
 /// plumbing lands, a language-keyed lookup replaces the constant here
 /// without touching any call site. Sibling kinds (tables, equations,
 /// theorems) grow their own supplements alongside their numbering.
-fn figure_supplement() -> &'static str {
+const fn figure_supplement() -> &'static str {
     "Figure"
 }
 

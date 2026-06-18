@@ -88,7 +88,7 @@ impl CollectingSink {
 
     /// Whether any `Error`-severity diagnostic has been emitted so far.
     #[must_use]
-    pub fn had_error(&self) -> bool {
+    pub const fn had_error(&self) -> bool {
         self.had_error
     }
 

@@ -2,9 +2,9 @@ use crate::{
     EmbeddedFontId, Font, ShapedGlyph, advance_units_to_pt, normalize::nfc_text, shape, text_width,
 };
 
-/// Shape `text` against `font` and return both the glyph stream and
-/// the advance widths in user-space points. Callers that need only the
-/// width can use [`text_width`]; callers that will also emit glyphs
+/// Shape `text` against `font`.
+///
+/// Returns both glyph stream and advance width. Callers that will emit glyphs
 /// downstream should use this to avoid shaping twice.
 ///
 /// Input is normalized through [`crate::nfc_text`] before shaping, so
@@ -70,14 +70,11 @@ pub struct ShapedRun {
     pub advance_pt: f32,
 }
 
-/// One face's slice of a per-glyph-fallback shaping result. A word
-/// shaped through [`shape_with_fallback`] produces a `Vec<WordSubRun>`;
-/// each sub-run is self-contained: its `text` is the source UTF-8 slice
-/// covered by exactly this sub-run, its `glyphs`' `cluster` offsets are
-/// **rebased to the sub-run's local `text`** (so `plan_embedded` can
-/// build `/ToUnicode` without knowing about the parent word), and its
-/// `advance_pt` is the sum of per-glyph advances at the requested
-/// point size.
+/// One face's slice of a per-glyph-fallback shaping result.
+///
+/// Each sub-run is self-contained: its `text` is the covered source slice,
+/// cluster offsets are rebased to local text, and `advance_pt` is the sum of
+/// per-glyph advances at the requested point size.
 ///
 /// Caller emits **one PDF `TextRun` per `WordSubRun`**: same
 /// baseline, x-cursor advances by `advance_pt` between sub-runs: and
@@ -118,13 +115,10 @@ pub struct WordSubRun {
     pub advance_pt: f32,
 }
 
-/// Shape `text` against `primary` with per-glyph fallback. Walks each
-/// HarfBuzz cluster in the primary's shaped output; clusters that
-/// contain any `.notdef` (GID 0) glyph are re-shaped against each
-/// embedded face in `fallbacks` in order. The first fallback to produce a
-/// glyph stream with no `.notdef` wins the whole cluster (cluster-
-/// granular replacement, never partial: partial replacement would
-/// duplicate bases, drop marks, break ligatures).
+/// Shape `text` against `primary` with per-glyph fallback.
+///
+/// Clusters containing `.notdef` are re-shaped against each fallback face. The
+/// first fallback with no `.notdef` wins the whole cluster.
 ///
 /// Returns one [`WordSubRun`] per contiguous source span that shares
 /// a face. Each sub-run's `glyphs` `cluster` offsets are rebased to

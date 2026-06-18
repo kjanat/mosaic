@@ -33,7 +33,7 @@
 // standards, not a reproduction of the AGL data file.
 
 // (char, AFM glyph name). Sorted by `char` for binary search.
-pub(crate) const AGL_SUBSET: &[(char, &str)] = &[
+const AGL_SUBSET: &[(char, &str)] = &[
     // Latin Extended-A
     ('\u{0100}', "Amacron"),
     ('\u{0101}', "amacron"),
@@ -148,13 +148,12 @@ pub(crate) const AGL_SUBSET: &[(char, &str)] = &[
     ('\u{FB02}', "fl"),
 ];
 
-/// Returns the PostScript glyph name for `ch` if it is one of the
-/// non-`WinAnsi` glyphs known to live in every Core 14 Latin AFM
-/// (Latin Extended-A, common Latin Extended-B, math operators, spacing
-/// diacritics, `fi`/`fl` ligatures). Returns `None` for `WinAnsi`
-/// natives (use `winansi_byte` for those) and for codepoints with no
-/// glyph in any Core 14 font (Cyrillic, CJK, emoji, ...).
-pub(crate) fn agl_glyph_name(ch: char) -> Option<&'static str> {
+/// Return the non-`WinAnsi` Core 14 glyph name for `ch`.
+///
+/// Returns `None` for `WinAnsi` natives and for codepoints with no glyph in any
+/// Core 14 font.
+#[must_use]
+pub fn agl_glyph_name(ch: char) -> Option<&'static str> {
     AGL_SUBSET
         .binary_search_by_key(&ch, |&(c, _)| c)
         .ok()

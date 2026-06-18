@@ -21,7 +21,7 @@ use mos_core::{Diagnostic, DiagnosticAnnotation, SourceSpan, codes};
 /// One decoded raster image, ready to be lowered onto a
 /// [`mos_core::NodeKind::Image`] node.
 #[derive(Debug, Clone)]
-pub(crate) struct DecodedImage {
+pub struct DecodedRaster {
     /// Decoded width in pixels.
     pub width: u32,
     /// Decoded height in pixels.
@@ -38,11 +38,11 @@ pub(crate) struct DecodedImage {
 /// Returns `Err(Diagnostic)` on I/O or decode failure; the resolver
 /// surfaces these to the user without aborting the rest of the
 /// document so a broken `#image(...)` still produces a partial PDF.
-pub(crate) fn load(
+pub fn load(
     src_path: &str,
     source_file: &Path,
     call_span: &SourceSpan,
-) -> Result<(PathBuf, DecodedImage), Box<Diagnostic>> {
+) -> Result<(PathBuf, DecodedRaster), Box<Diagnostic>> {
     let resolved = mos_core::resolve_source_path(src_path, source_file).map_err(|err| {
         Box::new(
             Diagnostic::simple(
@@ -89,7 +89,7 @@ pub(crate) fn load(
     clippy::many_single_char_names,
     reason = "r/g/b/a are conventional pixel channel names"
 )]
-fn decode(bytes: &[u8]) -> Result<DecodedImage, String> {
+fn decode(bytes: &[u8]) -> Result<DecodedRaster, String> {
     // `image::load_from_memory` picks the format from the magic bytes;
     // we leave format detection to it so PNG-with-.jpg-extension still
     // works. The `default-features = false` build only links the PNG
@@ -104,25 +104,25 @@ fn decode(bytes: &[u8]) -> Result<DecodedImage, String> {
     // page background. Fully transparent pixels render as pure white,
     // which is the conventional default for figure backgrounds.
     let pixel_count = pixels.len() / 4;
-    let mut rgb8 = Vec::with_capacity(pixel_count * 3);
+    let mut rgb_pixels = Vec::with_capacity(pixel_count * 3);
     for chunk in pixels.chunks_exact(4) {
         let [r, g, b, a] = [chunk[0], chunk[1], chunk[2], chunk[3]];
         if a == 255 {
-            rgb8.push(r);
-            rgb8.push(g);
-            rgb8.push(b);
+            rgb_pixels.push(r);
+            rgb_pixels.push(g);
+            rgb_pixels.push(b);
         } else if a == 0 {
-            rgb8.extend_from_slice(&[255, 255, 255]);
+            rgb_pixels.extend_from_slice(&[255, 255, 255]);
         } else {
-            rgb8.push(composite(r, a));
-            rgb8.push(composite(g, a));
-            rgb8.push(composite(b, a));
+            rgb_pixels.push(composite(r, a));
+            rgb_pixels.push(composite(g, a));
+            rgb_pixels.push(composite(b, a));
         }
     }
-    Ok(DecodedImage {
+    Ok(DecodedRaster {
         width: w,
         height: h,
-        rgb8,
+        rgb8: rgb_pixels,
     })
 }
 

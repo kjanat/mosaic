@@ -91,9 +91,8 @@ pub enum NodeKind {
     /// A bullet or numbered list. The `ordered` attribute distinguishes
     /// the two kinds and child nodes are [`NodeKind::ListItem`]s.
     List,
-    /// One entry inside a [`NodeKind::List`]. Inline children carry the
-    /// item's text; nested [`NodeKind::List`] children describe deeper
-    /// levels.
+    /// One entry inside a [`NodeKind::List`]. Paragraph children carry item
+    /// text; nested [`NodeKind::List`] children describe deeper levels.
     ListItem,
     /// `\\`: a forced line break inside a paragraph. Carries no
     /// attributes; layout consumes it as a `WordItem::HardBreak`
@@ -158,11 +157,11 @@ impl Node {
     }
 }
 
-/// The blueprint for a node handed to [`Document::alloc`] /
-/// [`Document::alloc_child`]. Carries only the fields a caller legitimately
-/// chooses: `kind`, `span`, and `attributes`. The arena supplies the
-/// `id`, the empty `children` list, and the `content_hash`/`style_id`
-/// placeholders, so an invalid node is unrepresentable at the call site.
+/// Blueprint for allocating a node in the document arena.
+///
+/// Carries only caller-chosen fields: `kind`, `span`, and `attributes`.
+/// The arena supplies the `id`, empty `children`, and identity/style
+/// placeholders.
 #[derive(Clone, Debug)]
 pub struct NodeSpec {
     pub kind: NodeKind,
@@ -173,7 +172,7 @@ pub struct NodeSpec {
 impl NodeSpec {
     /// A spec for a node of `kind` spanning `span`, with no attributes.
     #[must_use]
-    pub fn new(kind: NodeKind, span: SourceSpan) -> Self {
+    pub const fn new(kind: NodeKind, span: SourceSpan) -> Self {
         Self {
             kind,
             span,

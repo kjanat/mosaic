@@ -53,11 +53,10 @@ pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
     }
 }
 
-/// Convert a font-unit advance to PDF user-space points at `size_pt`,
-/// given the face's units-per-em. Values are carried as `i32` because
-/// shapers use signed advances, but current embedded output normalizes
-/// to PDF-emittable `hmtx` advances in `0..=65535`. Preserve sign here
-/// anyway so future positioned shaping cannot turn a negative adjustment
+/// Convert a font-unit advance to PDF user-space points.
+///
+/// Values are carried as `i32` because shapers use signed advances. Preserve
+/// sign here so future positioned shaping cannot turn a negative adjustment
 /// into a huge positive width.
 ///
 /// # Examples
@@ -68,6 +67,7 @@ pub fn text_width(font: Font, size: f32, text: &str) -> f32 {
 /// assert_eq!(advance_units_to_pt(500, 12.0, 1000.0), 6.0);
 /// assert_eq!(advance_units_to_pt(-500, 12.0, 1000.0), -6.0);
 /// ```
+#[must_use]
 pub fn advance_units_to_pt(advance_units: i32, size_pt: f32, upem: f32) -> f32 {
     let magnitude = u16::try_from(advance_units.unsigned_abs()).unwrap_or(u16::MAX);
     let advance = f32::from(magnitude);
@@ -78,10 +78,9 @@ pub fn advance_units_to_pt(advance_units: i32, size_pt: f32, upem: f32) -> f32 {
     }
 }
 
-/// Width of a single glyph in `font` at `size` points. For Base14
-/// faces this is one AFM lookup; for embedded faces it shapes the
-/// single character. Used by the paragraph engine for character-wise
-/// hyphenation of oversized words.
+/// Width of a single glyph in `font` at `size` points.
+///
+/// Base14 faces use one AFM lookup; embedded faces shape the single character.
 ///
 /// # Examples
 ///
@@ -193,7 +192,7 @@ mod tests {
     fn courier_is_monospace() {
         let a = text_width(COURIER, 12.0, "a");
         let m = text_width(COURIER, 12.0, "M");
-        assert_eq!(a, m);
+        assert!((a - m).abs() < f32::EPSILON);
     }
 
     #[test]

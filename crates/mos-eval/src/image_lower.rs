@@ -11,11 +11,11 @@ use mos_parse::{SetArg, SetValue};
 
 use crate::{image, insert_label_attributes, set::coerce_positive_length};
 
-/// Lower a top-level `#image(...)` directive into a single
-/// [`NodeKind::Image`] node hanging off the document root. The decoded
-/// pixel buffer and pixel dimensions are stashed in attributes so the
-/// layout engine and PDF backend don't have to re-open the source file.
-pub(super) fn lower_image_directive(
+/// Lower `#image(...)` into one [`NodeKind::Image`] node.
+///
+/// Decoded pixels and dimensions are stored in node attributes so later stages
+/// do not re-open the source file.
+pub fn lower_image_directive(
     document: &mut Document,
     root: NodeId,
     args: &[SetArg],
@@ -35,11 +35,10 @@ pub(super) fn lower_image_directive(
     );
 }
 
-/// Lower a `#figure(image: ..., caption: ...)` directive into a
-/// [`NodeKind::Figure`] node with two children: an Image node (built
-/// the same way `#image(...)` would build it) and a caption paragraph.
-/// The caption is rendered beneath the image by the layout engine.
-pub(super) fn lower_figure_directive(
+/// Lower `#figure(image: ..., caption: ...)` into a figure node.
+///
+/// The figure gets an image child and a caption paragraph child.
+pub fn lower_figure_directive(
     document: &mut Document,
     root: NodeId,
     args: &[SetArg],
@@ -48,122 +47,29 @@ pub(super) fn lower_figure_directive(
     em_pt: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    // Pluck the image-specifying args (`image:` path, optional
-    // `width`/`height`/`alt`) into a synthetic SetArg list so the
-    // existing builder can reuse them. A leading positional string
-    // (the `SetArg::Positional` arm below) is also accepted as the
-    // image path -- `#figure("x.png")` is the captionless short form,
-    // equivalent to `#figure(image: "x.png")`.
-    let mut image_args: Vec<SetArg> = Vec::new();
-    let mut caption: Option<(String, SourceSpan)> = None;
-    let mut figure_label: Option<(String, SourceSpan)> = None;
-    // Numbering controls (issue #76). `numbered: false` opts a figure out
-    // of the auto `Figure N` counter; `supplement: "Plate"` swaps the
-    // supplement word. Both default to the standard numbered `#figure`.
-    let mut numbered: Option<bool> = None;
-    let mut supplement: Option<String> = None;
-    for arg in args {
-        match arg {
-            // A leading positional string is the same shorthand
-            // `#image(...)` accepts -- `#figure("scan.png")` is the
-            // captioned-image short form, equivalent to
-            // `#figure(image: "scan.png")`.
-            SetArg::Positional { .. } => image_args.push(arg.clone()),
-            SetArg::Named {
-                key,
-                value,
-                key_span,
-                value_span,
-            } => match key.as_str() {
-                "image" => {
-                    // Rewrite the named `image:` arg as the positional
-                    // slot `build_image_attributes` expects.
-                    image_args.push(SetArg::Positional {
-                        value: value.clone(),
-                        value_span: value_span.clone(),
-                    });
-                }
-                "width" | "height" | "alt" => {
-                    image_args.push(arg.clone());
-                }
-                "caption" => match value {
-                    SetValue::Str(s) => {
-                        caption = Some((s.clone(), value_span.clone()));
-                    }
-                    _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0020, None,
-                            "`#figure(caption: ...)` expects a string",
-                        )
-                        .with_span(value_span.clone()),
-                    ),
-                },
-                "label" => match value {
-                    SetValue::Str(s) => {
-                        figure_label = Some((s.clone(), string_content_span(value_span)));
-                    }
-                    _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0020, None,
-                            "`#figure(label: ...)` expects a string",
-                        )
-                        .with_span(value_span.clone()),
-                    ),
-                },
-                // `numbered: false` skips the auto `Figure N` counter for
-                // this figure; `true` is the default. The value is a bare
-                // ident (`SetValue::Ident`), not a string.
-                "numbered" => match value {
-                    SetValue::Ident(word) if word == "true" => numbered = Some(true),
-                    SetValue::Ident(word) if word == "false" => numbered = Some(false),
-                    _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0020, None,
-                            "`#figure(numbered: ...)` expects `true` or `false`",
-                        )
-                        .with_span(value_span.clone()),
-                    ),
-                },
-                // `supplement: "Plate"` replaces the "Figure" supplement
-                // word in both the caption and references to this figure.
-                // `supplement: ""` or `supplement: none` drops the word
-                // entirely, rendering the number alone ("no visible prefix").
-                "supplement" => match value {
-                    SetValue::Str(s) => supplement = Some(s.clone()),
-                    SetValue::Ident(word) if word == "none" => supplement = Some(String::new()),
-                    _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0020, None,
-                            "`#figure(supplement: ...)` expects a string or `none`",
-                        )
-                        .with_span(value_span.clone()),
-                    ),
-                },
-                _ => diagnostics.push(
-                    Diagnostic::simple(&codes::MOS0015, None,
-                        format!(
-                            "unknown argument `{key}` for `#figure` (valid: image, caption, alt, width, height, label, numbered, supplement)"
-                        ),
-                    )
-                    .with_span(key_span.clone()),
-                ),
-            },
-        }
-    }
+    let figure_args = collect_figure_args(args, diagnostics);
 
     // Build the image attributes before allocating the Figure node.
     // Failed image load should not leave a phantom caption-only figure.
-    let Some((image_attrs, _label)) =
-        build_image_attributes(&image_args, span, source_file, em_pt, diagnostics)
-    else {
+    let Some((image_attrs, _label)) = build_image_attributes(
+        &figure_args.image_args,
+        span,
+        source_file,
+        em_pt,
+        diagnostics,
+    ) else {
         return;
     };
 
     let mut figure_attrs: AttrMap = BTreeMap::new();
-    if let Some((label, label_span)) = figure_label {
+    if let Some((label, label_span)) = figure_args.label {
         insert_label_attributes(&mut figure_attrs, &label, Some(&label_span));
     }
     // Only the non-default opt-out is recorded; absence means "numbered".
-    if numbered == Some(false) {
+    if figure_args.numbered == Some(false) {
         figure_attrs.insert("numbered".to_owned(), AttrValue::Bool(false));
     }
-    if let Some(supp) = supplement {
+    if let Some(supp) = figure_args.supplement {
         figure_attrs.insert("supplement".to_owned(), AttrValue::Str(supp));
     }
     let figure_id = document.alloc_child(
@@ -174,25 +80,141 @@ pub(super) fn lower_figure_directive(
         figure_id,
         NodeSpec::new(NodeKind::Image, span.clone()).with_attributes(image_attrs),
     );
-    if let Some((text, caption_span)) = caption {
-        let caption_id = document.alloc_child(
-            figure_id,
-            NodeSpec::new(NodeKind::Paragraph, caption_span.clone()).with_attributes({
-                let mut a = AttrMap::new();
-                // Tag the caption so the layout engine can give it
-                // distinct styling later. For now it renders as a
-                // plain paragraph beneath the image.
-                a.insert("role".to_owned(), AttrValue::Str("caption".to_owned()));
-                a
-            }),
-        );
-        let mut child_attrs = AttrMap::new();
-        child_attrs.insert("text".to_owned(), AttrValue::Str(text));
-        document.alloc_child(
-            caption_id,
-            NodeSpec::new(NodeKind::Text, caption_span).with_attributes(child_attrs),
-        );
+    if let Some(caption) = figure_args.caption {
+        append_caption(document, figure_id, caption);
     }
+}
+
+struct FigureDirectiveArgs {
+    image_args: Vec<SetArg>,
+    caption: Option<(String, SourceSpan)>,
+    label: Option<(String, SourceSpan)>,
+    numbered: Option<bool>,
+    supplement: Option<String>,
+}
+
+fn collect_figure_args(args: &[SetArg], diagnostics: &mut Vec<Diagnostic>) -> FigureDirectiveArgs {
+    let mut collected = FigureDirectiveArgs {
+        image_args: Vec::new(),
+        caption: None,
+        label: None,
+        numbered: None,
+        supplement: None,
+    };
+    for arg in args {
+        collect_one_figure_arg(arg, &mut collected, diagnostics);
+    }
+    collected
+}
+
+fn collect_one_figure_arg(
+    arg: &SetArg,
+    collected: &mut FigureDirectiveArgs,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match arg {
+        SetArg::Positional { .. } => collected.image_args.push(arg.clone()),
+        SetArg::Named {
+            key,
+            value,
+            key_span,
+            value_span,
+        } => match key.as_str() {
+            "image" => collected.image_args.push(SetArg::Positional {
+                value: value.clone(),
+                value_span: value_span.clone(),
+            }),
+            "width" | "height" | "alt" => collected.image_args.push(arg.clone()),
+            "caption" => collect_string_arg(
+                value,
+                value_span,
+                "`#figure(caption: ...)` expects a string",
+                &mut collected.caption,
+                diagnostics,
+            ),
+            "label" => match value {
+                SetValue::Str(s) => {
+                    collected.label = Some((s.clone(), string_content_span(value_span)));
+                }
+                _ => type_error(value_span, "`#figure(label: ...)` expects a string", diagnostics),
+            },
+            "numbered" => collect_numbered(value, value_span, collected, diagnostics),
+            "supplement" => collect_supplement(value, value_span, collected, diagnostics),
+            _ => diagnostics.push(
+                Diagnostic::simple(&codes::MOS0015, None,
+                    format!(
+                        "unknown argument `{key}` for `#figure` (valid: image, caption, alt, width, height, label, numbered, supplement)"
+                    ),
+                )
+                .with_span(key_span.clone()),
+            ),
+        },
+    }
+}
+
+fn collect_string_arg(
+    value: &SetValue,
+    value_span: &SourceSpan,
+    message: &'static str,
+    target: &mut Option<(String, SourceSpan)>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match value {
+        SetValue::Str(s) => *target = Some((s.clone(), value_span.clone())),
+        _ => type_error(value_span, message, diagnostics),
+    }
+}
+
+fn collect_numbered(
+    value: &SetValue,
+    value_span: &SourceSpan,
+    collected: &mut FigureDirectiveArgs,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match value {
+        SetValue::Ident(word) if word == "true" => collected.numbered = Some(true),
+        SetValue::Ident(word) if word == "false" => collected.numbered = Some(false),
+        _ => type_error(
+            value_span,
+            "`#figure(numbered: ...)` expects `true` or `false`",
+            diagnostics,
+        ),
+    }
+}
+
+fn collect_supplement(
+    value: &SetValue,
+    value_span: &SourceSpan,
+    collected: &mut FigureDirectiveArgs,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match value {
+        SetValue::Str(s) => collected.supplement = Some(s.clone()),
+        SetValue::Ident(word) if word == "none" => collected.supplement = Some(String::new()),
+        _ => type_error(
+            value_span,
+            "`#figure(supplement: ...)` expects a string or `none`",
+            diagnostics,
+        ),
+    }
+}
+
+fn append_caption(document: &mut Document, figure_id: NodeId, caption: (String, SourceSpan)) {
+    let (text, caption_span) = caption;
+    let caption_id = document.alloc_child(
+        figure_id,
+        NodeSpec::new(NodeKind::Paragraph, caption_span.clone()).with_attributes({
+            let mut attrs = AttrMap::new();
+            attrs.insert("role".to_owned(), AttrValue::Str("caption".to_owned()));
+            attrs
+        }),
+    );
+    let mut child_attrs = AttrMap::new();
+    child_attrs.insert("text".to_owned(), AttrValue::Str(text));
+    document.alloc_child(
+        caption_id,
+        NodeSpec::new(NodeKind::Text, caption_span).with_attributes(child_attrs),
+    );
 }
 
 /// Walk a directive's argument list and produce the attribute map for
@@ -207,82 +229,8 @@ fn build_image_attributes(
     em_pt: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<(AttrMap, Option<String>)> {
-    let mut src_path: Option<(String, SourceSpan)> = None;
-    let mut alt: Option<String> = None;
-    let mut declared_width: Option<f64> = None;
-    let mut declared_height: Option<f64> = None;
-    let mut label: Option<(String, SourceSpan)> = None;
-    for arg in args {
-        match arg {
-            // Positional first arg -- the path literal.
-            SetArg::Positional { value, value_span } => match value {
-                SetValue::Str(s) => src_path = Some((s.clone(), value_span.clone())),
-                _ => diagnostics.push(
-                    Diagnostic::simple(&codes::MOS0020, None,
-                        "`#image(...)` expects a string path",
-                    )
-                    .with_span(value_span.clone()),
-                ),
-            },
-            SetArg::Named {
-                key,
-                value,
-                key_span,
-                value_span,
-            } => match key.as_str() {
-                "src" | "path" => match value {
-                    SetValue::Str(s) => src_path = Some((s.clone(), value_span.clone())),
-                    _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0020, None,
-                            "`#image(...)` expects a string path",
-                        )
-                        .with_span(value_span.clone()),
-                    ),
-                },
-                "alt" => match value {
-                    SetValue::Str(s) => alt = Some(s.clone()),
-                    _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0020, None,
-                            "`#image(alt: ...)` expects a string",
-                        )
-                        .with_span(value_span.clone()),
-                    ),
-                },
-                "width" => {
-                    if let Some(v) =
-                        coerce_positive_length(value, em_pt, "width", value_span, diagnostics)
-                    {
-                        declared_width = Some(v);
-                    }
-                }
-                "height" => {
-                    if let Some(v) =
-                        coerce_positive_length(value, em_pt, "height", value_span, diagnostics)
-                    {
-                        declared_height = Some(v);
-                    }
-                }
-                "label" => match value {
-                    SetValue::Str(s) => label = Some((s.clone(), string_content_span(value_span))),
-                    _ => diagnostics.push(
-                        Diagnostic::simple(&codes::MOS0020, None,
-                            "`#image(label: ...)` expects a string",
-                        )
-                        .with_span(value_span.clone()),
-                    ),
-                },
-                _ => diagnostics.push(
-                    Diagnostic::simple(&codes::MOS0015, None,
-                        format!(
-                            "unknown argument `{key}` for `#image` (valid: src/path, alt, width, height, label)"
-                        ),
-                    )
-                    .with_span(key_span.clone()),
-                ),
-            },
-        }
-    }
-    let Some((path, _path_span)) = src_path else {
+    let image_args = collect_image_args(args, em_pt, diagnostics);
+    let Some((path, _path_span)) = image_args.src_path else {
         diagnostics.push(
             Diagnostic::simple(
                 &codes::MOS0037,
@@ -321,16 +269,16 @@ fn build_image_attributes(
         "resolved_path".to_owned(),
         AttrValue::Str(resolved.to_string_lossy().into_owned()),
     );
-    if let Some(a) = alt {
+    if let Some(a) = image_args.alt {
         attrs.insert("alt".to_owned(), AttrValue::Str(a));
     }
-    if let Some(w) = declared_width {
+    if let Some(w) = image_args.declared_width {
         attrs.insert("width".to_owned(), AttrValue::Length(w));
     }
-    if let Some(h) = declared_height {
+    if let Some(h) = image_args.declared_height {
         attrs.insert("height".to_owned(), AttrValue::Length(h));
     }
-    if let Some((label_text, label_span)) = &label {
+    if let Some((label_text, label_span)) = &image_args.label {
         insert_label_attributes(&mut attrs, label_text, Some(label_span));
     }
     attrs.insert(
@@ -350,7 +298,123 @@ fn build_image_attributes(
         "pixels".to_owned(),
         AttrValue::Bytes(Arc::from(decoded.rgb8)),
     );
-    Some((attrs, label.map(|(text, _)| text)))
+    Some((attrs, image_args.label.map(|(text, _)| text)))
+}
+
+struct ImageDirectiveArgs {
+    src_path: Option<(String, SourceSpan)>,
+    alt: Option<String>,
+    declared_width: Option<f64>,
+    declared_height: Option<f64>,
+    label: Option<(String, SourceSpan)>,
+}
+
+fn collect_image_args(
+    args: &[SetArg],
+    em_pt: f64,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> ImageDirectiveArgs {
+    let mut collected = ImageDirectiveArgs {
+        src_path: None,
+        alt: None,
+        declared_width: None,
+        declared_height: None,
+        label: None,
+    };
+    for arg in args {
+        collect_one_image_arg(arg, em_pt, &mut collected, diagnostics);
+    }
+    collected
+}
+
+fn collect_one_image_arg(
+    arg: &SetArg,
+    em_pt: f64,
+    collected: &mut ImageDirectiveArgs,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match arg {
+        SetArg::Positional { value, value_span } => collect_image_path(
+            value,
+            value_span,
+            &mut collected.src_path,
+            diagnostics,
+        ),
+        SetArg::Named {
+            key,
+            value,
+            key_span,
+            value_span,
+        } => match key.as_str() {
+            "src" | "path" => collect_image_path(
+                value,
+                value_span,
+                &mut collected.src_path,
+                diagnostics,
+            ),
+            "alt" => match value {
+                SetValue::Str(s) => collected.alt = Some(s.clone()),
+                _ => type_error(value_span, "`#image(alt: ...)` expects a string", diagnostics),
+            },
+            "width" => {
+                if let Some(width) = coerce_positive_length(
+                    value,
+                    em_pt,
+                    "width",
+                    value_span,
+                    diagnostics,
+                ) {
+                    collected.declared_width = Some(width);
+                }
+            }
+            "height" => {
+                if let Some(height) = coerce_positive_length(
+                    value,
+                    em_pt,
+                    "height",
+                    value_span,
+                    diagnostics,
+                ) {
+                    collected.declared_height = Some(height);
+                }
+            }
+            "label" => match value {
+                SetValue::Str(s) => {
+                    collected.label = Some((s.clone(), string_content_span(value_span)));
+                }
+                _ => type_error(value_span, "`#image(label: ...)` expects a string", diagnostics),
+            },
+            _ => diagnostics.push(
+                Diagnostic::simple(&codes::MOS0015, None,
+                    format!(
+                        "unknown argument `{key}` for `#image` (valid: src/path, alt, width, height, label)"
+                    ),
+                )
+                .with_span(key_span.clone()),
+            ),
+        },
+    }
+}
+
+fn collect_image_path(
+    value: &SetValue,
+    value_span: &SourceSpan,
+    target: &mut Option<(String, SourceSpan)>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match value {
+        SetValue::Str(s) => *target = Some((s.clone(), value_span.clone())),
+        _ => type_error(
+            value_span,
+            "`#image(...)` expects a string path",
+            diagnostics,
+        ),
+    }
+}
+
+fn type_error(value_span: &SourceSpan, message: &'static str, diagnostics: &mut Vec<Diagnostic>) {
+    diagnostics
+        .push(Diagnostic::simple(&codes::MOS0020, None, message).with_span(value_span.clone()));
 }
 
 fn string_content_span(value_span: &SourceSpan) -> SourceSpan {

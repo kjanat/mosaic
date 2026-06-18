@@ -43,7 +43,7 @@
 //! two layouts that reach the same length through slightly different arithmetic
 //! agree. The design note specifies an `i32` count of 1/64 pt; we snap to the
 //! same grid and fold the canonical bit pattern of the integral count instead
-//! (see [`quantize_units`]), which is equivalent for hashing and avoids a
+//! (see `quantize_units`), which is equivalent for hashing and avoids a
 //! lint-denied float-to-int cast. The §9.5 quantization newtype can later adopt
 //! the `i32` form without changing this boundary's observable behavior.
 
@@ -62,7 +62,7 @@ const PAGE_DOMAIN: &[u8] = b"mos-layout/page-boundary/v1";
 /// returned tag is owned by this boundary and stable forever; the exhaustive
 /// match means a new bundled face fails to compile here until it is assigned a
 /// tag, so the identity can never silently alias.
-fn font_identity(font: Font) -> &'static [u8] {
+const fn font_identity(font: Font) -> &'static [u8] {
     match font {
         Font::Base14(Base14Font::Helvetica) => b"b14/helvetica",
         Font::Base14(Base14Font::HelveticaBold) => b"b14/helvetica-bold",
@@ -182,6 +182,23 @@ pub struct PageBoundarySignature(ContentHash);
 
 impl PageBoundarySignature {
     /// Compute the boundary signature of one laid-out page.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::Document;
+    /// use mos_layout::{LayoutEngine, PageBoundarySignature};
+    ///
+    /// let doc = Document::new(PathBuf::from("doc.mos"));
+    /// let result = LayoutEngine::new().layout(&doc);
+    /// let first_page = &result.graph.pages[0];
+    /// assert_eq!(
+    ///     PageBoundarySignature::of_page(first_page),
+    ///     PageBoundarySignature::of_page(first_page),
+    /// );
+    /// ```
     #[must_use]
     pub fn of_page(page: &Page) -> Self {
         let mut hasher = ContentHasher::new();
@@ -202,6 +219,20 @@ impl PageBoundarySignature {
     }
 
     /// The underlying content hash.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::Document;
+    /// use mos_layout::{LayoutEngine, PageBoundarySignature};
+    ///
+    /// let doc = Document::new(PathBuf::from("doc.mos"));
+    /// let result = LayoutEngine::new().layout(&doc);
+    /// let signature = PageBoundarySignature::of_page(&result.graph.pages[0]);
+    /// assert_eq!(signature.content_hash(), signature.content_hash());
+    /// ```
     #[must_use]
     pub const fn content_hash(self) -> ContentHash {
         self.0
@@ -232,6 +263,20 @@ pub struct PageGraphSignature(Vec<PageBoundarySignature>);
 
 impl PageGraphSignature {
     /// Sign every page of `graph`, in page order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::Document;
+    /// use mos_layout::{LayoutEngine, PageGraphSignature};
+    ///
+    /// let doc = Document::new(PathBuf::from("doc.mos"));
+    /// let result = LayoutEngine::new().layout(&doc);
+    /// let signature = PageGraphSignature::of_graph(&result.graph);
+    /// assert_eq!(signature.pages().len(), result.graph.pages.len());
+    /// ```
     #[must_use]
     pub fn of_graph(graph: &PageGraph) -> Self {
         Self(
@@ -244,6 +289,15 @@ impl PageGraphSignature {
     }
 
     /// The per-page signatures, in page order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_layout::PageGraphSignature;
+    ///
+    /// let signature = PageGraphSignature::default();
+    /// assert!(signature.pages().is_empty());
+    /// ```
     #[must_use]
     pub fn pages(&self) -> &[PageBoundarySignature] {
         &self.0
@@ -277,6 +331,22 @@ impl PageGraphSignature {
 impl LayoutResult {
     /// The page boundary signatures of this layout's [`PageGraph`] (design note
     /// §4.5). Convenience for cache/reflow consumers.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    ///
+    /// use mos_core::Document;
+    /// use mos_layout::LayoutEngine;
+    ///
+    /// let doc = Document::new(PathBuf::from("doc.mos"));
+    /// let result = LayoutEngine::new().layout(&doc);
+    /// assert_eq!(
+    ///     result.page_boundary_signatures().pages().len(),
+    ///     result.graph.pages.len(),
+    /// );
+    /// ```
     #[must_use]
     pub fn page_boundary_signatures(&self) -> PageGraphSignature {
         PageGraphSignature::of_graph(&self.graph)

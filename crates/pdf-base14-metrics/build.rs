@@ -102,7 +102,20 @@ fn emit_font(
     m: &adobe_font_metrics::FontMetrics<'_>,
     is_latin: bool,
 ) -> Result<(), Box<dyn Error>> {
-    // Per-glyph metrics → its own const array, referenced by the main static.
+    emit_character_metrics(buf, ident, m)?;
+    emit_kerning_pairs(buf, ident, m)?;
+    if is_latin {
+        emit_latin_tables(buf, ident, m)?;
+    }
+    emit_font_static(buf, ident, m)?;
+    Ok(())
+}
+
+fn emit_character_metrics(
+    buf: &mut String,
+    ident: &str,
+    m: &adobe_font_metrics::FontMetrics<'_>,
+) -> Result<(), std::fmt::Error> {
     writeln!(buf, "const {ident}_CHARS: &[CharacterMetric<'static>] = &[")?;
     for c in m.character_metrics.iter() {
         write!(buf, "    CharacterMetric {{ code: ")?;
@@ -129,8 +142,14 @@ fn emit_font(
         writeln!(buf, " }},")?;
     }
     writeln!(buf, "];\n")?;
+    Ok(())
+}
 
-    // Kerning pairs → another const array.
+fn emit_kerning_pairs(
+    buf: &mut String,
+    ident: &str,
+    m: &adobe_font_metrics::FontMetrics<'_>,
+) -> Result<(), std::fmt::Error> {
     writeln!(buf, "const {ident}_KERNS: &[KerningPair<'static>] = &[")?;
     for k in m.kerning_pairs.iter() {
         write!(buf, "    KerningPair {{ left: Cow::Borrowed(")?;
@@ -142,64 +161,66 @@ fn emit_font(
         writeln!(buf, " }},")?;
     }
     writeln!(buf, "];\n")?;
+    Ok(())
+}
 
-    // Optional per-font WinAnsi width table (Latin faces only).
-    if is_latin {
-        writeln!(buf, "const {ident}_WINANSI: [Option<f32>; 256] = [")?;
-        for entry in &WINANSI_TABLE {
-            match entry {
-                Some(name) => match find_width(m, name) {
-                    Some(w) => {
-                        write!(buf, "    Some(")?;
-                        emit_f32(buf, w)?;
-                        writeln!(buf, "),")?;
-                    }
-                    None => writeln!(buf, "    None,")?,
-                },
+fn emit_latin_tables(
+    buf: &mut String,
+    ident: &str,
+    m: &adobe_font_metrics::FontMetrics<'_>,
+) -> Result<(), Box<dyn Error>> {
+    writeln!(buf, "const {ident}_WINANSI: [Option<f32>; 256] = [")?;
+    for entry in &WINANSI_TABLE {
+        match entry {
+            Some(name) => match find_width(m, name) {
+                Some(w) => {
+                    write!(buf, "    Some(")?;
+                    emit_f32(buf, w)?;
+                    writeln!(buf, "),")?;
+                }
                 None => writeln!(buf, "    None,")?,
-            }
+            },
+            None => writeln!(buf, "    None,")?,
         }
-        writeln!(buf, "];\n")?;
-
-        // Sorted `(glyph_name, width)` index for O(log n) by-name
-        // lookup. The AFM `CharacterMetric` slice above is in file
-        // order (= the AFM `C ...` line order, not sorted), so a
-        // binary search would be unsound against it. Pull the name +
-        // width into a parallel sorted slice: small (~315 entries
-        // × 16 bytes ≈ 5 KB per face), and `glyph_width_by_name` is
-        // on the encoder hot path (called once per non-WinAnsi char
-        // in a document during PDF emit).
-        let mut pairs: Vec<(&str, f32)> = m
-            .character_metrics
-            .iter()
-            .map(|c| (c.name.as_ref(), c.width_x))
-            .collect();
-        pairs.sort_by(|a, b| a.0.cmp(b.0));
-        // Defensive: AFM should never define the same glyph twice,
-        // but a duplicate would silently shadow during binary search.
-        // We dedup on name and treat any collision as a build-time
-        // error so we never paper over it.
-        for w in pairs.windows(2) {
-            if w[0].0 == w[1].0 {
-                return Err(format!("duplicate glyph name {:?} in {ident} AFM", w[0].0).into());
-            }
-        }
-        // Const items already imply `'static` for inner references, so we
-        // omit the explicit lifetime to keep generated code clippy-clean
-        // under `clippy::redundant_static_lifetimes`.
-        writeln!(buf, "const {ident}_NAME_WIDTHS: &[(&str, f32)] = &[")?;
-        for (name, w) in &pairs {
-            write!(buf, "    (")?;
-            emit_str_literal(buf, name)?;
-            write!(buf, ", ")?;
-            emit_f32(buf, *w)?;
-            writeln!(buf, "),")?;
-        }
-        writeln!(buf, "];\n")?;
     }
+    writeln!(buf, "];\n")?;
 
-    // The main static. Field order matches `adobe_font_metrics::FontMetrics`'s
-    // declaration order (`clippy::inconsistent_struct_constructor`).
+    let pairs = sorted_name_widths(ident, m)?;
+    writeln!(buf, "const {ident}_NAME_WIDTHS: &[(&str, f32)] = &[")?;
+    for (name, w) in &pairs {
+        write!(buf, "    (")?;
+        emit_str_literal(buf, name)?;
+        write!(buf, ", ")?;
+        emit_f32(buf, *w)?;
+        writeln!(buf, "),")?;
+    }
+    writeln!(buf, "];\n")?;
+    Ok(())
+}
+
+fn sorted_name_widths<'a>(
+    ident: &str,
+    m: &'a adobe_font_metrics::FontMetrics<'_>,
+) -> Result<Vec<(&'a str, f32)>, Box<dyn Error>> {
+    let mut pairs: Vec<(&str, f32)> = m
+        .character_metrics
+        .iter()
+        .map(|c| (c.name.as_ref(), c.width_x))
+        .collect();
+    pairs.sort_by(|a, b| a.0.cmp(b.0));
+    for w in pairs.windows(2) {
+        if w[0].0 == w[1].0 {
+            return Err(format!("duplicate glyph name {:?} in {ident} AFM", w[0].0).into());
+        }
+    }
+    Ok(pairs)
+}
+
+fn emit_font_static(
+    buf: &mut String,
+    ident: &str,
+    m: &adobe_font_metrics::FontMetrics<'_>,
+) -> Result<(), std::fmt::Error> {
     writeln!(buf, "static {ident}: FontMetrics<'static> = FontMetrics {{")?;
 
     write!(buf, "    font_name: Cow::Borrowed(")?;
