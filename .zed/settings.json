@@ -18,7 +18,8 @@
 		"Mosaic": {
 			"wrap_guides": [100],
 			"language_servers": ["mos-lsp"],
-			"formatter": "language_server"
+			"formatter": "language_server",
+			"semantic_tokens": "combined"
 		}
 	},
 	"lsp": {

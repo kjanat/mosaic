@@ -1,16 +1,16 @@
 #set text(font: "Noto Sans", size: 11pt)
-// <- keyword
+// <- punctuation.special
 //    ^ type
-//         ^ variable.parameter
+//         ^ property
 //               ^ string
-//                            ^ variable.parameter
+//                            ^ property
 //                                  ^ number
 
 #import "@mosaic/templates/article": article, theme
-// <- keyword
+// <- punctuation.special
 //       ^ string.special
 //                                     ^ variable
 
 #include "sections/intro.mos"
-// <- keyword
+// <- punctuation.special
 //        ^ string.special

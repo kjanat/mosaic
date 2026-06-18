@@ -26,3 +26,4 @@
 (block_call) @function.around
 
 (comment)+ @comment.around
+(shebang) @comment.around

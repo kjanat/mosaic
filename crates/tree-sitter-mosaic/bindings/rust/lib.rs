@@ -69,11 +69,50 @@ pub const TAGS_QUERY: &str = include_str!("../../queries/tags.scm");
 
 #[cfg(test)]
 mod tests {
+    fn parse_sexp(source: &str) -> Option<String> {
+        let mut parser = tree_sitter::Parser::new();
+        let language = super::LANGUAGE.into();
+        let language_result = parser.set_language(&language);
+        assert!(
+            language_result.is_ok(),
+            "Error loading Mosaic parser: {:?}",
+            language_result.err()
+        );
+
+        let tree = parser.parse(source, None);
+        assert!(tree.is_some(), "parser returned no tree");
+        let tree = tree?;
+        let root = tree.root_node();
+        assert!(
+            !root.has_error(),
+            "unexpected parse error: {}",
+            root.to_sexp()
+        );
+        Some(root.to_sexp())
+    }
+
     #[test]
     fn test_can_load_grammar() {
         let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(&super::LANGUAGE.into())
-            .expect("Error loading Mosaic parser");
+        let language = super::LANGUAGE.into();
+        let language_result = parser.set_language(&language);
+
+        assert!(
+            language_result.is_ok(),
+            "Error loading Mosaic parser: {:?}",
+            language_result.err()
+        );
+    }
+
+    #[test]
+    fn parses_byte_zero_shebang_with_crlf() {
+        let sexp = parse_sexp("#!/usr/bin/env -S mos build --open\r\n= Hello\n");
+
+        assert_eq!(
+            sexp.as_deref(),
+            Some(
+                "(source_file (shebang) (section (section1 (heading marker: (heading_marker) content: (inline_sequence (text))))))"
+            )
+        );
     }
 }

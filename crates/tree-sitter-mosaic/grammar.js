@@ -35,6 +35,8 @@ export default grammar({
 
 	externals: $ => [
 		$.blank_line,
+		$.soft_break,
+		$._line_end,
 		$.raw_body_open,
 		$.raw_body_content,
 		$.raw_body_close,
@@ -55,7 +57,6 @@ export default grammar({
 
 	conflicts: $ => [
 		[$.block_call, $.inline_call],
-		[$.paragraph, $.soft_break],
 	],
 
 	rules: {
@@ -63,7 +64,11 @@ export default grammar({
 		// Document
 		// -------------------------------------------------------------------
 
-		source_file: $ => repeat(choice($.blank_line, $.section, $._block, $._line_end)),
+		source_file: $ =>
+			seq(
+				optional($.shebang),
+				repeat(choice($.blank_line, $.section, $._block, $._line_end)),
+			),
 
 		section: $ =>
 			choice(
@@ -117,8 +122,6 @@ export default grammar({
 				$.paragraph,
 			),
 
-		_line_end: _ => choice('\n', '\r\n', '\r'),
-
 		// Hidden helper: one or more line endings used inside multi-line
 		// expression contexts (`argument_list`, `array`, `object`). Wrapped
 		// in a single rule so tree-sitter can reason about each insertion
@@ -135,13 +138,18 @@ export default grammar({
 				seq('/*', /[^*]*\*+([^/*][^*]*\*+)*/, '/'),
 			)),
 
+		shebang: _ => token.immediate(prec(2, seq('#!', /[^\n\r]*/))),
+
+		_hash_bang_text: _ => token(prec(1, seq('#!', /[^\n\r]*/))),
+
 		// -------------------------------------------------------------------
 		// Block directives
 		// -------------------------------------------------------------------
 
 		set_directive: $ =>
 			prec.right(seq(
-				'#set',
+				'#',
+				$._set_keyword,
 				field('target', $.identifier),
 				field('arguments', $.argument_list),
 				optional($._line_end),
@@ -149,7 +157,8 @@ export default grammar({
 
 		import_directive: $ =>
 			prec.right(seq(
-				'#import',
+				'#',
+				$._import_keyword,
 				field('path', $.string),
 				optional(seq(':', field('items', $.import_items))),
 				optional($._line_end),
@@ -159,10 +168,15 @@ export default grammar({
 
 		include_directive: $ =>
 			prec.right(seq(
-				'#include',
+				'#',
+				$._include_keyword,
 				field('path', $.string),
 				optional($._line_end),
 			)),
+
+		_set_keyword: _ => token.immediate(/set[\t ]+/),
+		_import_keyword: _ => token.immediate(/import[\t ]+/),
+		_include_keyword: _ => token.immediate(/include[\t ]+/),
 
 		// -------------------------------------------------------------------
 		// Headings
@@ -246,31 +260,43 @@ export default grammar({
 		// -------------------------------------------------------------------
 
 		verse_block: $ =>
-			prec.right(seq(
-				'#verse',
-				optional(field('arguments', $.argument_list)),
-				field('body', $.verse_body),
-				optional(field('label', $.block_label)),
-				optional($._line_end),
-			)),
+			prec.dynamic(
+				2,
+				prec.right(seq(
+					'#',
+					'verse',
+					optional(field('arguments', $.argument_list)),
+					field('body', $.verse_body),
+					optional(field('label', $.block_label)),
+					optional($._line_end),
+				)),
+			),
 
 		pre_block: $ =>
-			prec.right(seq(
-				'#pre',
-				optional(field('arguments', $.argument_list)),
-				field('body', $.raw_body),
-				optional(field('label', $.block_label)),
-				optional($._line_end),
-			)),
+			prec.dynamic(
+				2,
+				prec.right(seq(
+					'#',
+					'pre',
+					optional(field('arguments', $.argument_list)),
+					field('body', $.raw_body),
+					optional(field('label', $.block_label)),
+					optional($._line_end),
+				)),
+			),
 
 		code_block: $ =>
-			prec.right(seq(
-				'#code',
-				optional(field('arguments', $.argument_list)),
-				field('body', $.raw_body),
-				optional(field('label', $.block_label)),
-				optional($._line_end),
-			)),
+			prec.dynamic(
+				2,
+				prec.right(seq(
+					'#',
+					'code',
+					optional(field('arguments', $.argument_list)),
+					field('body', $.raw_body),
+					optional(field('label', $.block_label)),
+					optional($._line_end),
+				)),
+			),
 
 		raw_body: $ => seq($.raw_body_open, optional($.raw_body_content), $.raw_body_close),
 
@@ -294,6 +320,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.page_reference,
 				$.citation,
 				$.reference,
 				$.linebreak_call,
@@ -319,7 +346,6 @@ export default grammar({
 					alias($._inline_sequence, $.paragraph_segment),
 				)),
 				optional(field('trailing_label', $.trailing_label)),
-				optional($._line_end),
 			)),
 
 		leading_label: $ => $.block_label,
@@ -332,8 +358,6 @@ export default grammar({
 		// `#linebreak` block-level form) can extend it without rewriting every
 		// `paragraph` call site.
 		_paragraph_join: $ => $.soft_break,
-
-		soft_break: $ => $._line_end,
 
 		// -------------------------------------------------------------------
 		// Inline
@@ -353,6 +377,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.page_reference,
 				$.citation,
 				$.reference,
 				$.linebreak_call,
@@ -361,6 +386,7 @@ export default grammar({
 				$.soft_hyphen_escape,
 				$.escaped_char,
 				$.loose_backslash,
+				alias($._hash_bang_text, $.text),
 				$.text,
 			),
 
@@ -371,6 +397,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.page_reference,
 				$.citation,
 				$.reference,
 				$.linebreak_call,
@@ -379,6 +406,7 @@ export default grammar({
 				$.soft_hyphen_escape,
 				$.escaped_char,
 				$.loose_backslash,
+				alias($._hash_bang_text, $.text),
 				$.text,
 			),
 
@@ -425,6 +453,7 @@ export default grammar({
 				$.strong,
 				$.code_span,
 				$.inline_math,
+				$.page_reference,
 				$.citation,
 				$.reference,
 				$.linebreak_call,
@@ -443,6 +472,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.page_reference,
 				$.citation,
 				$.reference,
 				$.linebreak_call,
@@ -461,6 +491,7 @@ export default grammar({
 				$.emphasis,
 				$.code_span,
 				$.inline_math,
+				$.page_reference,
 				$.citation,
 				$.reference,
 				$.linebreak_call,
@@ -496,6 +527,8 @@ export default grammar({
 		math_text: _ => token(prec(-1, /[^$\\\n\r]+/)),
 
 		math_escape: _ => token(seq('\\', /[^\r\n]/)),
+
+		page_reference: $ => seq('@page(', field('target', $.label_name), ')'),
 
 		citation: $ => seq('[', '@', field('target', $.label_name), ']'),
 
@@ -557,7 +590,8 @@ export default grammar({
 			prec.right(
 				PREC.linebreak_call,
 				seq(
-					'#linebreak',
+					'#',
+					'linebreak',
 					optional(field('arguments', $.argument_list)),
 				),
 			),
@@ -686,6 +720,22 @@ export default grammar({
 					"'",
 					repeat(choice($.string_single_content, $.escape_sequence)),
 					token.immediate("'"),
+				),
+				prec(
+					-1,
+					seq(
+						'"',
+						repeat(choice($.string_double_content, $.escape_sequence)),
+						$._line_end,
+					),
+				),
+				prec(
+					-1,
+					seq(
+						"'",
+						repeat(choice($.string_single_content, $.escape_sequence)),
+						$._line_end,
+					),
 				),
 			),
 

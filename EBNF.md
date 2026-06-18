@@ -442,3 +442,5 @@ flowchart LR
 This is the right first frozen target for `tree-sitter-mosaic`: line-aware without being
 Markdown-chaotic, semantic enough for labels and calls, and intentionally conservative about the two
 biggest ambiguity source-delimiter runs and bracket bodies.
+
+<!-- rumdl-disable-file MD056 -->

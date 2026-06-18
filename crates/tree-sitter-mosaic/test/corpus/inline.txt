@@ -36,6 +36,26 @@ See [@smith2024] for details.
       (text))))
 
 ==================
+inline: page reference, bare reference, and citation
+==================
+See @page(intro), @page, and [@smith2024].
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)
+      (page_reference
+        target: (label_name))
+      (text)
+      (reference
+        target: (label_name))
+      (text)
+      (citation
+        target: (label_name))
+      (text))))
+
+==================
 inline: code span spans soft breaks
 ==================
 Use `a sad student wrote

@@ -6,6 +6,7 @@
 ; --- Comments ---------------------------------------------------------------
 
 (comment) @comment
+(shebang) @preproc
 
 ; --- Literals ---------------------------------------------------------------
 
@@ -22,14 +23,12 @@
 
 ; --- Block directives -------------------------------------------------------
 
-"#set" @keyword
-"#import" @keyword
-"#include" @keyword
-
-"#verse" @keyword
-"#pre" @keyword
-"#code" @keyword
-"#linebreak" @keyword
+; `#set`, `#import`, and `#include` use hidden boundary tokens so `#setpage`
+; stays a generic call. Their visible `#` is highlighted by punctuation below.
+(verse_block "verse" @keyword)
+(pre_block "pre" @keyword)
+(code_block "code" @keyword)
+(linebreak_call "linebreak" @keyword)
 
 (set_directive
   target: (identifier) @type)
@@ -79,11 +78,21 @@
 
 ; --- Labels & references ----------------------------------------------------
 
-(label) @label
 (block_label) @label
+(label
+  name: (label_name) @label)
+
 (citation) @link_text
+(citation
+  target: (label_name) @string.special.symbol)
+
 (reference) @link_text
-(label_name) @link_uri
+(reference
+  target: (label_name) @string.special.symbol)
+
+(page_reference) @link_text
+(page_reference
+  target: (label_name) @string.special.symbol)
 
 ; --- Escapes ----------------------------------------------------------------
 
@@ -102,7 +111,7 @@
 (linebreak_call) @function
 
 (attribute
-  key: (identifier) @variable.parameter)
+  key: (identifier) @property)
 
 ; --- Punctuation ------------------------------------------------------------
 

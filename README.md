@@ -71,6 +71,17 @@ cargo mos build examples/hello/main.mos
 # wrote build/main.pdf in 583 ms
 ```
 
+Executable `.mos` files may start with a byte-zero shebang for shell use:
+
+```mos
+#!/usr/bin/env -S mos build --open
+= Title
+```
+
+`mos check` and `mos build` ignore that first line as script metadata. Later `#!` text remains
+ordinary document content; the CLI still requires an explicit subcommand and does not treat bare
+`mos main.mos` as build/open shorthand.
+
 A second binary, `mos-lsp`, is the language server entry point editors will spawn on stdio.
 
 ## Examples

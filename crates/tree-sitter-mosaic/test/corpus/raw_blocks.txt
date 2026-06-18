@@ -109,6 +109,31 @@ code: bare body (no arguments)
       (raw_body_close))))
 
 ==================
+raw block keywords do not match prefixes
+==================
+#prelude[]
+#codec[]
+#versex[]
+---
+
+(source_file
+  (block_call
+    (hash_call
+      function: (qualified_name
+        (identifier))
+      body: (content_body)))
+  (block_call
+    (hash_call
+      function: (qualified_name
+        (identifier))
+      body: (content_body)))
+  (block_call
+    (hash_call
+      function: (qualified_name
+        (identifier))
+      body: (content_body))))
+
+==================
 code: zero equals with inner brackets
 ==================
 #code[[let x = vec![1, 2, 3];]]

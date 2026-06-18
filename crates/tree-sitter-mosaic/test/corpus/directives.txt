@@ -174,13 +174,45 @@ set: missing closing paren inserts MISSING ")"
       (MISSING ")"))))
 
 ==================
-import: bare keyword without path is ERROR
+import: bare keyword falls back to generic block call
 ==================
 #import
 ---
 
 (source_file
-  (ERROR))
+  (block_call
+    (hash_call
+      function: (qualified_name
+        (identifier)))))
+
+==================
+directive keywords require following whitespace
+==================
+#setpage()
+#import"x"
+#include"x"
+---
+
+(source_file
+  (block_call
+    (hash_call
+      function: (qualified_name
+        (identifier))
+      arguments: (argument_list)))
+  (block_call
+    (hash_call
+      function: (qualified_name
+        (identifier))))
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (block_call
+    (hash_call
+      function: (qualified_name
+        (identifier))))
+  (paragraph
+    (paragraph_segment
+      (text))))
 
 ==================
 set: attribute with empty value
@@ -206,8 +238,7 @@ include: unterminated string literal recovers at next directive
 (source_file
   (include_directive
     path: (string
-      (string_double_content)
-      (MISSING """)))
+      (string_double_content)))
   (set_directive
     target: (identifier)
     arguments: (argument_list

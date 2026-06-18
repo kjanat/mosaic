@@ -1,30 +1,33 @@
+#!/usr/bin/env -S mos build --open
+// <- preproc
+
 // File-level config
 // <- comment
 
 #set page(paper: "A4", margin: 24mm)
-// <- keyword
+// <- punctuation.special
 //    ^ type
-//         ^ variable.parameter
+//         ^ property
 //                ^ string
-//                       ^ variable.parameter
+//                       ^ property
 //                               ^ number
 
 #import "lib.mos": util
-// <- keyword
+// <- punctuation.special
 //       ^ string.special
 //                   ^ variable
 
 = Introduction <intro>
 // <- punctuation.special
 //  ^ title
-//               ^ link_uri
+//               ^ label
 
 This paper covers *parsing* and **lowering** here.
 //                  ^ emphasis
 //                                 ^ emphasis.strong
 
 See @intro section. Math is $x = 1$ here.
-//   ^ link_uri
+//   ^ label
 //                            ^ text.literal
 
 == Background
@@ -39,5 +42,5 @@ Escape \[ works fine.
 // <- punctuation.list_marker
 
 #pre[[raw text body]]
-// <- keyword
+// <- punctuation.special
 //     ^ text.literal

@@ -25,6 +25,9 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn run(mut self) -> ParseResult {
+        if self.pos == 0 && self.starts_with("#!") {
+            self.skip_line();
+        }
         while self.pos < self.src.len() {
             if self.at_blank_line() {
                 self.skip_line();
@@ -199,6 +202,80 @@ mod tests {
         let r = parse_str("");
         assert!(r.tree.items.is_empty());
         assert!(!r.has_errors());
+    }
+
+    #[test]
+    fn byte_zero_shebang_is_ignored() {
+        let src = "#!/usr/bin/env -S mos build --open\n= Hello\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 1);
+        let heading = r.tree.items[0].as_heading();
+        assert!(
+            heading.is_some(),
+            "expected heading, got {:?}",
+            r.tree.items[0]
+        );
+        let Some((level, inlines, span)) = heading else {
+            return;
+        };
+
+        assert_eq!(level, 1);
+        assert_eq!(inlines[0].text, "Hello");
+        assert_eq!(span.start(), src.find("= Hello").unwrap_or(0));
+    }
+
+    #[test]
+    fn byte_zero_shebang_with_crlf_is_ignored() {
+        let src = "#!/usr/bin/env -S mos build --open\r\n= Hello\r\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 1);
+        let heading = r.tree.items[0].as_heading();
+        assert!(
+            heading.is_some(),
+            "expected heading, got {:?}",
+            r.tree.items[0]
+        );
+        let Some((_, inlines, span)) = heading else {
+            return;
+        };
+
+        assert_eq!(inlines[0].text, "Hello");
+        assert_eq!(span.start(), src.find("= Hello").unwrap_or(0));
+    }
+
+    #[test]
+    fn later_shebang_text_stays_paragraph_text() {
+        let src = "Before\n#! not script metadata\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 1);
+        let paragraph = r.tree.items[0].as_paragraph();
+        assert!(
+            paragraph.is_some(),
+            "expected paragraph, got {:?}",
+            r.tree.items[0]
+        );
+        let Some((inlines, _)) = paragraph else {
+            return;
+        };
+
+        assert_eq!(inlines.len(), 1);
+        assert_eq!(inlines[0].text, "Before\n#! not script metadata");
+    }
+
+    #[test]
+    fn diagnostics_after_shebang_keep_source_offsets() {
+        let src = "#!/usr/bin/env -S mos build --open\n*unclosed\n";
+        let r = parse_str(src);
+        assert!(!r.has_errors());
+        let diagnostic = diagnostic_for(&r, codes::MOS0031.code());
+
+        assert_eq!(
+            diagnostic.span().map(mos_core::SourceSpan::start),
+            src.find("*unclosed")
+        );
     }
 
     #[test]

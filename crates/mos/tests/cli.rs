@@ -204,6 +204,51 @@ fn build_emits_pdf() {
 }
 
 #[test]
+fn build_ignores_byte_zero_shebang() {
+    let dir = temp_dir("mos-build-shebang");
+    write_file(
+        dir.path(),
+        "main.mos",
+        "#!/usr/bin/env -S mos build --open\n\
+         #set text(font: \"Helvetica\")\n\
+         = Scripted\n\nbody paragraph\n",
+    );
+    let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.contains("wrote "), "stdout={stdout:?}");
+
+    let pdf_path = dir.path().join("build").join("main.pdf");
+    let bytes = std::fs::read(&pdf_path);
+    assert!(
+        bytes.is_ok(),
+        "pdf written at {}: {:?}",
+        pdf_path.display(),
+        bytes.as_ref().err()
+    );
+    let bytes = bytes.unwrap_or_default();
+    let doc = lopdf::Document::load_mem(&bytes);
+    assert!(doc.is_ok(), "lopdf parse: {:?}", doc.as_ref().err());
+    let doc = doc.unwrap_or_else(|_| lopdf::Document::with_version("1.5"));
+    let mut combined: Vec<u8> = Vec::new();
+    for &page_id in doc.get_pages().values() {
+        let content = doc.get_page_content(page_id);
+        assert!(
+            content.is_ok(),
+            "page content: {:?}",
+            content.as_ref().err()
+        );
+        combined.extend(content.unwrap_or_default());
+    }
+
+    let has = |needle: &[u8]| combined.windows(needle.len()).any(|w| w == needle);
+    assert!(has(b"(Scripted)"), "heading not rendered in PDF stream");
+    assert!(
+        !has(b"usr/bin/env") && !has(b"mos build") && !has(b"#!"),
+        "shebang rendered into PDF stream"
+    );
+}
+
+#[test]
 fn build_renders_section_numbers_and_resolves_references() {
     // End-to-end MVP 1: a multi-section doc with an `@ref` produces a
     // PDF whose content stream contains the rendered section number

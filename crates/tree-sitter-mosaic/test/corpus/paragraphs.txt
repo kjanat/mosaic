@@ -96,6 +96,25 @@ Second.
       (text))))
 
 ==================
+paragraph: leading label starts next paragraph after prose
+==================
+Before
+<label> Label starts next paragraph
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (paragraph
+    leading_label: (leading_label
+      (block_label
+        (label
+          name: (label_name))))
+    (paragraph_segment
+      (text))))
+
+==================
 paragraph: set directive starts next block
 ==================
 Hello world
