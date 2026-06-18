@@ -56,17 +56,16 @@ does.
 My grievances, in no particular order except the one I wrote
 them in:
 
+# TODO: Get hanging indents working
+
 5. The error messages. **Especially** the one about `\par`.
 9. The figure handling. One `#figure(image: "...", caption: "...")` block here, and forty minutes of `\begin{figure}[!htbp]` float-placement bargaining there. I have aged out of caring which letters do which.
 27. The fi/fl ligatures, which you handled but never let me actually *see* without diagnostic incantations. Mine ship as one glyph in the PDF the way the typographer intended. Copy "figment" or "flicker" out of this document and paste it somewhere; the ligature collapses back into the source codepoints on the way out. It is shaping, not a font hack.
 
 Sub-grievances, indented because that is also a thing now:
 
-- The way you treated quotation marks. We have em dashes — like
-  that — without three hyphens, and no, I will not be installing
-  a package for it.
-- The way `verbatim` and `code` could never quite agree about
-  whitespace.
+- The way you treated quotation marks. We have em dashes — like that — without three hyphens, and no, I will not be installing a package for it.
+- The way `verbatim` and `code` could never quite agree about whitespace.
   - Yes, I know it was the package's fault.
   - I do not care whose fault it was.
 - The bibliography. I am still angry about the bibliography.
