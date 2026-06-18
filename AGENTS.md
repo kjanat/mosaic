@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-06-18 **Commit:** 4652e5c **Branch:** feat/hanging-list-syntax
+**Generated:** 2026-06-19 **Commit:** d491cc6 **Branch:** feat/hanging-list-syntax
 
 ## OVERVIEW
 
@@ -24,8 +24,8 @@ Shipped slice:
 
 - `mos check`: parse, lower, resolve, source diagnostics for files/projects.
 - `mos build`: parse, lower, layout, PDF output under direct-file or `[output].pdf` paths.
-- Parser/eval: headings, paragraphs, lists, inline styling/code/refs/citations, `#set`, images,
-  figures, hard breaks, soft hyphen, NBSP, `#bibliography`.
+- Parser/eval: headings, paragraphs, lists, inline styling/code/refs/page-refs/citations, raw
+  `#pre`/`#code` blocks, `#set`, images, figures, hard breaks, soft hyphen, NBSP, `#bibliography`.
 - Bibliography: minimal BibTeX + CSL data/style parsing, citation-key checks, numeric `[@key]`
   labels by first use. Bibliography-list rendering is not shipped.
 - Layout/PDF: greedy flow, pages, figures/images, Base-14 + Noto embedding/subsetting, ToUnicode,
@@ -33,8 +33,8 @@ Shipped slice:
 - LSP: diagnostics, definition for labels/citations, label rename, document symbols, code actions.
 
 Aspirational/stub unless user asks: HTML/EPUB/SVG, persistent cache, watch/formatter/package
-systems, math/tables/footnotes/index/glossary, float solver, TOC/page refs, pagination fixpoints,
-Knuth-Plass, automatic hyphenation, reproducible/frozen builds, import/conversion tools.
+systems, math/tables/footnotes/index/glossary, float solver, TOC generation, broad pagination
+fixpoints, Knuth-Plass, automatic hyphenation, reproducible/frozen builds, import/conversion tools.
 
 ## STRUCTURE
 
@@ -48,7 +48,7 @@ Knuth-Plass, automatic hyphenation, reproducible/frozen builds, import/conversio
 ├── docs/               # developer docs; diagnostic-codes.md mirrors the registry
 ├── examples/           # self-contained .mos projects + committed PDF snapshots
 ├── justfile            # runner-backed fmt/examples/docs recipes
-├── package.json        # Bun workspace + local formatter/runner tooling
+├── package.json        # Bun workspace, patched deps, formatter/runner tooling
 ├── .cargo/             # cargo aliases + nightly doc config
 ├── .github/            # CI/docs/release workflows + Pages action
 └── .opencode/          # Bun/TypeScript OpenCode helper tools
