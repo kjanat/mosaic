@@ -1,32 +1,11 @@
 //! Internal parser support helpers.
 
-/// One marker line captured during list collection. Not user-facing --
-/// the public AST uses [`crate::ListItem`] after nesting is resolved.
-#[derive(Debug, Clone, Copy)]
-pub(super) struct RawListLine {
-    /// Byte count of ASCII spaces before the marker.
-    pub(super) indent: usize,
-    /// `true` for `\d+\. `, `false` for `- `.
-    pub(super) ordered: bool,
-    /// Byte offset (into `Parser::src`) of the first content byte
-    /// after the marker and its trailing whitespace.
-    pub(super) content_start: usize,
-    /// Byte offset of the line's content end (excluding any `\r\n` or
-    /// `\n` terminator).
-    pub(super) content_end: usize,
-    /// Byte offset of the start of the line (the first leading-space
-    /// byte). Used for the item's `SourceSpan`.
-    pub(super) line_start: usize,
-}
-
-/// If the line that starts at `pos` opens with a list marker, return
-/// `Some((indent, ordered, content_start))`. `indent` counts the
-/// leading ASCII spaces before the marker; `ordered` is `true` for
-/// `\d+\. ` and `false` for `- `; `content_start` is the byte offset
-/// of the first byte after the marker plus its trailing whitespace
-/// run. Tabs are not recognised as either indent or post-marker
-/// whitespace in MVP 0.
-pub(super) fn list_marker_at(bytes: &[u8], pos: usize) -> Option<(usize, bool, usize)> {
+/// Return a list marker at `pos`, if present.
+///
+/// The tuple is `(indent, ordered, content_start)`. Tabs are not recognised as
+/// either indent or post-marker whitespace in MVP 0.
+#[must_use]
+pub fn list_marker_at(bytes: &[u8], pos: usize) -> Option<(usize, bool, usize)> {
     let mut i = pos;
     let mut indent = 0_usize;
     while i < bytes.len() && bytes[i] == b' ' {
@@ -75,7 +54,8 @@ pub(super) fn list_marker_at(bytes: &[u8], pos: usize) -> Option<(usize, bool, u
 }
 
 /// Skip ASCII whitespace (space, tab, CR, LF) inside a `#set` body.
-pub(super) fn skip_set_ws(bytes: &[u8], from: usize, end: usize) -> usize {
+#[must_use]
+pub fn skip_set_ws(bytes: &[u8], from: usize, end: usize) -> usize {
     let mut i = from;
     while i < end && matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r') {
         i += 1;
@@ -85,7 +65,8 @@ pub(super) fn skip_set_ws(bytes: &[u8], from: usize, end: usize) -> usize {
 
 /// Advance to the next `,` or end-of-body, used for error recovery
 /// inside directive argument parsing.
-pub(super) fn skip_to_comma(bytes: &[u8], from: usize, end: usize) -> usize {
+#[must_use]
+pub fn skip_to_comma(bytes: &[u8], from: usize, end: usize) -> usize {
     let mut i = from;
     while i < end && bytes[i] != b',' {
         i += 1;
@@ -96,7 +77,8 @@ pub(super) fn skip_to_comma(bytes: &[u8], from: usize, end: usize) -> usize {
 /// Return the byte offset of the next character boundary at or after
 /// `from + 1`. Used to step over a single Unicode scalar value when
 /// accumulating string literal contents.
-pub(super) fn next_char_boundary(src: &str, from: usize) -> usize {
+#[must_use]
+pub const fn next_char_boundary(src: &str, from: usize) -> usize {
     let mut i = from + 1;
     while i < src.len() && !src.is_char_boundary(i) {
         i += 1;
@@ -104,21 +86,22 @@ pub(super) fn next_char_boundary(src: &str, from: usize) -> usize {
     i
 }
 
-pub(super) fn find_byte(haystack: &[u8], needle: u8, from: usize) -> Option<usize> {
+/// Find `needle` in `haystack` starting at `from`.
+#[must_use]
+pub fn find_byte(haystack: &[u8], needle: u8, from: usize) -> Option<usize> {
     haystack[from..]
         .iter()
         .position(|&b| b == needle)
         .map(|p| p + from)
 }
 
-/// Returns the byte offset just past the longest label-identifier run
-/// that starts at `from` in `bytes`. Empty (caller should detect via
-/// `id_end == from`) if the first byte is not a valid identifier char.
+/// Return the byte offset just past a label-identifier run.
 ///
 /// The accepted alphabet matches manifest §3.3 examples:
 /// `[A-Za-z0-9_:.-]`. Critically `:` is included so `fig:wells` and
 /// `eq:bayes` round-trip.
-pub(super) fn scan_label_chars(bytes: &[u8], from: usize) -> usize {
+#[must_use]
+pub fn scan_label_chars(bytes: &[u8], from: usize) -> usize {
     let mut i = from;
     while i < bytes.len() {
         let b = bytes[i];
@@ -131,7 +114,9 @@ pub(super) fn scan_label_chars(bytes: &[u8], from: usize) -> usize {
     i
 }
 
-pub(super) fn normalize_raw_text(text: &str) -> String {
+/// Normalize raw block text line endings and leading delimiter newline.
+#[must_use]
+pub fn normalize_raw_text(text: &str) -> String {
     let text = text
         .strip_prefix("\r\n")
         .or_else(|| text.strip_prefix('\n'))
@@ -140,25 +125,20 @@ pub(super) fn normalize_raw_text(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-pub(super) struct ParsedLabel {
+/// Parsed `<label>` text and source range.
+#[derive(Debug)]
+pub struct ParsedLabel {
     pub text: String,
     pub start: usize,
     pub end: usize,
 }
 
-/// If the substring `src[start..end]` begins with optional ASCII
-/// whitespace followed by `<label>`, return `(label_body_start, Some(id))`
-/// where `label_body_start` is the offset just past the closing `>`
-/// (with any trailing whitespace also consumed). Otherwise return
-/// `(start, None)`.
+/// Strip one leading `<label>` from `src[start..end]`, if present.
 ///
 /// Only a single leading label is recognised; further `<...>` runs in
 /// the body are left intact for downstream stages.
-pub(super) fn strip_leading_label(
-    src: &str,
-    start: usize,
-    end: usize,
-) -> (usize, Option<ParsedLabel>) {
+#[must_use]
+pub fn strip_leading_label(src: &str, start: usize, end: usize) -> (usize, Option<ParsedLabel>) {
     let bytes = src.as_bytes();
     let mut i = start;
     while i < end && (bytes[i] == b' ' || bytes[i] == b'\t') {
@@ -184,16 +164,11 @@ pub(super) fn strip_leading_label(
     (after, Some(label))
 }
 
-/// If the substring `src[start..end]` ends with `<label>` (after any
-/// trailing ASCII whitespace), return `(text_end, Some(id))` where
-/// `text_end` is the offset of the first byte to *exclude* from the
-/// preceding text -- trailing whitespace before the label is also
-/// trimmed. Otherwise return `(end, None)`.
-pub(super) fn strip_trailing_label(
-    src: &str,
-    start: usize,
-    end: usize,
-) -> (usize, Option<ParsedLabel>) {
+/// Strip one trailing `<label>` from `src[start..end]`, if present.
+///
+/// The returned text end excludes whitespace before the label.
+#[must_use]
+pub fn strip_trailing_label(src: &str, start: usize, end: usize) -> (usize, Option<ParsedLabel>) {
     let bytes = src.as_bytes();
     if end <= start || bytes[end - 1] != b'>' {
         return (end, None);
@@ -228,12 +203,12 @@ pub(super) fn strip_trailing_label(
     (text_end, Some(label))
 }
 
-/// Locate the first `<label>` token in `src[start..end]`, returning the parsed
-/// label and the byte offset just past its `>`. Unlike [`strip_trailing_label`]
-/// this finds a label *anywhere* in the range, so the heading parser can detect
-/// a label that is not the trailing element (e.g. `= Title <id> trailing`) and
-/// flag it (`MOS0048`) instead of silently swallowing it into the text.
-pub(super) fn locate_label(src: &str, start: usize, end: usize) -> Option<(ParsedLabel, usize)> {
+/// Locate the first `<label>` token in `src[start..end]`.
+///
+/// Unlike [`strip_trailing_label`] this finds a label anywhere in the range, so
+/// the heading parser can flag non-trailing labels with `MOS0048`.
+#[must_use]
+pub fn locate_label(src: &str, start: usize, end: usize) -> Option<(ParsedLabel, usize)> {
     let bytes = src.as_bytes();
     let mut open = start;
     while open < end {

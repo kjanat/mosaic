@@ -5,12 +5,13 @@ use mos_core::{Diagnostic, DiagnosticDef, SourceSpan};
 use crate::support::list_marker_at;
 use crate::{Item, ParseResult, SyntaxTree};
 
-pub(crate) struct Parser<'a> {
-    pub(crate) src: &'a str,
-    pub(crate) file: PathBuf,
-    pub(crate) pos: usize,
-    pub(crate) items: Vec<Item>,
-    pub(crate) diagnostics: Vec<Diagnostic>,
+#[derive(Debug)]
+pub struct Parser<'a> {
+    pub src: &'a str,
+    pub file: PathBuf,
+    pub pos: usize,
+    pub items: Vec<Item>,
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> Parser<'a> {
@@ -153,13 +154,10 @@ mod tests {
         let file = PathBuf::from("test.mos");
         let result = parse(src, &file, &mut sink);
         assert!(result.is_ok(), "parse structurally aborted: {result:?}");
-        let tree = match result {
-            Ok(tree) => tree,
-            Err(_) => SyntaxTree {
-                file,
-                items: Vec::new(),
-            },
-        };
+        let tree = result.unwrap_or_else(|_| SyntaxTree {
+            file,
+            items: Vec::new(),
+        });
         ParseResult {
             tree,
             diagnostics: sink.into_diagnostics(),
@@ -195,6 +193,15 @@ mod tests {
         assert_eq!(suggestion.span.start(), offset);
         assert_eq!(suggestion.span.end(), offset);
         assert_eq!(suggestion.replacement, replacement);
+    }
+
+    fn list_paragraph_text(block: &ListItemBlock) -> Option<String> {
+        match block {
+            ListItemBlock::Paragraph { inlines, .. } => {
+                Some(inlines.iter().map(|inline| inline.text.as_str()).collect())
+            }
+            ListItemBlock::List { .. } => None,
+        }
     }
 
     #[test]
@@ -1761,6 +1768,109 @@ mod tests {
         assert!(span.end() > src.find('b').unwrap());
     }
 
+    #[test]
+    fn list_continuation_line_soft_joins_item_text() {
+        let r = parse_str("- first\n  second\n- third\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].blocks.len(), 1);
+        assert_eq!(
+            list_paragraph_text(&items[0].blocks[0]).as_deref(),
+            Some("first\n  second")
+        );
+        assert_eq!(items[1].inlines[0].text, "third");
+    }
+
+    #[test]
+    fn list_continuation_preserves_explicit_hard_break() {
+        let r = parse_str("- first\\\\\n  second\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        let kinds: Vec<InlineKind> = match &items[0].blocks[0] {
+            ListItemBlock::Paragraph { inlines, .. } => {
+                inlines.iter().map(|inline| inline.kind).collect()
+            }
+            ListItemBlock::List { .. } => Vec::new(),
+        };
+        assert_eq!(
+            kinds,
+            vec![InlineKind::Text, InlineKind::HardBreak, InlineKind::Text]
+        );
+    }
+
+    #[test]
+    fn list_parent_continuation_after_nested_child_preserves_order() {
+        let r = parse_str("- parent\n  - child\n  parent tail\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        let kinds: Vec<&str> = items[0]
+            .blocks
+            .iter()
+            .map(|block| match block {
+                ListItemBlock::Paragraph { .. } => "paragraph",
+                ListItemBlock::List { .. } => "list",
+            })
+            .collect();
+        assert_eq!(kinds, vec!["paragraph", "list", "paragraph"]);
+        assert_eq!(
+            list_paragraph_text(&items[0].blocks[2]).as_deref(),
+            Some("parent tail")
+        );
+        assert_eq!(items[0].children.len(), 1);
+    }
+
+    #[test]
+    fn ordered_list_continuation_uses_marker_text_column() {
+        let r = parse_str("27. wide\n    continued\n28. next\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(
+            list_paragraph_text(&items[0].blocks[0]).as_deref(),
+            Some("wide\n    continued")
+        );
+    }
+
+    #[test]
+    fn blank_line_terminates_list_continuation() {
+        let r = parse_str("- item\n  continuation\n\n  tail\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 2);
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(r.tree.items[1].as_paragraph().is_some());
+    }
+
+    #[test]
+    fn under_indented_line_is_not_lazy_list_continuation() {
+        let r = parse_str("- item\n lazy\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 2);
+        assert!(r.tree.items[0].as_list().is_some());
+        assert!(r.tree.items[1].as_paragraph().is_some());
+    }
+
+    #[test]
+    fn crlf_list_continuation_normalizes_inline_text() {
+        let r = parse_str("- item\r\n  cont\r\n- next\r\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        assert_eq!(
+            list_paragraph_text(&items[0].blocks[0]).as_deref(),
+            Some("item\n  cont")
+        );
+    }
+
+    #[test]
+    fn tab_indented_line_is_not_list_continuation() {
+        let r = parse_str("- item\n\tcont\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 2);
+        assert!(r.tree.items[0].as_list().is_some());
+        assert!(r.tree.items[1].as_paragraph().is_some());
+    }
+
     // ---------- line-break controls (issue #26) ----------
 
     #[test]
@@ -1861,7 +1971,7 @@ mod tests {
     #[test]
     fn backslash_before_non_escape_byte_is_silent_literal() {
         // `\` followed by a byte we don't recognise as an escape
-        // (`*`, `@`, `x`, drive-letter path, etc.) must not emit a
+        // (`@`, `x`, drive-letter path, etc.) must not emit a
         // diagnostic -- the prior contract was "backslash is literal",
         // and only the trailing-`\` case crosses the bar where a
         // warning helps the author. Three samples cover the cases that
@@ -1881,6 +1991,23 @@ mod tests {
                 r.diagnostics
             );
         }
+    }
+
+    #[test]
+    fn escaped_asterisk_is_literal_text() {
+        let r = parse_str("Escaped \\* asterisk.\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert!(
+            r.diagnostics
+                .iter()
+                .all(|d| d.def().code() != codes::MOS0031.code()),
+            "escaped asterisk produced unexpected emphasis warning: {:?}",
+            r.diagnostics
+        );
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].kind, InlineKind::Text);
+        assert_eq!(inlines[0].text, "Escaped * asterisk.");
     }
 
     #[test]

@@ -26,32 +26,37 @@
 //! (manifest §31).
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
 
 use std::path::Path;
 
 use mos_core::{DiagnosticResult, DiagnosticSink};
 
+#[doc(hidden)]
+pub use parser::Parser;
+#[doc(hidden)]
+pub use support::*;
 pub use syntax::{
-    DirectiveKind, Inline, InlineKind, Item, LengthUnit, ListItem, ParseResult, RawBlockKind,
-    RawBlockView, SetArg, SetValue, SyntaxTree,
+    DirectiveKind, Inline, InlineKind, Item, LengthUnit, ListItem, ListItemBlock, ParseResult,
+    RawBlockKind, RawBlockView, SetArg, SetValue, SyntaxTree,
 };
 
 mod block;
 mod directive;
 mod inline;
 mod list;
-mod parser;
-mod support;
+#[doc(hidden)]
+pub mod parser;
+#[doc(hidden)]
+pub mod support;
 mod syntax;
 
-use parser::Parser;
-
-/// Parse a Mosaic source string, emitting recoverable diagnostics to
-/// `sink` (manifest §6 stage 1). Returns the [`SyntaxTree`]; the parser
-/// never structurally aborts, so the `Err` arm only fires if the sink
+/// Parse a Mosaic source string into a [`SyntaxTree`].
+///
+/// Recoverable diagnostics are emitted to `sink` (manifest §6 stage 1). The
+/// parser never structurally aborts, so the `Err` arm only fires if the sink
 /// itself asks to stop.
 ///
 /// # Examples
