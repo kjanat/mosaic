@@ -23,8 +23,14 @@ runs:
       env: { I: "${{ toJSON(inputs) }}" }
       run: |
         $inputs = ConvertFrom-Json $env:I
+        "asset=$($inputs.asset)`ndir=$($inputs.dir)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
         & (Join-Path $env:GITHUB_ACTION_PATH "script.ps1") `
           -Server $inputs.server `
           -Repository $inputs.repository `
           -Dir $inputs.dir `
           -Asset $inputs.asset
+    - name: Get me a favicon
+      shell: pwsh
+      run: |
+        & npx -y --package=vite-svg-to-ico svg-to-ico generate $env:asset --out-dir $env:dir
