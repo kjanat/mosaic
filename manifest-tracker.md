@@ -63,6 +63,8 @@ example.
   - [x] minimal single-key citations (`[@key]`)
   - [x] unordered lists
   - [x] ordered lists
+  - [x] indented list continuation lines (space-indented to the item text column; lazy/tabs
+        excluded)
   - [x] `#set`
   - [x] `#image`
   - [x] `#figure`
@@ -147,6 +149,9 @@ example.
       U+00A0 NBSP preservation.
 - [x] Parse labels and references.
 - [x] Parse unordered and ordered lists.
+- [x] Parse indented list continuation lines. *(A nonblank, non-marker line indented with spaces to
+      at least the current item text column belongs to that item; lazy unindented continuation and
+      tab indentation are not supported.)*
 - [x] Parse current directives: `#set`, `#image`, `#figure`.
 - [ ] Preserve comments in the CST if formatter or tooling needs them.
 - [ ] Preserve useful formatting trivia for formatter support.
@@ -219,6 +224,8 @@ example.
 - [x] Lay out headings, paragraphs, lists, images, figures, captions, and pages.
 - [x] Support paper sizes and margins from current settings.
 - [x] Support current text styles.
+- [x] Keep list hanging indents across visual wraps, soft continuation lines, hard breaks, nested
+      lists, and parent tails after nested child lists.
 - [x] Normalize layout/font text inputs to NFC before measuring and shaping
       (https://github.com/kjanat/mosaic/issues/19).
 - [x] Shape embedded-font text through rustybuzz and preserve GPOS advances/offsets in layout

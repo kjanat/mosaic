@@ -19,6 +19,7 @@ block               = set_directive
                     | pre_block
                     | code_block
                     | block_call
+                    | list_block
                     | paragraph
                     ;
 
@@ -74,6 +75,28 @@ block_label         = label ;
 paragraph_segment   = inline_sequence ;
 paragraph_join      = soft_break ;
 soft_break          = line_end ;             (* contextual: not a blank_line *)
+
+list_block          = list_item, { line_end, list_item } ;
+
+list_item           = item_indent, list_marker, space1, inline_sequence,
+                      { list_continuation | nested_list } ;
+
+list_continuation   = line_end, continuation_indent, inline_sequence ;
+                      (* contextual: continuation line is nonblank, is not a
+                         list marker, and uses only spaces with column >= the
+                         current item text column. The newline+indent lowers
+                         to soft whitespace. *)
+
+nested_list         = line_end, list_block ;
+                      (* contextual: first nested marker has a greater indent
+                         than the parent marker. Parent-tail continuation after
+                         the child list returns to the parent item text column. *)
+
+list_marker         = unordered_marker | ordered_marker ;
+unordered_marker    = "-" ;
+ordered_marker      = digit, { digit }, "." ;
+item_indent         = { space } ;
+continuation_indent = space1 ;
 
 hash_call           = "#", qualified_name,
                       [ opt_hspace, argument_list ],

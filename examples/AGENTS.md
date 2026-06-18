@@ -39,8 +39,7 @@ examples/<name>/
 
 ## GOTCHAS
 
-- Long list items should stay one source line; layout wraps visually. Continuation lines are not
-  list continuations today.
+- Long list items may wrap visually or use indented continuation lines when source readability wins.
 - Ordered list source digits are ignored by current renderer; visible numbering starts at 1.
 - Reader font substitution can affect Base-14 visual output, especially unusual symbols.
 - If editing `polish`, verify prose still matches actual embedded Noto Sans behavior.
