@@ -18,22 +18,22 @@ pub(crate) const BODY_SIZE_PT: f32 = 11.0;
 /// Default body leading multiplier (line height = size × leading).
 pub(crate) const BODY_LEADING: f32 = 1.35;
 
-/// Page geometry resolved from `#set page(...)`. `width_pt`/`height_pt`
-/// describe the full media box; `margin_pt` is symmetric on all four
+/// Page geometry resolved from `#set page(...)`. `width`/`height`
+/// describe the full media box; `margin` is symmetric on all four
 /// sides for MVP 1.5 (per-side margins are deferred).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PageStyle {
-    pub width_pt: f32,
-    pub height_pt: f32,
-    pub margin_pt: f32,
+    pub width: f32,
+    pub height: f32,
+    pub margin: f32,
 }
 
 impl Default for PageStyle {
     fn default() -> Self {
         Self {
-            width_pt: A4_WIDTH_PT,
-            height_pt: A4_HEIGHT_PT,
-            margin_pt: MARGIN_PT,
+            width: A4_WIDTH_PT,
+            height: A4_HEIGHT_PT,
+            margin: MARGIN_PT,
         }
     }
 }
