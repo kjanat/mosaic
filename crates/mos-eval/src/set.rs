@@ -9,12 +9,11 @@ use mos_parse::{SetArg, SetValue};
 
 use crate::{DocumentMetadata, set_schema};
 
-/// Lower a `#set name(...)` directive into a `Raw` node carrying the
-/// resolved attribute payload. The split exists so the dispatch in
-/// `Evaluator::evaluate` only has to thread state through three
-/// directive-shaped helpers instead of one large match arm.
+/// Lower a `#set name(...)` directive into a `Raw` node.
+///
+/// The node carries the resolved attribute payload for downstream stages.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn lower_set_directive(
+pub fn lower_set_directive(
     document: &mut Document,
     root: NodeId,
     name: &str,
@@ -170,7 +169,7 @@ fn coerce_value(slot: set_schema::SlotType, value: &SetValue, em_pt: f64) -> Opt
 
 /// Coerce a `#image(width|height: ...)` argument to a strictly positive
 /// length in points. Bare numerics resolve as pt for ergonomics.
-pub(super) fn coerce_positive_length(
+pub fn coerce_positive_length(
     value: &SetValue,
     em_pt: f64,
     key: &str,
@@ -225,7 +224,7 @@ fn length_to_pt(value: f64, unit: mos_parse::LengthUnit, em_pt: f64) -> f64 {
     }
 }
 
-fn describe_value(v: &SetValue) -> &'static str {
+const fn describe_value(v: &SetValue) -> &'static str {
     match v {
         SetValue::Str(_) => "a string",
         SetValue::Int(_) => "an integer",

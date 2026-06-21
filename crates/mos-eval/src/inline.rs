@@ -7,7 +7,7 @@ use mos_parse::{Inline, InlineKind};
 
 use crate::insert_label_attributes;
 
-pub(super) fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inline]) {
+pub fn lower_inlines(doc: &mut Document, parent: NodeId, inlines: &[Inline]) {
     for inline in inlines {
         let kind = match inline.kind {
             InlineKind::Text => NodeKind::Text,

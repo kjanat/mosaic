@@ -22,9 +22,10 @@ use std::collections::BTreeMap;
 
 use mos_core::{AttrValue, Document, NodeId, NodeKind};
 
-/// Rewrite every `@page(label)` reference's visible text to its target's page
-/// number, drawn from `label_pages` (a label→1-based-page map produced by
-/// layout). Returns whether any text changed, so the [fixpoint
+/// Rewrite every `@page(label)` reference's visible text.
+///
+/// The text comes from `label_pages`, a label→1-based-page map produced by
+/// layout. Returns whether any text changed, so the [fixpoint
 /// driver](resolve_page_reference_fixpoint) can tell when the document settled.
 ///
 /// A label absent from `label_pages` resolves to its `?label?` placeholder: an
