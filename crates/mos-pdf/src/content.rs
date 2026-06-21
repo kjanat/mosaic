@@ -241,7 +241,9 @@ mod tests {
         .ok_or("missing embedded plan unexpectedly succeeded")?;
         let diagnostic = match err {
             CoreError::Diagnostic(diagnostic) => diagnostic,
-            other => return Err(format!("expected diagnostic error, got {other:?}").into()),
+            other @ CoreError::Unimplemented(_) => {
+                return Err(format!("expected diagnostic error, got {other:?}").into());
+            }
         };
         ensure!(
             diagnostic.def().code() == codes::MOS0021.code(),

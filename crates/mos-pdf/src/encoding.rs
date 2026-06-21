@@ -48,7 +48,7 @@
 //!
 //! ## Output
 //!
-//! [`DocEncoding`] carries everything the PDF emit code needs: the
+//! `DocEncoding` carries everything the PDF emit code needs: the
 //! `/Differences` pairs (slot → AFM glyph name) for the font dict,
 //! `byte_for_char` for the content-stream encoder, and
 //! `to_unicode_entries` for the `/ToUnicode` `CMap` so copy-paste keeps
@@ -86,7 +86,7 @@ impl DocEncoding {
     /// more remapped slots). When `false`, callers should emit the
     /// existing `/Encoding /WinAnsiEncoding` shortcut and skip
     /// `/ToUnicode`.
-    pub(crate) fn has_differences(&self) -> bool {
+    pub(crate) const fn has_differences(&self) -> bool {
         !self.differences.is_empty()
     }
 }
