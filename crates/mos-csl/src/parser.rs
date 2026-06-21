@@ -190,10 +190,9 @@ fn parse_info_contributor(node: Node<'_, '_>) -> InfoContributor {
 }
 
 fn parse_locale(node: Node<'_, '_>, input: &str) -> LocaleBlock {
-    let xml = match input.get(node.range()) {
-        Some(text) => text.to_owned(),
-        None => String::new(),
-    };
+    let xml = input
+        .get(node.range())
+        .map_or_else(String::new, str::to_owned);
     LocaleBlock { xml }
 }
 
@@ -554,9 +553,9 @@ fn parse_bibliography_options(node: Node<'_, '_>) -> BibliographyOptions {
 
 fn parse_sort_key_options(node: Node<'_, '_>) -> SortKeyOptions {
     SortKeyOptions {
-        names_min: attr(node, "names-min"),
-        names_use_first: attr(node, "names-use-first"),
-        names_use_last: attr(node, "names-use-last"),
+        min: attr(node, "names-min"),
+        use_first: attr(node, "names-use-first"),
+        use_last: attr(node, "names-use-last"),
     }
 }
 
@@ -615,10 +614,7 @@ fn line_at(input: &str, row: usize) -> Option<(usize, &str)> {
     let mut line_start = 0;
     for (line_index, line) in input.split_inclusive('\n').enumerate() {
         if line_index + 1 == row {
-            let line_without_newline = match line.strip_suffix('\n') {
-                Some(stripped) => stripped,
-                None => line,
-            };
+            let line_without_newline = line.strip_suffix('\n').map_or(line, |stripped| stripped);
             return Some((line_start, line_without_newline));
         }
         line_start += line.len();
