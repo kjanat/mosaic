@@ -25,7 +25,8 @@
 // This matches how PDF readers actually paint these bytes; it is NOT
 // the same as Latin-1 / CP1252 round-tripping.
 
-pub(crate) const WINANSI_CHAR_MAP: [Option<char>; 256] = [
+/// PDF `WinAnsi` byte-to-Unicode table.
+pub const WINANSI_CHAR_MAP: [Option<char>; 256] = [
     // 0x00..=0x1F: C0 control characters: unmapped in PDF WinAnsi.
     None,
     None,
