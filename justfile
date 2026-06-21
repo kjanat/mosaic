@@ -1,5 +1,6 @@
 # https://just.systems
 set unstable
+set lists
 
 # Git Bash / MSYS2 sources /etc/bash.bashrc, whose line 13 reads
 # `${CYG_SYS_BASHRC}` unguarded. The shells bun/runner spawn run under
