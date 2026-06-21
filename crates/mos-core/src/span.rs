@@ -90,7 +90,7 @@ impl SourceSpan {
     /// assert_eq!(&src[span.range()], "x");
     /// ```
     #[must_use]
-    pub fn range(&self) -> std::ops::Range<usize> {
+    pub const fn range(&self) -> std::ops::Range<usize> {
         self.start..self.end
     }
 
@@ -138,7 +138,7 @@ impl SourceSpan {
     /// assert_eq!((span.start(), span.end()), (0, 0));
     /// ```
     #[must_use]
-    pub fn placeholder(file: PathBuf) -> Self {
+    pub const fn placeholder(file: PathBuf) -> Self {
         Self {
             file,
             start: 0,

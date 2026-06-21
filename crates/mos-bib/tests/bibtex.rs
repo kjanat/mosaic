@@ -174,7 +174,7 @@ fn ignores_surrounding_whitespace() {
 fn captures_unicode_and_latex_in_values_verbatim() {
     // No TeX decoding: backslash commands and accents survive untouched, and
     // multi-byte UTF-8 in values is preserved.
-    let bib = parse_bibtex(r#"@article{k, title = {Caf\'{e} \LaTeX}, note = {naïve}}"#)
+    let bib = parse_bibtex(r"@article{k, title = {Caf\'{e} \LaTeX}, note = {naïve}}")
         .expect("input should parse");
     let entry = bib.entries.get("k").expect("entry present");
     assert_eq!(

@@ -146,7 +146,7 @@ impl std::fmt::Display for DiagnosticCategory {
 /// assert_eq!(codes::MOS0018.category(), DiagnosticCategory::Text);
 /// assert_eq!(codes::MOS0018.owner(), "mos-fonts");
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct DiagnosticDef {
     code: DiagnosticCode,
     slug: &'static str,
@@ -397,9 +397,7 @@ define_codes! {
     /// Malformed citation group; treated as literal text.
     MOS0039 = 39, Warning, Syntax, "malformed-citation", "mos-parse",
         "syntax: malformed citation group; treated as text";
-    /// A heading `<label>` is not the last element on the line, so it is not
-    /// recognised as a label declaration and is treated as literal text;
-    /// references to it would then fail to resolve.
+    /// Heading `<label>` is not trailing.
     MOS0048 = 48, Warning, Syntax, "heading-label-not-trailing", "mos-parse",
         "syntax: heading label is not the last element on the line; treated as text";
     /// BibTeX database could not be parsed (`mos-bib`).
@@ -446,11 +444,7 @@ define_codes! {
     /// Citation key appears in more than one declared bibliography source.
     MOS0046 = 46, Error, Semantic, "bibliography-duplicate-key", "mos-eval",
         "semantic: citation key appears in more than one bibliography source";
-    /// A `/`-separated `#image`/`#figure`/`#bibliography` (or manifest) path
-    /// has a segment that is not a portable name: it carries a platform
-    /// separator (`\`), a drive prefix, or otherwise resolves to more than a
-    /// single component, which the OS would re-split past lexical `..`
-    /// normalization. The path is rejected rather than resolved.
+    /// Path contains a non-portable segment.
     MOS0049 = 49, Error, Semantic, "path-unsafe-segment", "mos-eval",
         "semantic: path segment is not a portable name (manifest paths use `/` only)";
 
@@ -475,8 +469,7 @@ define_codes! {
     /// Image reached layout without decoded pixels; skipped on the page.
     MOS0035 = 35, Warning, Layout, "image-skipped-no-pixels", "mos-layout",
         "layout: image reached layout without decoded pixels; skipped";
-    /// `@page(...)` references did not converge to stable page numbers within
-    /// the iteration cap; the last computed numbers are used.
+    /// `@page(...)` references did not converge.
     MOS0047 = 47, Warning, Layout, "page-fixpoint-nonconvergence", "mos-eval",
         "layout: page references did not converge; last computed page numbers used";
 
