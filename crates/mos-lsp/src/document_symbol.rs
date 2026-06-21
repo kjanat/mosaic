@@ -15,7 +15,7 @@ struct SectionSymbol {
 
 /// Build nested LSP `DocumentSymbol`s from heading/section nodes.
 #[must_use]
-pub(crate) fn document_symbols(document: &Document, src: &str) -> Vec<Value> {
+pub fn document_symbols(document: &Document, src: &str) -> Vec<Value> {
     let sections = flat_sections(document, src);
     let mut index = 0;
     build_children(&sections, &mut index, 0)

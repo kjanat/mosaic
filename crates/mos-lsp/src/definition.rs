@@ -28,7 +28,7 @@ use crate::diagnostics::{LspPosition, LspRange, span_to_range};
 /// requested Mosaic source file; citation keys can point into a declared
 /// BibTeX source.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct DefinitionTarget {
+pub struct Target {
     pub path: PathBuf,
     pub range: LspRange,
 }
@@ -38,7 +38,7 @@ pub(crate) struct DefinitionTarget {
 ///
 /// This is the un-cached entry point, kept for callers (and tests) that
 /// hold only a source string. The server answers live requests through
-/// [`definition_range_in`] instead, reusing a [`Document`] cached per edit
+/// [`range_in`] instead, reusing a [`Document`] cached per edit
 /// by the crate's lowering cache rather than re-lowering on every
 /// `textDocument/definition`.
 ///
@@ -47,9 +47,9 @@ pub(crate) struct DefinitionTarget {
 /// different file than the request, which cannot happen for a
 /// single-document lowering but keeps the contract explicit.
 #[must_use]
-pub fn definition_range(file: &Path, src: &str, position: LspPosition) -> Option<LspRange> {
+pub fn range(file: &Path, src: &str, position: LspPosition) -> Option<LspRange> {
     let lowered = mos_eval::lower(src, file);
-    definition_target_in(&lowered.document, file, src, position).map(|target| target.range)
+    target_in(&lowered.document, file, src, position).map(|target| target.range)
 }
 
 /// Resolve the reference under `position` against an already-lowered
@@ -58,37 +58,37 @@ pub fn definition_range(file: &Path, src: &str, position: LspPosition) -> Option
 /// The caller supplies the [`Document`] (from a cache or a fresh lowering)
 /// alongside the `src` it was lowered from: `src` is needed only to map
 /// byte offsets to UTF-16 positions, the document carries the spans. Same
-/// `None` contract as [`definition_range`].
+/// `None` contract as [`range`].
 #[must_use]
-pub fn definition_range_in(
+pub fn range_in(
     document: &Document,
     file: &Path,
     src: &str,
     position: LspPosition,
 ) -> Option<LspRange> {
-    definition_target_in(document, file, src, position).map(|target| target.range)
+    target_in(document, file, src, position).map(|target| target.range)
 }
 
 /// Resolve the reference or citation under `position` against an
 /// already-lowered `document`, returning the target file and range.
 #[must_use]
-pub(crate) fn definition_target_in(
+pub fn target_in(
     document: &Document,
     file: &Path,
     src: &str,
     position: LspPosition,
-) -> Option<DefinitionTarget> {
+) -> Option<Target> {
     let offset = position_to_byte(src, position);
     if let Some(label) = reference_label_at(document, file, offset) {
         let span = first_declaration_span(document, &label)?;
-        return (span.file == file).then(|| DefinitionTarget {
+        return (span.file == file).then(|| Target {
             path: span.file.clone(),
             range: span_to_range(src, &span),
         });
     }
     let span = citation_target_span_at(document, file, offset)?;
     let target_src = fs::read_to_string(&span.file).ok()?;
-    Some(DefinitionTarget {
+    Some(Target {
         path: span.file.clone(),
         range: span_to_range(&target_src, &span),
     })
@@ -167,7 +167,7 @@ fn attr_usize(value: Option<&AttrValue>) -> Option<usize> {
 }
 
 #[must_use]
-pub(crate) fn path_to_uri(path: &Path) -> String {
+pub fn path_to_uri(path: &Path) -> String {
     let mut raw = path.to_string_lossy().replace('\\', "/");
     if !raw.starts_with('/') {
         raw.insert(0, '/');
@@ -300,7 +300,7 @@ mod tests {
         // Cursor inside the `@intro` reference on line 2.
         let at = src.find("@intro").expect("reference present");
         let position = byte_position(src, at + 2);
-        let range = definition_range(&file, src, position).expect("definition resolved");
+        let range = range(&file, src, position).expect("definition resolved");
         // The declaration's label token sits on the heading line 0.
         assert_eq!(range.start.line, 0);
         // The range must be non-empty, not collapse to a point.
@@ -316,8 +316,8 @@ mod tests {
         let file = PathBuf::from("/virtual/main.mos");
         let src = "= Intro <intro>\n\nSee @intro here.\n";
         let reference = src.find("@intro").expect("reference present");
-        let range = definition_range(&file, src, byte_position(src, reference + 2))
-            .expect("definition resolved");
+        let range =
+            range(&file, src, byte_position(src, reference + 2)).expect("definition resolved");
 
         // `<intro>` opens at the `<`; the token itself starts one byte in.
         let token_start = src.find("<intro>").expect("label present") + 1;
@@ -331,7 +331,7 @@ mod tests {
         let file = PathBuf::from("/virtual/main.mos");
         let src = "See @nope here.\n";
         let at = src.find("@nope").expect("reference present");
-        assert!(definition_range(&file, src, byte_position(src, at + 1)).is_none());
+        assert!(range(&file, src, byte_position(src, at + 1)).is_none());
     }
 
     #[test]
@@ -345,7 +345,7 @@ mod tests {
         let file = PathBuf::from("/virtual/main.mos");
         let src = "= Intro <intro>\n\nSee @intro here.\n";
         // Column 0 of the heading line is plain text, not a reference.
-        assert!(definition_range(&file, src, position(0, 0)).is_none());
+        assert!(range(&file, src, position(0, 0)).is_none());
     }
 
     #[test]
@@ -353,8 +353,7 @@ mod tests {
         let file = PathBuf::from("/virtual/main.mos");
         let src = "= First <dup>\n\n= Second <dup>\n\nSee @dup here.\n";
         let at = src.find("@dup").expect("reference present");
-        let range =
-            definition_range(&file, src, byte_position(src, at + 2)).expect("definition resolved");
+        let range = range(&file, src, byte_position(src, at + 2)).expect("definition resolved");
         // First declaration is the line-0 heading, not the line-2 one.
         assert_eq!(range.start.line, 0);
     }

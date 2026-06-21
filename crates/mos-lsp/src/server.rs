@@ -13,14 +13,12 @@ use std::path::Path;
 use mos_eval::LowerResult;
 use serde_json::{Value, json};
 
-use crate::cache::LoweringCache;
+use crate::cache::Store as LoweringCache;
 use crate::code_action::code_actions_for_range;
-use crate::definition::{definition_target_in, path_to_uri};
-use crate::diagnostics::{
-    LspDiagnostic, LspPosition, LspRange, diagnostics_from_result, path_from_uri,
-};
+use crate::definition::{path_to_uri, target_in};
+use crate::diagnostics::{LspDiagnostic, LspPosition, LspRange, from_result, path_from_uri};
 use crate::document_symbol::document_symbols;
-use crate::rename::rename_ranges;
+use crate::rename::ranges as rename_ranges;
 
 /// Errors surfaced by the LSP server runtime. Compiler diagnostics
 /// flow over the wire instead: they are never represented here.
@@ -238,7 +236,7 @@ fn definition_result(state: &mut ServerState, message: &Value) -> Value {
         return Value::Null;
     };
     let target = with_lowering(state, uri, |lowered, path, src| {
-        definition_target_in(&lowered.document, path, src, position).map(|target| {
+        target_in(&lowered.document, path, src, position).map(|target| {
             let target_uri = if target.path == *path {
                 uri.to_owned()
             } else {
@@ -417,12 +415,11 @@ fn publish_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState, uri: &
     // lowering borrow, so the write below is unconstrained. Unknown URIs
     // yield `None` and publish nothing.
     let diagnostics = with_lowering(state, uri, |lowered, path, src| {
-        diagnostics_from_result(path, src, lowered)
+        from_result(path, src, lowered)
     });
-    match diagnostics {
-        Some(diagnostics) => send_publish(writer, uri, &diagnostics),
-        None => Ok(()),
-    }
+    diagnostics.map_or(Ok(()), |diagnostics| {
+        send_publish(writer, uri, &diagnostics)
+    })
 }
 
 fn clear_diagnostics<W: Write>(writer: &mut W, uri: &str) -> Result<()> {

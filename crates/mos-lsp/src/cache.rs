@@ -2,8 +2,8 @@
 //! go-to-definition so a document is lowered once per edit (issue #106)
 //! rather than once per feature per request.
 //!
-//! The server [`store`](LoweringCache::store)s a [`LowerResult`] keyed by
-//! document URI and [`invalidate`](LoweringCache::invalidate)s the entry on
+//! The server [`store`](Store::store)s a [`LowerResult`] keyed by
+//! document URI and [`invalidate`](Store::invalidate)s the entry on
 //! every source mutation (`didOpen` / `didChange` / `didClose`), so a cached
 //! lowering is always derived from the *current* source text.
 //!
@@ -29,15 +29,25 @@ use mos_eval::LowerResult;
 /// owner ([`crate::server`]) is responsible for calling [`Self::invalidate`]
 /// on every source mutation, which is what keeps a cache hit honest.
 #[derive(Default, Debug)]
-pub(crate) struct LoweringCache {
+pub struct Store {
     entries: HashMap<String, LowerResult>,
 }
 
-impl LoweringCache {
+impl Store {
     /// The cached lowering for `uri`, or `None` when nothing is stored:
     /// either because the document was never lowered, was invalidated, or its
     /// last lowering was impure and therefore deliberately not cached.
-    pub(crate) fn get(&self, uri: &str) -> Option<&LowerResult> {
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mos_lsp::cache::Store;
+    ///
+    /// let cache = Store::default();
+    /// assert!(cache.get("file:///doc.mos").is_none());
+    /// ```
+    #[must_use]
+    pub fn get(&self, uri: &str) -> Option<&LowerResult> {
         self.entries.get(uri)
     }
 
@@ -46,13 +56,39 @@ impl LoweringCache {
     /// Callers must only store **pure** lowerings (`!reads_external_resources`):
     /// caching one that read external files could serve a result gone stale
     /// against the filesystem with no source edit to invalidate it.
-    pub(crate) fn store(&mut self, uri: &str, lowered: LowerResult) {
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// use mos_lsp::cache::Store;
+    ///
+    /// let mut cache = Store::default();
+    /// let lowered = mos_eval::lower("= Title\n", Path::new("doc.mos"));
+    /// cache.store("file:///doc.mos", lowered);
+    /// assert!(cache.get("file:///doc.mos").is_some());
+    /// ```
+    pub fn store(&mut self, uri: &str, lowered: LowerResult) {
         self.entries.insert(uri.to_owned(), lowered);
     }
 
     /// Drop any cached lowering for `uri`. Called when the document's source
     /// changes (`didOpen` overwrite / `didChange`) or the document closes.
-    pub(crate) fn invalidate(&mut self, uri: &str) {
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// use mos_lsp::cache::Store;
+    ///
+    /// let mut cache = Store::default();
+    /// cache.store("file:///doc.mos", mos_eval::lower("body", Path::new("doc.mos")));
+    /// cache.invalidate("file:///doc.mos");
+    /// assert!(cache.get("file:///doc.mos").is_none());
+    /// ```
+    pub fn invalidate(&mut self, uri: &str) {
         self.entries.remove(uri);
     }
 
@@ -61,7 +97,8 @@ impl LoweringCache {
     /// for a later definition request, and that impure lowerings are not
     /// cached (issue #106).
     #[cfg(test)]
-    pub(crate) fn is_cached(&self, uri: &str) -> bool {
+    #[must_use]
+    pub fn is_cached(&self, uri: &str) -> bool {
         self.entries.contains_key(uri)
     }
 }
@@ -82,7 +119,7 @@ mod tests {
     #[test]
     fn stores_and_reuses_until_invalidated() {
         let file = PathBuf::from("/virtual/main.mos");
-        let mut cache = LoweringCache::default();
+        let mut cache = Store::default();
         assert!(cache.get("u").is_none(), "an empty cache returns nothing");
 
         let lowered = mos_eval::lower("= A\n", &file);
@@ -101,7 +138,7 @@ mod tests {
     #[test]
     fn distinct_uris_store_independently() {
         let file = PathBuf::from("/virtual/main.mos");
-        let mut cache = LoweringCache::default();
+        let mut cache = Store::default();
         cache.store("a", mos_eval::lower("= A\n", &file));
         cache.store("b", mos_eval::lower("= A\n\n= B\n", &file));
         let a_len = cache.get("a").map(|l| l.document.len());
