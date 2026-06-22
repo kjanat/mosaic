@@ -645,12 +645,12 @@ impl<'a> ParseAccumulator<'a> {
                 self.font_bbox = parse_bbox(rest, "FontBBox", lineno)?;
                 self.font_bbox_presence = Presence::Present;
             }
-            "StartCharMetrics" => self.start_char_metrics(rest),
+            "StartCharMetrics" => self.start_char_metrics(rest, lineno)?,
             "EndCharMetrics" | "EndKernPairs" | "EndKernData" => self.state = State::Top,
             "StartKernData" => self.state = State::KernPairs,
-            "StartKernPairs" | "StartKernPairs0" => self.start_kern_pairs(rest),
+            "StartKernPairs" | "StartKernPairs0" => self.start_kern_pairs(rest, lineno)?,
             "StartKernPairs1" => self.state = State::SkipKernPairs,
-            "StartDirection" => self.start_direction(rest),
+            "StartDirection" => self.start_direction(rest, lineno)?,
             "C" | "CH" if self.state == State::CharMetrics => {
                 self.chars.push(parse_char_metric_line(line, lineno)?);
             }
@@ -665,24 +665,55 @@ impl<'a> ParseAccumulator<'a> {
         Ok(())
     }
 
-    fn start_char_metrics(&mut self, rest: &str) {
+    fn start_char_metrics(&mut self, rest: &str, lineno: usize) -> Result<(), ParseError> {
         if let Ok(n) = rest.trim().parse::<usize>() {
-            self.chars.reserve(n);
+            self.chars
+                .try_reserve(n)
+                .map_err(|_err| ParseError::MalformedRecord {
+                    line: lineno,
+                    keyword: "StartCharMetrics",
+                    reason: "declared count exceeds allocatable capacity",
+                })?;
         }
         self.state = State::CharMetrics;
+        Ok(())
     }
 
-    fn start_kern_pairs(&mut self, rest: &str) {
+    fn start_kern_pairs(&mut self, rest: &str, lineno: usize) -> Result<(), ParseError> {
         if let Ok(n) = rest.trim().parse::<usize>() {
-            self.kerns.reserve(n);
+            self.kerns
+                .try_reserve(n)
+                .map_err(|_err| ParseError::MalformedRecord {
+                    line: lineno,
+                    keyword: "StartKernPairs",
+                    reason: "declared count exceeds allocatable capacity",
+                })?;
         }
         self.state = State::KernPairs;
+        Ok(())
     }
 
-    fn start_direction(&mut self, rest: &str) {
-        if rest.trim().parse::<u8>().unwrap_or(0) == 1 {
-            self.direction = DirectionState::Skipping;
+    fn start_direction(&mut self, rest: &str, lineno: usize) -> Result<(), ParseError> {
+        let value = rest.trim();
+        let direction = value
+            .parse::<u8>()
+            .map_err(|_err| ParseError::InvalidNumber {
+                line: lineno,
+                field: "StartDirection",
+                value: value.to_owned(),
+            })?;
+        match direction {
+            0 | 2 => {}
+            1 => self.direction = DirectionState::Skipping,
+            _ => {
+                return Err(ParseError::MalformedRecord {
+                    line: lineno,
+                    keyword: "StartDirection",
+                    reason: "expected direction selector 0, 1, or 2",
+                });
+            }
         }
+        Ok(())
     }
 }
 

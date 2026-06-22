@@ -36,7 +36,7 @@ Not implemented here yet:
 | Images           | `layout_image`             | Sizing, page breaks, image placement.                                                     |
 | Figures          | `layout_figure`            | Dry-run measurement must match real flow.                                                 |
 | Lists            | `layout_list`              | Nesting, marker gutter, pending marker restore.                                           |
-| Raw blocks       | raw block layout helpers   | Monospace, tab expansion, hard line preservation.                                         |
+| Raw blocks       | `layout_raw_block`         | Monospace, tab expansion, hard line preservation.                                         |
 | Text flow        | `flow_words`, `flush_line` | Core wrapping and pagination behavior.                                                    |
 | Word/break items | `src/word.rs`              | `Word`, `WordItem`, `split_soft_hyphens`.                                                 |
 

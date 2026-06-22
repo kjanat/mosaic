@@ -72,9 +72,6 @@ perf        = "warn"
 style       = "warn"
 suspicious  = "warn"
 
-nursery  = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
-
 # Per the Clippy book, enabling the entire pedantic, nursery, or restriction group is discouraged
 # ("cherry-pick lints out of the group").
 # The default-on groups (correctness/suspicious/style/complexity/perf) keep their default levels;

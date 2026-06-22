@@ -2,8 +2,8 @@
 
 /// Return a list marker at `pos`, if present.
 ///
-/// The tuple is `(indent, ordered, content_start)`. Tabs are not recognised as
-/// either indent or post-marker whitespace in MVP 0.
+/// The tuple is `(indent, ordered, content_start)`. Indentation counts ASCII
+/// spaces only; tabs are tolerated only as post-marker whitespace.
 #[must_use]
 pub fn list_marker_at(bytes: &[u8], pos: usize) -> Option<(usize, bool, usize)> {
     let mut i = pos;

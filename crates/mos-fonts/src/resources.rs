@@ -4,7 +4,7 @@ use crate::{EmbeddedFont, EmbeddedFontId};
 
 /// Return bundled font data for `id`.
 #[must_use]
-pub fn embedded_font(id: EmbeddedFontId) -> &'static EmbeddedFont {
+pub(crate) fn embedded_font(id: EmbeddedFontId) -> &'static EmbeddedFont {
     match id {
         EmbeddedFontId::Regular => &NOTO_SANS_REGULAR,
         EmbeddedFontId::Bold => &NOTO_SANS_BOLD,
@@ -17,7 +17,7 @@ pub fn embedded_font(id: EmbeddedFontId) -> &'static EmbeddedFont {
 
 /// Return the PDF resource name for embedded font `id`.
 #[must_use]
-pub const fn pdf_resource_name(id: EmbeddedFontId) -> &'static [u8] {
+pub(crate) const fn pdf_resource_name(id: EmbeddedFontId) -> &'static [u8] {
     RESOURCE_NAMES[id.pdf_resource_index() as usize]
 }
 

@@ -128,7 +128,7 @@ soft_break          = line_end ;             (* contextual: not a blank_line *)
 
 list_block          = list_item, { line_end, list_item } ;
 
-list_item           = item_indent, list_marker, space1, inline_sequence,
+list_item           = item_indent, list_marker, hspace1, inline_sequence,
                       { list_continuation | nested_list } ;
 
 list_continuation   = line_end, continuation_indent, inline_sequence ;

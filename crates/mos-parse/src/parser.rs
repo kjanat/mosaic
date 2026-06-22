@@ -1869,6 +1869,12 @@ mod tests {
         assert_eq!(r.tree.items.len(), 2);
         assert!(r.tree.items[0].as_list().is_some());
         assert!(r.tree.items[1].as_paragraph().is_some());
+
+        let r = parse_str("- item\n \tcont\n");
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+        assert_eq!(r.tree.items.len(), 2);
+        assert!(r.tree.items[0].as_list().is_some());
+        assert!(r.tree.items[1].as_paragraph().is_some());
     }
 
     // ---------- line-break controls (issue #26) ----------

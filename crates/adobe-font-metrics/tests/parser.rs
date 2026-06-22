@@ -311,6 +311,74 @@ fn direction_1_kerns_dropped_not_conflated() {
 }
 
 #[test]
+fn overlarge_declared_counts_return_parse_error() {
+    let huge = usize::MAX;
+    let src = format!(
+        "StartFontMetrics 4.1\n\
+         FontName Test\n\
+         FontBBox 0 0 0 0\n\
+         StartCharMetrics {huge}\n\
+         EndFontMetrics\n"
+    );
+    let err = parse(&src).expect_err("overlarge char metric count should fail");
+    assert!(matches!(
+        err,
+        ParseError::MalformedRecord {
+            keyword: "StartCharMetrics",
+            ..
+        }
+    ));
+
+    let src = format!(
+        "StartFontMetrics 4.1\n\
+         FontName Test\n\
+         FontBBox 0 0 0 0\n\
+         StartKernData\n\
+         StartKernPairs {huge}\n\
+         EndFontMetrics\n"
+    );
+    let err = parse(&src).expect_err("overlarge kern pair count should fail");
+    assert!(matches!(
+        err,
+        ParseError::MalformedRecord {
+            keyword: "StartKernPairs",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn invalid_start_direction_returns_parse_error() {
+    let src = "StartFontMetrics 4.1\n\
+               FontName Test\n\
+               FontBBox 0 0 0 0\n\
+               StartDirection bogus\n\
+               EndFontMetrics\n";
+    let err = parse(src).expect_err("non-numeric StartDirection should fail");
+    assert!(matches!(
+        err,
+        ParseError::InvalidNumber {
+            field: "StartDirection",
+            ..
+        }
+    ));
+
+    let src = "StartFontMetrics 4.1\n\
+               FontName Test\n\
+               FontBBox 0 0 0 0\n\
+               StartDirection 3\n\
+               EndFontMetrics\n";
+    let err = parse(src).expect_err("unsupported StartDirection should fail");
+    assert!(matches!(
+        err,
+        ParseError::MalformedRecord {
+            keyword: "StartDirection",
+            ..
+        }
+    ));
+}
+
+#[test]
 fn non_zero_start_direction_does_not_clobber() {
     // `StartDirection 1` carries direction-1 metrics. Without the
     // skip, `UnderlinePosition -999` inside the block would overwrite

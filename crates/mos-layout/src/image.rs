@@ -48,7 +48,7 @@ impl LayoutState {
         // content (e.g. a labelled `#figure` whose first child is the image).
         self.bind_pending_labels();
 
-        let x = (column_w - render_w).mul_add(0.5, self.page.margin);
+        let x = (column_w - render_w).mul_add(0.5, self.current_left_pt);
         self.current_page.images.push(ImagePlacement {
             handle,
             x_pt: x,
@@ -76,7 +76,10 @@ impl LayoutState {
                 continue;
             };
             let block_h = match child.kind {
-                NodeKind::Image => Self::intrinsic_image_size(child).map_or(0.0, |(w, h)| {
+                NodeKind::Image => {
+                    let Some((w, h)) = Self::intrinsic_image_size(child) else {
+                        continue;
+                    };
                     let render_w = w.min(column_w);
                     let render_h = if w > 0.0 && render_w < w {
                         render_w * (h / w)
@@ -84,7 +87,7 @@ impl LayoutState {
                         h
                     };
                     render_h + body_ascent
-                }),
+                }
                 NodeKind::Paragraph => self.measure_paragraph_height(document, child),
                 _ => continue,
             };
@@ -496,6 +499,29 @@ mod tests {
     }
 
     #[test]
+    fn image_block_centers_inside_current_column() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let image_id = make_image(&mut doc, "x.png", 100, 50, None, None);
+        let image = doc.get(image_id).expect("image");
+        let mut state = LayoutState::new(
+            PageStyle {
+                width: A4_WIDTH_PT,
+                height: A4_HEIGHT_PT,
+                margin: MARGIN_PT,
+            },
+            TextStyle::default(),
+        );
+        state.current_left_pt = MARGIN_PT + 60.0;
+        let expected_column_w = state.column_width_pt();
+
+        state.layout_image(image_id, image);
+
+        let placed = &state.current_page.images[0];
+        let expected_x = (expected_column_w - placed.width_pt).mul_add(0.5, state.current_left_pt);
+        assert!((placed.x_pt - expected_x).abs() < 0.01);
+    }
+
+    #[test]
     fn oversized_image_after_paragraph_does_not_force_extra_page() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         make_paragraph(&mut doc, "lead paragraph");
@@ -610,6 +636,44 @@ mod tests {
             "flowed runs: {:?}",
             flowed_state.current_page.runs
         );
+    }
+
+    #[test]
+    fn figure_dry_run_skips_unrenderable_images() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let fig = doc.alloc_child(
+            doc.root,
+            NodeSpec::new(
+                NodeKind::Figure,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
+        );
+        doc.alloc_child(
+            fig,
+            NodeSpec::new(
+                NodeKind::Image,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
+        );
+        let caption = doc.alloc_child(
+            fig,
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
+        );
+        alloc_inline(&mut doc, caption, NodeKind::Text, "Caption");
+
+        let mut state = helvetica_state_with_column_width(120.0);
+        state.page_has_content = true;
+        let caption_h = state.measure_paragraph_height(&doc, doc.get(caption).expect("caption"));
+        let available_y = state.page.height - state.page.margin;
+        state.cursor_y = available_y - caption_h - PARA_SPACE_AFTER_PT - 1.0;
+        state.layout_figure(&doc, doc.get(fig).expect("figure"));
+
+        assert_eq!(state.current_page.number, 1);
+        assert!(state.current_page.images.is_empty());
+        assert_eq!(state.current_page.runs.len(), 1);
     }
 
     fn make_figure_with_image_and_caption(

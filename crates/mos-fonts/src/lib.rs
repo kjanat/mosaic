@@ -38,8 +38,7 @@ mod family;
 mod font;
 mod metrics;
 mod normalize;
-#[doc(hidden)]
-pub mod resources;
+pub(crate) mod resources;
 mod shape;
 
 pub use embedded::{EmbeddedFont, ShapedGlyph, shape, subset};
