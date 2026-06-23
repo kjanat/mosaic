@@ -18,14 +18,18 @@
 //! are deferred.
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
 
-mod content;
-mod embedded;
-mod encoding;
-mod images;
+#[doc(hidden)]
+pub mod content;
+#[doc(hidden)]
+pub mod embedded;
+#[doc(hidden)]
+pub mod encoding;
+#[doc(hidden)]
+pub mod images;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -54,10 +58,10 @@ use crate::encoding::{DocEncoding, EncodingPlanner};
 ///   kept in sync with this Info dict.
 const PRODUCER: &str = concat!("Mosaic ", env!("CARGO_PKG_VERSION"));
 
-/// Document-level metadata that gets written to the PDF Info
-/// dictionary. Populated by the lowerer from `#set document(...)`.
-/// The `language` field is captured but not yet emitted (it belongs in
-/// the catalog `/Lang` entry, which is the next slice).
+/// Document-level metadata written to the PDF Info dictionary.
+///
+/// Populated by the lowerer from `#set document(...)`. `language` is captured
+/// but not yet emitted; it belongs in the catalog `/Lang` entry.
 ///
 /// # Examples
 ///
@@ -150,12 +154,8 @@ pub(crate) fn build_pdf(
     // Phase 1a: scan every run and plan per-face Base14 /Differences
     // encodings (embedded-font runs are skipped: they take the Type 0
     // CID path below).
-    let mut planner = EncodingPlanner::new();
-    for page in &graph.pages {
-        planner.observe_runs(&page.runs);
-    }
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
-    let encodings = planner.finalize(&mut diagnostics);
+    let encodings = plan_base14_encodings(graph, &mut diagnostics);
 
     // Phase 1b: subset every embedded face actually used. One plan
     // per face referenced; absent if the face never appears in `runs`.
@@ -245,46 +245,19 @@ pub(crate) fn build_pdf(
         .kids(page_refs.iter().map(|(p, _)| *p))
         .count(page_count);
 
-    for (page, (page_id, content_id)) in graph.pages.iter().zip(page_refs.iter()) {
-        let mut page_obj = pdf.page(*page_id);
-        page_obj.media_box(Rect::new(0.0, 0.0, page.width_pt, page.height_pt));
-        page_obj.parent(page_tree_id);
-        page_obj.contents(*content_id);
-        {
-            let mut resources = page_obj.resources();
-            {
-                let mut fonts = resources.fonts();
-                for (face, font_id) in &base14_refs {
-                    fonts.pair(Name(face.pdf_resource_name()), *font_id);
-                }
-                // Embedded faces actually referenced in this document.
-                // Each page's resource dict lists every embedded face used
-                // anywhere in the document, not just on this page, so
-                // resource dicts stay identical across pages. Iterate
-                // `EmbeddedFontId::ALL` for deterministic order.
-                for id in EmbeddedFontId::ALL {
-                    if let Some(refs) = embedded_refs.get(&id) {
-                        fonts.pair(Name(id.pdf_resource_name()), refs.font);
-                    }
-                }
-            }
-            // Image XObjects. Every page lists every image referenced
-            // anywhere in the document so resource dicts stay byte-
-            // stable across pages: same pattern as the font dicts.
-            if !graph.images.is_empty() {
-                let mut x_objects = resources.x_objects();
-                for (handle, image_id) in graph.images.iter().zip(image_refs.iter()) {
-                    let name = images::resource_name(handle);
-                    x_objects.pair(Name(name.as_bytes()), *image_id);
-                }
-            }
-        }
-        page_obj.finish();
-
-        let stream_bytes =
-            content::build_content_stream(page.height_pt, page, &encodings, &embedded_by_id)?;
-        pdf.stream(*content_id, &stream_bytes);
-    }
+    emit_pages(
+        &mut pdf,
+        graph,
+        &PageEmitContext {
+            page_tree_id,
+            page_refs: &page_refs,
+            base14_refs: &base14_refs,
+            embedded_refs: &embedded_refs,
+            image_refs: &image_refs,
+            encodings: &encodings,
+            embedded_by_id: &embedded_by_id,
+        },
+    )?;
 
     // Emit each Image XObject. Order matches `graph.images` (and
     // therefore the `alloc()` order above), keeping byte output
@@ -292,42 +265,9 @@ pub(crate) fn build_pdf(
     // compressed buffer dropped at the end of the iteration, so peak
     // memory holds at most one compressed image at a time on top of
     // the (Arc-shared) decoded pixel buffer the handle already owns.
-    for (handle, id) in graph.images.iter().zip(image_refs.iter()) {
-        let compressed = images::flate_compress(&handle.rgb8);
-        images::emit_image_xobject(&mut pdf, *id, handle, &compressed);
-    }
+    emit_images(&mut pdf, graph, &image_refs);
 
-    for (face, font_id) in &base14_refs {
-        let Some(base14) = face.base14() else {
-            continue;
-        };
-        let mut font_dict = pdf.type1_font(*font_id);
-        font_dict.base_font(Name(face.pdf_base_name().as_bytes()));
-        // Symbol and ZapfDingbats use their own PostScript encodings;
-        // overriding to WinAnsi would be a category error (Symbol's
-        // `A` is Alpha). Skip /Encoding entirely for those.
-        if matches!(base14, Base14Font::Symbol | Base14Font::ZapfDingbats) {
-            continue;
-        }
-        match encoding_refs.get(face) {
-            Some(&(enc_ref, cmap_ref)) => {
-                // Custom /Encoding dict + /ToUnicode CMap (emitted
-                // below at top level so the refs resolve).
-                font_dict.pair(Name(b"Encoding"), enc_ref);
-                font_dict.to_unicode(cmap_ref);
-            }
-            None => {
-                // No extended glyphs needed for this face: the
-                // standard WinAnsi shortcut suffices. PDF readers
-                // default Type1 dicts to the font's built-in
-                // encoding (StandardEncoding for Helvetica), so
-                // declaring WinAnsi is required for bytes ≥ 0x80
-                // (Euro, smart quotes, accented Latin, …) to render
-                // the right glyph.
-                font_dict.encoding_predefined(Name(b"WinAnsiEncoding"));
-            }
-        }
-    }
+    emit_base14_fonts(&mut pdf, &base14_refs, &encoding_refs);
 
     // Emit each embedded face's 5-object cluster (Type 0 + CIDFont +
     // descriptor + FontFile2 stream + ToUnicode CMap).
@@ -367,6 +307,96 @@ pub(crate) fn build_pdf(
     }
 
     Ok((pdf.finish(), diagnostics))
+}
+
+struct PageEmitContext<'a> {
+    page_tree_id: Ref,
+    page_refs: &'a [(Ref, Ref)],
+    base14_refs: &'a [(Font, Ref)],
+    embedded_refs: &'a HashMap<EmbeddedFontId, EmbeddedRefs>,
+    image_refs: &'a [Ref],
+    encodings: &'a HashMap<Font, DocEncoding>,
+    embedded_by_id: &'a HashMap<EmbeddedFontId, &'a EmbeddedFontPlan>,
+}
+
+fn plan_base14_encodings(
+    graph: &PageGraph,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> HashMap<Font, DocEncoding> {
+    let mut planner = EncodingPlanner::new();
+    for page in &graph.pages {
+        planner.observe_runs(&page.runs);
+    }
+    planner.finalize(diagnostics)
+}
+
+fn emit_pages(pdf: &mut Pdf, graph: &PageGraph, ctx: &PageEmitContext<'_>) -> Result<()> {
+    for (page, (page_id, content_id)) in graph.pages.iter().zip(ctx.page_refs.iter()) {
+        let mut page_obj = pdf.page(*page_id);
+        page_obj.media_box(Rect::new(0.0, 0.0, page.width_pt, page.height_pt));
+        page_obj.parent(ctx.page_tree_id);
+        page_obj.contents(*content_id);
+        {
+            let mut resources = page_obj.resources();
+            {
+                let mut fonts = resources.fonts();
+                for (face, font_id) in ctx.base14_refs {
+                    fonts.pair(Name(face.pdf_resource_name()), *font_id);
+                }
+                for id in EmbeddedFontId::ALL {
+                    if let Some(refs) = ctx.embedded_refs.get(&id) {
+                        fonts.pair(Name(id.pdf_resource_name()), refs.font);
+                    }
+                }
+            }
+            if !graph.images.is_empty() {
+                let mut x_objects = resources.x_objects();
+                for (handle, image_id) in graph.images.iter().zip(ctx.image_refs.iter()) {
+                    let name = images::resource_name(handle);
+                    x_objects.pair(Name(name.as_bytes()), *image_id);
+                }
+            }
+        }
+        page_obj.finish();
+
+        let stream_bytes =
+            content::build_content_stream(page.height_pt, page, ctx.encodings, ctx.embedded_by_id)?;
+        pdf.stream(*content_id, &stream_bytes);
+    }
+    Ok(())
+}
+
+fn emit_base14_fonts(
+    pdf: &mut Pdf,
+    base14_refs: &[(Font, Ref)],
+    encoding_refs: &HashMap<Font, (Ref, Ref)>,
+) {
+    for (face, font_id) in base14_refs {
+        let Some(base14) = face.base14() else {
+            continue;
+        };
+        let mut font_dict = pdf.type1_font(*font_id);
+        font_dict.base_font(Name(face.pdf_base_name().as_bytes()));
+        if matches!(base14, Base14Font::Symbol | Base14Font::ZapfDingbats) {
+            continue;
+        }
+        match encoding_refs.get(face) {
+            Some(&(enc_ref, cmap_ref)) => {
+                font_dict.pair(Name(b"Encoding"), enc_ref);
+                font_dict.to_unicode(cmap_ref);
+            }
+            None => {
+                font_dict.encoding_predefined(Name(b"WinAnsiEncoding"));
+            }
+        }
+    }
+}
+
+fn emit_images(pdf: &mut Pdf, graph: &PageGraph, image_refs: &[Ref]) {
+    for (handle, id) in graph.images.iter().zip(image_refs.iter()) {
+        let compressed = images::flate_compress(&handle.rgb8);
+        images::emit_image_xobject(pdf, *id, handle, &compressed);
+    }
 }
 
 /// Emits one PDF indirect object: a custom `/Encoding` dict with
@@ -750,7 +780,7 @@ mod tests {
             content_stream.windows(needle.len()).any(|w| w == needle),
             "content stream should reference remapped slot 0x7F"
         );
-        let qmark_count = content_stream.iter().filter(|&&b| b == b'?').count();
+        let qmark_count = content_stream.split(|&b| b == b'?').count() - 1;
         assert!(
             qmark_count < 5,
             "too many `?` in PDF ({qmark_count}); did Ł/ř/ě/ź get substituted?"

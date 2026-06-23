@@ -91,11 +91,11 @@ const fn lsp_severity(severity: Severity) -> u8 {
     }
 }
 
-/// Parse a `file://` URI into a filesystem path. Percent-escapes are
-/// decoded as raw bytes and reassembled into UTF-8 so multibyte
-/// sequences like `%C3%A9` (`é`) survive round-tripping. Falls back
-/// to treating the URI as a literal path so editors that send bare
-/// or non-`file` URIs still match against the same string downstream.
+/// Parse a `file://` URI into a filesystem path.
+///
+/// Percent-escapes are decoded as raw bytes and reassembled into UTF-8 so
+/// multibyte sequences like `%C3%A9` (`é`) survive round-tripping. Bare or
+/// non-`file` URIs are treated as literal paths.
 #[must_use]
 pub fn path_from_uri(uri: &str) -> PathBuf {
     let Some(rest) = uri.strip_prefix("file://") else {
@@ -109,10 +109,8 @@ pub fn path_from_uri(uri: &str) -> PathBuf {
     if !authority.is_empty() && authority != "localhost" {
         decoded.extend_from_slice(b"//");
         decoded.extend_from_slice(authority.as_bytes());
-        decoded.push(b'/');
-    } else {
-        decoded.push(b'/');
     }
+    decoded.push(b'/');
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%'
@@ -161,29 +159,25 @@ fn windows_local_drive_path(path: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Borrowed(path)
 }
 
-/// Lower `src` against `file` and project the resulting compiler
-/// diagnostics into the LSP shape. The un-cached entry point for callers
-/// (and tests) holding only a source string; the server publishes through
-/// the shared lowering cache via `diagnostics_from_result` so an edit
-/// lowers a document once for both diagnostics and go-to-definition.
+/// Lower `src` against `file` and project diagnostics into LSP shape.
+///
+/// This is the un-cached entry point for callers holding only a source string.
+/// The server uses the shared lowering cache instead.
 #[must_use]
-pub fn diagnostics_for_document(file: &Path, src: &str) -> Vec<LspDiagnostic> {
-    diagnostics_from_result(file, src, &mos_eval::lower(src, file))
+pub fn for_document(file: &Path, src: &str) -> Vec<LspDiagnostic> {
+    from_result(file, src, &mos_eval::lower(src, file))
 }
 
-/// Project an already-lowered document's compiler diagnostics into the LSP
-/// shape, filtering to diagnostics that belong to `file`. Diagnostics
-/// without a span are anchored at the start of the document so they remain
+/// Project already-lowered compiler diagnostics into LSP shape.
+///
+/// Diagnostics without a span are anchored at document start so they remain
 /// visible in the editor.
 ///
 /// This is the cached path: the server reuses one [`mos_eval::LowerResult`]
-/// per edit (see [`crate::cache::LoweringCache`]) across diagnostics and
+/// per edit (see [`crate::cache::Store`]) across diagnostics and
 /// definition rather than lowering the same source twice.
-pub(crate) fn diagnostics_from_result(
-    file: &Path,
-    src: &str,
-    lowered: &mos_eval::LowerResult,
-) -> Vec<LspDiagnostic> {
+#[must_use]
+pub fn from_result(file: &Path, src: &str, lowered: &mos_eval::LowerResult) -> Vec<LspDiagnostic> {
     lowered
         .diagnostics
         .iter()
@@ -389,7 +383,7 @@ mod tests {
         // a non-empty range covering the reference span.
         let file = PathBuf::from("/virtual/main.mos");
         let src = "see @no:such\n";
-        let diagnostics = diagnostics_for_document(&file, src);
+        let diagnostics = for_document(&file, src);
         let maybe_mos0033 = diagnostics.iter().find(|d| d.code == "MOS0033");
         assert!(
             maybe_mos0033.is_some(),

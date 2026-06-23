@@ -36,7 +36,7 @@ use crate::diagnostics::{LspPosition, LspRange, span_to_range};
 /// declaration token nor a reference), or when the label has no editable
 /// occurrence: leaving the caller to answer the rename request with `null`.
 #[must_use]
-pub fn rename_ranges(
+pub fn ranges(
     document: &Document,
     file: &Path,
     src: &str,
@@ -191,10 +191,10 @@ mod tests {
         &src[start..end]
     }
 
-    fn ranges(src: &str, cursor: usize) -> Vec<LspRange> {
+    fn found_ranges(src: &str, cursor: usize) -> Vec<LspRange> {
         let file = PathBuf::from("/virtual/main.mos");
         let lowered = mos_eval::lower(src, &file);
-        rename_ranges(&lowered.document, &file, src, at(src, cursor)).unwrap_or_default()
+        ranges(&lowered.document, &file, src, at(src, cursor)).unwrap_or_default()
     }
 
     #[test]
@@ -202,7 +202,7 @@ mod tests {
         let src = "= Intro <intro>\n\nSee @intro and @page(intro).\n";
         // Cursor inside the `@intro` reference.
         let cursor = src.find("@intro").expect("reference") + 2;
-        let found = ranges(src, cursor);
+        let found = found_ranges(src, cursor);
         // Declaration token + `@intro` ref + `@page(intro)` ref = 3 ranges.
         assert_eq!(found.len(), 3, "decl + two refs: {found:?}");
         // Every range covers exactly the identifier `intro`; never the `@`,
@@ -221,7 +221,7 @@ mod tests {
         let src = "= Intro <intro>\n\nSee @intro here.\n";
         // Cursor inside the `<intro>` declaration token.
         let cursor = src.find("<intro>").expect("declaration") + 1;
-        let found = ranges(src, cursor);
+        let found = found_ranges(src, cursor);
         assert_eq!(found.len(), 2, "decl token + one ref: {found:?}");
         assert!(found.iter().all(|r| ranged(src, r) == "intro"));
     }
@@ -230,7 +230,7 @@ mod tests {
     fn rename_from_page_reference_cursor_covers_inner_label() {
         let src = "= Intro <intro>\n\nOn @page(intro).\n";
         let cursor = src.find("@page(intro)").expect("page ref") + "@page(".len();
-        let found = ranges(src, cursor);
+        let found = found_ranges(src, cursor);
         assert_eq!(found.len(), 2, "decl token + page ref: {found:?}");
         assert!(found.iter().all(|r| ranged(src, r) == "intro"));
     }
@@ -242,7 +242,7 @@ mod tests {
         // duplicate, not part of the canonical label's occurrence set).
         let src = "= First <dup>\n\n= Second <dup>\n\nSee @dup here.\n";
         let cursor = src.find("@dup").expect("reference") + 2;
-        let found = ranges(src, cursor);
+        let found = found_ranges(src, cursor);
         assert_eq!(found.len(), 2, "first decl token + the ref only: {found:?}");
         // The first declaration token sits on line 0, not the line-2 duplicate.
         assert!(found.iter().any(|r| r.start.line == 0));
@@ -258,7 +258,7 @@ mod tests {
         let file = PathBuf::from("/virtual/main.mos");
         let lowered = mos_eval::lower(src, &file);
         // Column 0 of the heading is the `=` glyph, not a label.
-        assert!(rename_ranges(&lowered.document, &file, src, at(src, 0)).is_none());
+        assert!(ranges(&lowered.document, &file, src, at(src, 0)).is_none());
     }
 
     #[test]
@@ -270,19 +270,19 @@ mod tests {
         let src = "= Intro <intro>\n\nSee @intro and @page(intro).\n";
         let reference = src.find("@intro").expect("reference");
         assert!(
-            ranges(src, reference).is_empty(),
+            found_ranges(src, reference).is_empty(),
             "cursor on the `@` sigil is not on the label"
         );
 
         let page = src.find("@page(intro)").expect("page reference");
         assert!(
-            ranges(src, page + 2).is_empty(),
+            found_ranges(src, page + 2).is_empty(),
             "cursor inside the `@page(` prefix is not on the label"
         );
         let closing = page + "@page(intro".len();
         assert_eq!(&src[closing..=closing], ")", "offset points at the `)`");
         assert!(
-            ranges(src, closing).is_empty(),
+            found_ranges(src, closing).is_empty(),
             "cursor on the closing `)` is not on the label"
         );
     }
@@ -295,13 +295,13 @@ mod tests {
         let src = "= First <dup>\n\n= Second <dup>\n\nSee @dup here.\n";
         let second = src.rfind("<dup>").expect("second declaration") + 1;
         assert!(
-            ranges(src, second).is_empty(),
+            found_ranges(src, second).is_empty(),
             "cursor on a duplicate declaration must not rename the canonical one"
         );
         // The canonical first declaration still drives the rename.
         let first = src.find("<dup>").expect("first declaration") + 1;
         assert_eq!(
-            ranges(src, first).len(),
+            found_ranges(src, first).len(),
             2,
             "canonical declaration token + the reference"
         );
@@ -316,7 +316,7 @@ mod tests {
         // the stamped span instead of deriving from node-span geometry.
         let src = "= Intro <intro>\n\nSee *@intro* now.\n";
         let cursor = src.find("@intro").expect("reference") + 2;
-        let found = ranges(src, cursor);
+        let found = found_ranges(src, cursor);
         assert_eq!(
             found.len(),
             2,

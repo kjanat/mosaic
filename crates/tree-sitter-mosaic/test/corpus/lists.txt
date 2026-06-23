@@ -66,3 +66,197 @@ list: marker requires trailing whitespace
     (soft_break)
     (paragraph_segment
       (text))))
+
+==================
+list: indented continuation joins item
+==================
+- one
+  continuation
+- two
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text))
+      (soft_break)
+      content: (inline_sequence
+        (text)))
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text)))))
+
+==================
+list: ordered marker width sets continuation column
+==================
+10. ten
+    continuation
+11. eleven
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (ordered_list_marker)
+      content: (inline_sequence
+        (text))
+      (soft_break)
+      content: (inline_sequence
+        (text)))
+    (list_item
+      marker: (ordered_list_marker)
+      content: (inline_sequence
+        (text)))))
+
+==================
+list: nested child marker wins over continuation
+==================
+- parent
+  - child
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text))
+      children: (list
+        (list_item
+          marker: (unordered_list_marker)
+          content: (inline_sequence
+            (text)))))))
+
+==================
+list: minimally indented child marker wins
+==================
+- parent
+ - child
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text))
+      children: (list
+        (list_item
+          marker: (unordered_list_marker)
+          content: (inline_sequence
+            (text)))))))
+
+==================
+list: parent continuation after nested child
+==================
+- parent
+  - child
+  parent tail
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text))
+      children: (list
+        (list_item
+          marker: (unordered_list_marker)
+          content: (inline_sequence
+            (text))))
+      content: (inline_sequence
+        (text)))))
+
+==================
+list: blank line terminates list
+==================
+- item
+
+outside
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text))))
+  (blank_line)
+  (paragraph
+    (paragraph_segment
+      (text))))
+
+==================
+list: under-indented lazy line is outside list
+==================
+- item
+ lazy
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text))))
+  (paragraph
+    (paragraph_segment
+      (text))))
+
+==================
+list: tab indentation does not count as continuation
+==================
+- item
+	Tabbed
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text))))
+  (paragraph
+    (paragraph_segment
+      (text))))
+
+==================
+list: hard break stays inline in item
+==================
+- first\\
+  second
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text)
+        (hard_break))
+      (soft_break)
+      content: (inline_sequence
+        (text)))))
+
+==================
+list: soft continuation spans inline markup
+==================
+- one *emph
+  continued* tail
+---
+
+(source_file
+  (list
+    (list_item
+      marker: (unordered_list_marker)
+      content: (inline_sequence
+        (text)
+        (emphasis
+          (emph_text)
+          (soft_break)
+          (emph_text))
+        (text)))))

@@ -2,6 +2,8 @@ use std::sync::LazyLock;
 
 use crate::{EmbeddedFont, EmbeddedFontId};
 
+/// Return bundled font data for `id`.
+#[must_use]
 pub(crate) fn embedded_font(id: EmbeddedFontId) -> &'static EmbeddedFont {
     match id {
         EmbeddedFontId::Regular => &NOTO_SANS_REGULAR,
@@ -13,7 +15,9 @@ pub(crate) fn embedded_font(id: EmbeddedFontId) -> &'static EmbeddedFont {
     }
 }
 
-pub(crate) fn pdf_resource_name(id: EmbeddedFontId) -> &'static [u8] {
+/// Return the PDF resource name for embedded font `id`.
+#[must_use]
+pub(crate) const fn pdf_resource_name(id: EmbeddedFontId) -> &'static [u8] {
     RESOURCE_NAMES[id.pdf_resource_index() as usize]
 }
 

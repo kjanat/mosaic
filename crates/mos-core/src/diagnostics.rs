@@ -272,7 +272,7 @@ impl Diagnostic {
     /// assert_eq!(diagnostic.def().code(), codes::MOS0033.code());
     /// ```
     #[must_use]
-    pub fn def(&self) -> &'static DiagnosticDef {
+    pub const fn def(&self) -> &'static DiagnosticDef {
         self.def
     }
 
@@ -288,7 +288,7 @@ impl Diagnostic {
     /// assert_eq!(diagnostic.severity(), Severity::Error);
     /// ```
     #[must_use]
-    pub fn severity(&self) -> Severity {
+    pub const fn severity(&self) -> Severity {
         self.severity
     }
 
@@ -304,7 +304,7 @@ impl Diagnostic {
     /// assert!(diagnostic.span().is_none());
     /// ```
     #[must_use]
-    pub fn span(&self) -> Option<&SourceSpan> {
+    pub const fn span(&self) -> Option<&SourceSpan> {
         self.span.as_ref()
     }
 

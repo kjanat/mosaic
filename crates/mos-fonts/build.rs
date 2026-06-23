@@ -32,6 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     buf.push_str("// `EmbeddedFontId::pdf_resource_index`. Indices 0..=14 are\n");
     buf.push_str("// reserved for Base14 fonts (see `mos-pdf`); embedded\n");
     buf.push_str("// cuts use 15..=255.\n");
+    buf.push_str("/// Embedded font PDF resource names.\n");
     buf.push_str("pub(crate) const RESOURCE_NAMES: [&[u8]; 256] = [\n");
     for n in 0u32..=255 {
         writeln!(buf, "    b\"F{n}\",")?;

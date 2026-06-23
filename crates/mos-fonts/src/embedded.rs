@@ -111,7 +111,7 @@ impl std::fmt::Debug for EmbeddedFont {
             .field("descender", &self.descender)
             .field("italic_angle", &self.italic_angle)
             .field("bbox", &self.bbox)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -220,10 +220,10 @@ impl EmbeddedFont {
     }
 }
 
-/// Shape `text` against `font` using `rustybuzz`. Returns the glyph
-/// stream in visual order (LTR for this slice). Glyph IDs, advances,
-/// and offsets come from `rustybuzz`, so substitutions, kerning, and
-/// combining-mark positioning are preserved. An empty `text` returns
+/// Shape `text` against `font` using `rustybuzz`.
+///
+/// Glyph IDs, advances, and offsets come from `rustybuzz`, so substitutions,
+/// kerning, and combining-mark positioning are preserved. Empty text returns
 /// an empty `Vec` without invoking the shaper.
 #[must_use]
 pub fn shape(font: &EmbeddedFont, text: &str) -> Vec<ShapedGlyph> {
@@ -316,7 +316,7 @@ pub fn subset(font: &EmbeddedFont, gids: &[u16]) -> Result<Vec<u8>, SubsetError>
 /// `Diagnostic`. The inner variant is private: callers debug via
 /// the `Display`/`Debug` impls, not pattern matching on
 /// `subsetter::Error` directly.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct SubsetError(subsetter::Error);
 
 impl std::fmt::Display for SubsetError {

@@ -196,9 +196,9 @@ pub struct SortKey {
 /// `<key>` options retained but not evaluated.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SortKeyOptions {
-    pub names_min: Option<String>,
-    pub names_use_first: Option<String>,
-    pub names_use_last: Option<String>,
+    pub min: Option<String>,
+    pub use_first: Option<String>,
+    pub use_last: Option<String>,
 }
 
 /// What a [`SortKey`] sorts on.

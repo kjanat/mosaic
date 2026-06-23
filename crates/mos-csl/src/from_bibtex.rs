@@ -170,10 +170,10 @@ fn parse_name_without_comma(token: &str) -> Name {
 /// Parse a BibTeX `year` into an `issued` [`Date`]; a non-numeric year is kept
 /// as a literal.
 fn parse_year(value: &str) -> Date {
-    match value.trim().parse::<i32>() {
-        Ok(year) => Date::year(year),
-        Err(_) => Date::literal(value),
-    }
+    value
+        .trim()
+        .parse::<i32>()
+        .map_or_else(|_err| Date::literal(value), Date::year)
 }
 
 #[cfg(test)]
@@ -205,7 +205,7 @@ mod tests {
         );
         let item = item_from_bib_entry(&bib_entry);
         assert_eq!(item.id, "knuth1984");
-        assert_eq!(item.item_type, ItemType::ArticleJournal);
+        assert_eq!(item.kind, ItemType::ArticleJournal);
         assert_eq!(
             item.standard
                 .get(&StandardVariable::Title)
@@ -262,7 +262,7 @@ mod tests {
     fn unknown_type_is_document_and_unknown_fields_drop() {
         let bib_entry = entry("flibble", "k", &[("title", "T"), ("nonsense", "x")]);
         let item = item_from_bib_entry(&bib_entry);
-        assert_eq!(item.item_type, ItemType::Document);
+        assert_eq!(item.kind, ItemType::Document);
         assert!(item.standard.contains_key(&StandardVariable::Title));
         assert_eq!(item.standard.len(), 1, "unknown field should be dropped");
     }
@@ -301,12 +301,11 @@ mod tests {
 
         for (entry_type, expected) in cases {
             let item = item_from_bib_entry(&entry(entry_type, "k", &[]));
-            assert_eq!(item.item_type, expected, "entry type: {entry_type}");
+            assert_eq!(item.kind, expected, "entry type: {entry_type}");
         }
     }
 
-    #[test]
-    fn maps_standard_and_number_field_groups() {
+    fn mapped_field_group_item() -> Item {
         let bib_entry = entry(
             "book",
             "k",
@@ -333,7 +332,12 @@ mod tests {
                 ("chapter", "7"),
             ],
         );
-        let item = item_from_bib_entry(&bib_entry);
+        item_from_bib_entry(&bib_entry)
+    }
+
+    #[test]
+    fn maps_standard_field_groups() {
+        let item = mapped_field_group_item();
 
         assert_eq!(
             item.standard
@@ -413,6 +417,11 @@ mod tests {
                 .map(String::as_str),
             Some("en")
         );
+    }
+
+    #[test]
+    fn maps_number_field_groups() {
+        let item = mapped_field_group_item();
 
         assert_eq!(
             item.number.get(&NumberVariable::Volume).map(String::as_str),
@@ -504,13 +513,10 @@ mod tests {
         let library = library_from_bibliography(&bibliography);
         assert_eq!(library.len(), 2);
         assert_eq!(
-            library.get("a").map(|item| item.item_type),
+            library.get("a").map(|item| item.kind),
             Some(ItemType::ArticleJournal)
         );
-        assert_eq!(
-            library.get("b").map(|item| item.item_type),
-            Some(ItemType::Book)
-        );
+        assert_eq!(library.get("b").map(|item| item.kind), Some(ItemType::Book));
     }
 
     #[test]

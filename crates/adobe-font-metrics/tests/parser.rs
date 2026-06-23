@@ -24,7 +24,7 @@ fn approx_eq(a: f32, b: f32) -> bool {
     (a - b).abs() < f32::EPSILON
 }
 
-fn is_static<T: 'static>(_: &T) {}
+const fn is_static<T: 'static>(_: &T) {}
 
 #[test]
 fn parses_helvetica() {
@@ -308,6 +308,106 @@ fn direction_1_kerns_dropped_not_conflated() {
     let m = parse(src).expect("parse");
     assert_eq!(m.kerning_pairs.len(), 1);
     assert!((m.kerning_pairs[0].adjust - -80.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn overlarge_declared_counts_return_parse_error() {
+    let huge = usize::MAX;
+    let src = format!(
+        "StartFontMetrics 4.1\n\
+         FontName Test\n\
+         FontBBox 0 0 0 0\n\
+         StartCharMetrics {huge}\n\
+         EndFontMetrics\n"
+    );
+    let err = parse(&src).expect_err("overlarge char metric count should fail");
+    assert!(matches!(
+        err,
+        ParseError::MalformedRecord {
+            keyword: "StartCharMetrics",
+            ..
+        }
+    ));
+
+    let src = format!(
+        "StartFontMetrics 4.1\n\
+         FontName Test\n\
+         FontBBox 0 0 0 0\n\
+         StartKernData\n\
+         StartKernPairs {huge}\n\
+         EndFontMetrics\n"
+    );
+    let err = parse(&src).expect_err("overlarge kern pair count should fail");
+    assert!(matches!(
+        err,
+        ParseError::MalformedRecord {
+            keyword: "StartKernPairs",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn malformed_declared_counts_return_parse_error() {
+    let src = "StartFontMetrics 4.1\n\
+               FontName Test\n\
+               FontBBox 0 0 0 0\n\
+               StartCharMetrics nope\n\
+               EndFontMetrics\n";
+    let err = parse(src).expect_err("malformed char metric count should fail");
+    assert!(matches!(
+        err,
+        ParseError::InvalidNumber {
+            field: "StartCharMetrics",
+            ..
+        }
+    ));
+
+    let src = "StartFontMetrics 4.1\n\
+               FontName Test\n\
+               FontBBox 0 0 0 0\n\
+               StartKernData\n\
+               StartKernPairs -1\n\
+               EndFontMetrics\n";
+    let err = parse(src).expect_err("malformed kern pair count should fail");
+    assert!(matches!(
+        err,
+        ParseError::InvalidNumber {
+            field: "StartKernPairs",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn invalid_start_direction_returns_parse_error() {
+    let src = "StartFontMetrics 4.1\n\
+               FontName Test\n\
+               FontBBox 0 0 0 0\n\
+               StartDirection bogus\n\
+               EndFontMetrics\n";
+    let err = parse(src).expect_err("non-numeric StartDirection should fail");
+    assert!(matches!(
+        err,
+        ParseError::InvalidNumber {
+            field: "StartDirection",
+            ..
+        }
+    ));
+
+    let src = "StartFontMetrics 4.1\n\
+               FontName Test\n\
+               FontBBox 0 0 0 0\n\
+               StartDirection 3\n\
+               EndFontMetrics\n";
+    let err = parse(src).expect_err("unsupported StartDirection should fail");
+    assert!(matches!(
+        err,
+        ParseError::MalformedRecord {
+            keyword: "StartDirection",
+            ..
+        }
+    ));
 }
 
 #[test]

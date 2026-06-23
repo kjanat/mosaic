@@ -4,6 +4,10 @@ use mos_fonts::{EmbeddedFontId, Font, ShapedGlyph, WordSubRun, shape_with_fallba
 pub(crate) struct Word {
     pub(crate) text: String,
     pub(crate) actual_text: Option<String>,
+    /// Width of collapsed ASCII whitespace immediately before this word.
+    /// `0.0` means there was no breakable source space, even if an inline
+    /// style/font boundary sits between this word and the previous one.
+    pub(crate) space_before_pt: f32,
     /// Primary face -- the style-resolved choice from the active
     /// `FontFamily` (regular/bold/italic/monospace). Used for line
     /// metrics (ascent/descent), inter-word spacing, and
@@ -57,13 +61,11 @@ pub(crate) struct ShyBreak {
 /// suffix. Consecutive duplicate offsets (e.g. `a\u{AD}\u{AD}b` →
 /// `[1, 1]`) are deduped on the fly.
 ///
-/// Re-shapes both halves through [`shape_with_fallback`] so the
-/// resulting [`Word::width_pt`] matches the post-shape subrun
-/// advances exactly; the cheap [`text_width`] estimate used during
-/// the fit search may differ from the shaped width when fallback
-/// splits the run, so the shaped sum is the authoritative value and
-/// is re-checked against `max_prefix_width` before the candidate is
-/// accepted.
+/// Splits through the already-collected sub-run boundaries, then
+/// re-shapes each affected slice with that sub-run's font. This keeps
+/// merged no-space style runs intact (`pre` + bold `su\u{AD}per`
+/// breaks into regular `pre` + bold `su-` / bold `per`) instead of
+/// re-shaping the whole word through the first fragment's font.
 pub(crate) fn try_shy_break(
     word: &Word,
     max_prefix_width: f32,
@@ -90,7 +92,12 @@ pub(crate) fn try_shy_break(
         let mut prefix_text = String::with_capacity(prefix_src.len() + 1);
         prefix_text.push_str(prefix_src);
         prefix_text.push('-');
-        let prefix_subruns = shape_with_fallback(word.font, fallbacks, word.size_pt, &prefix_text);
+        let Some((mut prefix_subruns, suffix_subruns, hyphen_font)) =
+            split_subruns_at(word, off, fallbacks)
+        else {
+            continue;
+        };
+        push_visible_hyphen(&mut prefix_subruns, hyphen_font, word.size_pt, fallbacks);
         let prefix_width: f32 = prefix_subruns.iter().map(|s| s.advance_pt).sum();
         if prefix_width > max_prefix_width {
             // Rounding pushed the shaped width just over; try the
@@ -118,12 +125,14 @@ pub(crate) fn try_shy_break(
                 }
             })
             .collect();
-        let suffix_subruns = shape_with_fallback(word.font, fallbacks, word.size_pt, &suffix_text);
         let suffix_width: f32 = suffix_subruns.iter().map(|s| s.advance_pt).sum();
+        let prefix_font = first_subrun_font(&prefix_subruns).unwrap_or(word.font);
+        let suffix_font = first_subrun_font(&suffix_subruns).unwrap_or(word.font);
         let prefix = Word {
             text: prefix_text,
             actual_text: None,
-            font: word.font,
+            space_before_pt: word.space_before_pt,
+            font: prefix_font,
             size_pt: word.size_pt,
             width_pt: prefix_width,
             subruns: prefix_subruns,
@@ -134,7 +143,8 @@ pub(crate) fn try_shy_break(
         let suffix = Word {
             text: suffix_text,
             actual_text: None,
-            font: word.font,
+            space_before_pt: 0.0,
+            font: suffix_font,
             size_pt: word.size_pt,
             width_pt: suffix_width,
             subruns: suffix_subruns,
@@ -143,6 +153,113 @@ pub(crate) fn try_shy_break(
         return Some(ShyBreak { prefix, suffix });
     }
     None
+}
+
+fn split_subruns_at(
+    word: &Word,
+    offset: usize,
+    fallbacks: &[EmbeddedFontId],
+) -> Option<(Vec<WordSubRun>, Vec<WordSubRun>, Font)> {
+    let mut prefix = Vec::new();
+    let mut suffix = Vec::new();
+    let mut cursor = 0_usize;
+    let mut last_prefix_font: Option<Font> = None;
+    let mut first_suffix_font: Option<Font> = None;
+
+    for subrun in &word.subruns {
+        let start = cursor;
+        let end = start + subrun.text.len();
+        if end <= offset {
+            push_shaped_piece(
+                &mut prefix,
+                subrun.font,
+                word.size_pt,
+                fallbacks,
+                &subrun.text,
+            );
+            last_prefix_font = Some(subrun.font);
+        } else if start >= offset {
+            if first_suffix_font.is_none() {
+                first_suffix_font = Some(subrun.font);
+            }
+            push_shaped_piece(
+                &mut suffix,
+                subrun.font,
+                word.size_pt,
+                fallbacks,
+                &subrun.text,
+            );
+        } else {
+            let local = offset - start;
+            let before = subrun.text.get(..local)?;
+            let after = subrun.text.get(local..)?;
+            if !before.is_empty() {
+                push_shaped_piece(&mut prefix, subrun.font, word.size_pt, fallbacks, before);
+                last_prefix_font = Some(subrun.font);
+            }
+            if !after.is_empty() {
+                if first_suffix_font.is_none() {
+                    first_suffix_font = Some(subrun.font);
+                }
+                push_shaped_piece(&mut suffix, subrun.font, word.size_pt, fallbacks, after);
+            }
+        }
+        cursor = end;
+    }
+
+    if cursor != word.text.len() {
+        return None;
+    }
+
+    let hyphen_font = last_prefix_font.or(first_suffix_font).unwrap_or(word.font);
+    Some((prefix, suffix, hyphen_font))
+}
+
+fn push_shaped_piece(
+    out: &mut Vec<WordSubRun>,
+    font: Font,
+    size_pt: f32,
+    fallbacks: &[EmbeddedFontId],
+    text: &str,
+) {
+    out.extend(shape_with_fallback(font, fallbacks, size_pt, text));
+}
+
+fn push_visible_hyphen(
+    subruns: &mut Vec<WordSubRun>,
+    font: Font,
+    size_pt: f32,
+    fallbacks: &[EmbeddedFontId],
+) {
+    let mut hyphen_subruns = shape_with_fallback(font, fallbacks, size_pt, "-");
+    if hyphen_subruns.len() == 1
+        && let Some(hyphen) = hyphen_subruns.pop()
+    {
+        if let Some(last) = subruns.last_mut()
+            && last.font == hyphen.font
+        {
+            let mut merged_text = String::with_capacity(last.text.len() + hyphen.text.len());
+            merged_text.push_str(&last.text);
+            merged_text.push_str(&hyphen.text);
+            let mut merged = shape_with_fallback(last.font, fallbacks, size_pt, &merged_text);
+            if merged.len() == 1
+                && merged
+                    .first()
+                    .is_some_and(|subrun| subrun.font == last.font)
+                && let Some(merged_subrun) = merged.pop()
+            {
+                *last = merged_subrun;
+                return;
+            }
+        }
+        subruns.push(hyphen);
+        return;
+    }
+    subruns.extend(hyphen_subruns);
+}
+
+fn first_subrun_font(subruns: &[WordSubRun]) -> Option<Font> {
+    subruns.first().map(|subrun| subrun.font)
 }
 
 /// Inline item emitted by `collect_words`. The greedy line-breaker
@@ -266,6 +383,7 @@ mod tests {
         Word {
             text: text.to_owned(),
             actual_text: None,
+            space_before_pt: 0.0,
             font,
             size_pt,
             width_pt,

@@ -18,8 +18,8 @@
 //! [tree-sitter]: https://tree-sitter.github.io/
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
 
 use tree_sitter_language::LanguageFn;

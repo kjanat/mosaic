@@ -12,6 +12,7 @@ Implemented:
 - Headings, paragraphs, inline text/emphasis/strong/code/reference/citation nodes.
 - `InlineKind::HardBreak` lowered to `NodeKind::HardBreak` with empty attributes (no `text` payload;
   structural marker only).
+- Raw `#pre` / `#code` blocks lowered to `NodeKind::Raw` with a `raw.kind` attribute.
 - Lists lowered to `List`/`ListItem` nodes.
 - `#set` nodes for document/page/text/image settings.
 - Document metadata: title, author, language.
@@ -27,7 +28,7 @@ Not implemented yet:
 
 - User functions, `#let`, scripting, templates, bibliography-list rendering, CSL citation
   formatting, citation clusters, math/equation semantics, equation numbering, package resolution,
-  full fixpoint over layout/page references.
+  broad pagination stabilization beyond current page-reference needs.
 
 ## WHERE TO LOOK
 

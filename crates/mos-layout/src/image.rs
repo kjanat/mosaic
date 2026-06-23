@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use mos_core::{AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, codes};
-use mos_fonts::{ascent, text_width};
+use mos_fonts::ascent;
 
 use crate::support::{read_int_attr, read_length_attr};
 use crate::word::{ShyBreak, Word, WordItem, try_shy_break, word_clusters};
@@ -12,7 +12,7 @@ impl LayoutState {
     /// horizontally centred within the column and capped at the column
     /// width; declared `width`/`height` override natural 72-DPI size.
     pub(super) fn layout_image(&mut self, node_id: NodeId, image: &Node) {
-        let Some((width_pt, height_pt)) = self.intrinsic_image_size(image) else {
+        let Some((width_pt, height_pt)) = Self::intrinsic_image_size(image) else {
             return;
         };
         let Some(handle) = self.intern_image(image) else {
@@ -39,7 +39,7 @@ impl LayoutState {
         } else {
             height_pt
         };
-        let available_y = self.page.height_pt - self.page.margin_pt;
+        let available_y = self.page.height - self.page.margin;
         if self.cursor_y + render_h > available_y && self.page_has_content {
             self.start_new_page();
         }
@@ -48,7 +48,7 @@ impl LayoutState {
         // content (e.g. a labelled `#figure` whose first child is the image).
         self.bind_pending_labels();
 
-        let x = self.page.margin_pt + (column_w - render_w) * 0.5;
+        let x = (column_w - render_w).mul_add(0.5, self.current_left_pt);
         self.current_page.images.push(ImagePlacement {
             handle,
             x_pt: x,
@@ -76,7 +76,10 @@ impl LayoutState {
                 continue;
             };
             let block_h = match child.kind {
-                NodeKind::Image => self.intrinsic_image_size(child).map_or(0.0, |(w, h)| {
+                NodeKind::Image => {
+                    let Some((w, h)) = Self::intrinsic_image_size(child) else {
+                        continue;
+                    };
                     let render_w = w.min(column_w);
                     let render_h = if w > 0.0 && render_w < w {
                         render_w * (h / w)
@@ -84,7 +87,7 @@ impl LayoutState {
                         h
                     };
                     render_h + body_ascent
-                }),
+                }
                 NodeKind::Paragraph => self.measure_paragraph_height(document, child),
                 _ => continue,
             };
@@ -96,9 +99,9 @@ impl LayoutState {
             reason = "a figure with > 2^23 children is not a real document"
         )]
         if block_count > 0 {
-            total_h += PARA_SPACE_AFTER_PT * block_count as f32;
+            total_h = PARA_SPACE_AFTER_PT.mul_add(block_count as f32, total_h);
         }
-        let available_y = self.page.height_pt - self.page.margin_pt;
+        let available_y = self.page.height - self.page.margin;
         if self.cursor_y + total_h > available_y && self.page_has_content {
             self.start_new_page();
         }
@@ -114,7 +117,7 @@ impl LayoutState {
         }
     }
 
-    fn measure_paragraph_height(&mut self, document: &Document, paragraph: &Node) -> f32 {
+    fn measure_paragraph_height(&self, document: &Document, paragraph: &Node) -> f32 {
         let size = self.text.size_pt;
         let leading = self.text.leading;
         let regular = self.text.family.regular;
@@ -159,7 +162,7 @@ impl LayoutState {
             };
 
             let space_w = if line_has_words {
-                text_width(word.font, word.size_pt, " ")
+                word.space_before_pt
             } else {
                 0.0
             };
@@ -167,6 +170,11 @@ impl LayoutState {
             if line_width_used + space_w + word.width_pt <= line_width {
                 line_has_words = true;
                 line_width_used += space_w + word.width_pt;
+                continue;
+            }
+
+            if line_has_words && space_w <= f32::EPSILON {
+                line_width_used += word.width_pt;
                 continue;
             }
 
@@ -216,19 +224,14 @@ impl LayoutState {
         if line_has_words {
             lines += 1;
         }
-        #[allow(
-            clippy::cast_precision_loss,
-            reason = "line counts in any sane document fit well inside the f32 mantissa"
-        )]
-        let h = lines as f32 * size * leading;
-        h
+        paragraph_height_from_lines(lines, size, leading)
     }
 
     #[allow(
         clippy::cast_precision_loss,
         reason = "pixel dimensions clamp well below the f32 mantissa cap"
     )]
-    fn intrinsic_image_size(&self, image: &Node) -> Option<(f32, f32)> {
+    fn intrinsic_image_size(image: &Node) -> Option<(f32, f32)> {
         let pw = read_int_attr(image, "pixel_width")?;
         let ph = read_int_attr(image, "pixel_height")?;
         if pw <= 0 || ph <= 0 {
@@ -285,6 +288,14 @@ impl LayoutState {
     }
 }
 
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "line counts in any sane document fit well inside the f32 mantissa"
+)]
+fn paragraph_height_from_lines(lines: u32, size: f32, leading: f32) -> f32 {
+    lines as f32 * size * leading
+}
+
 fn oversize_chunk_count(word: &Word, line_width: f32) -> u32 {
     let mut chunks = 0_u32;
     let mut chunk_has_content = false;
@@ -311,12 +322,13 @@ mod tests {
         reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
     )]
 
+    use std::fmt::Write as _;
     use std::path::PathBuf;
     use std::sync::Arc;
 
     use mos_core::{AttrMap, NodeSpec, SourceSpan};
 
-    use mos_fonts::FontFamily;
+    use mos_fonts::{Base14Font, Font, FontFamily, text_width};
 
     use crate::types::{BODY_LEADING, BODY_SIZE_PT};
     use crate::{A4_HEIGHT_PT, A4_WIDTH_PT, LayoutEngine, MARGIN_PT, PageStyle, TextStyle};
@@ -330,6 +342,16 @@ mod tests {
             parent,
             NodeSpec::new(kind, SourceSpan::placeholder(PathBuf::from("test.mos")))
                 .with_attributes(attrs),
+        );
+    }
+
+    fn alloc_hard_break(doc: &mut Document, parent: NodeId) {
+        doc.alloc_child(
+            parent,
+            NodeSpec::new(
+                NodeKind::HardBreak,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
         );
     }
 
@@ -353,9 +375,9 @@ mod tests {
     fn helvetica_state_with_column_width(column_width_pt: f32) -> LayoutState {
         LayoutState::new(
             PageStyle {
-                width_pt: A4_WIDTH_PT,
-                height_pt: A4_HEIGHT_PT,
-                margin_pt: (A4_WIDTH_PT - column_width_pt) * 0.5,
+                width: A4_WIDTH_PT,
+                height: A4_HEIGHT_PT,
+                margin: (A4_WIDTH_PT - column_width_pt) * 0.5,
             },
             TextStyle {
                 size_pt: BODY_SIZE_PT,
@@ -470,10 +492,33 @@ mod tests {
         let result = LayoutEngine::new().layout(&doc);
 
         let img = &result.graph.pages[0].images[0];
-        let col = A4_WIDTH_PT - 2.0 * MARGIN_PT;
+        let col = 2.0f32.mul_add(-MARGIN_PT, A4_WIDTH_PT);
         assert!(img.width_pt <= col + 0.5);
         let aspect = 4000.0_f32 / 2000.0;
         assert!((img.height_pt - img.width_pt / aspect).abs() < 0.5);
+    }
+
+    #[test]
+    fn image_block_centers_inside_current_column() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let image_id = make_image(&mut doc, "x.png", 100, 50, None, None);
+        let image = doc.get(image_id).expect("image");
+        let mut state = LayoutState::new(
+            PageStyle {
+                width: A4_WIDTH_PT,
+                height: A4_HEIGHT_PT,
+                margin: MARGIN_PT,
+            },
+            TextStyle::default(),
+        );
+        state.current_left_pt = MARGIN_PT + 60.0;
+        let expected_column_w = state.column_width_pt();
+
+        state.layout_image(image_id, image);
+
+        let placed = &state.current_page.images[0];
+        let expected_x = (expected_column_w - placed.width_pt).mul_add(0.5, state.current_left_pt);
+        assert!((placed.x_pt - expected_x).abs() < 0.01);
     }
 
     #[test]
@@ -531,11 +576,11 @@ mod tests {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         let para = make_paragraph(&mut doc, "x super\u{AD}cali");
         let line_width = text_width(
-            mos_fonts::Font::Base14(mos_fonts::Base14Font::Helvetica),
+            Font::Base14(Base14Font::Helvetica),
             BODY_SIZE_PT,
             "x super-",
         ) + 1.0;
-        let mut state = helvetica_state_with_column_width(line_width);
+        let state = helvetica_state_with_column_width(line_width);
 
         let height = state.measure_paragraph_height(&doc, doc.get(para).expect("paragraph"));
         let expected = 2.0 * BODY_SIZE_PT * BODY_LEADING;
@@ -544,6 +589,91 @@ mod tests {
             (height - expected).abs() < 0.01,
             "expected two measured lines ({expected:.3}pt), got {height:.3}pt"
         );
+    }
+
+    #[test]
+    fn paragraph_height_measurement_matches_flow_for_caption_break_edges() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let para = doc.alloc_child(
+            doc.root,
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
+        );
+        alloc_inline(&mut doc, para, NodeKind::Text, "lead");
+        alloc_hard_break(&mut doc, para);
+        alloc_inline(&mut doc, para, NodeKind::Text, "pre");
+        alloc_inline(&mut doc, para, NodeKind::Strong, "su\u{AD}per");
+        alloc_inline(&mut doc, para, NodeKind::Text, ",");
+        let regular = Font::Base14(Base14Font::Helvetica);
+        let bold = Font::Base14(Base14Font::HelveticaBold);
+        let line_width =
+            text_width(regular, BODY_SIZE_PT, "pre") + text_width(bold, BODY_SIZE_PT, "su-") + 0.5;
+
+        let measured_state = helvetica_state_with_column_width(line_width);
+        let height = measured_state.measure_paragraph_height(&doc, doc.get(para).expect("para"));
+        let mut flowed_state = helvetica_state_with_column_width(line_width);
+        flowed_state.layout_paragraph(&doc, doc.get(para).expect("para"));
+
+        let mut baselines: Vec<f32> = Vec::new();
+        for run in &flowed_state.current_page.runs {
+            if baselines
+                .iter()
+                .all(|baseline| (run.baseline_from_top_pt - *baseline).abs() > 0.01)
+            {
+                baselines.push(run.baseline_from_top_pt);
+            }
+        }
+        let expected = 3.0 * BODY_SIZE_PT * BODY_LEADING;
+        assert!(
+            (height - expected).abs() < 0.01,
+            "expected three measured lines ({expected:.3}pt), got {height:.3}pt"
+        );
+        assert_eq!(
+            baselines.len(),
+            3,
+            "flowed runs: {:?}",
+            flowed_state.current_page.runs
+        );
+    }
+
+    #[test]
+    fn figure_dry_run_skips_unrenderable_images() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let fig = doc.alloc_child(
+            doc.root,
+            NodeSpec::new(
+                NodeKind::Figure,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
+        );
+        doc.alloc_child(
+            fig,
+            NodeSpec::new(
+                NodeKind::Image,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
+        );
+        let caption = doc.alloc_child(
+            fig,
+            NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            ),
+        );
+        alloc_inline(&mut doc, caption, NodeKind::Text, "Caption");
+
+        let mut state = helvetica_state_with_column_width(120.0);
+        state.page_has_content = true;
+        let caption_h = state.measure_paragraph_height(&doc, doc.get(caption).expect("caption"));
+        let available_y = state.page.height - state.page.margin;
+        state.cursor_y = available_y - caption_h - PARA_SPACE_AFTER_PT - 1.0;
+        state.layout_figure(&doc, doc.get(fig).expect("figure"));
+
+        assert_eq!(state.current_page.number, 1);
+        assert!(state.current_page.images.is_empty());
+        assert_eq!(state.current_page.runs.len(), 1);
     }
 
     fn make_figure_with_image_and_caption(
@@ -599,7 +729,7 @@ mod tests {
         pin_helvetica(&mut doc);
         let mut filler = String::new();
         for i in 0..540 {
-            filler.push_str(&format!("word{i} "));
+            let _ = write!(filler, "word{i} ");
         }
         make_paragraph(&mut doc, filler.trim());
         make_figure_with_image_and_caption(&mut doc, 400, 300, "Tight caption.");

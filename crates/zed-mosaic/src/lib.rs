@@ -1,8 +1,8 @@
 //! Zed extension entrypoint for Mosaic language support.
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
 
 use std::fs;

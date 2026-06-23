@@ -65,22 +65,38 @@ pub enum Item {
     },
 }
 
-/// One entry inside an [`Item::List`]. `inlines` is the item's own
-/// text (markers stripped, parsed with the same inline tokenizer as
-/// paragraphs); `children` carries nested blocks, currently restricted
-/// to further [`Item::List`]s per the MVP scope.
+/// One entry inside an [`Item::List`].
+///
+/// `blocks` preserves source order between item paragraphs and nested lists.
+/// `inlines` mirrors the first paragraph and `children` mirrors nested lists
+/// for older consumers.
 #[derive(Debug, Clone)]
 pub struct ListItem {
     pub inlines: Vec<Inline>,
     pub children: Vec<Item>,
+    pub blocks: Vec<ListItemBlock>,
     pub span: SourceSpan,
 }
 
-/// Tag for the directive shapes [`Item::Set`] can represent: the
-/// `#set <target>(...)` configuration directive vs the standalone
-/// `#image(...)`, `#figure(...)`, and `#bibliography(...)` calls. The
-/// lowerer dispatches on this rather than the [`Item::Set::name`] string
-/// so `#set image(...)` can never collide with `#image(...)`.
+/// Ordered content inside a [`ListItem`].
+#[derive(Debug, Clone)]
+pub enum ListItemBlock {
+    Paragraph {
+        inlines: Vec<Inline>,
+        span: SourceSpan,
+    },
+    List {
+        ordered: bool,
+        items: Vec<ListItem>,
+        span: SourceSpan,
+    },
+}
+
+/// Tag for the directive shapes [`Item::Set`] can represent.
+///
+/// Distinguishes `#set <target>(...)` from standalone `#image(...)`,
+/// `#figure(...)`, and `#bibliography(...)` calls so the lowerer does not
+/// infer semantics from [`Item::Set::name`].
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum DirectiveKind {
     /// `#set <name>(...)`: sets defaults on a style target.
@@ -146,7 +162,7 @@ pub enum SetArg {
 impl SetArg {
     /// Borrow the value carried by this argument, regardless of shape.
     #[must_use]
-    pub fn value(&self) -> &SetValue {
+    pub const fn value(&self) -> &SetValue {
         match self {
             Self::Named { value, .. } | Self::Positional { value, .. } => value,
         }
@@ -154,7 +170,7 @@ impl SetArg {
 
     /// The span covering the argument's value literal.
     #[must_use]
-    pub fn value_span(&self) -> &SourceSpan {
+    pub const fn value_span(&self) -> &SourceSpan {
         match self {
             Self::Named { value_span, .. } | Self::Positional { value_span, .. } => value_span,
         }
@@ -163,7 +179,7 @@ impl SetArg {
     /// The key identifier for [`Self::Named`]; `None` for
     /// [`Self::Positional`].
     #[must_use]
-    pub fn key(&self) -> Option<&str> {
+    pub const fn key(&self) -> Option<&str> {
         match self {
             Self::Named { key, .. } => Some(key.as_str()),
             Self::Positional { .. } => None,
@@ -173,7 +189,7 @@ impl SetArg {
     /// The span covering the key identifier, for [`Self::Named`].
     /// `None` for [`Self::Positional`].
     #[must_use]
-    pub fn key_span(&self) -> Option<&SourceSpan> {
+    pub const fn key_span(&self) -> Option<&SourceSpan> {
         match self {
             Self::Named { key_span, .. } => Some(key_span),
             Self::Positional { .. } => None,
@@ -287,7 +303,7 @@ impl Item {
     /// caller pre-dates the `#image`/`#figure` directives and only
     /// looks at name/args/span.
     #[must_use]
-    pub fn as_set(&self) -> Option<(&str, &[SetArg], &SourceSpan)> {
+    pub const fn as_set(&self) -> Option<(&str, &[SetArg], &SourceSpan)> {
         if let Self::Set {
             name, args, span, ..
         } = self
@@ -325,7 +341,7 @@ impl Item {
 
     /// Borrow the [`DirectiveKind`] tag if `self` is [`Item::Set`].
     #[must_use]
-    pub fn directive_kind(&self) -> Option<DirectiveKind> {
+    pub const fn directive_kind(&self) -> Option<DirectiveKind> {
         if let Self::Set { kind, .. } = self {
             Some(*kind)
         } else {
@@ -336,7 +352,7 @@ impl Item {
     /// Borrow the list payload if `self` is [`Item::List`]. The
     /// returned tuple is `(ordered, items, span)`.
     #[must_use]
-    pub fn as_list(&self) -> Option<(bool, &[ListItem], &SourceSpan)> {
+    pub const fn as_list(&self) -> Option<(bool, &[ListItem], &SourceSpan)> {
         if let Self::List {
             ordered,
             items,
@@ -366,7 +382,7 @@ impl Item {
     /// The delimiters (`<`, `>`, or directive string quotes) are excluded so a
     /// structured suggestion can replace just the label bytes.
     #[must_use]
-    pub fn label_span(&self) -> Option<&SourceSpan> {
+    pub const fn label_span(&self) -> Option<&SourceSpan> {
         match self {
             Self::Heading { label_span, .. }
             | Self::Paragraph { label_span, .. }

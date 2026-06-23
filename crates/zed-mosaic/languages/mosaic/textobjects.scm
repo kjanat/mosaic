@@ -8,6 +8,9 @@
 (list_item
   content: (inline_sequence) @function.inside) @function.around
 
+(list_item
+  children: (list) @function.inside) @function.around
+
 (verse_block
   body: (verse_body) @class.inside) @class.around
 

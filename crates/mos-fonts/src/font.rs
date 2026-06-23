@@ -136,7 +136,7 @@ impl EmbeddedFontId {
     /// assert_eq!(EmbeddedFontId::Regular.pdf_resource_name(), b"F15");
     /// ```
     #[must_use]
-    pub fn pdf_resource_name(self) -> &'static [u8] {
+    pub const fn pdf_resource_name(self) -> &'static [u8] {
         resources::pdf_resource_name(self)
     }
 }
@@ -242,7 +242,7 @@ impl Font {
     /// assert_eq!(font.pdf_resource_name(), b"F1");
     /// ```
     #[must_use]
-    pub fn pdf_resource_name(self) -> &'static [u8] {
+    pub const fn pdf_resource_name(self) -> &'static [u8] {
         match self {
             Self::Base14(f) => Self::Base14(f).base14_resource_name(),
             Self::Embedded(id) => id.pdf_resource_name(),
@@ -254,7 +254,7 @@ impl Font {
     /// reads the same way the enum dispatch does. The `Embedded` arm
     /// is handled at the caller (`pdf_resource_name`) so this private
     /// helper never sees it.
-    fn base14_resource_name(self) -> &'static [u8] {
+    const fn base14_resource_name(self) -> &'static [u8] {
         let Self::Base14(f) = self else {
             return b"F0";
         };

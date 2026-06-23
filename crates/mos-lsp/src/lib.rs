@@ -11,22 +11,31 @@
 //! autocomplete, source ↔ PDF sync, and live preview. MVP 6.
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
 
-mod cache;
-mod code_action;
-mod definition;
-mod diagnostics;
-mod document_symbol;
-mod rename;
-mod server;
+#[doc(hidden)]
+pub mod cache;
+#[doc(hidden)]
+pub mod code_action;
+#[doc(hidden)]
+pub mod definition;
+#[doc(hidden)]
+pub mod diagnostics;
+#[doc(hidden)]
+pub mod document_symbol;
+#[doc(hidden)]
+pub mod rename;
+#[doc(hidden)]
+pub mod server;
 
-pub use definition::{definition_range, definition_range_in, position_to_byte};
-pub use diagnostics::{
-    LspDiagnostic, LspPosition, LspRange, byte_to_position, diagnostics_for_document,
-    path_from_uri, span_to_range,
+pub use definition::{
+    position_to_byte, range as definition_range, range_in as definition_range_in,
 };
-pub use rename::rename_ranges;
+pub use diagnostics::{
+    LspDiagnostic, LspPosition, LspRange, byte_to_position,
+    for_document as diagnostics_for_document, path_from_uri, span_to_range,
+};
+pub use rename::ranges as rename_ranges;
 pub use server::{LspError, Result, run, serve};

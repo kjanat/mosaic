@@ -5,11 +5,11 @@ use mos_core::{AttrValue, Node};
 use crate::style::pt_to_f32;
 use crate::{Page, PageStyle};
 
-pub(crate) fn blank_page(number: u32, style: PageStyle) -> Page {
+pub(crate) const fn blank_page(number: u32, style: PageStyle) -> Page {
     Page {
         number,
-        width_pt: style.width_pt,
-        height_pt: style.height_pt,
+        width_pt: style.width,
+        height_pt: style.height,
         runs: Vec::new(),
         images: Vec::new(),
     }

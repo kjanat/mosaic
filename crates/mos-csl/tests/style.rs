@@ -4,7 +4,10 @@
 //! `clippy::panic_in_result_fn`, so `Result`-returning tests with `assert!`
 //! would themselves be clippy errors).
 
-use mos_csl::{CslParseErrorKind, Element, Match, SortTarget, StyleClass, TextSource, parse_style};
+use mos_csl::{
+    Bibliography, Citation, CslParseErrorKind, Element, Match, SortTarget, Style, StyleClass,
+    TextSource, parse_style,
+};
 
 const SAMPLE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text" default-locale="en-US">
@@ -151,60 +154,47 @@ fn rejects_an_unsupported_element() {
 
 #[test]
 fn parses_rendering_variants_sort_and_conditions() {
-    let style = parse_style(
-        r#"<style version="1.0" class="note" page-range-format="expanded" demote-non-dropping-particle="sort-only" initialize-with-hyphen="false" et-al-min="2" and="text" name-as-sort-order="first" sort-separator=", ">
-          <info>
-            <id>http://example.org/styles/dependent-demo</id>
-            <title>Dependent Demo</title>
-            <link rel="independent-parent" href="http://example.org/styles/parent" type="text/xml"/>
-            <category citation-format="author-date"/>
-            <category field="science"/>
-            <author><name>Style Author</name><uri>https://example.org/author</uri><email>a@example.org</email></author>
-            <contributor><name>Style Contributor</name></contributor>
-            <updated>2026-06-02T00:00:00Z</updated>
-            <issn>1234-5678</issn>
-          </info>
-          <locale xml:lang="en-US"><terms><term name="page">p.</term></terms></locale>
-          <macro name="term-macro">
-            <text term="editor" form="short" plural="true"/>
-          </macro>
-          <citation et-al-min="3" et-al-use-first="1" et-al-subsequent-min="4" et-al-subsequent-use-first="2" name-as-sort-order="all" collapse="year" cite-group-delimiter=", " year-suffix-delimiter="; " after-collapse-delimiter=". " disambiguate-add-names="true" disambiguate-add-givenname="true" disambiguate-add-year-suffix="true" givenname-disambiguation-rule="primary-name" near-note-distance="5">
-            <sort>
-              <key macro="term-macro" sort="descending" names-min="3" names-use-first="1" names-use-last="true"/>
-              <key variable="issued"/>
-            </sort>
-            <layout prefix="[" suffix="]" delimiter=", " font-style="italic" font-variant="small-caps" font-weight="bold" text-decoration="underline" vertical-align="sup" text-case="capitalize-first" display="block">
-              <number variable="volume" form="roman" prefix="v"/>
-              <date variable="issued" form="text" date-parts="year-month-day">
-                <date-part name="month" form="short" range-delimiter="/" strip-periods="true" suffix=" "/>
-                <date-part name="year"/>
-              </date>
-              <names variable="author editor" delimiter=", ">
-                <name form="short" and="symbol" et-al-min="3" et-al-use-first="1" et-al-subsequent-min="4" et-al-subsequent-use-first="2" et-al-use-last="true" delimiter-precedes-et-al="always" delimiter-precedes-last="contextual" initialize="true" initialize-with=". " name-as-sort-order="first" sort-separator=", ">
-                  <name-part name="family" font-variant="small-caps"/>
-                </name>
-                <et-al term="et-al"/>
-                <label form="short" plural="contextual" strip-periods="true"/>
-                <substitute><text value="Anonymous"/></substitute>
-              </names>
-              <label variable="page" form="short" plural="always" strip-periods="true"/>
-              <choose>
-                <if match="any" type="book article" variable="title issued" is-numeric="volume" is-uncertain-date="issued" locator="page" position="first subsequent" disambiguate="true">
-                  <text variable="title" form="short"/>
-                </if>
-                <else-if match="none" variable="DOI"><text macro="term-macro"/></else-if>
-                <else><text value="fallback" quotes="true" strip-periods="true"/></else>
-              </choose>
-            </layout>
-          </citation>
-          <bibliography et-al-min="5" et-al-use-first="2" et-al-subsequent-min="6" et-al-subsequent-use-first="3" hanging-indent="true" second-field-align="flush" line-spacing="2" entry-spacing="1" subsequent-author-substitute="---" subsequent-author-substitute-rule="partial-each">
-            <sort><key variable="title" sort="descending"/></sort>
-            <layout><text variable="title"/></layout>
-          </bibliography>
-        </style>"#,
-    )
-    .expect("style should parse");
+    let style = parse_style(RENDERING_VARIANTS_STYLE).expect("style should parse");
 
+    assert_style_metadata(&style);
+    assert_macro_and_locale(&style);
+
+    let citation = style.citation.as_ref().expect("citation present");
+    assert_citation_options_sort_and_common(citation);
+    assert_citation_layout(citation);
+
+    let bibliography = style.bibliography.as_ref().expect("bibliography present");
+    assert_bibliography_options(bibliography);
+}
+
+const RENDERING_VARIANTS_STYLE: &str = r#"<style version="1.0" class="note" page-range-format="expanded" demote-non-dropping-particle="sort-only" initialize-with-hyphen="false" et-al-min="2" and="text" name-as-sort-order="first" sort-separator=", ">
+  <info>
+    <id>http://example.org/styles/dependent-demo</id>
+    <title>Dependent Demo</title>
+    <link rel="independent-parent" href="http://example.org/styles/parent" type="text/xml"/>
+    <category citation-format="author-date"/>
+    <category field="science"/>
+    <author><name>Style Author</name><uri>https://example.org/author</uri><email>a@example.org</email></author>
+    <contributor><name>Style Contributor</name></contributor>
+    <updated>2026-06-02T00:00:00Z</updated>
+    <issn>1234-5678</issn>
+  </info>
+  <locale xml:lang="en-US"><terms><term name="page">p.</term></terms></locale>
+  <macro name="term-macro"><text term="editor" form="short" plural="true"/></macro>
+  <citation et-al-min="3" et-al-use-first="1" et-al-subsequent-min="4" et-al-subsequent-use-first="2" name-as-sort-order="all" collapse="year" cite-group-delimiter=", " year-suffix-delimiter="; " after-collapse-delimiter=". " disambiguate-add-names="true" disambiguate-add-givenname="true" disambiguate-add-year-suffix="true" givenname-disambiguation-rule="primary-name" near-note-distance="5">
+    <sort><key macro="term-macro" sort="descending" names-min="3" names-use-first="1" names-use-last="true"/><key variable="issued"/></sort>
+    <layout prefix="[" suffix="]" delimiter=", " font-style="italic" font-variant="small-caps" font-weight="bold" text-decoration="underline" vertical-align="sup" text-case="capitalize-first" display="block">
+      <number variable="volume" form="roman" prefix="v"/>
+      <date variable="issued" form="text" date-parts="year-month-day"><date-part name="month" form="short" range-delimiter="/" strip-periods="true" suffix=" "/><date-part name="year"/></date>
+      <names variable="author editor" delimiter=", "><name form="short" and="symbol" et-al-min="3" et-al-use-first="1" et-al-subsequent-min="4" et-al-subsequent-use-first="2" et-al-use-last="true" delimiter-precedes-et-al="always" delimiter-precedes-last="contextual" initialize="true" initialize-with=". " name-as-sort-order="first" sort-separator=", "><name-part name="family" font-variant="small-caps"/></name><et-al term="et-al"/><label form="short" plural="contextual" strip-periods="true"/><substitute><text value="Anonymous"/></substitute></names>
+      <label variable="page" form="short" plural="always" strip-periods="true"/>
+      <choose><if match="any" type="book article" variable="title issued" is-numeric="volume" is-uncertain-date="issued" locator="page" position="first subsequent" disambiguate="true"><text variable="title" form="short"/></if><else-if match="none" variable="DOI"><text macro="term-macro"/></else-if><else><text value="fallback" quotes="true" strip-periods="true"/></else></choose>
+    </layout>
+  </citation>
+  <bibliography et-al-min="5" et-al-use-first="2" et-al-subsequent-min="6" et-al-subsequent-use-first="3" hanging-indent="true" second-field-align="flush" line-spacing="2" entry-spacing="1" subsequent-author-substitute="---" subsequent-author-substitute-rule="partial-each"><sort><key variable="title" sort="descending"/></sort><layout><text variable="title"/></layout></bibliography>
+</style>"#;
+
+fn assert_style_metadata(style: &Style) {
     assert_eq!(style.class, StyleClass::Note);
     assert_eq!(style.options.page_range_format.as_deref(), Some("expanded"));
     assert_eq!(
@@ -257,6 +247,9 @@ fn parses_rendering_variants_sort_and_conditions() {
     );
     assert_eq!(style.info.updated.as_deref(), Some("2026-06-02T00:00:00Z"));
     assert_eq!(style.info.issn, vec!["1234-5678".to_owned()]);
+}
+
+fn assert_macro_and_locale(style: &Style) {
     assert_eq!(style.macros.len(), 1);
     assert_eq!(style.locales.len(), 1);
     assert!(style.locales[0].xml.contains("xml:lang=\"en-US\""));
@@ -265,7 +258,10 @@ fn parses_rendering_variants_sort_and_conditions() {
             .xml
             .contains("<term name=\"page\">p.</term>")
     );
-    let macro_elements = style.macros.get("term-macro").expect("macro present");
+    assert!(style.macros.contains_key("term-macro"), "macro present");
+    let Some(macro_elements) = style.macros.get("term-macro") else {
+        return;
+    };
     assert!(
         matches!(
             &macro_elements[0],
@@ -278,8 +274,9 @@ fn parses_rendering_variants_sort_and_conditions() {
         ),
         "macro should preserve term source"
     );
+}
 
-    let citation = style.citation.expect("citation present");
+fn assert_citation_options_sort_and_common(citation: &Citation) {
     assert_eq!(citation.options.names.et_al_min.as_deref(), Some("3"));
     assert_eq!(citation.options.names.et_al_use_first.as_deref(), Some("1"));
     assert_eq!(
@@ -327,15 +324,9 @@ fn parses_rendering_variants_sort_and_conditions() {
         SortTarget::Macro("term-macro".to_owned())
     );
     assert!(citation.sort[0].descending);
-    assert_eq!(citation.sort[0].options.names_min.as_deref(), Some("3"));
-    assert_eq!(
-        citation.sort[0].options.names_use_first.as_deref(),
-        Some("1")
-    );
-    assert_eq!(
-        citation.sort[0].options.names_use_last.as_deref(),
-        Some("true")
-    );
+    assert_eq!(citation.sort[0].options.min.as_deref(), Some("3"));
+    assert_eq!(citation.sort[0].options.use_first.as_deref(), Some("1"));
+    assert_eq!(citation.sort[0].options.use_last.as_deref(), Some("true"));
     assert_eq!(
         citation.sort[1].target,
         SortTarget::Variable("issued".to_owned())
@@ -353,21 +344,37 @@ fn parses_rendering_variants_sort_and_conditions() {
     assert_eq!(common.vertical_align.as_deref(), Some("sup"));
     assert_eq!(common.text_case.as_deref(), Some("capitalize-first"));
     assert_eq!(common.display.as_deref(), Some("block"));
+}
 
-    let number = match &citation.layout.elements[0] {
-        Element::Number(number) => Some(number),
-        _ => None,
-    }
-    .expect("number element");
+fn assert_citation_layout(citation: &Citation) {
+    assert_citation_number(citation);
+    assert_citation_date(citation);
+    assert_citation_names(citation);
+    assert_citation_label(citation);
+    assert_citation_choose(citation);
+}
+
+fn assert_citation_number(citation: &Citation) {
+    assert!(
+        matches!(&citation.layout.elements[0], Element::Number(_)),
+        "number element"
+    );
+    let Element::Number(number) = &citation.layout.elements[0] else {
+        return;
+    };
     assert_eq!(number.variable, "volume");
     assert_eq!(number.form.as_deref(), Some("roman"));
     assert_eq!(number.common.prefix.as_deref(), Some("v"));
+}
 
-    let date = match &citation.layout.elements[1] {
-        Element::Date(date) => Some(date),
-        _ => None,
-    }
-    .expect("date element");
+fn assert_citation_date(citation: &Citation) {
+    assert!(
+        matches!(&citation.layout.elements[1], Element::Date(_)),
+        "date element"
+    );
+    let Element::Date(date) = &citation.layout.elements[1] else {
+        return;
+    };
     assert_eq!(date.variable, "issued");
     assert_eq!(date.form.as_deref(), Some("text"));
     assert_eq!(date.date_parts.as_deref(), Some("year-month-day"));
@@ -378,17 +385,24 @@ fn parses_rendering_variants_sort_and_conditions() {
     assert_eq!(date.parts[0].strip_periods.as_deref(), Some("true"));
     assert_eq!(date.parts[0].common.suffix.as_deref(), Some(" "));
     assert_eq!(date.parts[1].name, "year");
+}
 
-    let names = match &citation.layout.elements[2] {
-        Element::Names(names) => Some(names),
-        _ => None,
-    }
-    .expect("names element");
+fn assert_citation_names(citation: &Citation) {
+    assert!(
+        matches!(&citation.layout.elements[2], Element::Names(_)),
+        "names element"
+    );
+    let Element::Names(names) = &citation.layout.elements[2] else {
+        return;
+    };
     assert_eq!(
         names.variables,
         vec!["author".to_owned(), "editor".to_owned()]
     );
-    let name = names.name.as_ref().expect("name child");
+    assert!(names.name.is_some(), "name child");
+    let Some(name) = names.name.as_ref() else {
+        return;
+    };
     assert_eq!(name.form.as_deref(), Some("short"));
     assert_eq!(name.options.and.as_deref(), Some("symbol"));
     assert_eq!(name.options.et_al_min.as_deref(), Some("3"));
@@ -421,7 +435,10 @@ fn parses_rendering_variants_sort_and_conditions() {
         names.et_al.as_ref().and_then(|et_al| et_al.term.as_deref()),
         Some("et-al")
     );
-    let label = names.label.as_ref().expect("label child");
+    assert!(names.label.is_some(), "label child");
+    let Some(label) = names.label.as_ref() else {
+        return;
+    };
     assert_eq!(label.form.as_deref(), Some("short"));
     assert_eq!(label.plural.as_deref(), Some("contextual"));
     assert_eq!(label.strip_periods.as_deref(), Some("true"));
@@ -432,22 +449,30 @@ fn parses_rendering_variants_sort_and_conditions() {
         ),
         "substitute should hold fallback text"
     );
+}
 
-    let label = match &citation.layout.elements[3] {
-        Element::Label(label) => Some(label),
-        _ => None,
-    }
-    .expect("label element");
+fn assert_citation_label(citation: &Citation) {
+    assert!(
+        matches!(&citation.layout.elements[3], Element::Label(_)),
+        "label element"
+    );
+    let Element::Label(label) = &citation.layout.elements[3] else {
+        return;
+    };
     assert_eq!(label.variable.as_deref(), Some("page"));
     assert_eq!(label.form.as_deref(), Some("short"));
     assert_eq!(label.plural.as_deref(), Some("always"));
     assert_eq!(label.strip_periods.as_deref(), Some("true"));
+}
 
-    let choose = match &citation.layout.elements[4] {
-        Element::Choose(choose) => Some(choose),
-        _ => None,
-    }
-    .expect("choose element");
+fn assert_citation_choose(citation: &Citation) {
+    assert!(
+        matches!(&citation.layout.elements[4], Element::Choose(_)),
+        "choose element"
+    );
+    let Element::Choose(choose) = &citation.layout.elements[4] else {
+        return;
+    };
     assert_eq!(choose.branches.len(), 2);
     assert_eq!(choose.branches[0].conditions.match_mode, Match::Any);
     assert_eq!(
@@ -490,8 +515,9 @@ fn parses_rendering_variants_sort_and_conditions() {
         ),
         "else branch should preserve literal text options"
     );
+}
 
-    let bibliography = style.bibliography.expect("bibliography present");
+fn assert_bibliography_options(bibliography: &Bibliography) {
     assert_eq!(bibliography.options.names.et_al_min.as_deref(), Some("5"));
     assert_eq!(
         bibliography.options.names.et_al_use_first.as_deref(),

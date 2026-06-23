@@ -80,7 +80,7 @@ impl BibParseErrorKind {
 /// assert_eq!(err.kind(), BibParseErrorKind::ExpectedAt);
 /// assert_eq!(err.offset(), 0);
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BibParseError {
     kind: BibParseErrorKind,
     offset: usize,
@@ -144,7 +144,7 @@ impl BibParseError {
     /// assert_eq!(diagnostic.def().code().to_string(), "MOS0043");
     /// ```
     #[must_use]
-    pub fn to_diagnostic(&self, file: impl Into<PathBuf>) -> Diagnostic {
+    pub fn to_diagnostic(self, file: impl Into<PathBuf>) -> Diagnostic {
         let span = SourceSpan::new(file.into(), self.offset, self.offset);
         Diagnostic::simple(&codes::MOS0043, Some(span), self.kind.message())
     }

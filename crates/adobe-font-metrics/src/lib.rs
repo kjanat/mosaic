@@ -47,8 +47,8 @@
 //! [`ParseError::InvalidNumber`] or [`ParseError::MalformedRecord`].
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
 #![deny(missing_docs)]
 
@@ -317,7 +317,7 @@ impl Error for ParseError {}
 
 // ---------------------------------------------------------------- impls
 
-impl<'a> CharacterMetric<'a> {
+impl CharacterMetric<'_> {
     /// Lift to `'static` by cloning any borrowed strings.
     ///
     /// # Examples
@@ -348,7 +348,7 @@ impl<'a> CharacterMetric<'a> {
     }
 }
 
-impl<'a> KerningPair<'a> {
+impl KerningPair<'_> {
     /// Lift to `'static` by cloning any borrowed strings.
     ///
     /// # Examples
@@ -377,7 +377,7 @@ impl<'a> KerningPair<'a> {
     }
 }
 
-impl<'a> FontMetrics<'a> {
+impl FontMetrics<'_> {
     /// Lift to `'static`, cloning every borrowed slice. Intended for
     /// callers who need to outlive the source `&str` (caches, baked
     /// statics, cross-thread sends).
@@ -443,6 +443,293 @@ enum State {
     SkipKernPairs,
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum HeaderState {
+    Pending,
+    Seen,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum DirectionState {
+    Reading,
+    Skipping,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum FinishState {
+    Reading,
+    Done,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Presence {
+    Missing,
+    Present,
+}
+
+struct ParseAccumulator<'a> {
+    header: HeaderState,
+    state: State,
+    composites_depth: u32,
+    direction: DirectionState,
+    finish: FinishState,
+    font_name: Cow<'a, str>,
+    full_name: Cow<'a, str>,
+    family_name: Cow<'a, str>,
+    weight: Cow<'a, str>,
+    encoding_scheme: Cow<'a, str>,
+    italic_angle: f32,
+    is_fixed_pitch: bool,
+    font_bbox: BBox,
+    font_bbox_presence: Presence,
+    underline_position: f32,
+    underline_thickness: f32,
+    cap_height: f32,
+    x_height: f32,
+    ascender: f32,
+    descender: f32,
+    chars: Vec<CharacterMetric<'a>>,
+    kerns: Vec<KerningPair<'a>>,
+}
+
+impl<'a> ParseAccumulator<'a> {
+    fn new() -> Self {
+        Self {
+            header: HeaderState::Pending,
+            state: State::Top,
+            composites_depth: 0,
+            direction: DirectionState::Reading,
+            finish: FinishState::Reading,
+            font_name: Cow::Borrowed(""),
+            full_name: Cow::Borrowed(""),
+            family_name: Cow::Borrowed(""),
+            weight: Cow::Borrowed(""),
+            encoding_scheme: Cow::Borrowed(""),
+            italic_angle: 0.0,
+            is_fixed_pitch: false,
+            font_bbox: BBox::default(),
+            font_bbox_presence: Presence::Missing,
+            underline_position: 0.0,
+            underline_thickness: 0.0,
+            cap_height: 0.0,
+            x_height: 0.0,
+            ascender: 0.0,
+            descender: 0.0,
+            chars: Vec::new(),
+            kerns: Vec::new(),
+        }
+    }
+
+    fn parse_line(&mut self, raw: &'a str, lineno: usize) -> Result<(), ParseError> {
+        let line = raw.trim();
+        if line.is_empty() || self.is_done() {
+            return Ok(());
+        }
+        let (kw, rest) = split_keyword(line);
+
+        if self.skip_block_line(kw) || self.parse_header_line(kw, rest, lineno)? {
+            return Ok(());
+        }
+
+        self.parse_body_line(line, kw, rest, lineno)
+    }
+
+    fn finish(self) -> Result<FontMetrics<'a>, ParseError> {
+        if self.header == HeaderState::Pending {
+            return Err(ParseError::MissingHeader { line: 1 });
+        }
+        if self.font_name.is_empty() {
+            return Err(ParseError::MissingRequiredField { field: "FontName" });
+        }
+        if self.font_bbox_presence == Presence::Missing {
+            return Err(ParseError::MissingRequiredField { field: "FontBBox" });
+        }
+
+        Ok(FontMetrics {
+            font_name: self.font_name,
+            full_name: self.full_name,
+            family_name: self.family_name,
+            weight: self.weight,
+            italic_angle: self.italic_angle,
+            is_fixed_pitch: self.is_fixed_pitch,
+            font_bbox: self.font_bbox,
+            underline_position: self.underline_position,
+            underline_thickness: self.underline_thickness,
+            cap_height: self.cap_height,
+            x_height: self.x_height,
+            ascender: self.ascender,
+            descender: self.descender,
+            encoding_scheme: self.encoding_scheme,
+            character_metrics: Cow::Owned(self.chars),
+            kerning_pairs: Cow::Owned(self.kerns),
+        })
+    }
+
+    fn skip_block_line(&mut self, kw: &str) -> bool {
+        if self.composites_depth > 0 {
+            if kw == "EndComposites" {
+                self.composites_depth -= 1;
+            }
+            return true;
+        }
+        if self.direction == DirectionState::Skipping {
+            if kw == "EndDirection" {
+                self.direction = DirectionState::Reading;
+            }
+            return true;
+        }
+        false
+    }
+
+    fn parse_header_line(
+        &mut self,
+        kw: &str,
+        rest: &str,
+        lineno: usize,
+    ) -> Result<bool, ParseError> {
+        if self.header == HeaderState::Seen {
+            return Ok(false);
+        }
+        if kw == "Comment" {
+            return Ok(true);
+        }
+        if kw != "StartFontMetrics" {
+            return Err(ParseError::MissingHeader { line: lineno });
+        }
+        let version = rest.trim();
+        let is_v4 = version.split_once('.').is_some_and(|(major, minor)| {
+            major == "4" && !minor.is_empty() && minor.bytes().all(|b| b.is_ascii_digit())
+        });
+        if !is_v4 {
+            return Err(ParseError::UnsupportedVersion {
+                line: lineno,
+                version: version.to_owned(),
+            });
+        }
+        self.header = HeaderState::Seen;
+        Ok(true)
+    }
+
+    fn is_done(&self) -> bool {
+        self.finish == FinishState::Done
+    }
+
+    fn parse_body_line(
+        &mut self,
+        line: &'a str,
+        kw: &str,
+        rest: &'a str,
+        lineno: usize,
+    ) -> Result<(), ParseError> {
+        match kw {
+            "EndFontMetrics" => self.finish = FinishState::Done,
+            "StartComposites" => self.composites_depth = 1,
+            "FontName" => self.font_name = Cow::Borrowed(rest.trim()),
+            "FullName" => self.full_name = Cow::Borrowed(rest.trim()),
+            "FamilyName" => self.family_name = Cow::Borrowed(rest.trim()),
+            "Weight" => self.weight = Cow::Borrowed(rest.trim()),
+            "EncodingScheme" => self.encoding_scheme = Cow::Borrowed(rest.trim()),
+            "ItalicAngle" => self.italic_angle = parse_f32(rest, "ItalicAngle", lineno)?,
+            "IsFixedPitch" => self.is_fixed_pitch = parse_bool(rest, lineno)?,
+            "UnderlinePosition" => {
+                self.underline_position = parse_f32(rest, "UnderlinePosition", lineno)?;
+            }
+            "UnderlineThickness" => {
+                self.underline_thickness = parse_f32(rest, "UnderlineThickness", lineno)?;
+            }
+            "CapHeight" => self.cap_height = parse_f32(rest, "CapHeight", lineno)?,
+            "XHeight" => self.x_height = parse_f32(rest, "XHeight", lineno)?,
+            "Ascender" => self.ascender = parse_f32(rest, "Ascender", lineno)?,
+            "Descender" => self.descender = parse_f32(rest, "Descender", lineno)?,
+            "FontBBox" => {
+                self.font_bbox = parse_bbox(rest, "FontBBox", lineno)?;
+                self.font_bbox_presence = Presence::Present;
+            }
+            "StartCharMetrics" => self.start_char_metrics(rest, lineno)?,
+            "EndCharMetrics" | "EndKernPairs" | "EndKernData" => self.state = State::Top,
+            "StartKernData" => self.state = State::KernPairs,
+            "StartKernPairs" | "StartKernPairs0" => self.start_kern_pairs(rest, lineno)?,
+            "StartKernPairs1" => self.state = State::SkipKernPairs,
+            "StartDirection" => self.start_direction(rest, lineno)?,
+            "C" | "CH" if self.state == State::CharMetrics => {
+                self.chars.push(parse_char_metric_line(line, lineno)?);
+            }
+            "KPX" | "KPY" | "KP" if self.state == State::KernPairs => {
+                if let Some(pair) = parse_kern_record(kw, rest, lineno)? {
+                    self.kerns.push(pair);
+                }
+            }
+            "KPH" if self.state == State::KernPairs => {}
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn start_char_metrics(&mut self, rest: &str, lineno: usize) -> Result<(), ParseError> {
+        let n = parse_declared_count(rest, "StartCharMetrics", lineno)?;
+        self.chars
+            .try_reserve(n)
+            .map_err(|_err| ParseError::MalformedRecord {
+                line: lineno,
+                keyword: "StartCharMetrics",
+                reason: "declared count exceeds allocatable capacity",
+            })?;
+        self.state = State::CharMetrics;
+        Ok(())
+    }
+
+    fn start_kern_pairs(&mut self, rest: &str, lineno: usize) -> Result<(), ParseError> {
+        let n = parse_declared_count(rest, "StartKernPairs", lineno)?;
+        self.kerns
+            .try_reserve(n)
+            .map_err(|_err| ParseError::MalformedRecord {
+                line: lineno,
+                keyword: "StartKernPairs",
+                reason: "declared count exceeds allocatable capacity",
+            })?;
+        self.state = State::KernPairs;
+        Ok(())
+    }
+
+    fn start_direction(&mut self, rest: &str, lineno: usize) -> Result<(), ParseError> {
+        let value = rest.trim();
+        let direction = value
+            .parse::<u8>()
+            .map_err(|_err| ParseError::InvalidNumber {
+                line: lineno,
+                field: "StartDirection",
+                value: value.to_owned(),
+            })?;
+        match direction {
+            0 | 2 => {}
+            1 => self.direction = DirectionState::Skipping,
+            _ => {
+                return Err(ParseError::MalformedRecord {
+                    line: lineno,
+                    keyword: "StartDirection",
+                    reason: "expected direction selector 0, 1, or 2",
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
+fn parse_declared_count(
+    rest: &str,
+    field: &'static str,
+    lineno: usize,
+) -> Result<usize, ParseError> {
+    let value = rest.trim();
+    value
+        .parse::<usize>()
+        .map_err(|_err| ParseError::InvalidNumber {
+            line: lineno,
+            field,
+            value: value.to_owned(),
+        })
+}
+
 /// Parse an AFM file into a borrowed [`FontMetrics`].
 ///
 /// The returned struct borrows from `src`. Use
@@ -469,197 +756,23 @@ enum State {
 /// ```
 #[must_use = "discarding the parsed FontMetrics also discards any parse error"]
 pub fn parse(src: &str) -> Result<FontMetrics<'_>, ParseError> {
-    let mut header_seen = false;
-    let mut state = State::Top;
-    let mut composites_depth: u32 = 0;
-    // Set inside `StartDirection 1` blocks (direction-1 metrics);
-    // cleared on `EndDirection`. While set, every key in the body
-    // is silently dropped so direction-1 values don't clobber the
-    // direction-0 globals we already read at the top level.
-    let mut skip_direction = false;
-
-    let mut font_name: Cow<'_, str> = Cow::Borrowed("");
-    let mut full_name: Cow<'_, str> = Cow::Borrowed("");
-    let mut family_name: Cow<'_, str> = Cow::Borrowed("");
-    let mut weight: Cow<'_, str> = Cow::Borrowed("");
-    let mut encoding_scheme: Cow<'_, str> = Cow::Borrowed("");
-    let mut italic_angle: f32 = 0.0;
-    let mut is_fixed_pitch = false;
-    let mut font_bbox = BBox::default();
-    let mut font_bbox_seen = false;
-    let mut underline_position: f32 = 0.0;
-    let mut underline_thickness: f32 = 0.0;
-    let mut cap_height: f32 = 0.0;
-    let mut x_height: f32 = 0.0;
-    let mut ascender: f32 = 0.0;
-    let mut descender: f32 = 0.0;
-    let mut chars: Vec<CharacterMetric<'_>> = Vec::new();
-    let mut kerns: Vec<KerningPair<'_>> = Vec::new();
+    let mut accumulator = ParseAccumulator::new();
 
     for (idx, raw) in src.lines().enumerate() {
-        let lineno = idx + 1;
-        let line = raw.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let (kw, rest) = split_keyword(line);
-
-        // Skip composite blocks wholesale.
-        if composites_depth > 0 {
-            if kw == "EndComposites" {
-                composites_depth -= 1;
-            }
-            continue;
-        }
-
-        // Skip direction-1 blocks wholesale (direction-0 / direction-2
-        // are accepted at top level; see the StartDirection arm below).
-        if skip_direction {
-            if kw == "EndDirection" {
-                skip_direction = false;
-            }
-            continue;
-        }
-
-        if !header_seen {
-            if kw == "Comment" {
-                continue;
-            }
-            if kw != "StartFontMetrics" {
-                return Err(ParseError::MissingHeader { line: lineno });
-            }
-            let version = rest.trim();
-            // Strict `4.<digits>`: reject `4.`, `4.x`, `4.bad`, etc.
-            let is_v4 = version.split_once('.').is_some_and(|(major, minor)| {
-                major == "4" && !minor.is_empty() && minor.bytes().all(|b| b.is_ascii_digit())
-            });
-            if !is_v4 {
-                return Err(ParseError::UnsupportedVersion {
-                    line: lineno,
-                    version: version.to_owned(),
-                });
-            }
-            header_seen = true;
-            continue;
-        }
-
-        match kw {
-            "EndFontMetrics" => break,
-            "StartComposites" => composites_depth = 1,
-
-            "FontName" => font_name = Cow::Borrowed(rest.trim()),
-            "FullName" => full_name = Cow::Borrowed(rest.trim()),
-            "FamilyName" => family_name = Cow::Borrowed(rest.trim()),
-            "Weight" => weight = Cow::Borrowed(rest.trim()),
-            "EncodingScheme" => encoding_scheme = Cow::Borrowed(rest.trim()),
-
-            "ItalicAngle" => italic_angle = parse_f32(rest, "ItalicAngle", lineno)?,
-            "IsFixedPitch" => is_fixed_pitch = parse_bool(rest, lineno)?,
-            "UnderlinePosition" => {
-                underline_position = parse_f32(rest, "UnderlinePosition", lineno)?;
-            }
-            "UnderlineThickness" => {
-                underline_thickness = parse_f32(rest, "UnderlineThickness", lineno)?;
-            }
-            "CapHeight" => cap_height = parse_f32(rest, "CapHeight", lineno)?,
-            "XHeight" => x_height = parse_f32(rest, "XHeight", lineno)?,
-            "Ascender" => ascender = parse_f32(rest, "Ascender", lineno)?,
-            "Descender" => descender = parse_f32(rest, "Descender", lineno)?,
-            "FontBBox" => {
-                font_bbox = parse_bbox(rest, "FontBBox", lineno)?;
-                font_bbox_seen = true;
-            }
-
-            "StartCharMetrics" => {
-                if let Ok(n) = rest.trim().parse::<usize>() {
-                    chars.reserve(n);
-                }
-                state = State::CharMetrics;
-            }
-            "EndCharMetrics" | "EndKernPairs" | "EndKernData" => state = State::Top,
-
-            "StartKernData" => state = State::KernPairs,
-            "StartKernPairs" | "StartKernPairs0" => {
-                if let Ok(n) = rest.trim().parse::<usize>() {
-                    kerns.reserve(n);
-                }
-                state = State::KernPairs;
-            }
-            "StartKernPairs1" => {
-                // Direction-1 kerning is not exposed in v0.1; route the
-                // block to `SkipKernPairs` so its KP* records are dropped
-                // rather than silently appended to the direction-0 vector.
-                state = State::SkipKernPairs;
-            }
-
-            // Per spec §7.2: `StartDirection 0` → direction-0 metrics
-            // (apply); `StartDirection 1` → direction-1 (skip);
-            // `StartDirection 2` → metrics for both (apply). Treat a
-            // missing/unparseable N as 0.
-            "StartDirection" => {
-                let n = rest.trim().parse::<u8>().unwrap_or(0);
-                if n == 1 {
-                    skip_direction = true;
-                }
-            }
-            // `EndDirection` for accepted directions is a no-op: falls
-            // through the wildcard. The skip-direction guard above
-            // handles `EndDirection` for the dropped direction-1 case.
-            "C" | "CH" if state == State::CharMetrics => {
-                chars.push(parse_char_metric_line(line, lineno)?);
-            }
-
-            "KPX" | "KPY" | "KP" if state == State::KernPairs => {
-                if let Some(pair) = parse_kern_record(kw, rest, lineno)? {
-                    kerns.push(pair);
-                }
-            }
-            "KPH" if state == State::KernPairs => {
-                // Hex-encoded kern pairs: accepted and discarded; the
-                // public type doesn't model decoded byte-coded names.
-            }
-
-            _ => {} // unknown / out-of-context: silently skip
+        accumulator.parse_line(raw, idx + 1)?;
+        if accumulator.is_done() {
+            break;
         }
     }
 
-    if !header_seen {
-        return Err(ParseError::MissingHeader { line: 1 });
-    }
-    if font_name.is_empty() {
-        return Err(ParseError::MissingRequiredField { field: "FontName" });
-    }
-    if !font_bbox_seen {
-        return Err(ParseError::MissingRequiredField { field: "FontBBox" });
-    }
-
-    Ok(FontMetrics {
-        font_name,
-        full_name,
-        family_name,
-        weight,
-        italic_angle,
-        is_fixed_pitch,
-        font_bbox,
-        underline_position,
-        underline_thickness,
-        cap_height,
-        x_height,
-        ascender,
-        descender,
-        encoding_scheme,
-        character_metrics: Cow::Owned(chars),
-        kerning_pairs: Cow::Owned(kerns),
-    })
+    accumulator.finish()
 }
 
 // ---------------------------------------------------------------- helpers
 
 fn split_keyword(line: &str) -> (&str, &str) {
-    match line.find(|c: char| c.is_ascii_whitespace()) {
-        Some(i) => (&line[..i], &line[i..]),
-        None => (line, ""),
-    }
+    line.find(|c: char| c.is_ascii_whitespace())
+        .map_or((line, ""), |i| (&line[..i], &line[i..]))
 }
 
 fn parse_f32(s: &str, field: &'static str, lineno: usize) -> Result<f32, ParseError> {

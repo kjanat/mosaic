@@ -6,8 +6,8 @@
 //! (MVP 0 §6 stage 9) land.
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
 #![allow(
     clippy::print_stderr,
@@ -60,8 +60,14 @@ enum Command {
         ///
         /// Use `--open` for the platform default, or `--open=PROGRAM`
         /// to invoke a specific viewer.
-        #[arg(long, value_name = "PROGRAM", num_args = 0..=1, require_equals = true)]
-        open: Option<Option<String>>,
+        #[arg(
+            long,
+            value_name = "PROGRAM",
+            num_args = 0..=1,
+            default_missing_value = "",
+            require_equals = true
+        )]
+        open: Option<String>,
         /// Refuse to update dependencies (manifest §15.3).
         #[arg(long)]
         frozen: bool,
@@ -117,7 +123,7 @@ fn main() -> ExitCode {
             open,
             frozen: _,
             reproducible: _,
-        } => run_builds(&entries, PdfOpen::from_cli(&open)),
+        } => run_builds(&entries, PdfOpen::from_cli(open.as_deref())),
         Command::Init { .. } => unimplemented_subcommand("init"),
         Command::Watch { .. } => unimplemented_subcommand("watch"),
         Command::Fmt { .. } => unimplemented_subcommand("fmt"),
@@ -428,16 +434,20 @@ enum PdfOpen<'a> {
 }
 
 impl<'a> PdfOpen<'a> {
-    fn from_cli(open: &'a Option<Option<String>>) -> Self {
+    const fn from_cli(open: Option<&'a str>) -> Self {
         match open {
             None => Self::No,
-            Some(None) => Self::Default,
-            Some(Some(program)) if program.is_empty() => Self::Default,
-            Some(Some(program)) => Self::Program(program.as_str()),
+            Some(program) => {
+                if program.is_empty() {
+                    Self::Default
+                } else {
+                    Self::Program(program)
+                }
+            }
         }
     }
 
-    fn should_open(self) -> bool {
+    const fn should_open(self) -> bool {
         !matches!(self, Self::No)
     }
 }
@@ -479,7 +489,7 @@ struct RenderingSink<'a> {
 }
 
 impl<'a> RenderingSink<'a> {
-    fn new(src: &'a str) -> Self {
+    const fn new(src: &'a str) -> Self {
         Self {
             src,
             errors: 0,
@@ -487,7 +497,7 @@ impl<'a> RenderingSink<'a> {
         }
     }
 
-    fn had_error(&self) -> bool {
+    const fn had_error(&self) -> bool {
         self.errors > 0
     }
 
@@ -512,7 +522,7 @@ impl DiagnosticSink for RenderingSink<'_> {
     }
 }
 
-fn severity_label(s: Severity) -> &'static str {
+const fn severity_label(s: Severity) -> &'static str {
     match s {
         Severity::Error => "error",
         Severity::Warning => "warning",
@@ -643,17 +653,12 @@ mod tests {
 
     #[test]
     fn pdf_open_from_cli_distinguishes_absent_default_and_program() {
-        assert!(matches!(PdfOpen::from_cli(&None), PdfOpen::No));
+        assert!(matches!(PdfOpen::from_cli(None), PdfOpen::No));
 
-        let default = Some(None);
-        assert!(matches!(PdfOpen::from_cli(&default), PdfOpen::Default));
+        assert!(matches!(PdfOpen::from_cli(Some("")), PdfOpen::Default));
 
-        let empty = Some(Some(String::new()));
-        assert!(matches!(PdfOpen::from_cli(&empty), PdfOpen::Default));
-
-        let program = Some(Some("zathura".to_owned()));
         assert!(matches!(
-            PdfOpen::from_cli(&program),
+            PdfOpen::from_cli(Some("zathura")),
             PdfOpen::Program("zathura")
         ));
     }

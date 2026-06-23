@@ -86,7 +86,7 @@ struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    fn new(src: &'a str) -> Self {
+    const fn new(src: &'a str) -> Self {
         Self {
             src,
             bytes: src.as_bytes(),
@@ -94,7 +94,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn at_end(&self) -> bool {
+    const fn at_end(&self) -> bool {
         self.pos >= self.bytes.len()
     }
 
@@ -102,7 +102,7 @@ impl<'a> Parser<'a> {
         self.bytes.get(self.pos).copied()
     }
 
-    fn bump(&mut self) {
+    const fn bump(&mut self) {
         self.pos += 1;
     }
 
@@ -116,11 +116,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn error_here(&self, kind: BibParseErrorKind) -> BibParseError {
+    const fn error_here(&self, kind: BibParseErrorKind) -> BibParseError {
         BibParseError::new(kind, self.pos)
     }
 
-    fn error_at(&self, offset: usize, kind: BibParseErrorKind) -> BibParseError {
+    const fn error_at(offset: usize, kind: BibParseErrorKind) -> BibParseError {
         BibParseError::new(kind, offset)
     }
 
@@ -280,7 +280,10 @@ impl<'a> Parser<'a> {
             }
             self.bump();
         }
-        Err(self.error_at(open_offset, BibParseErrorKind::UnterminatedValue))
+        Err(Self::error_at(
+            open_offset,
+            BibParseErrorKind::UnterminatedValue,
+        ))
     }
 
     /// Capture a `"..."` value, reading to the next unescaped `"` outside
@@ -311,7 +314,10 @@ impl<'a> Parser<'a> {
             }
             self.bump();
         }
-        Err(self.error_at(open_offset, BibParseErrorKind::UnterminatedValue))
+        Err(Self::error_at(
+            open_offset,
+            BibParseErrorKind::UnterminatedValue,
+        ))
     }
 
     /// Capture an unquoted value (e.g. `1984`) as a single token. The caller
@@ -331,17 +337,17 @@ impl<'a> Parser<'a> {
 }
 
 /// Bytes allowed in an entry type or field name.
-fn is_identifier_byte(b: u8) -> bool {
+const fn is_identifier_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'+' | b'.' | b':' | b'/')
 }
 
 /// Bytes allowed in a citation key: anything but a structural delimiter or
 /// whitespace.
-fn is_key_byte(b: u8) -> bool {
+const fn is_key_byte(b: u8) -> bool {
     !b.is_ascii_whitespace() && !matches!(b, b',' | b'{' | b'}' | b'"' | b'=' | b'@')
 }
 
 /// Bytes allowed in a bare (unquoted, unbraced) value.
-fn is_bare_value_byte(b: u8) -> bool {
+const fn is_bare_value_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'+' | b'.' | b':' | b'/')
 }

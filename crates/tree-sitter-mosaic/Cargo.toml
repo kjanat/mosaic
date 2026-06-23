@@ -5,6 +5,7 @@ edition.workspace      = true
 rust-version.workspace = true
 description            = "Mosaic grammar for tree-sitter"
 readme                 = "README.md"
+homepage.workspace     = true
 repository.workspace   = true
 license.workspace      = true
 keywords               = ["incremental", "mosaic", "parsing", "tree-sitter"]

@@ -48,8 +48,8 @@
 //! SPDX expression is `MIT AND APAFML`.
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
 #![deny(missing_docs)]
 
@@ -57,9 +57,17 @@ pub use adobe_font_metrics::{BBox, CharacterMetric, FontMetrics, KerningPair};
 
 use std::borrow::Cow;
 
-mod agl_subset;
-mod winansi_char_map;
-mod winansi_table;
+#[doc(hidden)]
+pub mod agl_subset;
+#[doc(hidden)]
+pub mod winansi_char_map;
+#[doc(hidden)]
+pub mod winansi_table {
+    include!("winansi_table.rs");
+
+    /// PDF `WinAnsi` byte-to-glyph-name table.
+    pub const TABLE: [Option<&str>; 256] = WINANSI_TABLE;
+}
 
 // The generated file references `BBox`, `CharacterMetric`,
 // `FontMetrics`, `KerningPair`, and `Cow` unqualified; all are in
@@ -176,7 +184,7 @@ impl Base14Font {
     /// assert_eq!(Base14Font::TimesBoldItalic.pdf_base_name(), "Times-BoldItalic");
     /// ```
     #[must_use]
-    pub fn pdf_base_name(self) -> &'static str {
+    pub const fn pdf_base_name(self) -> &'static str {
         match self {
             Self::Helvetica => "Helvetica",
             Self::HelveticaBold => "Helvetica-Bold",
@@ -249,7 +257,7 @@ impl Base14Font {
 
     /// Returns the baked `(name, width)` index for Latin Core 12
     /// faces, or `None` for `Symbol`/`ZapfDingbats`.
-    fn name_width_table(self) -> Option<&'static [(&'static str, f32)]> {
+    const fn name_width_table(self) -> Option<&'static [(&'static str, f32)]> {
         match self {
             Self::Symbol | Self::ZapfDingbats => None,
             Self::Helvetica => Some(HELVETICA_NAME_WIDTHS),
@@ -296,7 +304,7 @@ impl Base14Font {
 
     /// The pre-baked `WinAnsi` width table, or `None` for fonts whose
     /// canonical encoding isn't `WinAnsi`.
-    fn winansi_table(self) -> Option<&'static [Option<f32>; 256]> {
+    const fn winansi_table(self) -> Option<&'static [Option<f32>; 256]> {
         match self {
             Self::Symbol | Self::ZapfDingbats => None,
             Self::Helvetica => Some(&HELVETICA_WINANSI),
@@ -336,8 +344,8 @@ impl Base14Font {
 /// assert_eq!(winansi_glyph_name(0x7F), None);
 /// ```
 #[must_use]
-pub fn winansi_glyph_name(code: u8) -> Option<&'static str> {
-    winansi_table::WINANSI_TABLE[code as usize]
+pub const fn winansi_glyph_name(code: u8) -> Option<&'static str> {
+    winansi_table::TABLE[code as usize]
 }
 
 /// Returns the PDF `WinAnsiEncoding` byte that encodes `ch`, or
@@ -379,10 +387,11 @@ pub fn winansi_byte(ch: char) -> Option<u8> {
 #[doc(hidden)]
 pub const __WINANSI_CHAR_MAP: [Option<char>; 256] = winansi_char_map::WINANSI_CHAR_MAP;
 
-/// Returns the PostScript glyph name for `ch` *if and only if* `ch`
-/// is in the **extended** tier: i.e. a Core 14 AFM glyph that has
-/// no `WinAnsi` byte and therefore must be reached through a custom
-/// `/Encoding` `/Differences` slot. The extended tier covers:
+/// Returns the extended-tier PostScript glyph name for `ch`.
+///
+/// Extended-tier means a Core 14 AFM glyph that has no `WinAnsi` byte and
+/// therefore must be reached through a custom `/Encoding` `/Differences` slot.
+/// The extended tier covers:
 ///
 /// - most of Latin Extended-A (`Ł`, `ł`, `Ě`, `ě`, `Ő`, `ő`, …,
 ///   excluding those that already live in `WinAnsi` like
@@ -402,7 +411,7 @@ pub const __WINANSI_CHAR_MAP: [Option<char>; 256] = winansi_char_map::WINANSI_CH
 ///    [`winansi_byte`] instead and don't need a `/Differences` slot.
 ///    Callers querying "what's the AFM glyph name for `é`?" should
 ///    use [`Base14Font::glyph_width_by_name`] on the result of
-///    [`winansi_glyph_name`]`(`[`winansi_byte`]`(ch)?)`, or just
+///    <code>[winansi_glyph_name]([winansi_byte](ch)?)</code>, or just
 ///    measure widths through [`Base14Font::winansi_width`].
 /// 2. **Unmappable codepoints** with no glyph in any Core 14 font
 ///    (Cyrillic, CJK, emoji, most non-European scripts). The PDF

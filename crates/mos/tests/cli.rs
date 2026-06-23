@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::process::Command;
 
-fn mos_bin() -> &'static str {
+const fn mos_bin() -> &'static str {
     env!("CARGO_BIN_EXE_mos")
 }
 
@@ -806,7 +806,7 @@ fn build_substituted_font_emits_notice_and_succeeds() {
     assert!(stdout.starts_with("wrote "), "stdout={stdout:?}");
 }
 
-mod tempdir {
+pub mod tempdir {
     //! Tiny scoped tempdir helper. Avoids pulling in a runtime
     //! dependency for one test file.
 
@@ -815,12 +815,18 @@ mod tempdir {
 
     static NEXT_TEMP_DIR: AtomicU64 = AtomicU64::new(0);
 
-    pub(crate) struct Dir {
+    #[derive(Debug)]
+    pub struct Dir {
         path: PathBuf,
     }
 
     impl Dir {
-        pub(crate) fn new(label: &str) -> Self {
+        /// Create a uniquely named temp directory.
+        ///
+        /// # Panics
+        ///
+        /// Panics if the temp directory cannot be created.
+        pub fn new(label: &str) -> Self {
             let mut p = std::env::temp_dir();
             let n = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -835,7 +841,8 @@ mod tempdir {
             Self { path: p }
         }
 
-        pub(crate) fn path(&self) -> &Path {
+        #[must_use]
+        pub fn path(&self) -> &Path {
             &self.path
         }
     }

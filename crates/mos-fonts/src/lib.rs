@@ -28,8 +28,8 @@
 //! which the layout engine receives from the eval lowerer.
 
 #![doc(
-    html_logo_url = "https://mosaic.kjanat.dev/assets/A4.svg",
-    html_favicon_url = "https://mosaic.kjanat.dev/assets/A4.svg"
+    html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
+    html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
 #![deny(missing_docs)]
 
@@ -38,7 +38,7 @@ mod family;
 mod font;
 mod metrics;
 mod normalize;
-mod resources;
+pub(crate) mod resources;
 mod shape;
 
 pub use embedded::{EmbeddedFont, ShapedGlyph, shape, subset};

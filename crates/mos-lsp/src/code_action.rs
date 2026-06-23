@@ -12,7 +12,8 @@ use serde_json::{Value, json};
 use crate::definition::position_to_byte;
 use crate::diagnostics::{LspRange, span_to_range};
 
-pub(crate) fn code_actions_for_range(
+#[must_use]
+pub fn code_actions_for_range(
     file: &Path,
     src: &str,
     uri: &str,
@@ -121,14 +122,13 @@ fn action_title(src: &str, diagnostic: &Diagnostic, suggestion: &Suggestion) -> 
 }
 
 fn span_text<'src>(src: &'src str, span: &SourceSpan) -> Option<&'src str> {
-    if span.start() > span.end()
-        || span.end() > src.len()
-        || !src.is_char_boundary(span.start())
-        || !src.is_char_boundary(span.end())
+    let start = span.start();
+    let end = span.end();
+    if start > end || end > src.len() || !src.is_char_boundary(start) || !src.is_char_boundary(end)
     {
         return None;
     }
-    Some(&src[span.start()..span.end()])
+    Some(&src[start..end])
 }
 
 #[derive(Copy, Clone)]
@@ -151,7 +151,7 @@ impl ByteRange {
         }
     }
 
-    fn intersects(self, span: &SourceSpan) -> bool {
+    const fn intersects(self, span: &SourceSpan) -> bool {
         if span.start() == span.end() {
             if self.start == self.end {
                 return self.start == span.start();

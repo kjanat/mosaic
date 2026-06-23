@@ -8,7 +8,7 @@ version      = "0.0.1"
 edition      = "2024"
 rust-version = "1.96"
 readme       = "README.md"
-homepage     = "https://github.com/kjanat/mosaic#mosaic"
+homepage     = "https://mosaiclang.dev"
 repository   = "https://github.com/kjanat/mosaic"
 license      = "MIT"
 keywords     = ["compiler", "layout", "pdf", "typesetting", "typography"]
@@ -66,12 +66,19 @@ version  = "1"
 features = ["derive"]
 
 [workspace.lints.clippy]
+all         = "warn"
+correctness = "warn"
+perf        = "warn"
+style       = "warn"
+suspicious  = "warn"
+
 # Per the Clippy book, enabling the entire pedantic, nursery, or restriction group is discouraged
 # ("cherry-pick lints out of the group").
 # The default-on groups (correctness/suspicious/style/complexity/perf) keep their default levels;
 # we add curated picks below, alphabetised within each group.
 
 # --- pedantic cherry-picks ----------------------------------------
+assigning_clones                   = "warn"
 cast_lossless                      = "warn"
 cast_possible_truncation           = "warn"
 cast_possible_wrap                 = "warn"
@@ -97,6 +104,9 @@ many_single_char_names             = "warn"
 map_unwrap_or                      = "warn"
 match_same_arms                    = "warn"
 mismatching_type_param_order       = "warn"
+missing_errors_doc                 = "warn"
+missing_panics_doc                 = "warn"
+missing_safety_doc                 = "warn"
 module_name_repetitions            = "warn"
 mut_mut                            = "warn"
 needless_continue                  = "warn"
@@ -108,6 +118,7 @@ redundant_closure_for_method_calls = "warn"
 redundant_else                     = "warn"
 ref_binding_to_reference           = "warn"
 ref_option_ref                     = "warn"
+result_large_err                   = "warn"
 return_self_not_must_use           = "warn"
 semicolon_if_nothing_returned      = "warn"
 single_char_pattern                = "warn"
@@ -116,6 +127,7 @@ stable_sort_primitive              = "warn"
 trait_duplication_in_bounds        = "warn"
 unnecessary_box_returns            = "warn"
 unnecessary_join                   = "warn"
+unnecessary_safety_comment         = "warn"
 unnecessary_wraps                  = "warn"
 unnested_or_patterns               = "warn"
 unreadable_literal                 = "warn"
@@ -133,6 +145,7 @@ empty_line_after_outer_attr   = "warn"
 equatable_if_let              = "warn"
 iter_on_empty_collections     = "warn"
 iter_on_single_items          = "warn"
+iter_overeager_cloned         = "warn"
 iter_with_drain               = "warn"
 needless_collect              = "warn"
 or_fun_call                   = "warn"
@@ -168,6 +181,7 @@ rc_mutex                   = "warn"
 str_to_string              = "warn"
 todo                       = "warn"
 undocumented_unsafe_blocks = "warn"
+unimplemented              = "warn"
 unreachable                = "warn"
 unwrap_used                = "warn"
 verbose_file_reads         = "warn"
@@ -182,11 +196,15 @@ redundant_feature_names = "warn"
 wildcard_dependencies   = "warn"
 
 [workspace.lints.rust]
-missing_debug_implementations = "warn"
-rust_2018_idioms              = { level = "warn", priority = -1 }
-unreachable_pub               = "warn"
-unsafe_code                   = "forbid"
-unused_qualifications         = "warn"
+elided_lifetimes_in_paths.level    = "warn"
+elided_lifetimes_in_paths.priority = -1
+missing_copy_implementations       = "warn"    # useful for small value types
+missing_debug_implementations      = "warn"
+rust_2018_idioms.level             = "warn"
+rust_2018_idioms.priority          = -1
+unreachable_pub                    = "warn"
+unsafe_code                        = "forbid"
+unused_qualifications              = "warn"
 
 [workspace.lints.rustdoc]
 bare_urls                    = "warn"

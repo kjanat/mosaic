@@ -322,12 +322,11 @@ impl Date {
 /// A single bibliographic item; the unit a CSL style formats.
 ///
 /// Variables are split by category into deterministic [`BTreeMap`]s. Build one
-/// from a parsed BibTeX record with
-/// [`item_from_bib_entry`](crate::item_from_bib_entry).
+/// from a parsed BibTeX record with [`item_from_bib_entry`](crate::item_from_bib_entry).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Item {
     pub id: String,
-    pub item_type: ItemType,
+    pub kind: ItemType,
     pub standard: BTreeMap<StandardVariable, String>,
     pub number: BTreeMap<NumberVariable, String>,
     pub date: BTreeMap<DateVariable, Date>,
@@ -340,7 +339,7 @@ impl Default for Item {
         // catch-all, so an item's default type is `Document`.
         Self {
             id: String::new(),
-            item_type: ItemType::Document,
+            kind: ItemType::Document,
             standard: BTreeMap::new(),
             number: BTreeMap::new(),
             date: BTreeMap::new(),
@@ -350,7 +349,7 @@ impl Default for Item {
 }
 
 impl Item {
-    /// An empty item of `item_type` identified by `id`.
+    /// An empty item of `kind` identified by `id`.
     ///
     /// # Examples
     ///
@@ -362,10 +361,10 @@ impl Item {
     /// assert!(item.standard.is_empty());
     /// ```
     #[must_use]
-    pub fn new(id: impl Into<String>, item_type: ItemType) -> Self {
+    pub fn new(id: impl Into<String>, kind: ItemType) -> Self {
         Self {
             id: id.into(),
-            item_type,
+            kind,
             ..Self::default()
         }
     }
@@ -427,11 +426,11 @@ mod tests {
         assert_eq!(literal_date.start.year, None);
 
         let default_item = Item::default();
-        assert_eq!(default_item.item_type, ItemType::Document);
+        assert_eq!(default_item.kind, ItemType::Document);
         assert!(default_item.standard.is_empty());
 
         let article = Item::new("ada1843", ItemType::ArticleJournal);
         assert_eq!(article.id, "ada1843");
-        assert_eq!(article.item_type, ItemType::ArticleJournal);
+        assert_eq!(article.kind, ItemType::ArticleJournal);
     }
 }
