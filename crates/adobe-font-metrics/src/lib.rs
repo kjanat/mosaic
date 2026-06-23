@@ -666,29 +666,27 @@ impl<'a> ParseAccumulator<'a> {
     }
 
     fn start_char_metrics(&mut self, rest: &str, lineno: usize) -> Result<(), ParseError> {
-        if let Ok(n) = rest.trim().parse::<usize>() {
-            self.chars
-                .try_reserve(n)
-                .map_err(|_err| ParseError::MalformedRecord {
-                    line: lineno,
-                    keyword: "StartCharMetrics",
-                    reason: "declared count exceeds allocatable capacity",
-                })?;
-        }
+        let n = parse_declared_count(rest, "StartCharMetrics", lineno)?;
+        self.chars
+            .try_reserve(n)
+            .map_err(|_err| ParseError::MalformedRecord {
+                line: lineno,
+                keyword: "StartCharMetrics",
+                reason: "declared count exceeds allocatable capacity",
+            })?;
         self.state = State::CharMetrics;
         Ok(())
     }
 
     fn start_kern_pairs(&mut self, rest: &str, lineno: usize) -> Result<(), ParseError> {
-        if let Ok(n) = rest.trim().parse::<usize>() {
-            self.kerns
-                .try_reserve(n)
-                .map_err(|_err| ParseError::MalformedRecord {
-                    line: lineno,
-                    keyword: "StartKernPairs",
-                    reason: "declared count exceeds allocatable capacity",
-                })?;
-        }
+        let n = parse_declared_count(rest, "StartKernPairs", lineno)?;
+        self.kerns
+            .try_reserve(n)
+            .map_err(|_err| ParseError::MalformedRecord {
+                line: lineno,
+                keyword: "StartKernPairs",
+                reason: "declared count exceeds allocatable capacity",
+            })?;
         self.state = State::KernPairs;
         Ok(())
     }
@@ -715,6 +713,21 @@ impl<'a> ParseAccumulator<'a> {
         }
         Ok(())
     }
+}
+
+fn parse_declared_count(
+    rest: &str,
+    field: &'static str,
+    lineno: usize,
+) -> Result<usize, ParseError> {
+    let value = rest.trim();
+    value
+        .parse::<usize>()
+        .map_err(|_err| ParseError::InvalidNumber {
+            line: lineno,
+            field,
+            value: value.to_owned(),
+        })
 }
 
 /// Parse an AFM file into a borrowed [`FontMetrics`].

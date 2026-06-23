@@ -348,6 +348,38 @@ fn overlarge_declared_counts_return_parse_error() {
 }
 
 #[test]
+fn malformed_declared_counts_return_parse_error() {
+    let src = "StartFontMetrics 4.1\n\
+               FontName Test\n\
+               FontBBox 0 0 0 0\n\
+               StartCharMetrics nope\n\
+               EndFontMetrics\n";
+    let err = parse(src).expect_err("malformed char metric count should fail");
+    assert!(matches!(
+        err,
+        ParseError::InvalidNumber {
+            field: "StartCharMetrics",
+            ..
+        }
+    ));
+
+    let src = "StartFontMetrics 4.1\n\
+               FontName Test\n\
+               FontBBox 0 0 0 0\n\
+               StartKernData\n\
+               StartKernPairs -1\n\
+               EndFontMetrics\n";
+    let err = parse(src).expect_err("malformed kern pair count should fail");
+    assert!(matches!(
+        err,
+        ParseError::InvalidNumber {
+            field: "StartKernPairs",
+            ..
+        }
+    ));
+}
+
+#[test]
 fn invalid_start_direction_returns_parse_error() {
     let src = "StartFontMetrics 4.1\n\
                FontName Test\n\
