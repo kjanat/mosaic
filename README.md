@@ -37,7 +37,8 @@ under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed
 - [x] `mos check` end-to-end: parse → lower → render diagnostics with `file:line:col` and source
       carets;
 - [x] `mos build` end-to-end: layout + PDF emission for the Base-14 core fonts and bundled Noto
-      Sans, with PNG/JPEG raster images and figure captions (manifest §6 stages 5–9, §21.1);
+      Sans, with PNG/JPEG raster images, figure captions, and heading bookmarks in the PDF outline
+      panel (manifest §6 stages 5–9, §21.1);
 - [x] `mos-lsp` publishes current compiler diagnostics over stdio LSP on open/change, answers
       `textDocument/definition` for `@label` references, renames labels, and exposes compiler
       suggestions as code actions;

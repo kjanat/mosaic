@@ -30,7 +30,7 @@ Shipped slice:
   labels by first use, and a rendered cited-entry list (plain text, first-use order) at the
   `#bibliography` site. CSL-styled rendering is not shipped.
 - Layout/PDF: greedy flow, pages, figures/images, Base-14 + Noto embedding/subsetting, ToUnicode,
-  deterministic provenance.
+  heading bookmarks (`/Outlines`), deterministic provenance.
 - LSP: diagnostics, definition for labels/citations, label rename, document symbols, code actions.
 
 Aspirational/stub unless user asks: HTML/EPUB/SVG, persistent cache, watch/formatter/package

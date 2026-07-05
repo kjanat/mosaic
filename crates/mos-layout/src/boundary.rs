@@ -388,6 +388,7 @@ mod tests {
         PageGraph {
             pages,
             images: Vec::new(),
+            outline: Vec::new(),
         }
     }
 

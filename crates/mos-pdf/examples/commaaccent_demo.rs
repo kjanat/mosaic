@@ -101,6 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             images: Vec::new(),
         }],
         images: Vec::new(),
+        outline: Vec::new(),
     };
 
     let out = std::path::PathBuf::from("/tmp/commaaccent-demo.pdf");

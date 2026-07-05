@@ -8,6 +8,16 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- PDF heading bookmarks/outlines: `mos build` now emits a PDF `/Outlines` tree so headings appear in
+  the reader's bookmark panel. [`mos-layout`][mos-layout] captures each heading during layout as an
+  ordered `OutlineEntry` (level, `"{number} {text}"` title, start page, glyph-top y — bound to the
+  page the heading's first line actually lands on, after any page break), carried on `PageGraph`.
+  [`mos-pdf`][mos-pdf] reconstructs nesting from heading levels (a skipped level attaches under the
+  nearest shallower ancestor), wires `/First`/`/Last`/`/Next`/`/Prev`/`/Parent`/`/Count`, and gives
+  each item an `/XYZ` destination with the top coordinate flipped to bottom-origin. Outline objects
+  are allocated last and emitted only when the document has headings, so a heading-free PDF stays
+  byte-identical. Committed example snapshots regenerated to include their outlines.
+
 - Release staleness gate: the crates.io publish workflow now fails a release up front when a crate's
   sources changed since the previous tag but its version was never bumped past a version already
   live on crates.io (registry versions are immutable, so publishing would silently skip the crate
