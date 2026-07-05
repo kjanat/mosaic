@@ -20,7 +20,8 @@ jobs:
       INPUT_DRY_RUN: ${{ inputs.dry-run || 'false' }}
     steps:
       - uses: actions/checkout@v6
-        with: { ref: "refs/tags/${{ env.RELEASE_TAG }}", persist-credentials: false }
+        # fetch-depth: 0 so the staleness gate can diff against the previous release tag.
+        with: { ref: "refs/tags/${{ env.RELEASE_TAG }}", persist-credentials: false, fetch-depth: 0 }
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: verify tag matches Cargo.toml version
@@ -50,6 +51,105 @@ jobs:
           	name=${pkg}
           	version=${manifest_version}
           ENV
+
+      - name: verify changed crates were version-bumped
+        # crates.io versions are immutable: publishing skips a crate whose
+        # version already exists, so a crate whose sources changed since the
+        # previous release but whose version was never bumped would silently
+        # ship stale on the registry (and break dependents' publish
+        # verification against it). Fail the release up front instead.
+        #
+        # Stale means: crate dir changed since the previous tag AND its
+        # version is unchanged since that tag AND that version is already
+        # live on crates.io. The version-at-previous-tag comparison (not a
+        # bare registry check) keeps re-runs of a partially published tag
+        # resumable: a bumped version never trips the gate.
+        #
+        # Heuristic: per-crate directory diff; workspace-root changes that
+        # leak into packages (root Cargo.toml lints, LICENSE) are not caught.
+        run: |
+          set -euo pipefail
+
+          prev_tag="$(git describe --tags --abbrev=0 "${RELEASE_TAG}^" 2>/dev/null || true)"
+          if [[ -z "${prev_tag}" ]]; then
+            echo "ok: no previous tag before ${RELEASE_TAG}; skipping staleness gate"
+            exit 0
+          fi
+          echo "gate: diffing crates against previous tag ${prev_tag}"
+
+          # Version of a crate at the previous tag, resolving
+          # `version.workspace = true` through the root manifest. Parsed
+          # with yq's TOML input (preinstalled on ubuntu runners); the
+          # `select(tag == "!!str")` filter drops the `{workspace = true}`
+          # map form so inheritance falls through to the root manifest.
+          prev_version_of() {
+            local crate_dir="${1}"
+            local v
+            v="$(git show "${prev_tag}:${crate_dir}/Cargo.toml" \
+              | yq -p toml '.package.version | select(tag == "!!str")')"
+            if [[ -z "${v}" ]]; then
+              v="$(git show "${prev_tag}:Cargo.toml" \
+                | yq -p toml '.workspace.package.version // ""')"
+            fi
+            printf '%s' "${v}"
+          }
+
+          repo_url="https://github.com/${GITHUB_REPOSITORY}"
+          stale=0
+          while IFS=$'\t' read -r pkg pkg_version manifest_dir; do
+            crate_dir="${manifest_dir#"${GITHUB_WORKSPACE}/"}"
+
+            if git diff --quiet "${prev_tag}" "${RELEASE_TAG}" -- "${crate_dir}"; then
+              echo "ok: ${pkg} unchanged since ${prev_tag}"
+              continue
+            fi
+            if ! git cat-file -e "${prev_tag}:${crate_dir}/Cargo.toml" 2>/dev/null; then
+              echo "ok: ${pkg} is new since ${prev_tag}"
+              continue
+            fi
+
+            prev_version="$(prev_version_of "${crate_dir}")"
+            if [[ -z "${prev_version}" ]]; then
+              echo "error: cannot resolve the ${prev_tag} version of ${pkg}" >&2
+              exit 1
+            fi
+            if [[ "${prev_version}" != "${pkg_version}" ]]; then
+              echo "ok: ${pkg} changed and was bumped (${prev_version} -> ${pkg_version})"
+              continue
+            fi
+
+            # Bounded and self-retrying so a slow or briefly flaky crates.io
+            # (429/5xx/timeouts) doesn't hang or spuriously fail the gate;
+            # a persistent failure still exits loudly below.
+            status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --max-time 30 --retry 4 --retry-delay 5 --retry-connrefused \
+              --header "User-Agent: ${GITHUB_REPOSITORY} crates-release" \
+              "https://crates.io/api/v1/crates/${pkg}/${pkg_version}")"
+            if [[ "${status}" == "404" ]]; then
+              echo "ok: ${pkg} ${pkg_version} is not on crates.io yet"
+              continue
+            fi
+            if [[ "${status}" != "200" ]]; then
+              echo "error: crates.io returned HTTP ${status} while checking ${pkg} ${pkg_version}" >&2
+              exit 1
+            fi
+
+            echo "error: ${pkg} ${pkg_version} is live on crates.io but ${crate_dir}/ changed since ${prev_tag} without a version bump" >&2
+            stale=1
+          done < <(
+            cargo metadata --no-deps --format-version 1 \
+              | jq -r --arg repo "${repo_url}" '
+                  .packages[]
+                  | select(.repository == $repo)
+                  | [.name, .version, (.manifest_path | rtrimstr("/Cargo.toml"))]
+                  | @tsv
+                '
+          )
+
+          if (( stale )); then
+            echo "error: stale crate versions detected; crates.io versions are immutable — bump before tagging" >&2
+            exit 1
+          fi
 
       - name: cargo publish (dry-run verification)
         if: env.INPUT_DRY_RUN == 'true'

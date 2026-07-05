@@ -8,6 +8,12 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Release staleness gate: the crates.io publish workflow now fails a release up front when a crate's
+  sources changed since the previous tag but its version was never bumped past a version already
+  live on crates.io (registry versions are immutable, so publishing would silently skip the crate
+  and leave it stale). Comparing against the version at the previous tag keeps re-runs of a
+  partially published tag resumable.
+
 - Bibliography entry-list rendering (https://github.com/kjanat/mosaic/issues/112): the numeric
   citation slice now ships end to end. [`mos-eval`][mos-eval] attaches one rendered entry per
   *cited* key to the first `#bibliography` node in first-use citation order — plain
