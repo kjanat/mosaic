@@ -78,12 +78,16 @@ jobs:
           echo "gate: diffing crates against previous tag ${prev_tag}"
 
           # Version of a crate at the previous tag, resolving
-          # `version.workspace = true` through the root manifest.
+          # `version.workspace = true` through the root manifest. Both sed
+          # searches are scoped to their section so a `version = "..."` line
+          # inside a `[dependencies.*]` table can never masquerade as the
+          # package version.
           prev_version_of() {
             local crate_dir="${1}"
             local v
             v="$(git show "${prev_tag}:${crate_dir}/Cargo.toml" \
-              | sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+              | sed -n '/^\[package\]/,/^\[/s/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+              | head -n 1)"
             if [[ -z "${v}" ]]; then
               v="$(git show "${prev_tag}:Cargo.toml" \
                 | sed -n '/^\[workspace\.package\]/,/^\[/s/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
@@ -116,7 +120,11 @@ jobs:
               continue
             fi
 
+            # Bounded and self-retrying so a slow or briefly flaky crates.io
+            # (429/5xx/timeouts) doesn't hang or spuriously fail the gate;
+            # a persistent failure still exits loudly below.
             status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --max-time 30 --retry 4 --retry-delay 5 --retry-connrefused \
               --header "User-Agent: ${GITHUB_REPOSITORY} crates-release" \
               "https://crates.io/api/v1/crates/${pkg}/${pkg_version}")"
             if [[ "${status}" == "404" ]]; then
