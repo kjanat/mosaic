@@ -96,15 +96,15 @@ A second binary, `mos-lsp`, is the language server entry point editors will spaw
 Each directory under `examples/` is a self-contained Mosaic project (`main.mos` + `mosaic.toml`) and
 ships a committed `<name>.pdf` snapshot so GitHub previews render inline:
 
-| project               | exercises                                                       |
-| --------------------- | --------------------------------------------------------------- |
-| `examples/code`       | inline code, `#pre`, `#code`, long-bracket raw blocks           |
-| `examples/hello`      | bundled Noto Sans, multilingual coverage, real italic/bold cuts |
-| `examples/lists`      | bullet / numbered lists, hanging indent, continuation, gutter   |
-| `examples/math`       | Base-14 Helvetica via `/Differences`, math operators            |
-| `examples/polish`     | Polish diacritics through Noto Sans                             |
-| `examples/linebreaks` | NBSP (U+00A0), hard line break (`\\`), soft hyphen (`\-`)       |
-| `examples/lsp`        | `@label` refs, `<label>` declarations, citations, figure labels |
+| project                                                       | exercises                                                       |
+| ------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`examples/code`](./examples/code/code.pdf)                   | inline code, `#pre`, `#code`, long-bracket raw blocks           |
+| [`examples/hello`](./examples/hello/hello.pdf)                | bundled Noto Sans, multilingual coverage, real italic/bold cuts |
+| [`examples/lists`](./examples/lists/lists.pdf)                | bullet / numbered lists, hanging indent, continuation, gutter   |
+| [`examples/math`](./examples/math/math.pdf)                   | Base-14 Helvetica via `/Differences`, math operators            |
+| [`examples/polish`](./examples/polish/polish.pdf)             | Polish diacritics through Noto Sans                             |
+| [`examples/linebreaks`](./examples/linebreaks/linebreaks.pdf) | NBSP (U+00A0), hard line break (`\\`), soft hyphen (`\-`)       |
+| [`examples/lsp`](./examples/lsp/lsp.pdf)                      | `@label` refs, `<label>` declarations, citations, figure labels |
 
 Regenerate every snapshot with `just examples`. The recipe bootstraps `runner-run` if needed, then
 runs `runner mos build examples/*`; each example manifest writes its committed `<name>.pdf` output.
