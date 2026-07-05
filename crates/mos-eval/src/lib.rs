@@ -1447,6 +1447,123 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// The `(entry_number, entry_key, rendered text)` triples attached to
+    /// the first Bibliography node, in child order.
+    fn bibliography_entries(document: &Document) -> Vec<(i64, String, String)> {
+        let bib = document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Bibliography)
+            .expect("Bibliography node");
+        bib.children
+            .iter()
+            .filter_map(|id| document.get(*id))
+            .map(|entry| {
+                let Some(AttrValue::Int(number)) = entry.attributes.get("entry_number") else {
+                    panic!("entry paragraph without entry_number: {entry:?}");
+                };
+                let Some(AttrValue::Str(key)) = entry.attributes.get("entry_key") else {
+                    panic!("entry paragraph without entry_key: {entry:?}");
+                };
+                let text = entry
+                    .children
+                    .iter()
+                    .filter_map(|id| document.get(*id))
+                    .find_map(|child| match child.attributes.get("text") {
+                        Some(AttrValue::Str(text)) => Some(text.clone()),
+                        _ => None,
+                    })
+                    .expect("entry paragraph without a Text child");
+                (*number, key.clone(), text)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn cited_entries_render_in_first_use_order() {
+        // Citing `[@b]` before `[@a]` numbers b=1, a=2; the bibliography
+        // node's entry children follow that first-use order, not BibTeX
+        // declaration order (issue #112).
+        let dir = unique_temp_dir("entries-order");
+        std::fs::write(
+            dir.join("refs.bib"),
+            "@book{a, title={Alpha}, author={Ada Author}, year={1990}}\n\
+             @book{b, title={Beta}, publisher={Beta House}, year={1991}}\n",
+        )
+        .unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(
+            &source,
+            "#bibliography(\"refs.bib\")\n\nsee [@b] then [@a]\n",
+        )
+        .unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+
+        let entries = bibliography_entries(&r.document);
+        assert_eq!(entries.len(), 2, "{entries:?}");
+        assert_eq!(entries[0].0, 1);
+        assert_eq!(entries[0].1, "b");
+        assert_eq!(entries[0].2, "Beta. Beta House. 1991.");
+        assert_eq!(entries[1].0, 2);
+        assert_eq!(entries[1].1, "a");
+        assert_eq!(entries[1].2, "Ada Author. Alpha. 1990.");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn repeated_and_uncited_keys_render_one_entry_each_or_none() {
+        // `[@a]` cited twice renders one entry; the never-cited `b` record
+        // contributes nothing (uncited entries are out of scope for the
+        // numeric slice).
+        let dir = unique_temp_dir("entries-dedup");
+        std::fs::write(
+            dir.join("refs.bib"),
+            "@book{a, title={Alpha}}\n@book{b, title={Beta}}\n",
+        )
+        .unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(
+            &source,
+            "#bibliography(\"refs.bib\")\n\nsee [@a] and [@a] again\n",
+        )
+        .unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+
+        let entries = bibliography_entries(&r.document);
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert_eq!(entries[0], (1, "a".to_owned(), "Alpha.".to_owned()));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn unresolved_keys_produce_no_bibliography_entries() {
+        // An unknown key keeps its MOS0045 diagnostic and never occupies a
+        // numbered entry slot.
+        let dir = unique_temp_dir("entries-unresolved");
+        std::fs::write(dir.join("refs.bib"), "@book{real, title={Real}}\n").unwrap();
+        let source = dir.join("main.mos");
+        std::fs::write(&source, "#bibliography(\"refs.bib\")\n\nsee [@phantom]\n").unwrap();
+
+        let r = lower(&std::fs::read_to_string(&source).unwrap(), &source);
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0045.code()),
+            "unknown key keeps MOS0045: {:?}",
+            r.diagnostics
+        );
+
+        let entries = bibliography_entries(&r.document);
+        assert!(entries.is_empty(), "{entries:?}");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn label_reference_matching_bib_key_suggests_citation() {
         // `@smith2024` resolves to no label but exactly matches a bibliography
