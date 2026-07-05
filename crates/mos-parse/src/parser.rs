@@ -1614,8 +1614,9 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].inlines[0].text, "a");
         assert_eq!(items[1].inlines[0].text, "b");
-        assert!(items[0].children.is_empty());
-        assert!(items[1].children.is_empty());
+        // One paragraph block each, no nested lists.
+        assert_eq!(items[0].blocks.len(), 1);
+        assert_eq!(items[1].blocks.len(), 1);
     }
 
     #[test]
@@ -1655,13 +1656,25 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].inlines[0].text, "outer 1");
         assert_eq!(items[1].inlines[0].text, "outer 2");
-        assert_eq!(items[0].children.len(), 1);
-        assert!(items[1].children.is_empty());
-        let (nested_ordered, nested_items, _) = items[0].children[0].as_list().unwrap();
-        assert!(!nested_ordered);
-        assert_eq!(nested_items.len(), 2);
-        assert_eq!(nested_items[0].inlines[0].text, "inner a");
-        assert_eq!(nested_items[1].inlines[0].text, "inner b");
+        // Outer item 1 holds its paragraph plus the nested list; item 2
+        // holds only its paragraph.
+        assert_eq!(items[0].blocks.len(), 2);
+        assert_eq!(items[1].blocks.len(), 1);
+        let nested_texts: Vec<&str> = match &items[0].blocks[1] {
+            ListItemBlock::List {
+                ordered,
+                items: nested_items,
+                ..
+            } => {
+                assert!(!*ordered);
+                nested_items
+                    .iter()
+                    .map(|item| item.inlines[0].text.as_str())
+                    .collect()
+            }
+            ListItemBlock::Paragraph { .. } => Vec::new(),
+        };
+        assert_eq!(nested_texts, ["inner a", "inner b"]);
     }
 
     #[test]
@@ -1817,7 +1830,6 @@ mod tests {
             list_paragraph_text(&items[0].blocks[2]).as_deref(),
             Some("parent tail")
         );
-        assert_eq!(items[0].children.len(), 1);
     }
 
     #[test]

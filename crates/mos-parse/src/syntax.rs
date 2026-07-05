@@ -67,13 +67,12 @@ pub enum Item {
 
 /// One entry inside an [`Item::List`].
 ///
-/// `blocks` preserves source order between item paragraphs and nested lists.
-/// `inlines` mirrors the first paragraph and `children` mirrors nested lists
-/// for older consumers.
+/// `blocks` preserves source order between item paragraphs and nested lists;
+/// nested lists live only there. `inlines` mirrors the first paragraph for
+/// older consumers.
 #[derive(Debug, Clone)]
 pub struct ListItem {
     pub inlines: Vec<Inline>,
-    pub children: Vec<Item>,
     pub blocks: Vec<ListItemBlock>,
     pub span: SourceSpan,
 }
