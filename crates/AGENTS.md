@@ -76,6 +76,8 @@ backend. `mos-lsp` may consume current compiler phases, but should stay a thin p
 - Keep future crate dependencies out until source actually needs them.
 - Stubs should fail clearly with `CoreError::Unimplemented`, not silent success.
 - Public APIs should model current shipped behavior, not the full manifesto.
+- Public Rust APIs are pre-alpha: patch releases may break APIs. If documenting external crate use,
+  tell consumers to pin exact patch versions.
 
 ## ANTI-PATTERNS
 

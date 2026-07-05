@@ -8,6 +8,14 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Hanging list continuations: list items now accept explicit continuation lines indented to the item
+  text column, including continuation after nested child lists. The parser preserves ordered item
+  content through `ListItemBlock`, lowering/layout render the continued prose in source order,
+  [`tree-sitter-mosaic`][tree-sitter-mosaic] mirrors the newline-sensitive shape for editors, and
+  the Zed text-object query plus `examples/lists/` snapshot cover the shipped syntax. Blank lines
+  still terminate the item, marker lines still win over continuation, and tabs never count as
+  indentation.
+
 - LSP go-to-definition for citations: a cursor on a resolved `[@key]` now jumps to that key in the
   declared BibTeX source file. [`mos-bib`][mos-bib] records citation-key byte spans,
   [`mos-eval`][mos-eval] stamps resolved citation target locations on semantic citation nodes, and
@@ -182,6 +190,10 @@ All notable changes to this project will be documented here. The format is based
 
 ### Changed
 
+- Public Rust crate APIs remain pre-alpha: patch releases in the `0.0.x` line may include breaking
+  API cleanup when it keeps the compiler model honest. External crate consumers should pin exact
+  patch versions until Mosaic declares a stronger stability window.
+
 - Workspace MSRV is now Rust 1.96 (https://github.com/kjanat/mosaic/issues/129). Product/compiler
   crates inherit the workspace floor, the workspace-excluded [`zed-mosaic`][zed-mosaic] extension
   declares the same floor explicitly, and CI checks it as the workspace MSRV. The reusable metric
@@ -225,6 +237,12 @@ All notable changes to this project will be documented here. The format is based
   root-anchored package lists. This keeps agent/project files out of future crates.io tarballs.
 
 ### Fixed
+
+- Inline text flow now treats source whitespace as the only source of inter-word glue, so style/font
+  boundaries no longer invent spaces or line-break opportunities. Soft-hyphen splits preserve styled
+  sub-runs, hard-break-only list items keep their marker line, source whitespace collapses cleanly,
+  heading prefixes keep one gap before title text, image placement respects the current left edge,
+  and figure caption dry-runs stay aligned with real flow.
 
 - LSP code actions now respect `context.only`: requests limited to non-quick-fix kinds return no
   actions instead of surfacing Mosaic quick fixes under an unrelated action kind.

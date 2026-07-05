@@ -6,6 +6,11 @@ The current slice publishes the same parse / lower / resolve diagnostics that `m
 but over the Language Server Protocol so editors can show them inline and apply compiler-provided
 quick fixes.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## Current Behavior
 
 - Library API: `mos_lsp::run() -> mos_lsp::Result<()>`.

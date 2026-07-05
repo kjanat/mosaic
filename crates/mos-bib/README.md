@@ -8,6 +8,11 @@ build on. The scope is deliberately a small, well-defined BibTeX subset: entry t
 and string fields, and within that subset the parser is complete and does not panic. It is **not** a
 full bibliography engine; styling, resolution, and rendering are separate concerns (see below).
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## API
 
 - `parse_bibtex(input: &str) -> Result<Bibliography, BibParseError>`: parse a string.

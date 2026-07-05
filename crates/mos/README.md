@@ -4,6 +4,11 @@
 files, renders diagnostics, maps failures to process exit codes, and writes build output. Compiler
 logic belongs in the phase crates, not here.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 Current shipped path:
 
 ```text

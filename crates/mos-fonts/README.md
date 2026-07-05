@@ -7,6 +7,11 @@ families, shaped runs, and widths; `mos-pdf` uses the same font IDs and shaped g
 builds PDF resources and embedded subsets. Keep file emission in `mos-pdf`; keep font internals
 here.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## What It Ships
 
 - PDF Base-14 support through `pdf-base14-metrics`: Helvetica, Times, Courier, Symbol, and

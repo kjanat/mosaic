@@ -7,6 +7,11 @@ errors with manifest paths. The CLI uses `project.entry` and `output.pdf` for di
 this crate does not resolve packages, generate lockfiles, fetch registries, or own the build
 pipeline.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## Scope
 
 - Defines `ProjectManifest`, `ProjectSection`, `DocumentSection`, and `OutputSection`.

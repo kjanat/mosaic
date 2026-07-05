@@ -50,6 +50,13 @@ under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed
 Label and reference behavior is documented in
 [`docs/labels-and-references.md`](./docs/labels-and-references.md).
 
+### Rust API Stability
+
+Mosaic crates are published as pre-alpha `0.0.x` packages. The CLI and `.mos` language are the main
+product surface today; public Rust APIs may still break in patch releases when the internal model
+needs cleanup. If you depend on a Mosaic crate directly, pin an exact patch version such as
+`mos-parse = "=0.0.1"` until a stronger stability policy lands.
+
 ## Quick start
 
 Toolchain pinned via `rust-toolchain.toml` (stable, edition 2024, resolver 3). Rust 1.96+.

@@ -5,6 +5,11 @@ only: it consumes semantic nodes, resolves page/text style, flows blocks, and re
 placements plus diagnostics. It does not parse `.mos`, lower syntax, write files, or emit PDF
 objects.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## Current Support
 
 - Entry point: `LayoutEngine::layout(&Document) -> LayoutResult`.

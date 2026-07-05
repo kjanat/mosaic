@@ -4,6 +4,11 @@ Zed editor extension for the [Mosaic] typesetting language (`.mos`). It is a lan
 extension only: register Mosaic files, load the Tree-sitter grammar, and provide editor
 queries/tasks.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## What it provides
 
 - `.mos` language registration as `Mosaic`, grammar `mosaic`, Tree-sitter scope `source.mosaic`.

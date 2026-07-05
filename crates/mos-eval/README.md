@@ -6,6 +6,11 @@ Despite the package description, this crate is not a scripting engine yet. Today
 `mos-parse` syntax into a typed `mos-core::Document`, captures semantic attributes, and resolves the
 cross-references currently supported by `mos check` / `mos build`.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## Purpose
 
 - Consume a `mos_parse::SyntaxTree` and produce `LowerResult`.

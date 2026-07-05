@@ -6,6 +6,11 @@ Current status: stub. This crate exists to reserve the backend boundary describe
 section 21.2, but it does not implement HTML emission yet. Do not treat it as a shipped HTML
 backend.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## API
 
 ```rust

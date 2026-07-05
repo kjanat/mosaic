@@ -5,6 +5,11 @@ Incremental build cache boundary for Mosaic.
 Current state: small public API plus in-memory implementation. This crate is not wired into a
 persistent build pipeline yet, and it does not write `.mos-cache/` on disk.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## API
 
 - `CacheKey(pub ContentHash)`: opaque cache address wrapper. Today it is just a

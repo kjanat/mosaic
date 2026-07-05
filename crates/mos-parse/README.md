@@ -7,6 +7,11 @@ It does not lower to the semantic document model, resolve references, load files
 make layout/backend decisions. Those belong to later crates, mainly `mos-eval`, `mos-layout`, and
 `mos-pdf`.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## Purpose
 
 - Preserve source spans as byte offsets into the original input.

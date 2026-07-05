@@ -6,6 +6,11 @@ This crate provides the **data foundations** for CSL 1.0.2 (`manifest.md` §12):
 processor. The scope is deliberately bounded to a typed data model, a BibTeX mapping, and a style
 parser; evaluating a style against data to render citations is a separate, later concern.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## API
 
 - **Item data model**: `Item` (`id` + `ItemType` + variable maps), the `ItemType` enum and the

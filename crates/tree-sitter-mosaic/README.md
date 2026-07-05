@@ -6,6 +6,11 @@ This crate is editor-facing syntax infrastructure. It parses source into a concr
 highlighting, navigation, textobjects, injections, and other incremental editor features. It is not
 the compiler parser used by `mos check` or `mos build`.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## Supported Syntax
 
 - Line comments `// ...` and block comments `/* ... */`.

@@ -6,6 +6,11 @@ This crate vendors the 14 Adobe Core PDF AFM files under `data/afm/`, parses the
 the sibling `adobe-font-metrics` crate, and bakes them into `$OUT_DIR/baked.rs` as
 `&'static FontMetrics<'static>` data. It sits below `mos-fonts` in the workspace graph.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## What It Provides
 
 - `Base14Font`: enum for Helvetica, Times, Courier, Symbol, and `ZapfDingbats` faces.

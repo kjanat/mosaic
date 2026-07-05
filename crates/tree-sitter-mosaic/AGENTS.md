@@ -22,7 +22,7 @@ tree-sitter-mosaic/
 | Task           | Location                                 | Notes                                     |
 | -------------- | ---------------------------------------- | ----------------------------------------- |
 | Grammar rules  | `grammar.js`                             | Newlines are syntax-significant.          |
-| Scanner tokens | `src/scanner.c`                          | Raw blocks, blank lines, error sentinel.  |
+| Scanner tokens | `src/scanner.c`                          | Raw blocks, list breaks, blank lines.     |
 | Highlights     | `queries/highlights.scm`                 | Zed-style captures.                       |
 | Injections     | `queries/injections.scm`                 | Code/math injections.                     |
 | Tags/locals    | `queries/tags.scm`, `queries/locals.scm` | Not copied to Zed by name.                |
@@ -44,6 +44,9 @@ cargo test -p tree-sitter-mosaic
 - Edit `grammar.js` and `src/scanner.c`; regenerate parser artifacts deliberately.
 - Keep `queries/*.scm` canonical; Zed copies come from these files.
 - Newlines are not `extras`; single newline matters for soft breaks.
+- List markers and list breaks are external tokens. The scanner tracks marker/content columns so
+  continuation lines must reach the item text column, nested markers form child lists, and tail
+  lines can resume an ancestor item after a child list.
 - Headings are exposed as `(heading ...)` nodes inside level-specific `section1`..`section6`
   containers; Zed outline nesting depends on this containment.
 - Raw `#pre` / `#code` bodies use Lua-style long brackets.

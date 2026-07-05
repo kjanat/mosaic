@@ -5,6 +5,11 @@ Core document model, IDs, source spans, diagnostics, and shared error types for 
 This is the lowest Mosaic crate. Every compiler phase may depend on it; it must not depend on
 parsing, evaluation, layout, fonts, CLI, or backends.
 
+> [!WARNING]
+> While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
+> acceptable between patch releases. If you depend on this crate, pin an exact version such as
+> `=0.0.2`, or accept the risk of API breakage.
+
 ## Purpose
 
 - Provide the lowered semantic `Document` graph used after parsing/evaluation.
