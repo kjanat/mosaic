@@ -18,8 +18,6 @@
   leading: 1.35,
 )
 
-#bibliography("refs.bib")
-
 = Introduction <intro>
 
 This document is a guided tour of `mos-lsp`, the Mosaic language server. It is
@@ -91,3 +89,10 @@ overview and section @conclusion has the final check.
 If go-to-definition reached this heading from a reference, rename swept a label
 cleanly, and the page printed for section @conclusion matches where you are
 reading, the language server is wired correctly.
+
+= References <references>
+
+The works cited above render below in first-use citation order; the entry list
+is produced by the `#bibliography` declaration that follows this paragraph.
+
+#bibliography("refs.bib")
