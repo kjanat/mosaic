@@ -316,8 +316,8 @@ example.
 - [x] Resolve citation keys.
 - [x] Define bibliography source directive (`#bibliography("refs.bib")`).
 - [x] Load bibliography databases. *(Declared `.bib` files are read during lowering, parsed with
-      `mos-bib`, and used to check `[@key]` citations. Citation markers now render numeric labels;
-      bibliography list rendering is still pending.)*
+      `mos-bib`, and used to check `[@key]` citations. Citation markers render numeric labels and
+      cited entries render as a numbered list at the directive site.)*
 - [x] Import BibTeX. *(Minimal record parser in `mos-bib`: entry type, citation key, and
       braced/quoted/bare string fields into typed records. Strings only; no resolution or
       rendering.)*
@@ -326,12 +326,14 @@ example.
       mapping, and a CSL 1.0.2 style **parser** into a typed AST; applying styles to render
       citations is not implemented.)*
 - [x] Render numeric citations. *(Resolved `[@key]` markers render a bracketed number `[1]`, `[2]`,
-      ... assigned by first-use order over known records; unresolved keys keep `[?key?]`. Marker
-      text only: sorted bibliography output is not rendered yet.)*
+      ... assigned by first-use order over known records; unresolved keys keep `[?key?]`.)*
 - [ ] Render author-year citations.
 - [ ] Render footnote citations.
 - [ ] Render citation clusters.
-- [ ] Render sorted bibliographies.
+- [x] Render sorted bibliographies. *(Numeric slice: cited entries render as a `[N]` hanging-indent
+      list at the first `#bibliography` site, sorted by first-use citation order, formatted as plain
+      `Author. Title. Venue, volume, pp. pages. Publisher. Year.` text with missing fields dropped.
+      CSL-styled sorting, author-year output, and uncited entries are still pending.)*
 - [x] Track bibliography dependencies. *(`BibliographyDependency` pairs a `Bibliography` id with a
       `ContentHash` boundary; `mos_bib::bibliography_content_hash` hashes the raw `.bib` bytes
       (§4.1). Identity/boundary only; no `DepNode` graph or `CacheKey` wiring yet.)*

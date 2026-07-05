@@ -27,7 +27,8 @@ Shipped slice:
 - Parser/eval: headings, paragraphs, lists, inline styling/code/refs/page-refs/citations, raw
   `#pre`/`#code` blocks, `#set`, images, figures, hard breaks, soft hyphen, NBSP, `#bibliography`.
 - Bibliography: minimal BibTeX + CSL data/style parsing, citation-key checks, numeric `[@key]`
-  labels by first use. Bibliography-list rendering is not shipped.
+  labels by first use, and a rendered cited-entry list (plain text, first-use order) at the
+  `#bibliography` site. CSL-styled rendering is not shipped.
 - Layout/PDF: greedy flow, pages, figures/images, Base-14 + Noto embedding/subsetting, ToUnicode,
   deterministic provenance.
 - LSP: diagnostics, definition for labels/citations, label rename, document symbols, code actions.
@@ -84,8 +85,8 @@ fixpoints, Knuth-Plass, automatic hyphenation, reproducible/frozen builds, impor
 
 - Core path: `mos-core -> mos-parse -> mos-eval -> mos-layout -> mos-pdf`; `mos` orchestrates.
 - Font path: `adobe-font-metrics -> pdf-base14-metrics -> mos-fonts -> mos-layout`.
-- Partial: `mos-html`, persistent cache wiring, `mos-packages`, bibliography-list rendering, CSL
-  processor. Numeric citation labels are real.
+- Partial: `mos-html`, persistent cache wiring, `mos-packages`, CSL processor. Numeric citation
+  labels and the cited-entry bibliography list are real.
 - Editor side worlds: `tree-sitter-mosaic` syntax infrastructure; `zed-mosaic` excluded extension.
 
 ## CONVENTIONS
@@ -116,8 +117,9 @@ fixpoints, Knuth-Plass, automatic hyphenation, reproducible/frozen builds, impor
 - Do not invent font shaping. Manifest says HarfBuzz/equivalent for a reason.
 - Do not treat Tree-sitter grammar as the compiler parser or shipped language truth.
 - Do not assume `crates/zed-mosaic` participates in workspace Cargo commands.
-- Do not claim *bibliography-list* rendering is shipped: resolved `[@key]` markers now render
-  numeric labels (`[1]`, ...), but the sorted bibliography entry list is not rendered yet.
+- Do not claim *CSL-styled* bibliography rendering is shipped: resolved `[@key]` markers render
+  numeric labels and cited entries render as a plain-text numbered list in first-use order, but CSL
+  styles, author-year citations, and uncited-entry output do not exist yet.
 - Do not search or edit `crates/zed-mosaic/grammars/mosaic` as source; it is an ignored local clone
   trap from Zed grammar setup.
 
