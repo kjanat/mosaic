@@ -57,6 +57,7 @@ use mos_core::{
     AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeKind, SourceSpan, Suggestion, codes,
 };
 
+use crate::suggest::edit_distance;
 use crate::{LABEL_SPAN_END_ATTR, LABEL_SPAN_START_ATTR};
 
 /// Cap on resolver fixpoint iterations. MVP 1 always converges in one
@@ -559,28 +560,6 @@ fn is_reference_label(label: &str) -> bool {
         && label
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':' | b'.'))
-}
-
-/// Levenshtein edit distance between `a` and `b` over their bytes.
-///
-/// Callers only pass reference-alphabet labels (the parsed reference name and
-/// [`is_reference_label`] candidates), all ASCII, so byte distance equals
-/// character distance while staying allocation-light: one reusable row, where
-/// `row[j]` holds the distance from the processed prefix of `a` to `b[..j]`.
-fn edit_distance(a: &str, b: &str) -> usize {
-    let b = b.as_bytes();
-    let mut row: Vec<usize> = (0..=b.len()).collect();
-    for (i, &ai) in a.as_bytes().iter().enumerate() {
-        let mut diag = row[0];
-        row[0] = i + 1;
-        for (j, &bj) in b.iter().enumerate() {
-            let cost = usize::from(ai != bj);
-            let sub = diag + cost;
-            diag = row[j + 1];
-            row[j + 1] = sub.min(row[j + 1] + 1).min(row[j] + 1);
-        }
-    }
-    row[b.len()]
 }
 
 /// The single nearest *resolvable* label to `unknown`, when one is a

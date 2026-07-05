@@ -82,6 +82,16 @@ Automated coverage for the same path lives in
 `server::tests::initialize_did_open_publishes_diagnostics_and_exits`; run it with
 `cargo test -p mos-lsp initialize_did_open_publishes_diagnostics_and_exits`.
 
+### Protocol E2E tests
+
+`tests/protocol_e2e.rs` spawns the real `mos-lsp` binary and drives it over stdio with
+`Content-Length`-framed JSON-RPC, like an editor would: initialize/initialized handshake (capability
+assertions under a Zed-like client profile), the didOpen/didChange/didClose diagnostics lifecycle,
+go-to-definition for `@label` references (including UTF-16 column handling for non-BMP text) and for
+`[@key]` citations against a real on-disk `.bib` fixture, rename, quickfix code actions, document
+symbols, and clean shutdown/exit. All reads are framed and timeout-guarded, so a hung server fails
+the suite instead of hanging CI. The harness runs as part of `cargo test -p mos-lsp`.
+
 ## Boundary
 
 `mos-lsp` is the thin protocol boundary around compiler services. Diagnostic messages, codes, and

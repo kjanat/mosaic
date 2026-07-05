@@ -106,15 +106,28 @@ const IMAGE_SLOTS: &[Slot] = &[
     },
 ];
 
+/// Single source of truth pairing each `#set` target spelling with its
+/// [`Target`]; drives both [`lookup_target`] and the MOS0011 nearest-match
+/// candidate set.
+const TARGETS: &[(&str, Target)] = &[
+    ("page", Target::Page),
+    ("text", Target::Text),
+    ("document", Target::Document),
+    ("image", Target::Image),
+];
+
 #[must_use]
 pub fn lookup_target(name: &str) -> Option<Target> {
-    match name {
-        "page" => Some(Target::Page),
-        "text" => Some(Target::Text),
-        "document" => Some(Target::Document),
-        "image" => Some(Target::Image),
-        _ => None,
-    }
+    TARGETS
+        .iter()
+        .find(|(spelling, _)| *spelling == name)
+        .map(|&(_, target)| target)
+}
+
+/// All `#set` target spellings, in declaration order; the candidate set for
+/// MOS0011 "did you mean" hints.
+pub(crate) fn target_names() -> impl Iterator<Item = &'static str> {
+    TARGETS.iter().map(|&(spelling, _)| spelling)
 }
 
 impl Target {

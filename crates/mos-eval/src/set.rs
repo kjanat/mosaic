@@ -3,11 +3,12 @@
 use std::collections::BTreeMap;
 
 use mos_core::{
-    AttrMap, AttrValue, Diagnostic, Document, NodeId, NodeKind, NodeSpec, SourceSpan, codes,
+    AttrMap, AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeId, NodeKind, NodeSpec,
+    SourceSpan, codes,
 };
 use mos_parse::{SetArg, SetValue};
 
-use crate::{DocumentMetadata, set_schema};
+use crate::{DocumentMetadata, set_schema, suggest};
 
 /// Lower a `#set name(...)` directive into a `Raw` node.
 ///
@@ -26,14 +27,24 @@ pub fn lower_set_directive(
     let mut attributes: AttrMap = BTreeMap::new();
     attributes.insert("set".to_owned(), AttrValue::Str(name.to_owned()));
     let Some(target) = set_schema::lookup_target(name) else {
-        diagnostics.push(
-            Diagnostic::simple(&codes::MOS0011, None,
-                format!(
-                    "unknown `#set` target `{name}` (expected `page`, `text`, `document`, or `image`)"
-                ),
-            )
-            .with_span(span.clone()),
-        );
+        let mut diagnostic = Diagnostic::simple(
+            &codes::MOS0011,
+            None,
+            format!(
+                "unknown `#set` target `{name}` (expected `page`, `text`, `document`, or `image`)"
+            ),
+        )
+        .with_span(span.clone());
+        // The parser records one span for the whole `#set name(...)` line;
+        // there is no identifier-only span to hang a machine-applicable
+        // `Suggestion` on, and a fix must not replace surrounding syntax.
+        // A prose hint is the honest fallback.
+        if let Some(candidate) = suggest::nearest_match(name, set_schema::target_names()) {
+            diagnostic = diagnostic.with_annotation(DiagnosticAnnotation::Help(format!(
+                "did you mean `{candidate}`?"
+            )));
+        }
+        diagnostics.push(diagnostic);
         document.alloc_child(root, set_node(span, attributes));
         return;
     };
@@ -93,18 +104,17 @@ fn lower_set_arg(
         return;
     };
     let Some(slot) = target.slot(key) else {
-        diagnostics.push(
-            Diagnostic::simple(
-                &codes::MOS0015,
-                None,
-                format!(
-                    "unknown argument `{key}` for `#set {}` (valid: {})",
-                    target.name(),
-                    target.keys().join(", ")
-                ),
-            )
-            .with_span(key_span.clone()),
-        );
+        let keys = target.keys();
+        diagnostics.push(suggest::unknown_key_diagnostic(
+            format!(
+                "unknown argument `{key}` for `#set {}` (valid: {})",
+                target.name(),
+                keys.join(", ")
+            ),
+            key,
+            key_span,
+            &keys,
+        ));
         return;
     };
     let Some(value) = coerce_value(slot, raw_value, *current_text_size_pt) else {
@@ -331,6 +341,84 @@ mod tests {
                 .any(|d| d.def().code() == codes::MOS0015.code()),
             "got {:?}",
             r.diagnostics
+        );
+    }
+
+    #[test]
+    fn unknown_set_target_close_typo_gets_did_you_mean_help() {
+        // `tex` is one edit from `text`. The parser records no span for the
+        // target identifier alone, so the hint is prose rather than a
+        // machine-applicable fix (which must not replace surrounding syntax).
+        let r = lower("#set tex(size: 12pt)\n", &PathBuf::from("test.mos"));
+        let d = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0011.code())
+            .expect("MOS0011 for unknown target");
+        let help = d.annotations().iter().find_map(|a| match a {
+            mos_core::DiagnosticAnnotation::Help(text) => Some(text.as_str()),
+            _ => None,
+        });
+        assert_eq!(help, Some("did you mean `text`?"));
+        assert!(
+            d.suggestions().is_empty(),
+            "no identifier-only span exists, so no structured fix: {:?}",
+            d.suggestions()
+        );
+    }
+
+    #[test]
+    fn unknown_set_target_far_name_gets_no_help() {
+        let r = lower("#set widget(x: 1)\n", &PathBuf::from("test.mos"));
+        let d = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0011.code())
+            .expect("MOS0011 for unknown target");
+        assert!(
+            d.annotations().is_empty(),
+            "an unrelated target must not be guessed, got {:?}",
+            d.annotations()
+        );
+    }
+
+    #[test]
+    fn unknown_set_arg_close_typo_suggests_key() {
+        // `margn` is one edit from `margin`; the MOS0015 carries a
+        // machine-applicable fix replacing only the key token.
+        let src = "#set page(margn: 10mm)\n";
+        let r = lower(src, &PathBuf::from("test.mos"));
+        let d = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0015.code())
+            .expect("MOS0015 for unknown argument");
+        let suggestions = d.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "expected one nearest-key suggestion, got {suggestions:?}"
+        );
+        assert_eq!(suggestions[0].replacement, "margin");
+        assert_eq!(
+            &src[suggestions[0].span.start()..suggestions[0].span.end()],
+            "margn",
+            "fix must replace only the key token"
+        );
+    }
+
+    #[test]
+    fn unknown_set_arg_far_name_has_no_suggestion() {
+        let r = lower("#set page(weirdkey: 1)\n", &PathBuf::from("test.mos"));
+        let d = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0015.code())
+            .expect("MOS0015 for unknown argument");
+        assert!(
+            d.suggestions().is_empty(),
+            "an unrelated key must not be guessed, got {:?}",
+            d.suggestions()
         );
     }
 

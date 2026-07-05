@@ -17,6 +17,7 @@ owns parse/lower/resolve policy.
 | Document symbols  | `src/document_symbol.rs` | Heading tree → nested LSP symbols.                      |
 | Lowering cache    | `src/cache.rs`           | Per-URI memo of `mos_eval::lower`; invalidated on edit. |
 | Binary entry      | `src/main.rs`            | Calls `mos_lsp::run()`.                                 |
+| Protocol E2E      | `tests/protocol_e2e.rs`  | Spawns the real binary, framed JSON-RPC over stdio.     |
 | Behavior contract | `README.md`              | Current supported messages and non-goals.               |
 
 ## CURRENT SLICE
@@ -48,7 +49,9 @@ owns parse/lower/resolve policy.
 - Compiler crates own diagnostic codes, messages, spans, and phase behavior.
 - This crate only maps diagnostics to LSP wire shape and editor positions.
 - Keep `tower-lsp` or heavier protocol framework out unless current slice outgrows direct stdio.
-- Tests may drive `serve` with in-memory reader/writer. No server process needed.
+- Unit tests may drive `serve` with in-memory reader/writer; no server process needed. Protocol E2E
+  tests (`tests/protocol_e2e.rs`) additionally spawn the real binary via `CARGO_BIN_EXE_mos-lsp`
+  with timeout-guarded framed reads.
 
 ## ANTI-PATTERNS
 

@@ -29,6 +29,12 @@ use mos_core::{
 };
 use mos_parse::{SetArg, SetValue};
 
+use crate::suggest;
+
+/// Named keys accepted by [`bibliography_path`]; the MOS0015 nearest-match
+/// candidate set. Keep in sync with the match arms.
+const BIBLIOGRAPHY_KEYS: &[&str] = &["src", "path"];
+
 /// Lower `#bibliography("refs.bib")` into a bibliography node.
 ///
 /// The literal path is recorded under `src`; the path resolved against the
@@ -162,14 +168,12 @@ fn bibliography_path(
                         );
                     }
                 }
-                _ => diagnostics.push(
-                    Diagnostic::simple(
-                        &codes::MOS0015,
-                        None,
-                        format!("unknown argument `{key}` for `#bibliography` (valid: src/path)"),
-                    )
-                    .with_span(key_span.clone()),
-                ),
+                _ => diagnostics.push(suggest::unknown_key_diagnostic(
+                    format!("unknown argument `{key}` for `#bibliography` (valid: src/path)"),
+                    key,
+                    key_span,
+                    BIBLIOGRAPHY_KEYS,
+                )),
             },
         }
     }
@@ -304,52 +308,22 @@ fn is_citation_key(key: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':' | b'.'))
 }
 
-fn edit_distance(a: &str, b: &str) -> usize {
-    let b = b.as_bytes();
-    let mut row: Vec<usize> = (0..=b.len()).collect();
-    for (i, &ai) in a.as_bytes().iter().enumerate() {
-        let mut diag = row[0];
-        row[0] = i + 1;
-        for (j, &bj) in b.iter().enumerate() {
-            let cost = usize::from(ai != bj);
-            let sub = diag + cost;
-            diag = row[j + 1];
-            row[j + 1] = sub.min(row[j + 1] + 1).min(row[j] + 1);
-        }
-    }
-    row[b.len()]
-}
-
+/// The single loaded citation key that is a conservative near-miss for
+/// `unknown`, if any. Candidate filtering stays here ([`is_citation_key`]);
+/// the selection rule (length floor, `len / 3` bound, ties suggest nothing)
+/// lives in [`crate::suggest::nearest_match`].
 fn nearest_citation_key(
     unknown: &str,
     records: &BTreeMap<String, mos_bib::BibEntry>,
 ) -> Option<String> {
-    if unknown.len() < 3 {
-        return None;
-    }
-    let max_distance = unknown.len() / 3;
-    let mut best: Option<(usize, &str)> = None;
-    let mut tied = false;
-    for key in records.keys().filter(|key| is_citation_key(key)) {
-        let distance = edit_distance(unknown, key);
-        if distance > max_distance {
-            continue;
-        }
-        match best {
-            None => {
-                best = Some((distance, key.as_str()));
-                tied = false;
-            }
-            Some((best_distance, _)) if distance < best_distance => {
-                best = Some((distance, key.as_str()));
-                tied = false;
-            }
-            Some((best_distance, _)) if distance == best_distance => tied = true,
-            Some(_) => {}
-        }
-    }
-    let (_, key) = best?;
-    (!tied).then(|| key.to_owned())
+    suggest::nearest_match(
+        unknown,
+        records
+            .keys()
+            .filter(|key| is_citation_key(key))
+            .map(String::as_str),
+    )
+    .map(str::to_owned)
 }
 
 struct LoadedBibliography {

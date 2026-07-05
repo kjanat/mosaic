@@ -104,6 +104,7 @@ ships a committed `<name>.pdf` snapshot so GitHub previews render inline:
 | `examples/math`       | Base-14 Helvetica via `/Differences`, math operators            |
 | `examples/polish`     | Polish diacritics through Noto Sans                             |
 | `examples/linebreaks` | NBSP (U+00A0), hard line break (`\\`), soft hyphen (`\-`)       |
+| `examples/lsp`        | `@label` refs, `<label>` declarations, citations, figure labels |
 
 Regenerate every snapshot with `just examples`. The recipe bootstraps `runner-run` if needed, then
 runs `runner mos build examples/*`; each example manifest writes its committed `<name>.pdf` output.

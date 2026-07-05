@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use mos_core::{AttrMap, AttrValue, Document, NodeId, NodeKind, NodeSpec, SourceSpan};
-use mos_parse::{Item, ListItem, ListItemBlock};
+use mos_parse::{ListItem, ListItemBlock};
 
 use crate::inline::lower_inlines;
 
@@ -32,7 +32,10 @@ pub fn lower(
 fn lower_list_item(doc: &mut Document, parent: NodeId, item: &ListItem) {
     let item_id = doc.alloc_child(parent, NodeSpec::new(NodeKind::ListItem, item.span.clone()));
     if item.blocks.is_empty() {
-        lower_legacy_list_item(doc, item_id, item);
+        // Degenerate item (parser recovered without a marker line): fall
+        // back to the first-paragraph mirror, which is equally empty but
+        // keeps the item node consistent.
+        lower_inlines(doc, item_id, &item.inlines);
         return;
     }
     for block in &item.blocks {
@@ -47,20 +50,6 @@ fn lower_list_item(doc: &mut Document, parent: NodeId, item: &ListItem) {
                 items,
                 span,
             } => lower(doc, item_id, *ordered, items, span),
-        }
-    }
-}
-
-fn lower_legacy_list_item(doc: &mut Document, item_id: NodeId, item: &ListItem) {
-    lower_inlines(doc, item_id, &item.inlines);
-    for child in &item.children {
-        if let Item::List {
-            ordered,
-            items,
-            span,
-        } = child
-        {
-            lower(doc, item_id, *ordered, items, span);
         }
     }
 }

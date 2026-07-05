@@ -9,7 +9,24 @@ use mos_core::{
 };
 use mos_parse::{SetArg, SetValue};
 
-use crate::{image, insert_label_attributes, set::coerce_positive_length};
+use crate::{image, insert_label_attributes, set::coerce_positive_length, suggest};
+
+/// Keys accepted by [`collect_one_figure_arg`]'s named-argument match; the
+/// MOS0015 nearest-match candidate set. Keep in sync with the match arms.
+const FIGURE_KEYS: &[&str] = &[
+    "image",
+    "caption",
+    "alt",
+    "width",
+    "height",
+    "label",
+    "numbered",
+    "supplement",
+];
+
+/// Keys accepted by [`collect_one_image_arg`]'s named-argument match; the
+/// MOS0015 nearest-match candidate set. Keep in sync with the match arms.
+const IMAGE_KEYS: &[&str] = &["src", "path", "alt", "width", "height", "label"];
 
 /// Lower `#image(...)` into one [`NodeKind::Image`] node.
 ///
@@ -136,18 +153,23 @@ fn collect_one_figure_arg(
                 SetValue::Str(s) => {
                     collected.label = Some((s.clone(), string_content_span(value_span)));
                 }
-                _ => type_error(value_span, "`#figure(label: ...)` expects a string", diagnostics),
+                _ => type_error(
+                    value_span,
+                    "`#figure(label: ...)` expects a string",
+                    diagnostics,
+                ),
             },
             "numbered" => collect_numbered(value, value_span, collected, diagnostics),
             "supplement" => collect_supplement(value, value_span, collected, diagnostics),
-            _ => diagnostics.push(
-                Diagnostic::simple(&codes::MOS0015, None,
-                    format!(
-                        "unknown argument `{key}` for `#figure` (valid: image, caption, alt, width, height, label, numbered, supplement)"
-                    ),
-                )
-                .with_span(key_span.clone()),
-            ),
+            _ => diagnostics.push(suggest::unknown_key_diagnostic(
+                format!(
+                    "unknown argument `{key}` for `#figure` (valid: {})",
+                    FIGURE_KEYS.join(", ")
+                ),
+                key,
+                key_span,
+                FIGURE_KEYS,
+            )),
         },
     }
 }
@@ -384,14 +406,17 @@ fn collect_one_image_arg(
                 }
                 _ => type_error(value_span, "`#image(label: ...)` expects a string", diagnostics),
             },
-            _ => diagnostics.push(
-                Diagnostic::simple(&codes::MOS0015, None,
-                    format!(
-                        "unknown argument `{key}` for `#image` (valid: src/path, alt, width, height, label)"
-                    ),
-                )
-                .with_span(key_span.clone()),
-            ),
+            // `src/path` groups the alias pair the way `#bibliography`'s
+            // message does, so the display list stays hand-written while
+            // IMAGE_KEYS feeds the near-miss candidates.
+            _ => diagnostics.push(suggest::unknown_key_diagnostic(
+                format!(
+                    "unknown argument `{key}` for `#image` (valid: src/path, alt, width, height, label)"
+                ),
+                key,
+                key_span,
+                IMAGE_KEYS,
+            )),
         },
     }
 }

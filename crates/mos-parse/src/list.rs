@@ -59,7 +59,6 @@ impl Parser<'_> {
             let span = self.span(self.pos, self.pos);
             return ListItem {
                 inlines: Vec::new(),
-                children: Vec::new(),
                 blocks: Vec::new(),
                 span,
             };
@@ -133,7 +132,6 @@ impl Parser<'_> {
         item_end: usize,
     ) -> ListItem {
         let mut inlines: Vec<Inline> = Vec::new();
-        let mut children: Vec<Item> = Vec::new();
         let mut blocks: Vec<ListItemBlock> = Vec::new();
         let mut saw_first_paragraph = false;
 
@@ -155,11 +153,6 @@ impl Parser<'_> {
                     items,
                     span,
                 } => {
-                    children.push(Item::List {
-                        ordered,
-                        items: items.clone(),
-                        span: span.clone(),
-                    });
                     blocks.push(ListItemBlock::List {
                         ordered,
                         items,
@@ -171,7 +164,6 @@ impl Parser<'_> {
 
         ListItem {
             inlines,
-            children,
             blocks,
             span: self.span(item_start, item_end),
         }
