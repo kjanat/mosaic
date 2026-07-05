@@ -28,6 +28,7 @@ pub mod resolve;
 pub mod set;
 #[doc(hidden)]
 pub mod set_schema;
+mod suggest;
 
 use std::collections::BTreeMap;
 
@@ -1936,5 +1937,86 @@ mod tests {
             r.diagnostics
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The single MOS0015 diagnostic in `diagnostics`, or a panic naming
+    /// what was found instead.
+    fn find_unknown_arg_diagnostic(diagnostics: &[Diagnostic]) -> &Diagnostic {
+        diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0015.code())
+            .expect("expected an MOS0015 unknown-argument diagnostic")
+    }
+
+    #[test]
+    fn image_unknown_arg_close_typo_suggests_key() {
+        // `wdith` is one adjacent transposition from `width`; the MOS0015
+        // carries a machine-applicable fix replacing only the key token.
+        let src = "#image(\"x.png\", wdith: 100pt)\n";
+        let r = lower(src, &PathBuf::from("test.mos"));
+        let d = find_unknown_arg_diagnostic(&r.diagnostics);
+        let suggestions = d.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "expected one nearest-key suggestion, got {suggestions:?}"
+        );
+        assert_eq!(suggestions[0].replacement, "width");
+        assert_eq!(
+            &src[suggestions[0].span.start()..suggestions[0].span.end()],
+            "wdith",
+            "fix must replace only the key token"
+        );
+    }
+
+    #[test]
+    fn image_unknown_arg_far_name_has_no_suggestion() {
+        // An unrelated key gets the plain diagnostic: a wrong guess is
+        // worse than none.
+        let r = lower("#image(\"x.png\", zzz: 1)\n", &PathBuf::from("test.mos"));
+        let d = find_unknown_arg_diagnostic(&r.diagnostics);
+        assert!(
+            d.suggestions().is_empty(),
+            "an unrelated key must not be guessed, got {:?}",
+            d.suggestions()
+        );
+    }
+
+    #[test]
+    fn figure_unknown_arg_close_typo_suggests_key() {
+        let src = "#figure(image: \"x.png\", captoin: \"hi\")\n";
+        let r = lower(src, &PathBuf::from("test.mos"));
+        let d = find_unknown_arg_diagnostic(&r.diagnostics);
+        let suggestions = d.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "expected one nearest-key suggestion, got {suggestions:?}"
+        );
+        assert_eq!(suggestions[0].replacement, "caption");
+        assert_eq!(
+            &src[suggestions[0].span.start()..suggestions[0].span.end()],
+            "captoin",
+            "fix must replace only the key token"
+        );
+    }
+
+    #[test]
+    fn bibliography_unknown_arg_close_typo_suggests_key() {
+        let src = "#bibliography(\"refs.bib\", pth: \"x\")\n";
+        let r = lower(src, &PathBuf::from("test.mos"));
+        let d = find_unknown_arg_diagnostic(&r.diagnostics);
+        let suggestions = d.suggestions();
+        assert_eq!(
+            suggestions.len(),
+            1,
+            "expected one nearest-key suggestion, got {suggestions:?}"
+        );
+        assert_eq!(suggestions[0].replacement, "path");
+        assert_eq!(
+            &src[suggestions[0].span.start()..suggestions[0].span.end()],
+            "pth",
+            "fix must replace only the key token"
+        );
     }
 }

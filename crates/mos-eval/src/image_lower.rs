@@ -5,11 +5,46 @@ use std::path::Path;
 use std::sync::Arc;
 
 use mos_core::{
-    AttrMap, AttrValue, Diagnostic, Document, NodeId, NodeKind, NodeSpec, SourceSpan, codes,
+    AttrMap, AttrValue, Diagnostic, Document, NodeId, NodeKind, NodeSpec, SourceSpan, Suggestion,
+    codes,
 };
 use mos_parse::{SetArg, SetValue};
 
-use crate::{image, insert_label_attributes, set::coerce_positive_length};
+use crate::{image, insert_label_attributes, set::coerce_positive_length, suggest};
+
+/// Keys accepted by [`collect_one_figure_arg`]'s named-argument match; the
+/// MOS0015 nearest-match candidate set. Keep in sync with the match arms.
+const FIGURE_KEYS: &[&str] = &[
+    "image",
+    "caption",
+    "alt",
+    "width",
+    "height",
+    "label",
+    "numbered",
+    "supplement",
+];
+
+/// Keys accepted by [`collect_one_image_arg`]'s named-argument match; the
+/// MOS0015 nearest-match candidate set. Keep in sync with the match arms.
+const IMAGE_KEYS: &[&str] = &["src", "path", "alt", "width", "height", "label"];
+
+/// Build the MOS0015 unknown-kwarg diagnostic for `#image`/`#figure`,
+/// attaching a fix replacing exactly the key token when one known key is a
+/// conservative near-miss.
+fn unknown_key_diagnostic(
+    message: String,
+    key: &str,
+    key_span: &SourceSpan,
+    candidates: &[&str],
+) -> Diagnostic {
+    let mut diagnostic =
+        Diagnostic::simple(&codes::MOS0015, None, message).with_span(key_span.clone());
+    if let Some(candidate) = suggest::nearest_match(key, candidates.iter().copied()) {
+        diagnostic = diagnostic.with_suggestion(Suggestion::new(key_span.clone(), candidate));
+    }
+    diagnostic
+}
 
 /// Lower `#image(...)` into one [`NodeKind::Image`] node.
 ///
@@ -140,14 +175,14 @@ fn collect_one_figure_arg(
             },
             "numbered" => collect_numbered(value, value_span, collected, diagnostics),
             "supplement" => collect_supplement(value, value_span, collected, diagnostics),
-            _ => diagnostics.push(
-                Diagnostic::simple(&codes::MOS0015, None,
-                    format!(
-                        "unknown argument `{key}` for `#figure` (valid: image, caption, alt, width, height, label, numbered, supplement)"
-                    ),
-                )
-                .with_span(key_span.clone()),
-            ),
+            _ => diagnostics.push(unknown_key_diagnostic(
+                format!(
+                    "unknown argument `{key}` for `#figure` (valid: image, caption, alt, width, height, label, numbered, supplement)"
+                ),
+                key,
+                key_span,
+                FIGURE_KEYS,
+            )),
         },
     }
 }
@@ -384,14 +419,14 @@ fn collect_one_image_arg(
                 }
                 _ => type_error(value_span, "`#image(label: ...)` expects a string", diagnostics),
             },
-            _ => diagnostics.push(
-                Diagnostic::simple(&codes::MOS0015, None,
-                    format!(
-                        "unknown argument `{key}` for `#image` (valid: src/path, alt, width, height, label)"
-                    ),
-                )
-                .with_span(key_span.clone()),
-            ),
+            _ => diagnostics.push(unknown_key_diagnostic(
+                format!(
+                    "unknown argument `{key}` for `#image` (valid: src/path, alt, width, height, label)"
+                ),
+                key,
+                key_span,
+                IMAGE_KEYS,
+            )),
         },
     }
 }
