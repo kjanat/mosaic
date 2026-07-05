@@ -78,20 +78,18 @@ jobs:
           echo "gate: diffing crates against previous tag ${prev_tag}"
 
           # Version of a crate at the previous tag, resolving
-          # `version.workspace = true` through the root manifest. Both sed
-          # searches are scoped to their section so a `version = "..."` line
-          # inside a `[dependencies.*]` table can never masquerade as the
-          # package version.
+          # `version.workspace = true` through the root manifest. Parsed
+          # with yq's TOML input (preinstalled on ubuntu runners); the
+          # `select(tag == "!!str")` filter drops the `{workspace = true}`
+          # map form so inheritance falls through to the root manifest.
           prev_version_of() {
             local crate_dir="${1}"
             local v
             v="$(git show "${prev_tag}:${crate_dir}/Cargo.toml" \
-              | sed -n '/^\[package\]/,/^\[/s/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
-              | head -n 1)"
+              | yq -p toml '.package.version | select(tag == "!!str")')"
             if [[ -z "${v}" ]]; then
               v="$(git show "${prev_tag}:Cargo.toml" \
-                | sed -n '/^\[workspace\.package\]/,/^\[/s/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
-                | head -n 1)"
+                | yq -p toml '.workspace.package.version // ""')"
             fi
             printf '%s' "${v}"
           }
