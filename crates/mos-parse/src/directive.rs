@@ -347,7 +347,7 @@ impl Parser<'_> {
                         None,
                         "expected `key: value` in directive arguments",
                     )
-                    .with_span(self.span(i, (i + 1).min(end))),
+                    .with_span(self.span(i, next_char_boundary(self.src, i).min(end))),
                 );
                 i = skip_to_comma(bytes, i, end);
                 if i < end && bytes[i] == b',' {
@@ -403,7 +403,7 @@ impl Parser<'_> {
                         None,
                         "expected `,` or `)` between directive arguments",
                     )
-                    .with_span(self.span(i, (i + 1).min(end))),
+                    .with_span(self.span(i, next_char_boundary(self.src, i).min(end))),
                 );
                 i = skip_to_comma(bytes, i, end);
                 if i < end && bytes[i] == b',' {
@@ -443,15 +443,19 @@ impl Parser<'_> {
             }
             return Some(SetValue::Ident(self.src[id_start..*i].to_owned()));
         }
+        let ch_end = next_char_boundary(self.src, *i).min(end);
         self.diagnostics.push(
             Diagnostic::simple(
                 &codes::MOS0022,
                 None,
-                format!("unexpected character `{}` in directive value", b as char),
+                format!(
+                    "unexpected character `{}` in directive value",
+                    &self.src[*i..ch_end]
+                ),
             )
-            .with_span(self.span(*i, *i + 1)),
+            .with_span(self.span(*i, ch_end)),
         );
-        *i += 1;
+        *i = ch_end;
         None
     }
 
