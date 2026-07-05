@@ -151,4 +151,5 @@ just doc-nightly
 - `just sync-zed-queries` overwrites copied Zed query files from Tree-sitter query sources.
 - `crates/tree-sitter-mosaic/src/parser.c`, `src/grammar.json`, and `src/node-types.json` are
   generated from `grammar.js` and scanner code.
-- Release: cut `CHANGELOG.md`, tag signed `v*` on work commit, preserve generated release notes.
+- Release: `just bump X.Y.Z`, cut `CHANGELOG.md`, tag signed `v*` on work commit, preserve generated
+  release notes. Versioning policy and decoupling playbook: `docs/versioning.md`.

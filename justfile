@@ -26,6 +26,12 @@ default:
 setup:
     @{{ bootstrap-runner }} install
 
+# Bump the lockstep workspace version: shared version, all internal
+# dependency pins, and the lockfile (see docs/versioning.md).
+bump version:
+    cargo set-version --workspace {{ version }}
+    cargo update --workspace
+
 # Build every example project and refresh committed PDF snapshots.
 examples: setup
     {{ runner }} mos build examples/*
