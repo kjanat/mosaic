@@ -28,7 +28,7 @@ languages = ["Mosaic"]
 kind = "download_file"
 host = "github.com"
 path = ["kjanat", "mosaic", "releases", "download", "**"]
-#
+
 # If a future extension path installs a Node package, it must request npm too.
 # Keep this narrow: prefer the exact package over `*`.
 #
@@ -38,7 +38,7 @@ path = ["kjanat", "mosaic", "releases", "download", "**"]
 
 [grammars]
 mosaic.repository = "https://github.com/kjanat/mosaic"
-mosaic.rev        = "80728a90f7d412975796ffcf34615321aa56d49b"
+mosaic.rev        = "2b84402a17c9085af5bf41f59227746413d8e3dc"
 mosaic.path       = "crates/tree-sitter-mosaic"
 
 ###########################################################
