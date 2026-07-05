@@ -8,6 +8,12 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Release staleness gate: the crates.io publish workflow now fails a release up front when a crate's
+  sources changed since the previous tag but its version was never bumped past a version already
+  live on crates.io (registry versions are immutable, so publishing would silently skip the crate
+  and leave it stale). Comparing against the version at the previous tag keeps re-runs of a
+  partially published tag resumable.
+
 - Directive typo suggestions (https://github.com/kjanat/mosaic/issues/126): unknown `#set` targets
   and unknown keyword arguments on `#set` / `#image` / `#figure` / `#bibliography` now suggest the
   nearest known name when the match is conservative and unambiguous. Kwarg fixes are
