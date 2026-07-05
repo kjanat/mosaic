@@ -41,11 +41,11 @@ under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed
 - [x] `mos-lsp` publishes current compiler diagnostics over stdio LSP on open/change, answers
       `textDocument/definition` for `@label` references, renames labels, and exposes compiler
       suggestions as code actions;
-- [ ] HTML and EPUB backends, persistent incremental cache, full bibliography rendering (sorted
-      entry lists, CSL styles) and compiler integration, and richer LSP features; see MVP 1–6 in
-      `manifest.md`. Citation keys resolve and resolved `[@key]` markers render numeric labels
-      (`[1]`, ...), but BibTeX/CSL foundations are not yet a shipped end-to-end bibliography
-      pipeline.
+- [ ] HTML and EPUB backends, persistent incremental cache, CSL-styled bibliographies, and richer
+      LSP features; see MVP 1–6 in `manifest.md`. The numeric slice is shipped end to end: citation
+      keys resolve, resolved `[@key]` markers render numeric labels (`[1]`, ...), and the cited
+      entries render as a numbered list at the `#bibliography(...)` site in first-use order
+      (plain-text entries; CSL styles, author-year, and uncited entries are still ahead).
 
 Label and reference behavior is documented in
 [`docs/labels-and-references.md`](./docs/labels-and-references.md).
