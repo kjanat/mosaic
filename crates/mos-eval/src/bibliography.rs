@@ -168,23 +168,12 @@ fn bibliography_path(
                         );
                     }
                 }
-                _ => {
-                    let mut diagnostic = Diagnostic::simple(
-                        &codes::MOS0015,
-                        None,
-                        format!("unknown argument `{key}` for `#bibliography` (valid: src/path)"),
-                    )
-                    .with_span(key_span.clone());
-                    // `key_span` covers exactly the identifier token, so a
-                    // near-miss carries a fix replacing only that token.
-                    if let Some(candidate) =
-                        suggest::nearest_match(key, BIBLIOGRAPHY_KEYS.iter().copied())
-                    {
-                        diagnostic = diagnostic
-                            .with_suggestion(Suggestion::new(key_span.clone(), candidate));
-                    }
-                    diagnostics.push(diagnostic);
-                }
+                _ => diagnostics.push(suggest::unknown_key_diagnostic(
+                    format!("unknown argument `{key}` for `#bibliography` (valid: src/path)"),
+                    key,
+                    key_span,
+                    BIBLIOGRAPHY_KEYS,
+                )),
             },
         }
     }

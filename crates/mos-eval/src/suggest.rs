@@ -2,9 +2,12 @@
 //!
 //! Several passes answer the same question: the user wrote an identifier
 //! that matches nothing — is one known name a plausible near-miss worth
-//! offering as a fix? This module owns the shared edit-distance metric and
-//! the selection rule; callers supply their own candidate sets (reference
-//! labels, citation keys, `#set` targets, directive keyword arguments).
+//! offering as a fix? This module owns the shared edit-distance metric, the
+//! selection rule, and the `MOS0015` unknown-key diagnostic builder; callers
+//! supply their own candidate sets (reference labels, citation keys, `#set`
+//! targets, directive keyword arguments).
+
+use mos_core::{Diagnostic, SourceSpan, Suggestion, codes};
 
 /// Byte-level edit distance counting an adjacent transposition as one edit
 /// (optimal string alignment, the restricted Damerau-Levenshtein variant).
@@ -88,6 +91,26 @@ where
     }
     let (_, candidate) = best?;
     (!tied).then_some(candidate)
+}
+
+/// Build the `MOS0015` unknown-keyword-argument diagnostic shared by `#set`,
+/// `#image`, `#figure`, and `#bibliography`, attaching a fix replacing
+/// exactly the key token when one known key is a conservative near-miss.
+///
+/// `key_span` must cover exactly the identifier token, so the suggestion is
+/// machine-applicable without touching surrounding syntax.
+pub(crate) fn unknown_key_diagnostic(
+    message: String,
+    key: &str,
+    key_span: &SourceSpan,
+    candidates: &[&str],
+) -> Diagnostic {
+    let mut diagnostic =
+        Diagnostic::simple(&codes::MOS0015, None, message).with_span(key_span.clone());
+    if let Some(candidate) = nearest_match(key, candidates.iter().copied()) {
+        diagnostic = diagnostic.with_suggestion(Suggestion::new(key_span.clone(), candidate));
+    }
+    diagnostic
 }
 
 #[cfg(test)]

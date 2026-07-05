@@ -23,7 +23,7 @@ All notable changes to this project will be documented here. The format is based
   end-to-end: initialize handshake and capabilities, the didOpen/didChange/didClose diagnostics
   lifecycle, go-to-definition (including UTF-16 column mapping over non-BMP text and cross-file
   citation targets), rename, quick-fix code actions, document symbols, unknown-method errors, and
-  clean shutdown/exit — with per-wait timeouts so a hung server fails CI instead of stalling it.
+  clean shutdown/exit — with per-wait timeouts, so a hung server fails CI instead of stalling it.
 
 - Parser fuzz-smoke and layout stress suites: [`mos-parse`][mos-parse] gains a deterministic
   seeded-PRNG fuzz test (random UTF-8 soup, shuffled `.mos` fragment mixes, char-boundary

@@ -5,8 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use mos_core::{
-    AttrMap, AttrValue, Diagnostic, Document, NodeId, NodeKind, NodeSpec, SourceSpan, Suggestion,
-    codes,
+    AttrMap, AttrValue, Diagnostic, Document, NodeId, NodeKind, NodeSpec, SourceSpan, codes,
 };
 use mos_parse::{SetArg, SetValue};
 
@@ -28,23 +27,6 @@ const FIGURE_KEYS: &[&str] = &[
 /// Keys accepted by [`collect_one_image_arg`]'s named-argument match; the
 /// MOS0015 nearest-match candidate set. Keep in sync with the match arms.
 const IMAGE_KEYS: &[&str] = &["src", "path", "alt", "width", "height", "label"];
-
-/// Build the MOS0015 unknown-kwarg diagnostic for `#image`/`#figure`,
-/// attaching a fix replacing exactly the key token when one known key is a
-/// conservative near-miss.
-fn unknown_key_diagnostic(
-    message: String,
-    key: &str,
-    key_span: &SourceSpan,
-    candidates: &[&str],
-) -> Diagnostic {
-    let mut diagnostic =
-        Diagnostic::simple(&codes::MOS0015, None, message).with_span(key_span.clone());
-    if let Some(candidate) = suggest::nearest_match(key, candidates.iter().copied()) {
-        diagnostic = diagnostic.with_suggestion(Suggestion::new(key_span.clone(), candidate));
-    }
-    diagnostic
-}
 
 /// Lower `#image(...)` into one [`NodeKind::Image`] node.
 ///
@@ -171,13 +153,18 @@ fn collect_one_figure_arg(
                 SetValue::Str(s) => {
                     collected.label = Some((s.clone(), string_content_span(value_span)));
                 }
-                _ => type_error(value_span, "`#figure(label: ...)` expects a string", diagnostics),
+                _ => type_error(
+                    value_span,
+                    "`#figure(label: ...)` expects a string",
+                    diagnostics,
+                ),
             },
             "numbered" => collect_numbered(value, value_span, collected, diagnostics),
             "supplement" => collect_supplement(value, value_span, collected, diagnostics),
-            _ => diagnostics.push(unknown_key_diagnostic(
+            _ => diagnostics.push(suggest::unknown_key_diagnostic(
                 format!(
-                    "unknown argument `{key}` for `#figure` (valid: image, caption, alt, width, height, label, numbered, supplement)"
+                    "unknown argument `{key}` for `#figure` (valid: {})",
+                    FIGURE_KEYS.join(", ")
                 ),
                 key,
                 key_span,
@@ -419,7 +406,10 @@ fn collect_one_image_arg(
                 }
                 _ => type_error(value_span, "`#image(label: ...)` expects a string", diagnostics),
             },
-            _ => diagnostics.push(unknown_key_diagnostic(
+            // `src/path` groups the alias pair the way `#bibliography`'s
+            // message does, so the display list stays hand-written while
+            // IMAGE_KEYS feeds the near-miss candidates.
+            _ => diagnostics.push(suggest::unknown_key_diagnostic(
                 format!(
                     "unknown argument `{key}` for `#image` (valid: src/path, alt, width, height, label)"
                 ),

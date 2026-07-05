@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use mos_core::{
     AttrMap, AttrValue, Diagnostic, DiagnosticAnnotation, Document, NodeId, NodeKind, NodeSpec,
-    SourceSpan, Suggestion, codes,
+    SourceSpan, codes,
 };
 use mos_parse::{SetArg, SetValue};
 
@@ -104,22 +104,17 @@ fn lower_set_arg(
         return;
     };
     let Some(slot) = target.slot(key) else {
-        let mut diagnostic = Diagnostic::simple(
-            &codes::MOS0015,
-            None,
+        let keys = target.keys();
+        diagnostics.push(suggest::unknown_key_diagnostic(
             format!(
                 "unknown argument `{key}` for `#set {}` (valid: {})",
                 target.name(),
-                target.keys().join(", ")
+                keys.join(", ")
             ),
-        )
-        .with_span(key_span.clone());
-        // `key_span` covers exactly the identifier token, so a near-miss
-        // can carry a machine-applicable fix replacing only that token.
-        if let Some(candidate) = suggest::nearest_match(key, target.keys()) {
-            diagnostic = diagnostic.with_suggestion(Suggestion::new(key_span.clone(), candidate));
-        }
-        diagnostics.push(diagnostic);
+            key,
+            key_span,
+            &keys,
+        ));
         return;
     };
     let Some(value) = coerce_value(slot, raw_value, *current_text_size_pt) else {
