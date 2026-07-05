@@ -8,6 +8,30 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Directive typo suggestions (https://github.com/kjanat/mosaic/issues/126): unknown `#set` targets
+  and unknown keyword arguments on `#set` / `#image` / `#figure` / `#bibliography` now suggest the
+  nearest known name when the match is conservative and unambiguous. Kwarg fixes are
+  machine-actionable [`mos-core`][mos-core] `Suggestion`s replacing exactly the key token (so CLI
+  fix-it lines and LSP quick fixes surface them automatically); unknown `#set` targets get a prose
+  `did you mean` help because no identifier-only span exists yet. [`mos-eval`][mos-eval] gains a
+  shared `suggest` module (OSA edit distance — a swapped pair like `wdith` → `width` counts as one
+  edit) that also backs the existing label and citation-key near-miss heuristics, which now
+  recognize transposition typos too.
+
+- LSP protocol E2E harness (https://github.com/kjanat/mosaic/issues/137): [`mos-lsp`][mos-lsp] tests
+  now spawn the real `mos-lsp` binary over stdio and exercise Content-Length-framed JSON-RPC
+  end-to-end: initialize handshake and capabilities, the didOpen/didChange/didClose diagnostics
+  lifecycle, go-to-definition (including UTF-16 column mapping over non-BMP text and cross-file
+  citation targets), rename, quick-fix code actions, document symbols, unknown-method errors, and
+  clean shutdown/exit — with per-wait timeouts so a hung server fails CI instead of stalling it.
+
+- Parser fuzz-smoke and layout stress suites: [`mos-parse`][mos-parse] gains a deterministic
+  seeded-PRNG fuzz test (random UTF-8 soup, shuffled `.mos` fragment mixes, char-boundary
+  truncations, and a handwritten nasty corpus) asserting no panics and in-bounds, char-aligned
+  diagnostic spans; [`mos-layout`][mos-layout] gains a stress test laying out a synthetic ~3.4k-node
+  document (65 pages) under a wall-clock ceiling, backing the performance claims with a repeatable
+  check.
+
 - Hanging list continuations: list items now accept explicit continuation lines indented to the item
   text column, including continuation after nested child lists. The parser preserves ordered item
   content through `ListItemBlock`, lowering/layout render the continued prose in source order,
@@ -237,6 +261,19 @@ All notable changes to this project will be documented here. The format is based
   root-anchored package lists. This keeps agent/project files out of future crates.io tarballs.
 
 ### Fixed
+
+- Nested-list parsing is linear instead of exponential: [`mos-parse`][mos-parse] mirrored every
+  nested list into both `ListItem::children` and `ListItem::blocks`, deep-cloning the subtree at
+  each nesting level (2^depth nodes — depth 24 took ~30s, depth ~100 effectively hung the parser).
+  Nested lists now live only in `blocks`, in source order; the pre-alpha public `ListItem::children`
+  field is removed ([`mos-eval`][mos-eval]'s lowering already consumed `blocks`). Depth 4000 now
+  parses in ~0.15s with exactly linear node counts. Found by the fuzz-smoke suite.
+
+- Directive diagnostics stay on UTF-8 character boundaries: three [`mos-parse`][mos-parse] directive
+  error paths built one-byte spans (and advanced one byte) even when the offending position held a
+  multibyte character, producing spans that split the character mid-sequence. Spans now cover the
+  whole character, and the `MOS0022` unexpected-character message prints the actual character
+  instead of a mangled lone byte. Found by the new fuzz-smoke suite.
 
 - Inline text flow now treats source whitespace as the only source of inter-word glue, so style/font
   boundaries no longer invent spaces or line-break opportunities. Soft-hyphen splits preserve styled
