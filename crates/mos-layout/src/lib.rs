@@ -34,6 +34,8 @@ use types::BODY_LEADING;
 use word::{ShyBreak, Word, WordItem, split_soft_hyphens, try_shy_break, word_clusters};
 
 #[doc(hidden)]
+pub mod bibliography;
+#[doc(hidden)]
 pub mod boundary;
 #[doc(hidden)]
 pub mod image;
@@ -140,6 +142,7 @@ impl LayoutEngine {
                 NodeKind::Image => state.layout_image(*child_id, node),
                 NodeKind::Figure => state.layout_figure(document, node),
                 NodeKind::List => state.layout_list(document, node),
+                NodeKind::Bibliography => state.layout_bibliography(document, node),
                 NodeKind::Raw if node.attributes.contains_key("raw.kind") => {
                     state.layout_raw_block(node);
                 }

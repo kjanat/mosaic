@@ -8,6 +8,17 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Bibliography entry-list rendering (https://github.com/kjanat/mosaic/issues/112): the numeric
+  citation slice now ships end to end. [`mos-eval`][mos-eval] attaches one rendered entry per
+  *cited* key to the first `#bibliography` node in first-use citation order — plain
+  `Author. Title. Venue, volume, pp. pages. Publisher. Year.` text with missing BibTeX fields
+  dropped, brace protection stripped, and an entry with no usable fields falling back to its key —
+  and [`mos-layout`][mos-layout] renders the list at the directive's location with right-aligned
+  `[N]` markers and hanging indent, mirroring ordered-list geometry. Repeated citations produce one
+  entry, unresolved keys (`MOS0045`) never occupy a slot, and a declaration with nothing cited stays
+  invisible. `examples/lsp` moves its `#bibliography` into a closing References section to show the
+  rendered list. CSL styles, author-year citations, and uncited entries remain out of scope.
+
 - Directive typo suggestions (https://github.com/kjanat/mosaic/issues/126): unknown `#set` targets
   and unknown keyword arguments on `#set` / `#image` / `#figure` / `#bibliography` now suggest the
   nearest known name when the match is conservative and unambiguous. Kwarg fixes are

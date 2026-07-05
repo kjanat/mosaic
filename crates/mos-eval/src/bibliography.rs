@@ -4,8 +4,10 @@
 //! declares one bibliography database path, which is resolved relative to
 //! the current `.mos` source file and stashed on a
 //! [`NodeKind::Bibliography`] node. After lowering, citation keys are checked
-//! against the parsed BibTeX records from those declared sources. Rendering
-//! citation markers and bibliography entries is still a later slice.
+//! against the parsed BibTeX records from those declared sources, resolved
+//! citations get numeric `[N]` markers, and the first bibliography node
+//! receives one rendered entry child per cited key in first-use order
+//! (numeric slice only; CSL styles are a later slice).
 //!
 //! Diagnostics:
 //!
@@ -233,6 +235,15 @@ pub fn resolve_citations(
         .filter(|node| node.kind == NodeKind::Citation)
         .map(|node| node.id)
         .collect();
+    // The entry list attaches to the *first* Bibliography node in document
+    // order: one bibliography section is the typical document shape, and
+    // partitioning entries across several declarations has no defined
+    // semantics in this numeric slice. Later declarations still contribute
+    // records; their nodes just stay childless.
+    let bibliography_node = document
+        .nodes()
+        .find(|node| node.kind == NodeKind::Bibliography)
+        .map(|node| (node.id, node.span.clone()));
 
     // `nodes()` walks the `BTreeMap<NodeId, Node>` in `NodeId` order, which is
     // the lowerer's allocation order -- i.e. document order. Collecting the ids
@@ -292,7 +303,135 @@ pub fn resolve_citations(
         diagnostics.push(diagnostic);
     }
 
+    if let Some((bib_id, bib_span)) = bibliography_node {
+        append_bibliography_entries(document, bib_id, &bib_span, &bibliography, &numbers);
+    }
+
     bibliography.records.entries.keys().cloned().collect()
+}
+
+/// Append one rendered entry per *cited* key as children of the first
+/// [`NodeKind::Bibliography`] node, ordered by first-use citation number.
+///
+/// Each entry is a [`NodeKind::Paragraph`] carrying `entry_number` /
+/// `entry_key` attributes and one [`NodeKind::Text`] child with the
+/// [`format_entry`] text, so layout can render the list with `[N]` markers
+/// without re-reading BibTeX sources. Uncited records add nothing, and
+/// unresolved keys never made it into `numbers`, so the numbered entries
+/// always match the citation markers in the prose.
+fn append_bibliography_entries(
+    document: &mut Document,
+    bib_id: NodeId,
+    bib_span: &SourceSpan,
+    bibliography: &LoadedBibliography,
+    numbers: &BTreeMap<String, usize>,
+) {
+    let mut ordered: Vec<(usize, &str)> = numbers
+        .iter()
+        .map(|(key, number)| (*number, key.as_str()))
+        .collect();
+    ordered.sort_unstable();
+
+    for (number, key) in ordered {
+        let Some(entry) = bibliography.records.entries.get(key) else {
+            continue;
+        };
+        let mut entry_attrs: AttrMap = BTreeMap::new();
+        entry_attrs.insert(
+            "entry_number".to_owned(),
+            AttrValue::Int(i64::try_from(number).unwrap_or(i64::MAX)),
+        );
+        entry_attrs.insert("entry_key".to_owned(), AttrValue::Str(key.to_owned()));
+        let paragraph = document.alloc_child(
+            bib_id,
+            NodeSpec::new(NodeKind::Paragraph, bib_span.clone()).with_attributes(entry_attrs),
+        );
+        let mut text_attrs: AttrMap = BTreeMap::new();
+        text_attrs.insert("text".to_owned(), AttrValue::Str(format_entry(key, entry)));
+        document.alloc_child(
+            paragraph,
+            NodeSpec::new(NodeKind::Text, bib_span.clone()).with_attributes(text_attrs),
+        );
+    }
+}
+
+/// Render one BibTeX entry as plain text for the bibliography list.
+///
+/// Not a CSL processor: a fixed `Author. Title. Venue, volume, pp. pages.
+/// Publisher. Year.` order where every missing field simply drops out.
+/// Brace protection is stripped and whitespace collapsed via
+/// [`clean_field`]; a part that already ends in `.` (initials like
+/// `Knuth, D. E.`) is not double-terminated. An entry with no usable fields
+/// falls back to its citation key so a numbered slot never renders empty.
+fn format_entry(key: &str, entry: &mos_bib::BibEntry) -> String {
+    let field = |name: &str| {
+        entry
+            .fields
+            .get(name)
+            .map(|raw| clean_field(raw))
+            .filter(|value| !value.is_empty())
+    };
+
+    let mut parts: Vec<String> = Vec::new();
+    parts.extend(field("author"));
+    parts.extend(field("title"));
+
+    // Venue clause: journal (or booktitle), then volume and pages appended
+    // as `, {volume}` / `, pp. {pages}` so they stay attached to the venue
+    // they qualify. Without a venue they still surface on their own.
+    let mut venue = field("journal").or_else(|| field("booktitle"));
+    if let Some(volume) = field("volume") {
+        venue = Some(match venue {
+            Some(venue) => format!("{venue}, {volume}"),
+            None => volume,
+        });
+    }
+    if let Some(pages) = field("pages") {
+        venue = Some(match venue {
+            Some(venue) => format!("{venue}, pp. {pages}"),
+            None => format!("pp. {pages}"),
+        });
+    }
+    parts.extend(venue);
+    parts.extend(field("publisher"));
+    parts.extend(field("year"));
+
+    if parts.is_empty() {
+        return key.to_owned();
+    }
+    let mut out = String::new();
+    for part in &parts {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(part);
+        if !part.ends_with('.') {
+            out.push('.');
+        }
+    }
+    out
+}
+
+/// Strip BibTeX brace protection and collapse runs of whitespace, so field
+/// values like `{The {TeX}book}` render as `The TeXbook`.
+fn clean_field(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut pending_space = false;
+    for ch in raw.chars() {
+        if matches!(ch, '{' | '}') {
+            continue;
+        }
+        if ch.is_whitespace() {
+            pending_space = !out.is_empty();
+            continue;
+        }
+        if pending_space {
+            out.push(' ');
+            pending_space = false;
+        }
+        out.push(ch);
+    }
+    out
 }
 
 fn citation_key_span(node: &mos_core::Node, key: &str) -> Option<SourceSpan> {
@@ -418,5 +557,87 @@ fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> 
         records: merged,
         origins,
         complete,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "tests panic loudly on setup failure; matches crate-wide test-module convention"
+    )]
+
+    use std::collections::BTreeMap;
+
+    use mos_bib::BibEntry;
+
+    use super::{clean_field, format_entry};
+
+    fn entry(fields: &[(&str, &str)]) -> BibEntry {
+        BibEntry {
+            entry_type: "book".to_owned(),
+            key: "key".to_owned(),
+            key_span: 0..3,
+            fields: fields
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect::<BTreeMap<String, String>>(),
+        }
+    }
+
+    #[test]
+    fn full_entry_renders_all_clauses_in_order() {
+        let entry = entry(&[
+            ("author", "Knuth, Donald E."),
+            ("title", "Literate Programming"),
+            ("journal", "The Computer Journal"),
+            ("volume", "27"),
+            ("pages", "97--111"),
+            ("year", "1984"),
+        ]);
+        assert_eq!(
+            format_entry("knuth1984", &entry),
+            "Knuth, Donald E. Literate Programming. The Computer Journal, 27, pp. 97--111. 1984."
+        );
+    }
+
+    #[test]
+    fn part_ending_in_period_is_not_double_terminated() {
+        let entry = entry(&[("author", "Knuth, D. E."), ("title", "The TeXbook")]);
+        assert_eq!(
+            format_entry("knuth", &entry),
+            "Knuth, D. E. The TeXbook.",
+            "initials already end the author clause"
+        );
+    }
+
+    #[test]
+    fn title_only_entry_renders_just_the_title() {
+        let entry = entry(&[("title", "Alone")]);
+        assert_eq!(format_entry("solo", &entry), "Alone.");
+    }
+
+    #[test]
+    fn entry_without_useful_fields_falls_back_to_its_key() {
+        let entry = entry(&[("isbn", "978-0")]);
+        assert_eq!(format_entry("fallback2001", &entry), "fallback2001");
+    }
+
+    #[test]
+    fn booktitle_and_bare_pages_still_surface() {
+        let entry = entry(&[("booktitle", "Proc. of Mosaic"), ("pages", "1--7")]);
+        assert_eq!(
+            format_entry("conf", &entry),
+            "Proc. of Mosaic, pp. 1--7.",
+            "booktitle stands in for journal; pages attach to the venue"
+        );
+    }
+
+    #[test]
+    fn clean_field_strips_braces_and_collapses_whitespace() {
+        assert_eq!(clean_field("{The {TeX}book}"), "The TeXbook");
+        assert_eq!(clean_field("  spaced\n\tout  "), "spaced out");
+        assert_eq!(clean_field("{}"), "");
     }
 }
