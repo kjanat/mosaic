@@ -53,6 +53,112 @@ pub fn list_marker_at(bytes: &[u8], pos: usize) -> Option<(usize, bool, usize)> 
     None
 }
 
+/// Whether `bytes[i..]` begins a `//` line comment: two slashes followed by a
+/// space or a buffer/line boundary (`end`, `\n`, or `\r`).
+///
+/// The trailing-space (or end-of-line) requirement is what keeps URLs safe:
+/// `https://x` has a non-space after the slashes, so it never matches. `end`
+/// bounds the buffer; for a single line pass the line's `content_end`, for a
+/// multi-line inline slice pass the slice length.
+#[must_use]
+pub fn double_slash_comment(bytes: &[u8], i: usize, end: usize) -> bool {
+    i + 1 < end
+        && bytes[i] == b'/'
+        && bytes[i + 1] == b'/'
+        && (i + 2 >= end || matches!(bytes[i + 2], b' ' | b'\n' | b'\r'))
+}
+
+/// Whether the line `[line_start, content_end)` is a whole-line `//` comment:
+/// after skipping leading spaces/tabs, the first content is a URL-safe `//`
+/// run. Used at block level so a comment line pushes no item.
+#[must_use]
+pub fn line_comment_at(bytes: &[u8], line_start: usize, content_end: usize) -> bool {
+    let mut p = line_start;
+    while p < content_end && (bytes[p] == b' ' || bytes[p] == b'\t') {
+        p += 1;
+    }
+    double_slash_comment(bytes, p, content_end)
+}
+
+/// Byte offset of a block-comment opener `/*` on the line
+/// `[line_start, content_end)` after skipping leading spaces/tabs, or `None`
+/// when the first non-blank content is not `/*`.
+#[must_use]
+pub fn block_comment_at(bytes: &[u8], line_start: usize, content_end: usize) -> Option<usize> {
+    let mut p = line_start;
+    while p < content_end && (bytes[p] == b' ' || bytes[p] == b'\t') {
+        p += 1;
+    }
+    if p + 1 < content_end && bytes[p] == b'/' && bytes[p + 1] == b'*' {
+        Some(p)
+    } else {
+        None
+    }
+}
+
+/// Byte offset at which content should end when `src[start..end]` carries a
+/// trailing `//` line comment, or `None` when it does not.
+///
+/// The comment marker must sit at a whitespace boundary (start of range, or a
+/// preceding space/tab/newline) and be followed by a space or the range end.
+/// The returned offset excludes the whitespace run immediately before `//`, so
+/// `Title // note` trims to `Title` (no dangling space).
+#[must_use]
+pub fn trailing_line_comment_start(bytes: &[u8], start: usize, end: usize) -> Option<usize> {
+    let mut j = start;
+    while j < end {
+        let boundary = j == start || matches!(bytes[j - 1], b' ' | b'\t' | b'\n' | b'\r');
+        if boundary && double_slash_comment(bytes, j, end) {
+            let mut cut = j;
+            while cut > start && (bytes[cut - 1] == b' ' || bytes[cut - 1] == b'\t') {
+                cut -= 1;
+            }
+            return Some(cut);
+        }
+        j += 1;
+    }
+    None
+}
+
+/// Byte offset at which content should end when `src[start..end]` carries a
+/// trailing `/* … */` block comment (optionally followed by spaces/tabs), or
+/// `None` when it does not. Mirrors [`trailing_line_comment_start`] for the
+/// `/* */` form so a heading like `= Title <lbl> /* note */` still attaches its
+/// label instead of hiding it behind the comment.
+///
+/// Only a *closed* trailing comment is stripped; the returned offset excludes
+/// the whitespace run immediately before `/*`. Block comments do not nest, so
+/// the opener is the nearest preceding `/*` that does not overlap the closing
+/// `*/`. An unterminated `/*` (no matching `*/` at the line end) is left in
+/// place for the inline scanner to diagnose (`MOS0050`).
+#[must_use]
+pub fn trailing_block_comment_start(bytes: &[u8], start: usize, end: usize) -> Option<usize> {
+    let mut e = end;
+    while e > start && matches!(bytes[e - 1], b' ' | b'\t') {
+        e -= 1;
+    }
+    // Need at least `/**/` (four bytes) and a trailing `*/` closer.
+    if e < start + 4 || bytes[e - 1] != b'/' || bytes[e - 2] != b'*' {
+        return None;
+    }
+    // Scan back for the opener, starting at the last index where a `/*` could
+    // sit without overlapping the closer's `*/` at `[e - 2, e)`.
+    let mut k = e - 4;
+    loop {
+        if bytes[k] == b'/' && bytes[k + 1] == b'*' {
+            let mut cut = k;
+            while cut > start && matches!(bytes[cut - 1], b' ' | b'\t') {
+                cut -= 1;
+            }
+            return Some(cut);
+        }
+        if k == start {
+            return None;
+        }
+        k -= 1;
+    }
+}
+
 /// Skip ASCII whitespace (space, tab, CR, LF) inside a `#set` body.
 #[must_use]
 pub fn skip_set_ws(bytes: &[u8], from: usize, end: usize) -> usize {

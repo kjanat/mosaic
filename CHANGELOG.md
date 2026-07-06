@@ -8,6 +8,15 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Source comments in `.mos` (previously typeset verbatim into the output). [`mos-parse`][mos-parse]
+  now recognizes `//` line comments, `/* … */` block comments, and `/** … */` doc comments and drops
+  them so they produce no rendered output. Line comments are URL-safe — the `//` must sit at a
+  whitespace boundary and be followed by a space or line end, so `https://example.com` is never
+  eaten — and comments stay verbatim inside inline `` `code` ``, `#pre`/`#code` raw blocks, and
+  directive string arguments. Block/doc comments are recognized at line start, trailing a line, or
+  mid-line, and may span lines; an unterminated `/*` is a recoverable `MOS0050` warning (never a
+  panic). Comments are stripped, not yet preserved as CST nodes for a future formatter.
+
 - PDF heading bookmarks/outlines: `mos build` now emits a PDF `/Outlines` tree so headings appear in
   the reader's bookmark panel. [`mos-layout`][mos-layout] captures each heading during layout as an
   ordered `OutlineEntry` (level, `"{number} {text}"` title, start page, glyph-top y — bound to the

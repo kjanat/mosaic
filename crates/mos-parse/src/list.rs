@@ -35,6 +35,12 @@ impl Parser<'_> {
             if self.at_blank_line() {
                 break;
             }
+            // A whole-line `// ` comment between items keeps the list intact
+            // (so ordered numbering does not restart) and renders nothing.
+            if self.at_line_comment() {
+                self.skip_line();
+                continue;
+            }
             let Some((indent, ordered, _)) = list_marker_at(self.src.as_bytes(), self.pos) else {
                 break;
             };

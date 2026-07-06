@@ -154,7 +154,15 @@ example.
       at least the current item text column belongs to that item; lazy unindented continuation and
       tab indentation are not supported.)*
 - [x] Parse current directives: `#set`, `#image`, `#figure`.
-- [ ] Preserve comments in the CST if formatter or tooling needs them.
+- [x] Recognize comments and drop them from output. *(`//` line comments — URL-safe: the slashes
+      must sit at a whitespace boundary and be followed by a space or line end, so `https://x`
+      survives — plus `/* … */` block and `/** … */` doc comments at line start, trailing, or
+      mid-line, spanning lines. Verbatim inside inline code, `#pre`/`#code` raw blocks, and
+      directive strings. Comments are stripped, not preserved as CST nodes. An unterminated `/*` is
+      a recoverable `MOS0050`.)*
+- [ ] Preserve comments in the CST if formatter or tooling needs them. *(Recognition ships above;
+      span-carrying comment nodes for a future formatter are a non-breaking additive change, not yet
+      made.)*
 - [ ] Preserve useful formatting trivia for formatter support.
 - [ ] Add imports/includes.
 - [x] Parse minimal single-key citations (`[@key]`).

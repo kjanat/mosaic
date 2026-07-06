@@ -25,7 +25,9 @@ Shipped slice:
 - `mos check`: parse, lower, resolve, source diagnostics for files/projects.
 - `mos build`: parse, lower, layout, PDF output under direct-file or `[output].pdf` paths.
 - Parser/eval: headings, paragraphs, lists, inline styling/code/refs/page-refs/citations, raw
-  `#pre`/`#code` blocks, `#set`, images, figures, hard breaks, soft hyphen, NBSP, `#bibliography`.
+  `#pre`/`#code` blocks, `#set`, images, figures, hard breaks, soft hyphen, NBSP, `#bibliography`,
+  `//` line + `/* */` block + `/** */` doc comments (recognized and dropped; verbatim in code/raw;
+  unterminated `/*` is `MOS0050`).
 - Bibliography: minimal BibTeX + CSL data/style parsing, citation-key checks, numeric `[@key]`
   labels by first use, and a rendered cited-entry list (plain text, first-use order) at the
   `#bibliography` site. CSL-styled rendering is not shipped.

@@ -25,7 +25,8 @@ under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed
 
 - [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline `*emphasis*` / `**strong**` /
       `` `code` `` / `[@key]` citations, `-` / `N.` lists with hanging indents and indented
-      continuation lines, and `#set name(...)` blocks;
+      continuation lines, `#set name(...)` blocks, and `//` line / `/* */` block / `/** */` doc
+      comments (URL-safe, verbatim inside code and raw blocks; produce no output);
 - [x] author-facing line-break controls (issue #26 pieces 1/2/3): a literal U+00A0 NBSP that the
       greedy breaker never splits, a `\\` hard line break for forced mid-paragraph breaks, and a
       `\-` (or literal U+00AD) soft hyphen that stays invisible when the word fits and otherwise

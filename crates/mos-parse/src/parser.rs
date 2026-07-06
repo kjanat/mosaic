@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use mos_core::{Diagnostic, DiagnosticDef, SourceSpan};
+use mos_core::{Diagnostic, DiagnosticDef, SourceSpan, codes};
 
-use crate::support::list_marker_at;
+use crate::support::{block_comment_at, line_comment_at, list_marker_at};
 use crate::{Item, ParseResult, SyntaxTree};
 
 #[derive(Debug)]
@@ -40,6 +40,10 @@ impl<'a> Parser<'a> {
                 self.parse_heading();
             } else if self.at_list_marker() {
                 self.parse_list();
+            } else if self.at_block_comment() {
+                self.consume_block_comment();
+            } else if self.at_line_comment() {
+                self.skip_line();
             } else {
                 self.parse_paragraph();
             }
@@ -55,6 +59,56 @@ impl<'a> Parser<'a> {
 
     pub(crate) fn at_list_marker(&self) -> bool {
         list_marker_at(self.src.as_bytes(), self.pos).is_some()
+    }
+
+    /// Whether the current line is a whole-line `//` comment (URL-safe: the
+    /// slashes must be followed by a space or the end of the line).
+    pub(crate) fn at_line_comment(&self) -> bool {
+        let (line_start, content_end, _) = self.current_line_bounds();
+        line_comment_at(self.src.as_bytes(), line_start, content_end)
+    }
+
+    /// Whether the current line opens a `/*` block comment (also matches the
+    /// `/**` doc-comment opener, which is consumed identically).
+    pub(crate) fn at_block_comment(&self) -> bool {
+        let (line_start, content_end, _) = self.current_line_bounds();
+        block_comment_at(self.src.as_bytes(), line_start, content_end).is_some()
+    }
+
+    /// Consume a `/*` block comment starting on the current line, scanning raw
+    /// bytes across newlines for the first `*/`. An unterminated comment is a
+    /// recoverable `MOS0050` warning and consumes the rest of the input.
+    pub(crate) fn consume_block_comment(&mut self) {
+        let (line_start, content_end, _) = self.current_line_bounds();
+        let bytes = self.src.as_bytes();
+        let Some(open) = block_comment_at(bytes, line_start, content_end) else {
+            // Unreachable via `run()` (guarded by `at_block_comment`); advance
+            // defensively so the cursor can never stall.
+            self.skip_line();
+            return;
+        };
+        let mut q = open + 2;
+        while q + 1 < bytes.len() {
+            if bytes[q] == b'*' && bytes[q + 1] == b'/' {
+                // Land on the next meaningful byte (or the newline) so any
+                // same-line content after `*/` re-dispatches at the top of
+                // `run()` as its own construct — a heading/directive/list is
+                // recognized instead of being swallowed into a paragraph.
+                self.pos = q + 2;
+                while self.pos < bytes.len() && matches!(bytes[self.pos], b' ' | b'\t') {
+                    self.pos += 1;
+                }
+                return;
+            }
+            q += 1;
+        }
+        self.diagnostics.push(self.warn(
+            &codes::MOS0050,
+            "unterminated `/*` block comment; consumed to end of input",
+            open,
+            self.src.len(),
+        ));
+        self.pos = self.src.len();
     }
 
     pub(crate) fn span(&self, start: usize, end: usize) -> SourceSpan {
@@ -2261,5 +2315,374 @@ mod tests {
             .map(|i| i.text.as_str())
             .collect();
         assert_eq!(citation_keys, vec!["first", "second"]);
+    }
+
+    // ── comments ──────────────────────────────────────────────────────
+
+    fn paragraph_text(r: &ParseResult) -> Option<String> {
+        r.tree.items.iter().find_map(|item| {
+            item.as_paragraph()
+                .map(|(inlines, _)| inlines.iter().map(|i| i.text.as_str()).collect::<String>())
+        })
+    }
+
+    fn heading_text(r: &ParseResult) -> Option<String> {
+        r.tree.items.iter().find_map(|item| {
+            item.as_heading()
+                .map(|(_, inlines, _)| inlines.iter().map(|i| i.text.as_str()).collect::<String>())
+        })
+    }
+
+    fn lacks_code(r: &ParseResult, code: DiagnosticCode) -> bool {
+        r.diagnostics.iter().all(|d| d.def().code() != code)
+    }
+
+    #[test]
+    fn line_comment_whole_line_dropped() {
+        let r = parse_str("// hello\n");
+        assert!(r.tree.items.is_empty(), "got {:?}", r.tree.items);
+        assert!(!r.has_errors());
+    }
+
+    #[test]
+    fn empty_line_comment_then_heading() {
+        let r = parse_str("//\n= H\n");
+        assert_eq!(r.tree.items.len(), 1);
+        assert!(r.tree.items[0].as_heading().is_some());
+    }
+
+    #[test]
+    fn double_slash_without_space_is_verbatim() {
+        let r = parse_str("a//b\n");
+        assert_eq!(paragraph_text(&r).as_deref(), Some("a//b"));
+    }
+
+    #[test]
+    fn slashes_no_space_at_line_start_is_paragraph() {
+        let r = parse_str("//x\n");
+        assert_eq!(paragraph_text(&r).as_deref(), Some("//x"));
+    }
+
+    #[test]
+    fn triple_slash_is_not_a_comment() {
+        let r = parse_str("/// x\n");
+        assert_eq!(paragraph_text(&r).as_deref(), Some("/// x"));
+    }
+
+    #[test]
+    fn url_survives_inline_scan() {
+        let r = parse_str("See https://example.com now\n");
+        assert_eq!(
+            paragraph_text(&r).as_deref(),
+            Some("See https://example.com now")
+        );
+    }
+
+    #[test]
+    fn protocol_relative_url_at_boundary_survives() {
+        // `//host` after a space is a whitespace-boundary `//`, but the slashes
+        // are followed by `h`, not a space, so it is not a comment.
+        let r = parse_str("go //example.com now\n");
+        assert_eq!(paragraph_text(&r).as_deref(), Some("go //example.com now"));
+    }
+
+    #[test]
+    fn trailing_line_comment_trimmed_without_space() {
+        let r = parse_str("foo // bar\n");
+        assert_eq!(paragraph_text(&r).as_deref(), Some("foo"));
+    }
+
+    #[test]
+    fn trailing_comment_preserves_next_line() {
+        let r = parse_str("foo // bar\nbaz\n");
+        assert_eq!(paragraph_text(&r).as_deref(), Some("foo\nbaz"));
+    }
+
+    #[test]
+    fn heading_trailing_comment_trimmed() {
+        let r = parse_str("= Title // note\n");
+        assert_eq!(heading_text(&r).as_deref(), Some("Title"));
+        assert_eq!(r.tree.items[0].label(), None);
+        assert!(lacks_code(&r, codes::MOS0048.code()));
+    }
+
+    #[test]
+    fn heading_label_then_trailing_comment() {
+        let r = parse_str("= Title <lbl> // note\n");
+        assert_eq!(heading_text(&r).as_deref(), Some("Title"));
+        assert_eq!(r.tree.items[0].label(), Some("lbl"));
+        assert!(
+            lacks_code(&r, codes::MOS0048.code()),
+            "trailing comment must not trip MOS0048: {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn comment_line_before_heading_keeps_label() {
+        let r = parse_str("// c\n= H <lbl>\n");
+        assert_eq!(r.tree.items.len(), 1);
+        assert_eq!(r.tree.items[0].label(), Some("lbl"));
+    }
+
+    #[test]
+    fn comment_between_list_items_keeps_one_list() {
+        let r = parse_str("- a\n// c\n- b\n");
+        assert_eq!(r.tree.items.len(), 1, "got {:?}", r.tree.items);
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn comment_between_ordered_items_keeps_one_list() {
+        let r = parse_str("1. a\n// c\n2. b\n");
+        assert_eq!(r.tree.items.len(), 1, "got {:?}", r.tree.items);
+        let (ordered, items, _) = r.tree.items[0].as_list().unwrap();
+        assert!(ordered);
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn bullet_with_only_comment_is_empty() {
+        let r = parse_str("- // x\n");
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(items[0].inlines.is_empty(), "got {:?}", items[0].inlines);
+    }
+
+    #[test]
+    fn inline_code_keeps_comment_markers() {
+        let r = parse_str("`a // b /* c */`\n");
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert_eq!(inlines.len(), 1, "got {inlines:?}");
+        assert_eq!(inlines[0].kind, InlineKind::Code);
+        assert_eq!(inlines[0].text, "a // b /* c */");
+    }
+
+    #[test]
+    fn raw_block_keeps_comment_markers() {
+        let r = parse_str("#pre[[ // /* */ ]]\n");
+        let raw = r.tree.items[0].as_raw_block();
+        assert!(raw.is_some(), "expected raw block, got {:?}", r.tree.items);
+        let text = raw.map(|v| v.text.to_owned()).unwrap_or_default();
+        assert!(text.contains("// /* */"), "got {text:?}");
+    }
+
+    #[test]
+    fn directive_string_keeps_slashes() {
+        let r = parse_str("#image(\"x//y.png\")\n");
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(name, "image");
+        assert_eq!(args[0].value(), &SetValue::Str("x//y.png".to_owned()));
+    }
+
+    #[test]
+    fn block_comment_single_line_dropped() {
+        let r = parse_str("/* c */\n= H\n");
+        assert_eq!(r.tree.items.len(), 1);
+        assert!(r.tree.items[0].as_heading().is_some());
+    }
+
+    #[test]
+    fn block_comment_multiline_dropped() {
+        let r = parse_str("/* line1\n\nline2 */\n= H\n");
+        assert_eq!(r.tree.items.len(), 1, "got {:?}", r.tree.items);
+        assert!(r.tree.items[0].as_heading().is_some());
+    }
+
+    #[test]
+    fn doc_comment_dropped_like_block() {
+        let r = parse_str("/** doc */\n= H\n");
+        assert_eq!(r.tree.items.len(), 1);
+        assert!(r.tree.items[0].as_heading().is_some());
+    }
+
+    #[test]
+    fn empty_block_comment_dropped() {
+        let r = parse_str("/**/\n= H\n");
+        assert_eq!(r.tree.items.len(), 1);
+        assert!(r.tree.items[0].as_heading().is_some());
+    }
+
+    #[test]
+    fn slash_star_slash_is_unterminated() {
+        let r = parse_str("/*/\n");
+        assert!(
+            !lacks_code(&r, codes::MOS0050.code()),
+            "expected MOS0050, got {:?}",
+            r.diagnostics
+        );
+        assert!(!r.has_errors());
+    }
+
+    #[test]
+    fn unterminated_block_comment_warns_once() {
+        let r = parse_str("/* oops\n");
+        let hits: Vec<&Diagnostic> = r
+            .diagnostics
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0050.code())
+            .collect();
+        assert_eq!(hits.len(), 1, "got {:?}", r.diagnostics);
+        assert_eq!(hits[0].severity(), Severity::Warning);
+        assert!(!r.has_errors());
+    }
+
+    #[test]
+    fn block_comment_after_paragraph_line_dropped() {
+        // A `/*` block comment on its own line directly after paragraph text
+        // (no blank separator) must end the paragraph and be consumed, not leak
+        // its `/` `*` bytes into the rendered text.
+        let r = parse_str("body text\n/* c\n   d */\nmore text\n");
+        let texts: Vec<String> = r
+            .tree
+            .items
+            .iter()
+            .filter_map(|item| {
+                item.as_paragraph()
+                    .map(|(inlines, _)| inlines.iter().map(|i| i.text.as_str()).collect::<String>())
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            vec!["body text".to_owned(), "more text".to_owned()],
+            "all items: {:?}",
+            r.tree.items
+        );
+    }
+
+    #[test]
+    fn interior_line_comment_keeps_single_paragraph() {
+        // A whole-line `//` comment between two text lines is excised inline and
+        // must NOT split the paragraph (deliberate: line comments stay inline).
+        let r = parse_str("alpha\n// note\nbeta\n");
+        let paras = r
+            .tree
+            .items
+            .iter()
+            .filter(|i| i.as_paragraph().is_some())
+            .count();
+        assert_eq!(paras, 1, "got {:?}", r.tree.items);
+        let text = paragraph_text(&r).unwrap_or_default();
+        assert!(!text.contains("note"), "comment leaked: {text:?}");
+    }
+
+    #[test]
+    fn comment_at_start_of_file() {
+        let r = parse_str("// top\n= H\n");
+        assert_eq!(r.tree.items.len(), 1);
+        assert!(r.tree.items[0].as_heading().is_some());
+    }
+
+    #[test]
+    fn comment_at_eof_without_newline() {
+        let r = parse_str("= H\n// end");
+        assert_eq!(r.tree.items.len(), 1);
+        assert!(r.tree.items[0].as_heading().is_some());
+    }
+
+    #[test]
+    fn mid_line_block_comment_stripped_from_paragraph() {
+        // Regression: a `/* … */` that is not line-leading must be excised, not
+        // rendered. Previously its `*` pair was consumed as emphasis delimiters,
+        // italicizing the comment text with stray slashes.
+        let r = parse_str("foo /* bar */ baz\n");
+        assert_eq!(paragraph_text(&r).as_deref(), Some("foo baz"));
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+    }
+
+    #[test]
+    fn mid_line_block_comment_produces_no_emphasis() {
+        // The inner `*` bytes of a block comment must never become emphasis.
+        let r = parse_str("foo /* bar */ baz\n");
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        assert!(
+            inlines.iter().all(|i| i.kind == InlineKind::Text),
+            "block comment leaked styled runs: {inlines:?}"
+        );
+    }
+
+    #[test]
+    fn mid_line_block_comment_stripped_from_heading() {
+        let r = parse_str("= H /* note */\n");
+        assert_eq!(heading_text(&r).as_deref(), Some("H"));
+        assert!(!r.has_errors(), "{:?}", r.diagnostics);
+    }
+
+    #[test]
+    fn multiline_mid_paragraph_block_comment_stripped() {
+        // A block comment opened mid-line spans the collected paragraph lines.
+        let r = parse_str("foo /* a\nb */ bar\n");
+        assert_eq!(paragraph_text(&r).as_deref(), Some("foo bar"));
+    }
+
+    #[test]
+    fn block_comment_then_heading_on_same_line() {
+        // Regression (G7): content after a block comment's `*/` on the same line
+        // must re-dispatch as its own construct; the heading and its label must
+        // survive instead of degrading to a paragraph.
+        let r = parse_str("/* c */ = Intro <intro>\n");
+        assert_eq!(heading_text(&r).as_deref(), Some("Intro"));
+        assert_eq!(r.tree.items[0].label(), Some("intro"));
+    }
+
+    #[test]
+    fn block_comment_then_paragraph_on_same_line() {
+        let r = parse_str("/* c */ body text\n");
+        assert_eq!(paragraph_text(&r).as_deref(), Some("body text"));
+    }
+
+    #[test]
+    fn heading_label_then_trailing_block_comment() {
+        // Symmetric with the `//` case: a label before a trailing block comment
+        // still attaches and does not trip MOS0048.
+        let r = parse_str("= Title <lbl> /* note */\n");
+        assert_eq!(heading_text(&r).as_deref(), Some("Title"));
+        assert_eq!(r.tree.items[0].label(), Some("lbl"));
+        assert!(
+            lacks_code(&r, codes::MOS0048.code()),
+            "trailing block comment must not trip MOS0048: {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn block_comment_inside_emphasis_stripped() {
+        let r = parse_str("*a /* c */ b*\n");
+        let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();
+        let emphasis: String = inlines
+            .iter()
+            .filter(|i| i.kind == InlineKind::Emphasis)
+            .map(|i| i.text.as_str())
+            .collect();
+        assert_eq!(emphasis, "a b", "got {inlines:?}");
+    }
+
+    #[test]
+    fn unterminated_inline_block_comment_warns_mos0050() {
+        // A mid-line `/*` with no closing `*/` is recoverable, not a panic.
+        let r = parse_str("foo /* oops\n");
+        assert!(
+            !lacks_code(&r, codes::MOS0050.code()),
+            "expected MOS0050, got {:?}",
+            r.diagnostics
+        );
+        assert!(!r.has_errors());
+        assert_eq!(paragraph_text(&r).as_deref(), Some("foo"));
+    }
+
+    #[test]
+    fn directive_string_keeps_block_comment_markers() {
+        // `/*` inside a directive string literal is verbatim, not a comment.
+        let r = parse_str("#image(\"a/*b*/c.png\")\n");
+        let (name, args, _) = r.tree.items[0].as_set().unwrap();
+        assert_eq!(name, "image");
+        assert_eq!(args[0].value(), &SetValue::Str("a/*b*/c.png".to_owned()));
+    }
+
+    #[test]
+    fn empty_inline_block_comment_stripped() {
+        let r = parse_str("a/**/b\n");
+        assert_eq!(paragraph_text(&r).as_deref(), Some("ab"));
     }
 }
