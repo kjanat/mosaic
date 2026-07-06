@@ -137,9 +137,15 @@ export default grammar({
 		// Lexical trivia
 		// -------------------------------------------------------------------
 
+		// Line comments require whitespace after `//` (matching the compiler's
+		// URL-safe rule and config.toml's `"// "`), so `//no-space` and the
+		// `//` in `https://x` stay prose. Block comments are C-style and
+		// non-nesting. Both are recognized only at a line/block boundary here;
+		// trailing and mid-line comments (which the compiler also strips) need
+		// an external-scanner boundary check and are not yet mirrored.
 		comment: _ =>
 			token(choice(
-				seq('//', /[^\n\r]*/),
+				seq('//', /[ \t][^\n\r]*/),
 				seq('/*', /[^*]*\*+([^/*][^*]*\*+)*/, '/'),
 			)),
 

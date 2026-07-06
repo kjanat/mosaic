@@ -15,6 +15,17 @@ comment: line comment is trivia
           (text))))))
 
 ==================
+comment: line comment needs whitespace after the slashes
+==================
+//no-space stays prose
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text))))
+
+==================
 comment: url slash pair stays prose
 ==================
 Visit http://example.com
