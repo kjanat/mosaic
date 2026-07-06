@@ -158,11 +158,12 @@ example.
       must sit at a whitespace boundary and be followed by a space or line end, so `https://x`
       survives — plus `/* … */` block and `/** … */` doc comments at line start, trailing, or
       mid-line, spanning lines. Verbatim inside inline code, `#pre`/`#code` raw blocks, and
-      directive strings. Comments are stripped, not preserved as CST nodes. An unterminated `/*` is
-      a recoverable `MOS0050`.)*
-- [ ] Preserve comments in the CST if formatter or tooling needs them. *(Recognition ships above;
-      span-carrying comment nodes for a future formatter are a non-breaking additive change, not yet
-      made.)*
+      directive strings. `//` and `/*` comments are stripped; `/**` doc comments are preserved (next
+      item). An unterminated `/*` is a recoverable `MOS0050`.)*
+- [x] Preserve `/** … */` doc comments in the CST and attach them to the following symbol. *(Kept as
+      an `Item::DocComment`, lowered to a `doc` attribute on the heading/paragraph it precedes, and
+      surfaced by the LSP on hover. `//` and `/*` comments are still dropped; span-carrying nodes
+      for those, for a future formatter, remain a non-breaking future addition.)*
 - [ ] Preserve useful formatting trivia for formatter support.
 - [ ] Add imports/includes.
 - [x] Parse minimal single-key citations (`[@key]`).
@@ -459,7 +460,8 @@ example.
 - [ ] Add figure preview.
 - [x] Add nested heading outline.
 - [ ] Add symbol search.
-- [ ] Add hover docs.
+- [x] Add hover docs. *(`textDocument/hover` returns a symbol's attached `/** … */` doc comment as
+      Markdown, for a heading, a `<label>` block, or an `@label` reference to one.)*
 - [ ] Add format-document support.
 - [ ] Add live preview sync.
 - [ ] Add bidirectional source/PDF sync.

@@ -33,7 +33,8 @@ Shipped slice:
   `#bibliography` site. CSL-styled rendering is not shipped.
 - Layout/PDF: greedy flow, pages, figures/images, Base-14 + Noto embedding/subsetting, ToUnicode,
   heading bookmarks (`/Outlines`), deterministic provenance.
-- LSP: diagnostics, definition for labels/citations, label rename, document symbols, code actions.
+- LSP: diagnostics, definition for labels/citations, label rename, document symbols, code actions,
+  hover (a symbol's `/** … */` doc comment).
 
 Aspirational/stub unless user asks: HTML/EPUB/SVG, persistent cache, watch/formatter/package
 systems, math/tables/footnotes/index/glossary, float solver, TOC generation, broad pagination
