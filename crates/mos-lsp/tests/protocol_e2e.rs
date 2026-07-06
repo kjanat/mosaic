@@ -712,7 +712,7 @@ fn unknown_request_gets_method_not_found_instead_of_hanging() -> TestResult {
     let mut server = Server::spawn()?;
     initialize(&mut server, &default_initialize_params())?;
 
-    let reply = server.request(2, "textDocument/hover", &json!({}))?;
+    let reply = server.request(2, "textDocument/foldingRange", &json!({}))?;
     ensure_eq(
         &reply.pointer("/error/code"),
         &Some(&json!(-32601)),

@@ -96,6 +96,43 @@ pub fn block_comment_at(bytes: &[u8], line_start: usize, content_end: usize) -> 
     }
 }
 
+/// Whether the `/*` opener at `open` is a `/**` documentation-comment opener.
+///
+/// `open` points at the `/` and `open + 1` at the first `*`. A doc opener has a
+/// second `*` that is not immediately followed by `/` — so `/** … */` and
+/// `/*** … */` are doc comments, but the empty block comment `/**/` is not.
+/// Doc comments are preserved (their text feeds hover); plain `/*` and `//`
+/// comments are dropped.
+#[must_use]
+pub fn is_doc_comment_open(bytes: &[u8], open: usize) -> bool {
+    open + 2 < bytes.len()
+        && bytes[open + 2] == b'*'
+        && !(open + 3 < bytes.len() && bytes[open + 3] == b'/')
+}
+
+/// Clean the inner text of a `/** … */` doc comment for display.
+///
+/// Each line is left-trimmed and, when it opens with a ` * ` continuation
+/// marker (or a bare `*`), that marker is stripped — the jsdoc/rustdoc house
+/// style. A leading `*` that is *not* followed by a space is left intact so
+/// `*emphasis*` content survives. Blank framing lines are dropped.
+#[must_use]
+pub fn clean_doc_text(raw: &str) -> String {
+    raw.lines()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            let body =
+                trimmed
+                    .strip_prefix("* ")
+                    .unwrap_or(if trimmed == "*" { "" } else { trimmed });
+            body.trim_end()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_owned()
+}
+
 /// Byte offset at which content should end when `src[start..end]` carries a
 /// trailing `//` line comment, or `None` when it does not.
 ///

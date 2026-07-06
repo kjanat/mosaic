@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use mos_core::{Diagnostic, DiagnosticDef, SourceSpan, codes};
 
-use crate::support::{block_comment_at, line_comment_at, list_marker_at};
+use crate::support::{
+    block_comment_at, clean_doc_text, is_doc_comment_open, line_comment_at, list_marker_at,
+};
 use crate::{Item, ParseResult, SyntaxTree};
 
 #[derive(Debug)]
@@ -87,9 +89,21 @@ impl<'a> Parser<'a> {
             self.skip_line();
             return;
         };
+        let is_doc = is_doc_comment_open(bytes, open);
         let mut q = open + 2;
         while q + 1 < bytes.len() {
             if bytes[q] == b'*' && bytes[q + 1] == b'/' {
+                // A `/** … */` doc comment is preserved as an `Item` so the
+                // lowerer can attach it to the node it precedes; plain `/*`
+                // block comments push nothing. Inner text runs from past the
+                // `/**` opener (`open + 3`) to the `*/` closer at `q`.
+                if is_doc {
+                    let text = clean_doc_text(&self.src[open + 3..q]);
+                    self.items.push(Item::DocComment {
+                        text,
+                        span: self.span(open, q + 2),
+                    });
+                }
                 // Land on the next meaningful byte (or the newline) so any
                 // same-line content after `*/` re-dispatches at the top of
                 // `run()` as its own construct — a heading/directive/list is
@@ -2491,9 +2505,33 @@ mod tests {
     }
 
     #[test]
-    fn doc_comment_dropped_like_block() {
+    fn doc_comment_preserved_as_item() {
+        // Unlike `//` and `/*`, a `/** … */` doc comment is kept as an Item so
+        // the lowerer can attach it to the following node.
         let r = parse_str("/** doc */\n= H\n");
-        assert_eq!(r.tree.items.len(), 1);
+        assert_eq!(r.tree.items.len(), 2, "got {:?}", r.tree.items);
+        assert_eq!(
+            r.tree.items[0].as_doc_comment().map(|(t, _)| t),
+            Some("doc"),
+        );
+        assert!(r.tree.items[1].as_heading().is_some());
+    }
+
+    #[test]
+    fn doc_comment_multiline_star_prefix_cleaned() {
+        // jsdoc/rustdoc ` * ` continuation markers are stripped for display.
+        let r = parse_str("/**\n * line1\n * line2\n */\n= H\n");
+        assert_eq!(
+            r.tree.items[0].as_doc_comment().map(|(t, _)| t),
+            Some("line1\nline2"),
+        );
+    }
+
+    #[test]
+    fn empty_doc_slashes_are_block_not_doc() {
+        // `/**/` is an empty block comment, not a doc comment: dropped, no Item.
+        let r = parse_str("/**/\n= H\n");
+        assert_eq!(r.tree.items.len(), 1, "got {:?}", r.tree.items);
         assert!(r.tree.items[0].as_heading().is_some());
     }
 
