@@ -107,6 +107,7 @@ example.
   - [x] title metadata
   - [x] author metadata
   - [x] deterministic `/Producer` + `/Creator` provenance stamp (`Mosaic <version>`)
+  - [x] heading outline/bookmarks (`/Outlines` tree, nested by level, `/XYZ` destinations)
 - [x] Example PDF snapshots exist for current examples.
 
 ## Immediate Cleanup
@@ -288,7 +289,10 @@ example.
 - [x] Stamp deterministic `/Producer` and `/Creator` provenance (`Mosaic <version>`).
 - [x] Emit embedded shaped glyph runs with GPOS positioning via `TJ`/`Tm` operators.
 - [ ] Add hyperlinks.
-- [ ] Add bookmarks/outlines.
+- [x] Add bookmarks/outlines. *(Every heading becomes a PDF outline entry, nested by heading level,
+      titled `"{number} {text}"`, with an `/XYZ` destination on its start page. Emitted only when
+      the document has headings, so heading-free PDFs stay byte-identical. CSL/named destinations
+      and collapsed/open-state control are not modelled.)*
 - [ ] Add vector graphics.
 - [ ] Add image recompression or pass-through policy.
 - [ ] Add tagged PDF support.

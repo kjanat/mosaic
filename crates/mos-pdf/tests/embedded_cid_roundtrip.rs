@@ -124,6 +124,7 @@ fn render(face: EmbeddedFontId, text: &str) -> Result<(Document, Vec<u8>), Box<d
             images: Vec::new(),
         }],
         images: Vec::new(),
+        outline: Vec::new(),
     };
     let tmp = temp_pdf_path();
     let diags =

@@ -53,6 +53,7 @@ fn graph_with_image(width: u32, height: u32) -> PageGraph {
             }],
         }],
         images: vec![handle],
+        outline: Vec::new(),
     }
 }
 

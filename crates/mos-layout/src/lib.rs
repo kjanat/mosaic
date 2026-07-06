@@ -21,8 +21,8 @@ pub use mos_fonts::{
 };
 pub use style::paper_size_pt;
 pub use types::{
-    A4_HEIGHT_PT, A4_WIDTH_PT, ImageHandle, ImagePlacement, LayoutResult, MARGIN_PT, Page,
-    PageGraph, PageStyle, TextRun, TextStyle,
+    A4_HEIGHT_PT, A4_WIDTH_PT, ImageHandle, ImagePlacement, LayoutResult, MARGIN_PT, OutlineEntry,
+    Page, PageGraph, PageStyle, TextRun, TextStyle,
 };
 
 use std::collections::BTreeMap;
@@ -198,6 +198,20 @@ struct LayoutState {
     /// Built result of label → 1-based start page. Emitted into the
     /// [`PageGraph`] by [`LayoutState::finish`].
     label_pages: BTreeMap<String, u32>,
+    /// Heading captured in `layout_heading` but not yet committed to a
+    /// page. Bound to the page (and glyph-top y) of the heading's first
+    /// flushed line by [`LayoutState::bind_pending_outline`], mirroring
+    /// the pending-label flow.
+    pending_outline: Option<PendingOutline>,
+    /// Bookmark/outline entries in document order. Emitted into the
+    /// [`PageGraph`] by [`LayoutState::finish`].
+    outline: Vec<OutlineEntry>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingOutline {
+    level: u8,
+    title: String,
 }
 
 #[derive(Clone, Debug)]
@@ -232,6 +246,8 @@ impl LayoutState {
             pending_marker: None,
             pending_labels: Vec::new(),
             label_pages: BTreeMap::new(),
+            pending_outline: None,
+            outline: Vec::new(),
         }
     }
 
@@ -267,6 +283,27 @@ impl LayoutState {
         }
     }
 
+    /// Bind a pending heading to the current page as an outline entry.
+    /// Called from `flush_line` after the page break check, so a heading
+    /// whose first line spills to the next page records that page. Cleared
+    /// on push so only the heading's first flushed line binds; wrapped
+    /// continuation lines of the same heading don't restamp it.
+    fn bind_pending_outline(&mut self, top_from_top_pt: f32) {
+        let Some(pending) = self.pending_outline.take() else {
+            return;
+        };
+        // `current_page.number` is 1-based; the PDF backend wants a
+        // 0-based index into `PageGraph::pages`, which is populated in
+        // page order, so page N is at index N-1.
+        let page_index = usize::try_from(self.current_page.number.saturating_sub(1)).unwrap_or(0);
+        self.outline.push(OutlineEntry {
+            level: pending.level,
+            title: pending.title,
+            page_index,
+            top_from_top_pt,
+        });
+    }
+
     fn column_width_pt(&self) -> f32 {
         self.page.width - self.page.margin - self.current_left_pt
     }
@@ -283,6 +320,7 @@ impl LayoutState {
             graph: PageGraph {
                 pages: self.pages,
                 images: self.image_handles,
+                outline: self.outline,
             },
             diagnostics: self.diagnostics,
             label_pages: self.label_pages,
@@ -290,7 +328,8 @@ impl LayoutState {
     }
 
     fn layout_heading(&mut self, document: &Document, section: &Node) {
-        let level = usize::from(read_level(section).unwrap_or(1).clamp(1, 3));
+        let heading_level = read_level(section).unwrap_or(1).clamp(1, 3);
+        let level = usize::from(heading_level);
         let size = HEADING_SIZES_PT[level - 1];
         let space_before = HEADING_SPACE_BEFORE_PT[level - 1];
         let space_after = HEADING_SPACE_AFTER_PT[level - 1];
@@ -300,6 +339,29 @@ impl LayoutState {
         }
         let bold = self.text.family.bold;
         let mut words = self.collect_words(document, section, bold, size);
+        // Capture the bookmark/outline entry from the freshly-collected
+        // words, BEFORE the number prefix is inserted below: the title
+        // is composed as "<number> <text>" explicitly, so re-using the
+        // prefixed word stream would double the number (and its trailing
+        // dot). Skip no-text headings, mirroring the label behavior.
+        let title_text = words
+            .iter()
+            .filter_map(|item| match item {
+                WordItem::Word(w) => Some(w.text.as_str()),
+                WordItem::HardBreak => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !title_text.is_empty() {
+            let title = match read_str_attr(section, "number") {
+                Some(number) => format!("{number} {title_text}"),
+                None => title_text,
+            };
+            self.pending_outline = Some(PendingOutline {
+                level: heading_level,
+                title,
+            });
+        }
         // Resolver-assigned section number is rendered as a leading
         // word so it gets the same font/size as the title and flows
         // through the existing line-break path. The trailing `.` is
@@ -781,6 +843,10 @@ impl LayoutState {
         // The page is now settled for this line; bind any labels waiting on
         // their first content to it (issue #72).
         self.bind_pending_labels();
+        // A pending heading binds to this line too: `cursor_y` is the
+        // just-locked baseline, so `cursor_y - max_ascent` is the glyph
+        // tops measured from the page top (the outline destination).
+        self.bind_pending_outline(self.cursor_y - max_ascent);
 
         // Marker (`•` / `1.` …) is drawn in the gutter to the left of
         // `current_left_pt` once the baseline is locked. Consumed on
@@ -1180,6 +1246,140 @@ mod tests {
         assert!(!result.label_pages.contains_key("phantom"));
         assert_eq!(result.label_pages.get("real").copied(), Some(1));
         assert_eq!(result.label_pages.len(), 1);
+    }
+
+    fn make_numbered_section(doc: &mut Document, level: i64, number: &str, text: &str) -> NodeId {
+        let mut attrs = AttrMap::new();
+        attrs.insert("level".to_owned(), AttrValue::Int(level));
+        attrs.insert("number".to_owned(), AttrValue::Str(number.to_owned()));
+        let id = doc.alloc_child(
+            doc.root,
+            NodeSpec::new(
+                NodeKind::Section,
+                SourceSpan::placeholder(PathBuf::from("test.mos")),
+            )
+            .with_attributes(attrs),
+        );
+        alloc_inline(doc, id, NodeKind::Text, text);
+        id
+    }
+
+    #[test]
+    fn outline_captures_headings_in_document_order() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_numbered_section(&mut doc, 1, "1", "Alpha");
+        make_numbered_section(&mut doc, 2, "1.1", "Beta");
+        make_numbered_section(&mut doc, 3, "1.1.1", "Gamma");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+
+        let outline = &result.graph.outline;
+        assert_eq!(outline.len(), 3, "expected 3 entries, got {outline:?}");
+        assert_eq!(
+            outline.iter().map(|e| e.level).collect::<Vec<_>>(),
+            vec![1, 2, 3],
+        );
+        assert_eq!(
+            outline.iter().map(|e| e.title.as_str()).collect::<Vec<_>>(),
+            vec!["1 Alpha", "1.1 Beta", "1.1.1 Gamma"],
+        );
+        // All three headings sit on page 1, in top-to-bottom document
+        // order: page_index non-decreasing, glyph tops strictly ascending.
+        for pair in outline.windows(2) {
+            assert!(
+                pair[1].page_index >= pair[0].page_index,
+                "page_index went backwards: {outline:?}"
+            );
+            assert!(
+                pair[1].top_from_top_pt > pair[0].top_from_top_pt,
+                "positions not ascending: {outline:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn outline_title_includes_section_number() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_numbered_section(&mut doc, 1, "1", "Foo");
+        let result = LayoutEngine::new().layout(&doc);
+        let outline = &result.graph.outline;
+        assert_eq!(outline.len(), 1);
+        assert_eq!(outline[0].title, "1 Foo");
+        // The bookmark title uses a bare number with no trailing dot,
+        // distinct from the rendered "1." run in the page stream.
+        assert!(
+            !outline[0].title.ends_with('.'),
+            "bookmark title must not carry the render-only trailing dot"
+        );
+    }
+
+    #[test]
+    fn heading_across_page_break_binds_start_page() {
+        // Fill page 1 with a long paragraph, then a heading. The heading
+        // must bind to the page its first line actually lands on
+        // (post-break), mirroring label_pages semantics — never page 1.
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        let mut filler = String::new();
+        for i in 0..1500 {
+            let _ = write!(filler, "word{i} ");
+        }
+        make_paragraph(&mut doc, filler.trim());
+        make_numbered_section(&mut doc, 1, "2", "ZZLATER");
+
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(
+            result.graph.pages.len() >= 2,
+            "expected a multi-page layout"
+        );
+
+        let outline = &result.graph.outline;
+        assert_eq!(outline.len(), 1, "expected one heading entry");
+        // Cross-check against the page whose runs actually contain the
+        // heading text; page_index is 0-based, page.number is 1-based.
+        let landing = result
+            .graph
+            .pages
+            .iter()
+            .find(|page| page.runs.iter().any(|run| run.text == "ZZLATER"))
+            .map(|page| page.number)
+            .expect("heading run must exist on some page");
+        assert_eq!(
+            outline[0].page_index,
+            usize::try_from(landing - 1).unwrap_or(0)
+        );
+        assert!(
+            outline[0].page_index >= 1,
+            "heading after a full page must not bind to page 1"
+        );
+    }
+
+    #[test]
+    fn document_without_headings_has_empty_outline() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_paragraph(&mut doc, "just a paragraph");
+        make_paragraph(&mut doc, "another one");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(
+            result.graph.outline.is_empty(),
+            "heading-free doc must have no outline: {:?}",
+            result.graph.outline
+        );
+    }
+
+    #[test]
+    fn empty_heading_produces_no_outline_entry() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        // A section with no inline text emits no glyphs and no bookmark.
+        make_section(&mut doc, 1, "");
+        // A real paragraph ensures the page still has content, so the
+        // absence of an entry is about the empty heading specifically.
+        make_paragraph(&mut doc, "body");
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(
+            result.graph.outline.is_empty(),
+            "empty heading must not create an outline entry: {:?}",
+            result.graph.outline
+        );
     }
 
     #[test]

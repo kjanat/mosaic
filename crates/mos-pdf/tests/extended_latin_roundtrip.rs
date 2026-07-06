@@ -57,6 +57,7 @@ fn render(face: Base14Font, text: &str) -> Result<Document, Box<dyn Error>> {
             images: Vec::new(),
         }],
         images: Vec::new(),
+        outline: Vec::new(),
     };
     // Unique per call. `SystemTime::now()` is too coarse on some platforms
     // (notably Windows, ~15 ms granularity) to disambiguate tests that render

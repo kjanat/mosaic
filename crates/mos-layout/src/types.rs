@@ -150,6 +150,24 @@ pub struct Page {
     pub images: Vec<ImagePlacement>,
 }
 
+/// One PDF bookmark/outline entry captured during layout. Ordered in
+/// document order; nesting is reconstructed from `level` at emit time.
+#[derive(Clone, Debug)]
+pub struct OutlineEntry {
+    /// Heading level 1..=3 (clamped, mirrors `read_level`).
+    pub level: u8,
+    /// Bookmark title: section number (if any) + heading text,
+    /// e.g. "1.2 Introduction".
+    pub title: String,
+    /// 0-based index into `PageGraph::pages` of the page the heading's
+    /// first line lands on. Always in range by construction.
+    pub page_index: usize,
+    /// Y of the heading's glyph tops, measured from the page top in pt.
+    /// The PDF backend flips once: `top = page.height_pt - top_from_top_pt`
+    /// (same convention as `TextRun::baseline_from_top_pt`).
+    pub top_from_top_pt: f32,
+}
+
 /// The paginated output graph (manifest §6 stage 7).
 #[derive(Clone, Debug, Default)]
 pub struct PageGraph {
@@ -159,6 +177,11 @@ pub struct PageGraph {
     /// this once to emit `XObject`s; per-page [`ImagePlacement::handle`]
     /// references are just thin pointers into the same table.
     pub images: Vec<ImageHandle>,
+    /// Bookmark/outline entries in document order (issue: PDF outlines).
+    /// Empty when the document has no headings; the PDF backend then
+    /// emits no `/Outlines` tree. Lives on `PageGraph` because `emit`
+    /// consumes only `graph`.
+    pub outline: Vec<OutlineEntry>,
 }
 
 /// Result of laying out a [`mos_core::Document`]: a [`PageGraph`] plus

@@ -238,7 +238,24 @@ pub(crate) fn build_pdf(
 
     let page_refs: Vec<(Ref, Ref)> = graph.pages.iter().map(|_| (alloc(), alloc())).collect();
 
-    pdf.catalog(catalog_id).pages(page_tree_id);
+    // Outline (bookmark) refs are allocated LAST, after every other
+    // object, so a heading-free document — where `outline` is empty and
+    // this is `None` — produces byte-identical output to before outlines
+    // existed. Allocation walks `graph.outline` in document order, so the
+    // root and per-entry ids are deterministic across runs.
+    let outline_refs: Option<(Ref, Vec<Ref>)> = (!graph.outline.is_empty()).then(|| {
+        let root = alloc();
+        let items: Vec<Ref> = graph.outline.iter().map(|_| alloc()).collect();
+        (root, items)
+    });
+
+    {
+        let mut catalog = pdf.catalog(catalog_id);
+        catalog.pages(page_tree_id);
+        if let Some((root, _)) = &outline_refs {
+            catalog.outlines(*root);
+        }
+    }
 
     let page_count = i32::try_from(page_refs.len()).unwrap_or(i32::MAX);
     pdf.pages(page_tree_id)
@@ -306,7 +323,122 @@ pub(crate) fn build_pdf(
         info.finish();
     }
 
+    if let Some((root, items)) = &outline_refs {
+        emit_outline(&mut pdf, graph, *root, items, &page_refs);
+    }
+
     Ok((pdf.finish(), diagnostics))
+}
+
+/// Emit the `/Outlines` tree from `graph.outline` (flat, document order,
+/// each entry carrying a heading `level` 1..=3). Nesting is reconstructed
+/// in a single pass over a level stack of entry indices, then the root
+/// dict and one `/Outline` item per entry are wired with
+/// parent/prev/next/first/last links and page destinations.
+///
+/// `items[i]` is the indirect ref for `graph.outline[i]`; `root` is the
+/// `/Outlines` dict ref. Called only when `graph.outline` is non-empty,
+/// so `items` is non-empty and `roots` always has at least one member.
+fn emit_outline(
+    pdf: &mut Pdf,
+    graph: &PageGraph,
+    root: Ref,
+    items: &[Ref],
+    page_refs: &[(Ref, Ref)],
+) {
+    let entries = &graph.outline;
+    let n = entries.len();
+
+    // Pass 1: reconstruct parent / children / top-level roots from a
+    // level stack. Popping every entry whose level is >= the current
+    // one makes a skipped level (H1→H3) attach under the nearest
+    // shallower ancestor, and a later shallower heading re-parent
+    // correctly. Document order is preserved, so child and sibling
+    // order match the source.
+    let mut parent: Vec<Option<usize>> = vec![None; n];
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut roots: Vec<usize> = Vec::new();
+    let mut stack: Vec<usize> = Vec::new();
+    for (i, entry) in entries.iter().enumerate() {
+        while stack
+            .last()
+            .is_some_and(|&top| entries[top].level >= entry.level)
+        {
+            stack.pop();
+        }
+        match stack.last() {
+            Some(&p) => {
+                parent[i] = Some(p);
+                children[p].push(i);
+            }
+            None => roots.push(i),
+        }
+        stack.push(i);
+    }
+
+    // Pass 2: subtree sizes (descendants excluding self) for /Count. A
+    // child always has a higher index than its parent (document order +
+    // the stack discipline), so a reverse walk visits every child before
+    // its parent.
+    let mut descendants: Vec<usize> = vec![0; n];
+    for i in (0..n).rev() {
+        if let Some(p) = parent[i] {
+            descendants[p] += descendants[i] + 1;
+        }
+    }
+
+    // Root /Outlines dict: first/last top-level items plus the full
+    // entry total (positive → every item open, since none are collapsed).
+    {
+        let mut outline = pdf.outline(root);
+        if let (Some(&first), Some(&last)) = (roots.first(), roots.last()) {
+            outline.first(items[first]);
+            outline.last(items[last]);
+        }
+        outline.count(i32::try_from(n).unwrap_or(i32::MAX));
+    }
+
+    for (i, entry) in entries.iter().enumerate() {
+        let mut item = pdf.outline_item(items[i]);
+        item.title(TextStr(&entry.title));
+        item.parent(match parent[i] {
+            Some(p) => items[p],
+            None => root,
+        });
+
+        // Prev/next siblings within the parent's child list (or the root
+        // list for top-level entries).
+        let siblings: &[usize] = match parent[i] {
+            Some(p) => &children[p],
+            None => &roots,
+        };
+        if let Some(pos) = siblings.iter().position(|&s| s == i) {
+            if pos > 0 {
+                item.prev(items[siblings[pos - 1]]);
+            }
+            if pos + 1 < siblings.len() {
+                item.next(items[siblings[pos + 1]]);
+            }
+        }
+
+        // Children first/last + subtree count (positive → open).
+        if let (Some(&first), Some(&last)) = (children[i].first(), children[i].last()) {
+            item.first(items[first]);
+            item.last(items[last]);
+            item.count(i32::try_from(descendants[i]).unwrap_or(i32::MAX));
+        }
+
+        // Destination: land on the heading's page with the top coord
+        // flipped to bottom-origin (same convention as text runs). Bounds
+        // are guaranteed by construction; the `.get` guards skip a
+        // malformed index rather than panicking.
+        if let Some((page_ref, _)) = page_refs.get(entry.page_index)
+            && let Some(page) = graph.pages.get(entry.page_index)
+        {
+            let top = page.height_pt - entry.top_from_top_pt;
+            item.dest().page(*page_ref).xyz(0.0, top, None);
+        }
+    }
 }
 
 struct PageEmitContext<'a> {
@@ -468,7 +600,7 @@ mod tests {
     use std::error::Error;
 
     use lopdf::{Document as LopdfDocument, Object};
-    use mos_layout::{Base14Font, Font, Page, PageGraph, TextRun};
+    use mos_layout::{Base14Font, Font, OutlineEntry, Page, PageGraph, TextRun};
 
     use super::*;
 
@@ -526,6 +658,7 @@ mod tests {
                 images: Vec::new(),
             }],
             images: Vec::new(),
+            outline: Vec::new(),
         }
     }
 
@@ -621,6 +754,7 @@ mod tests {
                 images: Vec::new(),
             }],
             images: Vec::new(),
+            outline: Vec::new(),
         };
 
         let (bytes, diags) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
@@ -668,6 +802,7 @@ mod tests {
                 images: Vec::new(),
             }],
             images: Vec::new(),
+            outline: Vec::new(),
         };
 
         let (bytes, diags) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
@@ -697,6 +832,7 @@ mod tests {
                 images: Vec::new(),
             }],
             images: Vec::new(),
+            outline: Vec::new(),
         }
     }
 
@@ -881,6 +1017,7 @@ mod tests {
                 }],
             }],
             images: vec![handle],
+            outline: Vec::new(),
         }
     }
 
@@ -960,6 +1097,7 @@ mod tests {
                 ],
             }],
             images: vec![handle],
+            outline: Vec::new(),
         };
         let (bytes, _) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
         let xobject_marker = b"/Subtype /Image";
@@ -1014,5 +1152,213 @@ mod tests {
             d.message()
         );
         Ok(())
+    }
+
+    /// A single-page graph carrying the given outline entries. Every
+    /// entry lands on page 0; the page is A4 so `top_from_top_pt` flips
+    /// against `841.89`.
+    fn outline_graph(entries: Vec<OutlineEntry>) -> PageGraph {
+        PageGraph {
+            pages: vec![Page {
+                number: 1,
+                width_pt: 595.276_f32,
+                height_pt: 841.89_f32,
+                runs: Vec::new(),
+                images: Vec::new(),
+            }],
+            images: Vec::new(),
+            outline: entries,
+        }
+    }
+
+    fn entry(level: u8, title: &str, top_from_top_pt: f32) -> OutlineEntry {
+        OutlineEntry {
+            level,
+            title: title.to_owned(),
+            page_index: 0,
+            top_from_top_pt,
+        }
+    }
+
+    /// Read `key` from `dict` as an indirect-reference object id.
+    fn ref_id(
+        dict: &lopdf::Dictionary,
+        key: &[u8],
+    ) -> std::result::Result<(u32, u16), Box<dyn Error>> {
+        match dict.get(key)? {
+            Object::Reference(id) => Ok(*id),
+            other => Err(format!(
+                "expected /{} to be a reference, got {other:?}",
+                String::from_utf8_lossy(key)
+            )
+            .into()),
+        }
+    }
+
+    /// Follow catalog → /Outlines and return the root outline dictionary.
+    fn load_outlines(
+        doc: &LopdfDocument,
+    ) -> std::result::Result<&lopdf::Dictionary, Box<dyn Error>> {
+        let root_id = ref_id(&doc.trailer, b"Root")?;
+        let catalog = doc.get_dictionary(root_id)?;
+        let outlines_id = ref_id(catalog, b"Outlines")?;
+        Ok(doc.get_dictionary(outlines_id)?)
+    }
+
+    #[test]
+    fn outline_emitted_when_headings_present() -> TestResult {
+        let graph = outline_graph(vec![entry(1, "One", 100.0), entry(2, "Two", 200.0)]);
+        let (bytes, diags) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
+        ensure!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        ensure!(
+            count_bytes(&bytes, b"/Type /Outlines") >= 1,
+            "missing /Type /Outlines"
+        );
+
+        let doc = LopdfDocument::load_mem(&bytes)?;
+        let outlines = load_outlines(&doc)?;
+        // Root /Count is the full entry total (every item open).
+        let Object::Integer(count) = outlines.get(b"Count")? else {
+            return Err("missing /Count on root /Outlines".into());
+        };
+        ensure!(*count == 2, "wrong root /Count: {count}");
+        // The single top-level H1 is both first and last root child.
+        ensure!(
+            ref_id(outlines, b"First")? == ref_id(outlines, b"Last")?,
+            "single top-level entry must be both /First and /Last"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn no_outline_dict_for_heading_free_doc() -> TestResult {
+        // sample_graph() has an empty outline: no /Outlines objects, and
+        // the catalog carries no /Outlines key. Guards the byte-identical
+        // heading-free path.
+        let (bytes, _) = build_pdf(&sample_graph(), &PdfMetadata::default()).unwrap();
+        ensure!(
+            count_bytes(&bytes, b"/Outlines") == 0,
+            "heading-free doc must emit no /Outlines"
+        );
+        let doc = LopdfDocument::load_mem(&bytes)?;
+        let root_id = ref_id(&doc.trailer, b"Root")?;
+        let catalog = doc.get_dictionary(root_id)?;
+        ensure!(
+            catalog.get(b"Outlines").is_err(),
+            "catalog must not carry an /Outlines key when there are no headings"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn outline_nesting_wires_parent_first_last() -> TestResult {
+        // H1 with two H2 children.
+        let graph = outline_graph(vec![
+            entry(1, "Chapter", 100.0),
+            entry(2, "First", 200.0),
+            entry(2, "Second", 300.0),
+        ]);
+        let (bytes, _) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
+        let doc = LopdfDocument::load_mem(&bytes)?;
+        let outlines = load_outlines(&doc)?;
+
+        // The lone H1 is the single root child.
+        let h1_id = ref_id(outlines, b"First")?;
+        ensure!(h1_id == ref_id(outlines, b"Last")?, "H1 must be sole root");
+        let h1 = doc.get_dictionary(h1_id)?;
+
+        let first_h2_id = ref_id(h1, b"First")?;
+        let last_h2_id = ref_id(h1, b"Last")?;
+        ensure!(first_h2_id != last_h2_id, "the two H2 items must differ");
+
+        let first_h2 = doc.get_dictionary(first_h2_id)?;
+        let last_h2 = doc.get_dictionary(last_h2_id)?;
+        // Both H2 parents point back at the H1.
+        ensure!(
+            ref_id(first_h2, b"Parent")? == h1_id,
+            "first H2 /Parent wrong"
+        );
+        ensure!(
+            ref_id(last_h2, b"Parent")? == h1_id,
+            "last H2 /Parent wrong"
+        );
+        // The two H2s are prev/next linked in document order.
+        ensure!(ref_id(first_h2, b"Next")? == last_h2_id, "H2 /Next wrong");
+        ensure!(ref_id(last_h2, b"Prev")? == first_h2_id, "H2 /Prev wrong");
+        Ok(())
+    }
+
+    #[test]
+    fn outline_skipped_level_attaches_to_nearest_ancestor() -> TestResult {
+        // H1 then H3 (no intervening H2): the H3 must parent under the H1.
+        let graph = outline_graph(vec![entry(1, "Top", 100.0), entry(3, "Deep", 200.0)]);
+        let (bytes, _) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
+        let doc = LopdfDocument::load_mem(&bytes)?;
+        let outlines = load_outlines(&doc)?;
+
+        let h1_id = ref_id(outlines, b"First")?;
+        let h1 = doc.get_dictionary(h1_id)?;
+        let h3_id = ref_id(h1, b"First")?;
+        let h3 = doc.get_dictionary(h3_id)?;
+        ensure!(
+            ref_id(h3, b"Parent")? == h1_id,
+            "skipped-level H3 must attach to the nearest shallower ancestor (H1)"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn outline_dest_uses_flipped_top_coordinate() -> TestResult {
+        let top_from_top = 120.0_f32;
+        let graph = outline_graph(vec![entry(1, "Heading", top_from_top)]);
+        let (bytes, _) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
+        let doc = LopdfDocument::load_mem(&bytes)?;
+        let outlines = load_outlines(&doc)?;
+
+        let item = doc.get_dictionary(ref_id(outlines, b"First")?)?;
+        let Object::Array(dest) = item.get(b"Dest")? else {
+            return Err("missing /Dest array on outline item".into());
+        };
+        // Dest is [pageRef /XYZ left top zoom]; top sits at index 3 and
+        // must be page_height - top_from_top_pt (bottom-origin flip).
+        let Some(Object::Real(top)) = dest.get(3) else {
+            return Err(format!("dest top not a real: {dest:?}").into());
+        };
+        let expected = 841.89_f32 - top_from_top;
+        let within_tolerance = (*top - expected).abs() < 0.01;
+        ensure!(
+            within_tolerance,
+            "wrong dest top: {top} vs expected {expected}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn outline_pdf_is_byte_for_byte_deterministic() {
+        // The outline emit path must not introduce HashMap-iteration
+        // nondeterminism: two builds of an outline-bearing graph match.
+        let graph = outline_graph(vec![
+            entry(1, "Chapter", 100.0),
+            entry(2, "First", 200.0),
+            entry(2, "Second", 300.0),
+        ]);
+        let (a, _) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
+        let (b, _) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
+        assert_eq!(a, b, "outline emit must be byte-stable across runs");
+    }
+
+    #[test]
+    fn outline_after_populated_encoding_map_is_byte_deterministic() {
+        // `outline_graph` is base14-ASCII, so its encoding/embedded HashMaps
+        // are empty — its determinism test can't prove outline refs stay
+        // stable when allocated AFTER a HashMap-populated, variable object
+        // count. `extended_latin_graph` populates `encoding_refs`; stacking
+        // an outline on it exercises "outline allocated last, after a
+        // reseeded HashMap" across two builds.
+        let mut graph = extended_latin_graph();
+        graph.outline = vec![entry(1, "Chapter", 100.0), entry(2, "Section", 200.0)];
+        let (a, _) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
+        let (b, _) = build_pdf(&graph, &PdfMetadata::default()).unwrap();
+        assert_eq!(a, b, "outline + custom encoding build must be byte-stable");
     }
 }
