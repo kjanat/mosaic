@@ -2717,6 +2717,31 @@ mod tests {
     }
 
     #[test]
+    fn heading_nontrailing_block_comment_with_inner_slashes_keeps_text() {
+        let r = parse_str("= H /* // */ text\n");
+        assert!(
+            heading_text(&r).is_some_and(|t| t.contains("text")),
+            "content after a mid-line block comment must survive: {:?}",
+            heading_text(&r)
+        );
+        assert!(
+            lacks_code(&r, codes::MOS0050.code()),
+            "a closed mid-line block comment must not trip MOS0050: {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn heading_stray_block_closer_does_not_eat_text() {
+        let r = parse_str("= H /* a */ text */\n");
+        assert!(
+            heading_text(&r).is_some_and(|t| t.contains("text")),
+            "a stray `*/` must not silently eat heading text: {:?}",
+            heading_text(&r)
+        );
+    }
+
+    #[test]
     fn block_comment_inside_emphasis_stripped() {
         let r = parse_str("*a /* c */ b*\n");
         let (inlines, _) = r.tree.items[0].as_paragraph().unwrap();

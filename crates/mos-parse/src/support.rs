@@ -139,11 +139,24 @@ pub fn clean_doc_text(raw: &str) -> String {
 /// The comment marker must sit at a whitespace boundary (start of range, or a
 /// preceding space/tab/newline) and be followed by a space or the range end.
 /// The returned offset excludes the whitespace run immediately before `//`, so
-/// `Title // note` trims to `Title` (no dangling space).
+/// `Title // note` trims to `Title` (no dangling space). A `//` inside a
+/// `/* … */` block comment is skipped, so `Title /* // note */` is not mistaken
+/// for a line comment that would truncate the block comment mid-way.
 #[must_use]
 pub fn trailing_line_comment_start(bytes: &[u8], start: usize, end: usize) -> Option<usize> {
     let mut j = start;
     while j < end {
+        if j + 1 < end && bytes[j] == b'/' && bytes[j + 1] == b'*' {
+            let mut k = j + 2;
+            while k + 1 < end && !(bytes[k] == b'*' && bytes[k + 1] == b'/') {
+                k += 1;
+            }
+            if k + 1 >= end {
+                return None;
+            }
+            j = k + 2;
+            continue;
+        }
         let boundary = j == start || matches!(bytes[j - 1], b' ' | b'\t' | b'\n' | b'\r');
         if boundary && double_slash_comment(bytes, j, end) {
             let mut cut = j;
@@ -164,10 +177,13 @@ pub fn trailing_line_comment_start(bytes: &[u8], start: usize, end: usize) -> Op
 /// label instead of hiding it behind the comment.
 ///
 /// Only a *closed* trailing comment is stripped; the returned offset excludes
-/// the whitespace run immediately before `/*`. Block comments do not nest, so
-/// the opener is the nearest preceding `/*` that does not overlap the closing
-/// `*/`. An unterminated `/*` (no matching `*/` at the line end) is left in
-/// place for the inline scanner to diagnose (`MOS0050`).
+/// the whitespace run immediately before `/*`. Comments are paired
+/// left-to-right (each `/*` with its nearest `*/`), and only a comment whose
+/// closer lands exactly at the range end counts as trailing — so a stray `*/`
+/// cannot bind to an already-closed earlier opener and silently eat the prose
+/// between them (`= H /* a */ text */`). An unterminated `/*` (no matching `*/`
+/// at the line end) is left in place for the inline scanner to diagnose
+/// (`MOS0050`).
 #[must_use]
 pub fn trailing_block_comment_start(bytes: &[u8], start: usize, end: usize) -> Option<usize> {
     let mut e = end;
@@ -178,22 +194,30 @@ pub fn trailing_block_comment_start(bytes: &[u8], start: usize, end: usize) -> O
     if e < start + 4 || bytes[e - 1] != b'/' || bytes[e - 2] != b'*' {
         return None;
     }
-    // Scan back for the opener, starting at the last index where a `/*` could
-    // sit without overlapping the closer's `*/` at `[e - 2, e)`.
-    let mut k = e - 4;
-    loop {
+    let mut k = start;
+    let mut trailing_open = None;
+    while k + 1 < e {
         if bytes[k] == b'/' && bytes[k + 1] == b'*' {
-            let mut cut = k;
-            while cut > start && matches!(bytes[cut - 1], b' ' | b'\t') {
-                cut -= 1;
+            let mut close = k + 2;
+            while close + 1 < e && !(bytes[close] == b'*' && bytes[close + 1] == b'/') {
+                close += 1;
             }
-            return Some(cut);
+            if close + 1 >= e {
+                return None;
+            }
+            if close + 2 == e {
+                trailing_open = Some(k);
+            }
+            k = close + 2;
+        } else {
+            k += 1;
         }
-        if k == start {
-            return None;
-        }
-        k -= 1;
     }
+    let mut cut = trailing_open?;
+    while cut > start && matches!(bytes[cut - 1], b' ' | b'\t') {
+        cut -= 1;
+    }
+    Some(cut)
 }
 
 /// Skip ASCII whitespace (space, tab, CR, LF) inside a `#set` body.
