@@ -97,7 +97,7 @@ fixpoints, Knuth-Plass, automatic hyphenation, reproducible/frozen builds, impor
 - Rust stable, edition 2024, workspace/product MSRV 1.96, workspace resolver 3.
 - Public Rust crate APIs are pre-alpha: patch releases may break APIs. Tell external crate consumers
   to pin exact patch versions.
-- `CLAUDE.md` is a symlink; edit `AGENTS.md` only.
+- `CLAUDE.md` is an `@AGENTS.md` import (not a symlink); edit `AGENTS.md` only.
 - Workspace lints are strict. `unsafe_code = "forbid"`; CI uses `-D warnings -D clippy::all`.
 - Clippy set is curated. Do not enable whole pedantic/nursery/restriction groups.
 - Formatting runs through local `dprint`; TOML via `tombi`; Rust via `rustfmt`; `justfile` via
