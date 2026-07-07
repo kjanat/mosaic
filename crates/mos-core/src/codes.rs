@@ -400,6 +400,9 @@ define_codes! {
     /// Heading `<label>` is not trailing.
     MOS0048 = 48, Warning, Syntax, "heading-label-not-trailing", "mos-parse",
         "syntax: heading label is not the last element on the line; treated as text";
+    /// Unterminated `/*` block comment; consumed to end of input.
+    MOS0050 = 50, Warning, Syntax, "unterminated-block-comment", "mos-parse",
+        "syntax: unterminated /* block comment; consumed to end of input";
     /// BibTeX database could not be parsed (`mos-bib`).
     MOS0043 = 43, Error, Syntax, "bibtex-parse-failed", "mos-bib",
         "syntax: BibTeX database could not be parsed";

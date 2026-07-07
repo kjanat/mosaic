@@ -8,6 +8,32 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Source comments in `.mos` (previously typeset verbatim into the output). [`mos-parse`][mos-parse]
+  now recognizes `//` line comments, `/* … */` block comments, and `/** … */` doc comments and drops
+  them so they produce no rendered output. Line comments are URL-safe — the `//` must sit at a
+  whitespace boundary and be followed by a space or line end, so `https://example.com` is never
+  eaten — and comments stay verbatim inside inline `` `code` ``, `#pre`/`#code` raw blocks, and
+  directive string arguments. Block/doc comments are recognized at line start, trailing a line, or
+  mid-line, and may span lines; an unterminated `/*` is a recoverable `MOS0050` warning (never a
+  panic). `//` and `/*` comments are stripped; `/**` doc comments are preserved (see below).
+
+- First-class `/** … */` doc comments with LSP hover. A doc comment is no longer dropped like a
+  block comment: [`mos-parse`][mos-parse] keeps it as a CST node (cleaning jsdoc-style `*`
+  continuation markers), [`mos-eval`][mos-eval] attaches its text as a `doc` attribute onto the
+  heading or paragraph it precedes (cleared on non-documentable blocks so it never leaks onto a
+  later node), and [`mos-lsp`][mos-lsp] answers `textDocument/hover` (new `hoverProvider`
+  capability) with that text as Markdown when the cursor is on the block or on any `@label`
+  reference to it, so documentation follows the symbol. Plain `//` and `/*` comments stay dropped;
+  `/**/` remains an empty block comment, not a doc comment.
+
+- Editor grammar mirrors the compiler's comment handling: [`tree-sitter-mosaic`][tree-sitter-mosaic]
+  now treats `//` line and `/* … */` / `/** … */` block comments as trivia when they trail a line or
+  sit mid-line, not only at a line/block boundary, so Zed highlighting matches what `mos` strips.
+  Comment and inline-text recognition moved into the external scanner to share the compiler's
+  URL-safe `//` rule (`https://x` stays prose) and to let a block call terminate before trailing
+  content (`#pagebreak() // note`, `#import"x"`). Highlight and corpus tests cover the new
+  positions.
+
 - PDF heading bookmarks/outlines: `mos build` now emits a PDF `/Outlines` tree so headings appear in
   the reader's bookmark panel. [`mos-layout`][mos-layout] captures each heading during layout as an
   ordered `OutlineEntry` (level, `"{number} {text}"` title, start page, glyph-top y — bound to the

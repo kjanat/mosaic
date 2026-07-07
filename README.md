@@ -25,7 +25,8 @@ under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed
 
 - [x] parser for headings (`= …`, `== …`, `=== …`), paragraphs, inline `*emphasis*` / `**strong**` /
       `` `code` `` / `[@key]` citations, `-` / `N.` lists with hanging indents and indented
-      continuation lines, and `#set name(...)` blocks;
+      continuation lines, `#set name(...)` blocks, and `//` line / `/* */` block / `/** */` doc
+      comments (URL-safe, verbatim inside code and raw blocks; produce no output);
 - [x] author-facing line-break controls (issue #26 pieces 1/2/3): a literal U+00A0 NBSP that the
       greedy breaker never splits, a `\\` hard line break for forced mid-paragraph breaks, and a
       `\-` (or literal U+00AD) soft hyphen that stays invisible when the word fits and otherwise
@@ -40,8 +41,8 @@ under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed
       Sans, with PNG/JPEG raster images, figure captions, and heading bookmarks in the PDF outline
       panel (manifest §6 stages 5–9, §21.1);
 - [x] `mos-lsp` publishes current compiler diagnostics over stdio LSP on open/change, answers
-      `textDocument/definition` for `@label` references, renames labels, and exposes compiler
-      suggestions as code actions;
+      `textDocument/definition` for `@label` references, renames labels, exposes compiler
+      suggestions as code actions, and shows a symbol's `/** … */` doc comment on hover;
 - [ ] HTML and EPUB backends, persistent incremental cache, CSL-styled bibliographies, and richer
       LSP features; see MVP 1–6 in `manifest.md`. The numeric slice is shipped end to end: citation
       keys resolve, resolved `[@key]` markers render numeric labels (`[1]`, ...), and the cited

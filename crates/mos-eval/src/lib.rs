@@ -49,6 +49,9 @@ use set::lower_set_directive;
 
 const LABEL_SPAN_START_ATTR: &str = "label_span.start";
 const LABEL_SPAN_END_ATTR: &str = "label_span.end";
+/// Attribute key holding a node's attached `/** … */` doc-comment text. Read
+/// by the LSP hover handler.
+pub const DOC_ATTR: &str = "doc";
 
 fn insert_label_attributes(attributes: &mut AttrMap, label: &str, label_span: Option<&SourceSpan>) {
     attributes.insert("label".to_owned(), AttrValue::Str(label.to_owned()));
@@ -218,6 +221,11 @@ struct EvaluationState {
     metadata: DocumentMetadata,
     current_text_size_pt: f64,
     reads_external_resources: bool,
+    /// Text of a `/** … */` doc comment seen but not yet attached. The next
+    /// documentable block (heading, paragraph) consumes it as a `doc`
+    /// attribute; a non-documentable block (`#set`, list, raw block) clears it
+    /// so it never leaks onto a later node. `None` when no doc comment is pending.
+    pending_doc: Option<String>,
 }
 
 impl EvaluationState {
@@ -228,6 +236,7 @@ impl EvaluationState {
             metadata: DocumentMetadata::default(),
             current_text_size_pt: 11.0,
             reads_external_resources: false,
+            pending_doc: None,
         }
     }
 
@@ -241,25 +250,45 @@ impl EvaluationState {
     }
 
     fn lower_item(&mut self, item: &Item, source_file: &std::path::Path) {
+        // A `/** … */` doc comment attaches to the immediately-following
+        // documentable block (heading or paragraph). Every other block clears
+        // any pending doc so it never leaks onto a later node.
         match item {
+            Item::DocComment { text, .. } => {
+                self.pending_doc = Some(text.clone());
+            }
             Item::Heading {
                 level,
                 inlines,
                 label,
                 label_span,
                 span,
-            } => self.lower_heading(*level, inlines, label.as_deref(), label_span.as_ref(), span),
+            } => {
+                let doc = self.pending_doc.take();
+                self.lower_heading(
+                    *level,
+                    inlines,
+                    label.as_deref(),
+                    label_span.as_ref(),
+                    span,
+                    doc,
+                );
+            }
             Item::Paragraph {
                 inlines,
                 label,
                 label_span,
                 span,
-            } => self.lower_paragraph(inlines, label.as_deref(), label_span.as_ref(), span),
+            } => {
+                let doc = self.pending_doc.take();
+                self.lower_paragraph(inlines, label.as_deref(), label_span.as_ref(), span, doc);
+            }
             Item::List {
                 ordered,
                 items,
                 span,
             } => {
+                self.pending_doc = None;
                 let root = self.document.root;
                 lower_list(&mut self.document, root, *ordered, items, span);
             }
@@ -271,6 +300,7 @@ impl EvaluationState {
                 span,
                 ..
             } => {
+                self.pending_doc = None;
                 let root = self.document.root;
                 lower_raw_block(
                     &mut self.document,
@@ -287,7 +317,10 @@ impl EvaluationState {
                 name,
                 args,
                 span,
-            } => self.lower_directive(*kind, name, args, span, source_file),
+            } => {
+                self.pending_doc = None;
+                self.lower_directive(*kind, name, args, span, source_file);
+            }
         }
     }
 
@@ -298,11 +331,15 @@ impl EvaluationState {
         label: Option<&str>,
         label_span: Option<&SourceSpan>,
         span: &SourceSpan,
+        doc: Option<String>,
     ) {
         let mut attributes: AttrMap = BTreeMap::new();
         attributes.insert("level".to_owned(), AttrValue::Int(i64::from(level)));
         if let Some(id) = label {
             insert_label_attributes(&mut attributes, id, label_span);
+        }
+        if let Some(doc) = doc {
+            attributes.insert(DOC_ATTR.to_owned(), AttrValue::Str(doc));
         }
         let heading = self.document.alloc_child(
             self.document.root,
@@ -317,10 +354,14 @@ impl EvaluationState {
         label: Option<&str>,
         label_span: Option<&SourceSpan>,
         span: &SourceSpan,
+        doc: Option<String>,
     ) {
         let mut attributes: AttrMap = BTreeMap::new();
         if let Some(id) = label {
             insert_label_attributes(&mut attributes, id, label_span);
+        }
+        if let Some(doc) = doc {
+            attributes.insert(DOC_ATTR.to_owned(), AttrValue::Str(doc));
         }
         let para = self.document.alloc_child(
             self.document.root,
@@ -534,6 +575,113 @@ mod tests {
         );
         assert!(!attributes.contains_key(LABEL_SPAN_START_ATTR));
         assert!(!attributes.contains_key(LABEL_SPAN_END_ATTR));
+    }
+
+    #[test]
+    fn doc_comment_attaches_to_following_heading() {
+        let file = PathBuf::from("test.mos");
+        let r = lower("/** Section doc. */\n= Intro <intro>\n", &file);
+        let section = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Section)
+            .expect("a section node");
+        assert_eq!(
+            section.attributes.get(DOC_ATTR),
+            Some(&AttrValue::Str("Section doc.".to_owned())),
+        );
+    }
+
+    #[test]
+    fn doc_comment_attaches_to_following_paragraph() {
+        let file = PathBuf::from("test.mos");
+        let r = lower("/** Para doc. */\nBody text.\n", &file);
+        let para = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Paragraph)
+            .expect("a paragraph node");
+        assert_eq!(
+            para.attributes.get(DOC_ATTR),
+            Some(&AttrValue::Str("Para doc.".to_owned())),
+        );
+    }
+
+    #[test]
+    fn doc_comment_does_not_leak_past_a_non_documentable_block() {
+        // A `#set` between the doc comment and the heading clears the pending
+        // doc, so it never attaches to a later node.
+        let file = PathBuf::from("test.mos");
+        let r = lower("/** stray */\n#set document(title: \"x\")\n\n= H\n", &file);
+        let section = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Section)
+            .expect("a section node");
+        assert!(
+            !section.attributes.contains_key(DOC_ATTR),
+            "doc must not leak past #set"
+        );
+    }
+
+    #[test]
+    fn doc_comment_does_not_attach_to_or_leak_past_a_list() {
+        let file = PathBuf::from("test.mos");
+        let r = lower("/** stray */\n- item\n\n= H\n", &file);
+        let list = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::List)
+            .expect("a list node");
+        assert!(
+            !list.attributes.contains_key(DOC_ATTR),
+            "doc must not attach to a list"
+        );
+        let section = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Section)
+            .expect("a section node");
+        assert!(
+            !section.attributes.contains_key(DOC_ATTR),
+            "doc must not leak past a list"
+        );
+    }
+
+    #[test]
+    fn doc_comment_does_not_attach_to_or_leak_past_a_raw_block() {
+        let file = PathBuf::from("test.mos");
+        let r = lower("/** stray */\n#code[[x]]\n\n= H\n", &file);
+        let raw = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Raw)
+            .expect("a raw node");
+        assert!(
+            !raw.attributes.contains_key(DOC_ATTR),
+            "doc must not attach to a raw block"
+        );
+        let section = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Section)
+            .expect("a section node");
+        assert!(
+            !section.attributes.contains_key(DOC_ATTR),
+            "doc must not leak past a raw block"
+        );
+    }
+
+    #[test]
+    fn plain_block_comment_attaches_no_doc() {
+        let file = PathBuf::from("test.mos");
+        let r = lower("/* not doc */\n= H\n", &file);
+        let section = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Section)
+            .expect("a section node");
+        assert!(!section.attributes.contains_key(DOC_ATTR));
     }
 
     #[test]

@@ -25,13 +25,17 @@ Shipped slice:
 - `mos check`: parse, lower, resolve, source diagnostics for files/projects.
 - `mos build`: parse, lower, layout, PDF output under direct-file or `[output].pdf` paths.
 - Parser/eval: headings, paragraphs, lists, inline styling/code/refs/page-refs/citations, raw
-  `#pre`/`#code` blocks, `#set`, images, figures, hard breaks, soft hyphen, NBSP, `#bibliography`.
+  `#pre`/`#code` blocks, `#set`, images, figures, hard breaks, soft hyphen, NBSP, `#bibliography`,
+  `//` + `/* */` comments (recognized and dropped) plus `/** */` doc comments (preserved as an
+  `Item::DocComment`, attached to the next heading/paragraph for LSP hover); markers stay verbatim
+  in code/raw; unterminated `/*` is `MOS0050`.
 - Bibliography: minimal BibTeX + CSL data/style parsing, citation-key checks, numeric `[@key]`
   labels by first use, and a rendered cited-entry list (plain text, first-use order) at the
   `#bibliography` site. CSL-styled rendering is not shipped.
 - Layout/PDF: greedy flow, pages, figures/images, Base-14 + Noto embedding/subsetting, ToUnicode,
   heading bookmarks (`/Outlines`), deterministic provenance.
-- LSP: diagnostics, definition for labels/citations, label rename, document symbols, code actions.
+- LSP: diagnostics, definition for labels/citations, label rename, document symbols, code actions,
+  hover (a symbol's `/** … */` doc comment).
 
 Aspirational/stub unless user asks: HTML/EPUB/SVG, persistent cache, watch/formatter/package
 systems, math/tables/footnotes/index/glossary, float solver, TOC generation, broad pagination
@@ -94,7 +98,7 @@ fixpoints, Knuth-Plass, automatic hyphenation, reproducible/frozen builds, impor
 - Rust stable, edition 2024, workspace/product MSRV 1.96, workspace resolver 3.
 - Public Rust crate APIs are pre-alpha: patch releases may break APIs. Tell external crate consumers
   to pin exact patch versions.
-- `CLAUDE.md` is a symlink; edit `AGENTS.md` only.
+- `CLAUDE.md` is an `@AGENTS.md` import (not a symlink); edit `AGENTS.md` only.
 - Workspace lints are strict. `unsafe_code = "forbid"`; CI uses `-D warnings -D clippy::all`.
 - Clippy set is curated. Do not enable whole pedantic/nursery/restriction groups.
 - Formatting runs through local `dprint`; TOML via `tombi`; Rust via `rustfmt`; `justfile` via
@@ -148,6 +152,13 @@ just doc-nightly
 - `just fmt`, `just examples`, and `just doc-nightly` run through `runner-run`; `just setup`
   bootstraps it.
 - `just examples` mutates committed snapshot PDFs via `runner mos build examples/*`.
+- `mos build examples/*` writes one fewer PDF than it has args, and that is **by design, not a
+  bug**: the glob sweeps in `examples/AGENTS.md`, and multi-entry `mos build` silently skips
+  non-`.mos` *files* so globbed docs/READMEs don't error (`should_skip_glob_file` / `is_mos_source`,
+  gated on `entries.len() > 1`, in `crates/mos/src/main.rs`). Directory args always resolve to
+  `main.mos`, so only bare non-`.mos` files are skipped. Run alone, `mos build examples/AGENTS.md`
+  has no skip and *does* build it (into the gitignored `examples/build/`). Do not re-investigate the
+  8-in/7-out as a defect.
 - `just sync-zed-queries` overwrites copied Zed query files from Tree-sitter query sources.
 - `crates/tree-sitter-mosaic/src/parser.c`, `src/grammar.json`, and `src/node-types.json` are
   generated from `grammar.js` and scanner code.

@@ -118,6 +118,10 @@ fn handle_message<W: Write>(
             write_response(writer, id, &document_symbol_result(state, message))?;
             Ok(false)
         }
+        (Some("textDocument/hover"), Some(id)) => {
+            write_response(writer, id, &hover_result(state, message))?;
+            Ok(false)
+        }
         (Some("textDocument/didOpen"), _) => {
             if let Some(doc) = message.pointer("/params/textDocument")
                 && let (Some(uri), Some(text)) = (
@@ -196,6 +200,8 @@ fn initialize_result() -> Value {
             "renameProvider": true,
             // Quick fixes are projected from compiler `Suggestion`s.
             "codeActionProvider": true,
+            // Hover shows a symbol's attached `/** … */` doc comment.
+            "hoverProvider": true,
         },
         "serverInfo": {
             "name": "mos-lsp",
@@ -246,6 +252,27 @@ fn definition_result(state: &mut ServerState, message: &Value) -> Value {
         })
     });
     target.flatten().unwrap_or(Value::Null)
+}
+
+/// Build the `textDocument/hover` response: the `/** … */` doc comment attached
+/// to the symbol under the cursor (a heading, a `<label>` block, or an
+/// `@label` / `@page(label)` reference to one), rendered as Markdown. `null`
+/// when the cursor is not on a documented symbol.
+fn hover_result(state: &mut ServerState, message: &Value) -> Value {
+    let Some(uri) = message
+        .pointer("/params/textDocument/uri")
+        .and_then(Value::as_str)
+    else {
+        return Value::Null;
+    };
+    let Some(position) = read_position(message) else {
+        return Value::Null;
+    };
+    let hover = with_lowering(state, uri, |lowered, path, src| {
+        crate::hover::doc_at(&lowered.document, path, src, position)
+            .map(|doc| json!({ "contents": { "kind": "markdown", "value": doc } }))
+    });
+    hover.flatten().unwrap_or(Value::Null)
 }
 
 /// Run `f` against the lowering for `uri`: a cached one when present, else a
@@ -778,12 +805,12 @@ mod tests {
     #[test]
     fn unknown_request_returns_method_not_found() {
         let mut input: Vec<u8> = Vec::new();
-        // `textDocument/hover` is not implemented: an unhandled request
+        // `textDocument/foldingRange` is not implemented: an unhandled request
         // must still get a MethodNotFound reply so the client doesn't hang.
         input.extend(frame(&json!({
             "jsonrpc": "2.0",
             "id": 7,
-            "method": "textDocument/hover",
+            "method": "textDocument/foldingRange",
             "params": {},
         })));
         input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
@@ -825,6 +852,7 @@ mod tests {
         );
         assert_eq!(capabilities.get("renameProvider"), Some(&json!(true)));
         assert_eq!(capabilities.get("codeActionProvider"), Some(&json!(true)));
+        assert_eq!(capabilities.get("hoverProvider"), Some(&json!(true)));
     }
 
     #[test]
@@ -1105,6 +1133,83 @@ mod tests {
             .expect("definition response");
         assert_eq!(reply.pointer("/result/uri"), Some(&json!(uri)));
         assert_eq!(reply.pointer("/result/range/start/line"), Some(&json!(0)));
+    }
+
+    /// Drive a `didOpen` + `textDocument/hover` round-trip and return the hover
+    /// reply (id 11).
+    fn hover_reply(uri: &str, src: &str, position: LspPosition) -> Value {
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": "mosaic",
+                    "version": 1,
+                    "text": src,
+                },
+            },
+        })));
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": position.line, "character": position.character },
+            },
+        })));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+        decode_messages(&writer)
+            .into_iter()
+            .find(|m| m.get("id") == Some(&json!(11)))
+            .expect("hover response")
+    }
+
+    #[test]
+    fn hover_on_heading_returns_its_doc_comment() {
+        let uri = "file:///virtual/main.mos";
+        let src = "/** Intro doc. */\n= Intro <intro>\n\nSee @intro here.\n";
+        // Cursor inside the heading title "Intro" on line 1.
+        let cursor = src.find("Intro <").map_or(0, |at| at + 1);
+        let reply = hover_reply(uri, src, byte_to_position(src, cursor));
+        assert_eq!(
+            reply.pointer("/result/contents/value"),
+            Some(&json!("Intro doc.")),
+        );
+        assert_eq!(
+            reply.pointer("/result/contents/kind"),
+            Some(&json!("markdown")),
+        );
+    }
+
+    #[test]
+    fn hover_on_reference_returns_target_doc_comment() {
+        // Documentation follows the symbol: hovering `@intro` shows the doc
+        // comment attached to the `<intro>` heading it points at.
+        let uri = "file:///virtual/main.mos";
+        let src = "/** Intro doc. */\n= Intro <intro>\n\nSee @intro here.\n";
+        let cursor = src.find("@intro").map_or(0, |at| at + 2);
+        let reply = hover_reply(uri, src, byte_to_position(src, cursor));
+        assert_eq!(
+            reply.pointer("/result/contents/value"),
+            Some(&json!("Intro doc.")),
+        );
+    }
+
+    #[test]
+    fn hover_off_a_documented_symbol_returns_null() {
+        let uri = "file:///virtual/main.mos";
+        let src = "/** Intro doc. */\n= Intro <intro>\n\nplain text here.\n";
+        // Cursor in the undocumented paragraph.
+        let cursor = src.find("plain").map_or(0, |at| at + 1);
+        let reply = hover_reply(uri, src, byte_to_position(src, cursor));
+        assert_eq!(reply.pointer("/result"), Some(&Value::Null));
     }
 
     #[test]

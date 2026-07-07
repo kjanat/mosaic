@@ -2,7 +2,10 @@ use mos_core::{DiagnosticAnnotation, Suggestion, codes};
 
 use crate::Item;
 use crate::parser::Parser;
-use crate::support::{locate_label, strip_leading_label, strip_trailing_label};
+use crate::support::{
+    locate_label, strip_leading_label, strip_trailing_label, trailing_block_comment_start,
+    trailing_line_comment_start,
+};
 
 impl Parser<'_> {
     pub(crate) fn parse_heading(&mut self) {
@@ -21,6 +24,15 @@ impl Parser<'_> {
         while i < content_end && (bytes[i] == b' ' || bytes[i] == b'\t') {
             i += 1;
         }
+        // Excise a trailing `// ` or `/* … */` comment before label/inline
+        // parsing, so a heading like `= Title <lbl> // note` (or `/* note */`)
+        // still attaches `<lbl>` (the comment would otherwise sit after the
+        // label and hide it from `strip_trailing_label`, spuriously tripping
+        // MOS0048). A non-trailing block comment is left in place and stripped
+        // later by the inline scanner.
+        let content_end =
+            trailing_block_comment_start(bytes, i, content_end).unwrap_or(content_end);
+        let content_end = trailing_line_comment_start(bytes, i, content_end).unwrap_or(content_end);
         let (text_end, parsed_label) = strip_trailing_label(self.src, i, content_end);
         if parsed_label.is_none() {
             self.flag_misplaced_heading_label(i, content_end);
@@ -105,6 +117,13 @@ impl Parser<'_> {
                 break;
             }
             if self.at_directive_keyword().is_some() || self.at_list_marker() {
+                break;
+            }
+            // A line opening a `/* */` block comment ends the paragraph so
+            // `run()` can consume it (possibly across lines). Whole-line `//`
+            // comments are intentionally NOT a break: the inline scanner excises
+            // them so surrounding text stays one paragraph.
+            if self.at_block_comment() {
                 break;
             }
             let (line_start, content_end, line_end) = self.current_line_bounds();

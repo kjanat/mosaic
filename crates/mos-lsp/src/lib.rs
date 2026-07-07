@@ -26,6 +26,8 @@ pub mod diagnostics;
 #[doc(hidden)]
 pub mod document_symbol;
 #[doc(hidden)]
+pub mod hover;
+#[doc(hidden)]
 pub mod rename;
 #[doc(hidden)]
 pub mod server;

@@ -54,6 +54,9 @@ enum TokenType {
     RAW_BODY_OPEN,
     RAW_BODY_CONTENT,
     RAW_BODY_CLOSE,
+    COMMENT,
+    INLINE_TEXT,
+    CALL_END,
     ERROR_SENTINEL,
 };
 
@@ -63,6 +66,7 @@ typedef struct {
     uint32_t list_marker_columns[MAX_LIST_DEPTH];
     uint8_t list_depth;
     bool in_raw_body;
+    bool eof_line_end_emitted;
 } Scanner;
 
 typedef enum {
@@ -505,6 +509,167 @@ static bool scan_raw_body_content(Scanner *scanner, TSLexer *lexer) {
     return true;
 }
 
+static inline bool is_text_stop(int32_t code) {
+    switch (code) {
+        case '#':
+        case '$':
+        case '*':
+        case '`':
+        case '@':
+        case '<':
+        case '\\':
+        case '[':
+        case ']':
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool scan_comment(TSLexer *lexer) {
+    if (!is_hspace(lexer->lookahead) && lexer->lookahead != '/') {
+        return false;
+    }
+
+    bool at_line_start = lexer->get_column(lexer) == 0;
+    uint32_t leading_ws = 0;
+    while (is_hspace(lexer->lookahead)) {
+        skip(lexer);
+        leading_ws++;
+    }
+
+    if (lexer->lookahead != '/') {
+        return false;
+    }
+    advance(lexer);
+
+    if (lexer->lookahead == '/') {
+        bool boundary_ok = at_line_start || leading_ws > 0;
+        advance(lexer);
+        bool sep_ok = is_hspace(lexer->lookahead) || is_line_end(lexer->lookahead)
+                      || lexer->eof(lexer);
+        if (!boundary_ok || !sep_ok) {
+            return false;
+        }
+        while (!is_line_end(lexer->lookahead) && !lexer->eof(lexer)) {
+            advance(lexer);
+        }
+        lexer->mark_end(lexer);
+        lexer->result_symbol = COMMENT;
+        return true;
+    }
+
+    if (lexer->lookahead == '*') {
+        advance(lexer);
+        for (;;) {
+            if (lexer->eof(lexer)) {
+                return false;
+            }
+            if (lexer->lookahead == '*') {
+                advance(lexer);
+                if (lexer->lookahead == '/') {
+                    advance(lexer);
+                    break;
+                }
+            } else {
+                advance(lexer);
+            }
+        }
+        lexer->mark_end(lexer);
+        lexer->result_symbol = COMMENT;
+        return true;
+    }
+
+    return false;
+}
+
+static bool scan_text(TSLexer *lexer) {
+    bool consumed = false;
+    bool prev_ws = lexer->get_column(lexer) == 0;
+
+    if (lexer->lookahead == '=') {
+        uint32_t eq = 0;
+        while (lexer->lookahead == '=') {
+            advance(lexer);
+            eq++;
+        }
+        if (eq >= 1 && eq <= 6 && is_hspace(lexer->lookahead)) {
+            return false;
+        }
+        consumed = true;
+        prev_ws = false;
+        lexer->mark_end(lexer);
+    }
+
+    for (;;) {
+        int32_t c = lexer->lookahead;
+        if (lexer->eof(lexer) || is_line_end(c) || is_text_stop(c)) {
+            if (consumed) {
+                lexer->mark_end(lexer);
+            }
+            break;
+        }
+        if (c == '/') {
+            advance(lexer);
+            int32_t c2 = lexer->lookahead;
+            if (c2 == '*') {
+                if (consumed) {
+                    lexer->result_symbol = INLINE_TEXT;
+                    return true;
+                }
+                return false;
+            }
+            if (c2 == '/') {
+                advance(lexer);
+                int32_t c3 = lexer->lookahead;
+                bool sep = is_hspace(c3) || is_line_end(c3) || lexer->eof(lexer);
+                if (prev_ws && sep) {
+                    if (consumed) {
+                        lexer->result_symbol = INLINE_TEXT;
+                        return true;
+                    }
+                    return false;
+                }
+                consumed = true;
+                prev_ws = false;
+                lexer->mark_end(lexer);
+                continue;
+            }
+            consumed = true;
+            prev_ws = false;
+            lexer->mark_end(lexer);
+            continue;
+        }
+        advance(lexer);
+        consumed = true;
+        if (is_hspace(c)) {
+            prev_ws = true;
+        } else {
+            prev_ws = false;
+            lexer->mark_end(lexer);
+        }
+    }
+
+    if (consumed) {
+        lexer->result_symbol = INLINE_TEXT;
+        return true;
+    }
+    return false;
+}
+
+static bool scan_call_end(TSLexer *lexer) {
+    int32_t c = lexer->lookahead;
+    if (lexer->eof(lexer) || is_line_end(c) || is_hspace(c)) {
+        return false;
+    }
+    if (c == '.' || c == '(' || c == '<' || c == '[') {
+        return false;
+    }
+    lexer->mark_end(lexer);
+    lexer->result_symbol = CALL_END;
+    return true;
+}
+
 /**
  * Choose and run the appropriate external token scanner based on parser context.
  *
@@ -548,6 +713,12 @@ bool tree_sitter_mosaic_external_scanner_scan(
         }
     }
 
+    if (valid_symbols[COMMENT]) {
+        if (scan_comment(lexer)) {
+            return true;
+        }
+    }
+
     if (valid_symbols[UNORDERED_LIST_MARKER]) {
         if (scan_unordered_list_marker(scanner, lexer)) {
             return true;
@@ -571,6 +742,24 @@ bool tree_sitter_mosaic_external_scanner_scan(
         }
     }
 
+    if (valid_symbols[LINE_END] && lexer->eof(lexer) && !scanner->eof_line_end_emitted) {
+        scanner->eof_line_end_emitted = true;
+        lexer->result_symbol = LINE_END;
+        return true;
+    }
+
+    if (valid_symbols[CALL_END]) {
+        if (scan_call_end(lexer)) {
+            return true;
+        }
+    }
+
+    if (valid_symbols[INLINE_TEXT]) {
+        if (scan_text(lexer)) {
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -587,13 +776,14 @@ void tree_sitter_mosaic_external_scanner_reset(void *payload) {
     scanner->raw_eq_count = 0;
     scanner->list_depth = 0;
     scanner->in_raw_body = false;
+    scanner->eof_line_end_emitted = false;
 }
 
 unsigned tree_sitter_mosaic_external_scanner_serialize(
     void *payload,
     char *buffer) {
     Scanner *scanner = (Scanner *)payload;
-    buffer[0] = scanner->in_raw_body ? 1 : 0;
+    buffer[0] = (char)((scanner->in_raw_body ? 1 : 0) | (scanner->eof_line_end_emitted ? 2 : 0));
     buffer[1] = (char)(scanner->raw_eq_count & 0xff);
     buffer[2] = (char)((scanner->raw_eq_count >> 8) & 0xff);
     buffer[3] = (char)((scanner->raw_eq_count >> 16) & 0xff);
@@ -626,8 +816,10 @@ void tree_sitter_mosaic_external_scanner_deserialize(
     scanner->raw_eq_count = 0;
     scanner->list_depth = 0;
     scanner->in_raw_body = false;
+    scanner->eof_line_end_emitted = false;
     if (length >= 5) {
-        scanner->in_raw_body = buffer[0] != 0;
+        scanner->in_raw_body = (buffer[0] & 1) != 0;
+        scanner->eof_line_end_emitted = (buffer[0] & 2) != 0;
         scanner->raw_eq_count = (uint32_t)(unsigned char)buffer[1]
             | ((uint32_t)(unsigned char)buffer[2] << 8)
             | ((uint32_t)(unsigned char)buffer[3] << 16)

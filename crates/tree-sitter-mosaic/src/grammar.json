@@ -366,10 +366,6 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "comment"
-        },
-        {
-          "type": "SYMBOL",
           "name": "set_directive"
         },
         {
@@ -415,44 +411,6 @@
           "type": "SYMBOL",
           "name": "_line_end"
         }
-      }
-    },
-    "comment": {
-      "type": "TOKEN",
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "STRING",
-                "value": "//"
-              },
-              {
-                "type": "PATTERN",
-                "value": "[^\\n\\r]*"
-              }
-            ]
-          },
-          {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "STRING",
-                "value": "/*"
-              },
-              {
-                "type": "PATTERN",
-                "value": "[^*]*\\*+([^/*][^*]*\\*+)*"
-              },
-              {
-                "type": "STRING",
-                "value": "/"
-              }
-            ]
-          }
-        ]
       }
     },
     "shebang": {
@@ -588,16 +546,8 @@
             ]
           },
           {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "_line_end"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
+            "type": "SYMBOL",
+            "name": "_line_end"
           }
         ]
       }
@@ -1706,7 +1656,7 @@
             "type": "ALIAS",
             "content": {
               "type": "SYMBOL",
-              "name": "_inline_sequence"
+              "name": "_paragraph_first_segment"
             },
             "named": true,
             "value": "paragraph_segment"
@@ -1851,6 +1801,92 @@
           "name": "text"
         }
       ]
+    },
+    "_leading_inline_atom": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "strong_emphasis"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "strong"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "emphasis"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "code_span"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "inline_math"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "page_reference"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "citation"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "reference"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "hard_break"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "soft_hyphen_escape"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "escaped_char"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "loose_backslash"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_hash_bang_text"
+          },
+          "named": true,
+          "value": "text"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "text"
+        }
+      ]
+    },
+    "_paragraph_first_segment": {
+      "type": "PREC_RIGHT",
+      "value": 0,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "_leading_inline_atom"
+          },
+          {
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_inline_atom"
+            }
+          }
+        ]
+      }
     },
     "_inline": {
       "type": "CHOICE",
@@ -2452,17 +2488,6 @@
         "value": "\\"
       }
     },
-    "text": {
-      "type": "TOKEN",
-      "content": {
-        "type": "PREC",
-        "value": -2,
-        "content": {
-          "type": "PATTERN",
-          "value": "[^\\n\\r#$*`@<\\\\\\[\\]]+"
-        }
-      }
-    },
     "hash_call": {
       "type": "PREC_RIGHT",
       "value": 1,
@@ -2586,7 +2611,8 @@
                   "name": "_line_end"
                 },
                 {
-                  "type": "BLANK"
+                  "type": "SYMBOL",
+                  "name": "_call_end"
                 }
               ]
             }
@@ -3374,14 +3400,13 @@
     {
       "type": "PATTERN",
       "value": "[\\t ]+"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "comment"
     }
   ],
-  "conflicts": [
-    [
-      "block_call",
-      "inline_call"
-    ]
-  ],
+  "conflicts": [],
   "precedences": [
     [
       {
@@ -3442,6 +3467,18 @@
     {
       "type": "SYMBOL",
       "name": "raw_body_close"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "comment"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "text"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_call_end"
     },
     {
       "type": "SYMBOL",

@@ -63,6 +63,12 @@ pub enum Item {
         items: Vec<ListItem>,
         span: SourceSpan,
     },
+    /// A `/** … */` documentation comment. Unlike `//` line and `/*` block
+    /// comments (both dropped), a doc comment is preserved so the lowerer can
+    /// attach its `text` as a `doc` attribute on the semantic node it
+    /// precedes (a heading, or a labelled block), which the LSP surfaces on
+    /// hover. `text` is the cleaned inner body, fences removed.
+    DocComment { text: String, span: SourceSpan },
 }
 
 /// One entry inside an [`Item::List`].
@@ -364,6 +370,17 @@ impl Item {
         }
     }
 
+    /// Borrow the `/** … */` doc-comment payload if `self` is
+    /// [`Item::DocComment`]. The returned tuple is `(cleaned text, span)`.
+    #[must_use]
+    pub fn as_doc_comment(&self) -> Option<(&str, &SourceSpan)> {
+        if let Self::DocComment { text, span } = self {
+            Some((text.as_str(), span))
+        } else {
+            None
+        }
+    }
+
     /// Borrow the explicit `<label>` attached to this block, if any.
     /// Returns `None` for [`Item::Set`] and [`Item::List`] (label
     /// syntax is not yet defined on those blocks).
@@ -373,7 +390,7 @@ impl Item {
             Self::Heading { label, .. }
             | Self::Paragraph { label, .. }
             | Self::RawBlock { label, .. } => label.as_deref(),
-            Self::Set { .. } | Self::List { .. } => None,
+            Self::Set { .. } | Self::List { .. } | Self::DocComment { .. } => None,
         }
     }
 
@@ -386,7 +403,7 @@ impl Item {
             Self::Heading { label_span, .. }
             | Self::Paragraph { label_span, .. }
             | Self::RawBlock { label_span, .. } => label_span.as_ref(),
-            Self::Set { .. } | Self::List { .. } => None,
+            Self::Set { .. } | Self::List { .. } | Self::DocComment { .. } => None,
         }
     }
 }

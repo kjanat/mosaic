@@ -57,6 +57,7 @@ codes use the next free integer.
 | MOS0043 | bibtex-parse-failed        | Error            | mos-bib     | syntax: BibTeX database could not be parsed                                |
 | MOS0044 | csl-parse-failed           | Error            | mos-csl     | syntax: CSL style could not be parsed                                      |
 | MOS0048 | heading-label-not-trailing | Warning          | mos-parse   | syntax: heading label is not the last element on the line; treated as text |
+| MOS0050 | unterminated-block-comment | Warning          | mos-parse   | syntax: unterminated /* block comment; consumed to end of input            |
 
 ### Semantic
 

@@ -1,5 +1,5 @@
 use crate::parser::Parser;
-use crate::support::{find_byte, scan_label_chars};
+use crate::support::{double_slash_comment, find_byte, scan_label_chars};
 use mos_core::{Suggestion, codes};
 
 use crate::{Inline, InlineKind};
@@ -126,6 +126,8 @@ impl<'parser, 'slice, 'src> InlineSegmentParser<'parser, 'slice, 'src> {
                 }
                 b'`' => self.handle_code(),
                 b'@' => self.handle_reference(),
+                b'/' if self.at_inline_block_comment() => self.handle_inline_block_comment(),
+                b'/' if self.at_inline_comment() => self.handle_inline_comment(),
                 b'[' if self.i + 1 < self.bytes.len() && self.bytes[self.i + 1] == b'@' => {
                     self.handle_citation();
                 }
@@ -273,6 +275,89 @@ impl<'parser, 'slice, 'src> InlineSegmentParser<'parser, 'slice, 'src> {
         }
         self.parser.diagnostics.push(diagnostic);
         self.i += 1;
+    }
+
+    /// Whether the cursor sits at a trailing/interior `//` line comment: the
+    /// slashes must be at a whitespace boundary (slice start or a preceding
+    /// space/tab/newline) and be followed by a space or end-of-line. Code spans
+    /// and `@refs` are already consumed atomically before the cursor gets here,
+    /// so this only ever fires in the default text state.
+    fn at_inline_comment(&self) -> bool {
+        let boundary =
+            self.i == 0 || matches!(self.bytes[self.i - 1], b' ' | b'\t' | b'\n' | b'\r');
+        boundary && double_slash_comment(self.bytes, self.i, self.bytes.len())
+    }
+
+    /// Drop a `//` comment from the cursor to the end of its line: flush text up
+    /// to the comment (trimming the space/tab run before `//`). A *trailing*
+    /// comment resumes at the line's `\n` without consuming it, so the soft
+    /// break to the next line survives. A *whole-line* comment (only whitespace
+    /// before `//`) also consumes that `\n`, so the excised line leaves no blank
+    /// gap between the surrounding text lines.
+    fn handle_inline_comment(&mut self) {
+        let mut ws = self.i;
+        while ws > self.text_start && matches!(self.bytes[ws - 1], b' ' | b'\t') {
+            ws -= 1;
+        }
+        let whole_line = {
+            let mut p = self.i;
+            while p > 0 && matches!(self.bytes[p - 1], b' ' | b'\t') {
+                p -= 1;
+            }
+            p == 0 || matches!(self.bytes[p - 1], b'\n' | b'\r')
+        };
+        self.flush(ws);
+        let mut j = self.i;
+        while j < self.bytes.len() && self.bytes[j] != b'\n' {
+            j += 1;
+        }
+        if whole_line && j < self.bytes.len() {
+            j += 1;
+        }
+        self.i = j;
+        self.text_start = j;
+    }
+
+    /// Whether the cursor sits at a `/*` block-comment opener. Unlike the `//`
+    /// line comment, a block comment is recognized anywhere (matching the
+    /// editor grammar), not just at a whitespace boundary: verbatim contexts
+    /// (code spans, directive strings, raw blocks) are consumed before the
+    /// cursor reaches them, and `/*` does not occur in URLs, so no URL-safety
+    /// carve-out is needed.
+    fn at_inline_block_comment(&self) -> bool {
+        self.i + 1 < self.bytes.len()
+            && self.bytes[self.i] == b'/'
+            && self.bytes[self.i + 1] == b'*'
+    }
+
+    /// Drop a `/* … */` block comment from the cursor to its closing `*/`:
+    /// flush text up to the comment (trimming the space/tab run before `/*`,
+    /// matching [`Self::handle_inline_comment`]), scan raw bytes across newlines
+    /// for the first `*/`, then resume just past it. An unterminated `/*` is a
+    /// recoverable `MOS0050` warning and consumes to the end of the slice.
+    fn handle_inline_block_comment(&mut self) {
+        let mut ws = self.i;
+        while ws > self.text_start && matches!(self.bytes[ws - 1], b' ' | b'\t') {
+            ws -= 1;
+        }
+        self.flush(ws);
+        let mut j = self.i + 2;
+        while j + 1 < self.bytes.len() {
+            if self.bytes[j] == b'*' && self.bytes[j + 1] == b'/' {
+                self.i = j + 2;
+                self.text_start = self.i;
+                return;
+            }
+            j += 1;
+        }
+        self.parser.diagnostics.push(self.parser.warn(
+            &codes::MOS0050,
+            "unterminated `/*` block comment; consumed to end of input",
+            self.base + self.i,
+            self.base + self.bytes.len(),
+        ));
+        self.i = self.bytes.len();
+        self.text_start = self.bytes.len();
     }
 
     fn handle_reference(&mut self) {

@@ -12,10 +12,6 @@
         "named": true
       },
       {
-        "type": "comment",
-        "named": true
-      },
-      {
         "type": "import_directive",
         "named": true
       },
@@ -1640,7 +1636,8 @@
   },
   {
     "type": "comment",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "dimension",
