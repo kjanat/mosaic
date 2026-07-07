@@ -151,6 +151,13 @@ just doc-nightly
 - `just fmt`, `just examples`, and `just doc-nightly` run through `runner-run`; `just setup`
   bootstraps it.
 - `just examples` mutates committed snapshot PDFs via `runner mos build examples/*`.
+- `mos build examples/*` writes one fewer PDF than it has args, and that is **by design, not a
+  bug**: the glob sweeps in `examples/AGENTS.md`, and multi-entry `mos build` silently skips
+  non-`.mos` *files* so globbed docs/READMEs don't error (`should_skip_glob_file` / `is_mos_source`,
+  gated on `entries.len() > 1`, in `crates/mos/src/main.rs`). Directory args always resolve to
+  `main.mos`, so only bare non-`.mos` files are skipped. Run alone, `mos build examples/AGENTS.md`
+  has no skip and *does* build it (into the gitignored `examples/build/`). Do not re-investigate the
+  8-in/7-out as a defect.
 - `just sync-zed-queries` overwrites copied Zed query files from Tree-sitter query sources.
 - `crates/tree-sitter-mosaic/src/parser.c`, `src/grammar.json`, and `src/node-types.json` are
   generated from `grammar.js` and scanner code.
