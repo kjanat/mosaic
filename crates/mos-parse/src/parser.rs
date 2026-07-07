@@ -2734,10 +2734,15 @@ mod tests {
     #[test]
     fn heading_stray_block_closer_does_not_eat_text() {
         let r = parse_str("= H /* a */ text */\n");
+        assert_eq!(
+            heading_text(&r).as_deref(),
+            Some("H text */"),
+            "a stray `*/` must leave the heading text verbatim, not eat it"
+        );
         assert!(
-            heading_text(&r).is_some_and(|t| t.contains("text")),
-            "a stray `*/` must not silently eat heading text: {:?}",
-            heading_text(&r)
+            !lacks_code(&r, codes::MOS0031.code()),
+            "the leftover `*` is a real unterminated-emphasis marker, so MOS0031 is expected: {:?}",
+            r.diagnostics
         );
     }
 
