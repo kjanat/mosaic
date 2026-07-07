@@ -26,6 +26,18 @@ comment: line comment needs whitespace after the slashes
       (text))))
 
 ==================
+comment: bare line marker at end of line is trivia
+==================
+Hello //
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (comment))
+
+==================
 comment: url slash pair stays prose
 ==================
 Visit http://example.com

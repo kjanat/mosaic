@@ -222,9 +222,9 @@ struct EvaluationState {
     current_text_size_pt: f64,
     reads_external_resources: bool,
     /// Text of a `/** … */` doc comment seen but not yet attached. The next
-    /// documentable block (heading, paragraph, raw block) consumes it as a
-    /// `doc` attribute; a non-documentable block (`#set`, list) clears it so
-    /// it never leaks onto a later node. `None` when no doc comment is pending.
+    /// documentable block (heading, paragraph) consumes it as a `doc`
+    /// attribute; a non-documentable block (`#set`, list, raw block) clears it
+    /// so it never leaks onto a later node. `None` when no doc comment is pending.
     pending_doc: Option<String>,
 }
 
@@ -621,6 +621,54 @@ mod tests {
         assert!(
             !section.attributes.contains_key(DOC_ATTR),
             "doc must not leak past #set"
+        );
+    }
+
+    #[test]
+    fn doc_comment_does_not_attach_to_or_leak_past_a_list() {
+        let file = PathBuf::from("test.mos");
+        let r = lower("/** stray */\n- item\n\n= H\n", &file);
+        let list = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::List)
+            .expect("a list node");
+        assert!(
+            !list.attributes.contains_key(DOC_ATTR),
+            "doc must not attach to a list"
+        );
+        let section = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Section)
+            .expect("a section node");
+        assert!(
+            !section.attributes.contains_key(DOC_ATTR),
+            "doc must not leak past a list"
+        );
+    }
+
+    #[test]
+    fn doc_comment_does_not_attach_to_or_leak_past_a_raw_block() {
+        let file = PathBuf::from("test.mos");
+        let r = lower("/** stray */\n#code[[x]]\n\n= H\n", &file);
+        let raw = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Raw)
+            .expect("a raw node");
+        assert!(
+            !raw.attributes.contains_key(DOC_ATTR),
+            "doc must not attach to a raw block"
+        );
+        let section = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Section)
+            .expect("a section node");
+        assert!(
+            !section.attributes.contains_key(DOC_ATTR),
+            "doc must not leak past a raw block"
         );
     }
 

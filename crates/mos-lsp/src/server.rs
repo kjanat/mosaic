@@ -256,8 +256,8 @@ fn definition_result(state: &mut ServerState, message: &Value) -> Value {
 
 /// Build the `textDocument/hover` response: the `/** … */` doc comment attached
 /// to the symbol under the cursor (a heading, a `<label>` block, or an
-/// `@label` / `[@key]` reference to one), rendered as Markdown. `null` when the
-/// cursor is not on a documented symbol.
+/// `@label` / `@page(label)` reference to one), rendered as Markdown. `null`
+/// when the cursor is not on a documented symbol.
 fn hover_result(state: &mut ServerState, message: &Value) -> Value {
     let Some(uri) = message
         .pointer("/params/textDocument/uri")

@@ -30,9 +30,9 @@ impl Parser<'_> {
         // label and hide it from `strip_trailing_label`, spuriously tripping
         // MOS0048). A non-trailing block comment is left in place and stripped
         // later by the inline scanner.
-        let content_end = trailing_line_comment_start(bytes, i, content_end).unwrap_or(content_end);
         let content_end =
             trailing_block_comment_start(bytes, i, content_end).unwrap_or(content_end);
+        let content_end = trailing_line_comment_start(bytes, i, content_end).unwrap_or(content_end);
         let (text_end, parsed_label) = strip_trailing_label(self.src, i, content_end);
         if parsed_label.is_none() {
             self.flag_misplaced_heading_label(i, content_end);

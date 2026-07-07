@@ -289,17 +289,29 @@ impl<'parser, 'slice, 'src> InlineSegmentParser<'parser, 'slice, 'src> {
     }
 
     /// Drop a `//` comment from the cursor to the end of its line: flush text up
-    /// to the comment (trimming the space/tab run before `//`, but never a
-    /// joining newline), then resume scanning at the next `\n` (or slice end)
-    /// without consuming it, so a following paragraph line is preserved.
+    /// to the comment (trimming the space/tab run before `//`). A *trailing*
+    /// comment resumes at the line's `\n` without consuming it, so the soft
+    /// break to the next line survives. A *whole-line* comment (only whitespace
+    /// before `//`) also consumes that `\n`, so the excised line leaves no blank
+    /// gap between the surrounding text lines.
     fn handle_inline_comment(&mut self) {
         let mut ws = self.i;
         while ws > self.text_start && matches!(self.bytes[ws - 1], b' ' | b'\t') {
             ws -= 1;
         }
+        let whole_line = {
+            let mut p = self.i;
+            while p > 0 && matches!(self.bytes[p - 1], b' ' | b'\t') {
+                p -= 1;
+            }
+            p == 0 || matches!(self.bytes[p - 1], b'\n' | b'\r')
+        };
         self.flush(ws);
         let mut j = self.i;
         while j < self.bytes.len() && self.bytes[j] != b'\n' {
+            j += 1;
+        }
+        if whole_line && j < self.bytes.len() {
             j += 1;
         }
         self.i = j;

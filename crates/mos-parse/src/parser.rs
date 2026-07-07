@@ -2457,6 +2457,23 @@ mod tests {
     }
 
     #[test]
+    fn block_comment_between_list_items_keeps_one_list() {
+        let r = parse_str("- a\n/* c */\n- b\n");
+        assert_eq!(r.tree.items.len(), 1, "got {:?}", r.tree.items);
+        let (_, items, _) = r.tree.items[0].as_list().unwrap();
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn multiline_block_comment_between_list_items_keeps_one_list() {
+        let r = parse_str("1. a\n/* multi\nline */\n2. b\n");
+        assert_eq!(r.tree.items.len(), 1, "got {:?}", r.tree.items);
+        let (ordered, items, _) = r.tree.items[0].as_list().unwrap();
+        assert!(ordered);
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
     fn bullet_with_only_comment_is_empty() {
         let r = parse_str("- // x\n");
         let (_, items, _) = r.tree.items[0].as_list().unwrap();
@@ -2601,8 +2618,11 @@ mod tests {
             .filter(|i| i.as_paragraph().is_some())
             .count();
         assert_eq!(paras, 1, "got {:?}", r.tree.items);
-        let text = paragraph_text(&r).unwrap_or_default();
-        assert!(!text.contains("note"), "comment leaked: {text:?}");
+        assert_eq!(
+            paragraph_text(&r).as_deref(),
+            Some("alpha\nbeta"),
+            "whole-line comment must excise cleanly, leaving one soft break (no blank gap)",
+        );
     }
 
     #[test]
@@ -2680,6 +2700,18 @@ mod tests {
         assert!(
             lacks_code(&r, codes::MOS0048.code()),
             "trailing block comment must not trip MOS0048: {:?}",
+            r.diagnostics
+        );
+    }
+
+    #[test]
+    fn heading_block_comment_with_inner_slashes_trimmed() {
+        let r = parse_str("= Title <lbl> /* // note */\n");
+        assert_eq!(heading_text(&r).as_deref(), Some("Title"));
+        assert_eq!(r.tree.items[0].label(), Some("lbl"));
+        assert!(
+            lacks_code(&r, codes::MOS0050.code()),
+            "block comment with inner `//` must not trip a false MOS0050: {:?}",
             r.diagnostics
         );
     }
