@@ -2553,10 +2553,11 @@ mod tests {
     }
 
     #[test]
-    fn empty_block_comment_dropped() {
-        let r = parse_str("/**/\n= H\n");
-        assert_eq!(r.tree.items.len(), 1);
-        assert!(r.tree.items[0].as_heading().is_some());
+    fn empty_doc_comment_is_preserved_as_item() {
+        let r = parse_str("/** */\n= H\n");
+        assert_eq!(r.tree.items.len(), 2, "got {:?}", r.tree.items);
+        assert_eq!(r.tree.items[0].as_doc_comment().map(|(t, _)| t), Some(""));
+        assert!(r.tree.items[1].as_heading().is_some());
     }
 
     #[test]
