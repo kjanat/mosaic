@@ -26,6 +26,14 @@ All notable changes to this project will be documented here. The format is based
   reference to it, so documentation follows the symbol. Plain `//` and `/*` comments stay dropped;
   `/**/` remains an empty block comment, not a doc comment.
 
+- Editor grammar mirrors the compiler's comment handling: [`tree-sitter-mosaic`][tree-sitter-mosaic]
+  now treats `//` line and `/* … */` / `/** … */` block comments as trivia when they trail a line or
+  sit mid-line, not only at a line/block boundary, so Zed highlighting matches what `mos` strips.
+  Comment and inline-text recognition moved into the external scanner to share the compiler's
+  URL-safe `//` rule (`https://x` stays prose) and to let a block call terminate before trailing
+  content (`#pagebreak() // note`, `#import"x"`). Highlight and corpus tests cover the new
+  positions.
+
 - PDF heading bookmarks/outlines: `mos build` now emits a PDF `/Outlines` tree so headings appear in
   the reader's bookmark panel. [`mos-layout`][mos-layout] captures each heading during layout as an
   ordered `OutlineEntry` (level, `"{number} {text}"` title, start page, glyph-top y — bound to the

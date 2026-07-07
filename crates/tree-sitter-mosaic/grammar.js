@@ -28,9 +28,9 @@ const PREC = {
 export default grammar({
 	name: 'mosaic',
 
-	// oxlint-disable-next-line no-unused-vars
 	extras: $ => [
 		/[\t ]+/,
+		$.comment,
 	],
 
 	externals: $ => [
@@ -45,6 +45,9 @@ export default grammar({
 		$.raw_body_open,
 		$.raw_body_content,
 		$.raw_body_close,
+		$.comment,
+		$.text,
+		$._call_end,
 		$._error_sentinel,
 	],
 
@@ -60,9 +63,7 @@ export default grammar({
 		[$.strong_emphasis, $.strong, $.emphasis],
 	],
 
-	conflicts: $ => [
-		[$.block_call, $.inline_call],
-	],
+	conflicts: _ => [],
 
 	rules: {
 		// -------------------------------------------------------------------
@@ -115,7 +116,6 @@ export default grammar({
 
 		_block: $ =>
 			choice(
-				$.comment,
 				$.set_directive,
 				$.import_directive,
 				$.include_directive,
@@ -136,18 +136,6 @@ export default grammar({
 		// -------------------------------------------------------------------
 		// Lexical trivia
 		// -------------------------------------------------------------------
-
-		// Line comments require whitespace after `//` (matching the compiler's
-		// URL-safe rule and config.toml's `"// "`), so `//no-space` and the
-		// `//` in `https://x` stay prose. Block comments are C-style and
-		// non-nesting. Both are recognized only at a line/block boundary here;
-		// trailing and mid-line comments (which the compiler also strips) need
-		// an external-scanner boundary check and are not yet mirrored.
-		comment: _ =>
-			token(choice(
-				seq('//', /[ \t][^\n\r]*/),
-				seq('/*', /[^*]*\*+([^/*][^*]*\*+)*/, '/'),
-			)),
 
 		shebang: _ => token.immediate(prec(2, seq('#!', /[^\n\r]*/))),
 
@@ -172,7 +160,7 @@ export default grammar({
 				$._import_keyword,
 				field('path', $.string),
 				optional(seq(':', field('items', $.import_items))),
-				optional($._line_end),
+				$._line_end,
 			)),
 
 		import_items: $ => seq($.identifier, repeat(seq(',', $.identifier))),
@@ -369,7 +357,7 @@ export default grammar({
 		paragraph: $ =>
 			prec.right(seq(
 				optional(field('leading_label', $.leading_label)),
-				alias($._inline_sequence, $.paragraph_segment),
+				alias($._paragraph_first_segment, $.paragraph_segment),
 				repeat(seq(
 					$._paragraph_join,
 					alias($._inline_sequence, $.paragraph_segment),
@@ -418,6 +406,26 @@ export default grammar({
 				alias($._hash_bang_text, $.text),
 				$.text,
 			),
+
+		_leading_inline_atom: $ =>
+			choice(
+				$.strong_emphasis,
+				$.strong,
+				$.emphasis,
+				$.code_span,
+				$.inline_math,
+				$.page_reference,
+				$.citation,
+				$.reference,
+				$.hard_break,
+				$.soft_hyphen_escape,
+				$.escaped_char,
+				$.loose_backslash,
+				alias($._hash_bang_text, $.text),
+				$.text,
+			),
+
+		_paragraph_first_segment: $ => prec.right(seq($._leading_inline_atom, repeat($._inline_atom))),
 
 		_inline: $ =>
 			choice(
@@ -594,12 +602,6 @@ export default grammar({
 		// the longest-match race whenever any of them apply.
 		loose_backslash: _ => token('\\'),
 
-		// Tree-sitter pragmatic deviation from EBNF `text_char`: also exclude
-		// `[` and `]` so bracket-delimited structures (`content_body`,`array`)
-		// parse without ambiguity. Literal brackets in prose can be written via `\[` / `\]`.
-		// oxlint-disable-next-line no-useless-escape
-		text: _ => token(prec(-2, /[^\n\r#$*`@<\\\[\]]+/)),
-
 		// -------------------------------------------------------------------
 		// Calls and content bodies
 		// -------------------------------------------------------------------
@@ -631,7 +633,7 @@ export default grammar({
 				prec.right(seq(
 					$.hash_call,
 					optional(field('label', $.block_label)),
-					optional($._line_end),
+					choice($._line_end, $._call_end),
 				)),
 			),
 

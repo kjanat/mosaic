@@ -23,15 +23,15 @@ Math $x = 1$ goes here.
 
 See @intro for context.
 //  ^ punctuation.special
-//   ^ link_uri
+//   ^ string.special.symbol
 
 Cite [@smith2024] then normal text.
 //   ^ punctuation.bracket
 //    ^ punctuation.special
-//     ^ link_uri
+//     ^ string.special.symbol
 
 Refer to <anchor> label.
-//        ^ link_uri
+//        ^ label
 
 Escaped \* asterisk.
 //      ^ string.escape

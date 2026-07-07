@@ -37,7 +37,7 @@ Visit http://example.com
       (text))))
 
 ==================
-comment: slash star pair stays prose
+comment: mid-line block comment is trivia
 ==================
 a /* b */ c
 ---
@@ -46,9 +46,46 @@ a /* b */ c
   (paragraph
     (paragraph_segment
       (text)
-      (emphasis
-        (emph_text))
+      (comment)
       (text))))
+
+==================
+comment: trailing line comment is trivia
+==================
+Hello world // note
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (comment))
+
+==================
+comment: trailing block comment is trivia
+==================
+Hello /* note */
+---
+
+(source_file
+  (paragraph
+    (paragraph_segment
+      (text)))
+  (comment))
+
+==================
+comment: trailing comment after block call
+==================
+#pagebreak() // done
+---
+
+(source_file
+  (block_call
+    (hash_call
+      function: (qualified_name
+        (identifier))
+      arguments: (argument_list))
+    (comment)))
 
 ==================
 comment: block comment is trivia
