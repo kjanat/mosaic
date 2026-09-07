@@ -49,20 +49,18 @@ pub fn lower_bibliography_directive(
     source_file: &Path,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let Some(path) = bibliography_path(args, span, diagnostics) else {
+    let Some((path, path_span)) = bibliography_path(args, span, diagnostics) else {
         return;
     };
     let resolved = match mos_core::resolve_source_path(&path, source_file) {
         Ok(resolved) => resolved,
         Err(err) => {
-            diagnostics.push(
-                Diagnostic::simple(
-                    &codes::MOS0049,
-                    None,
-                    format!("cannot use bibliography path `{path}`: {err}"),
-                )
-                .with_span(span.clone()),
-            );
+            diagnostics.push(suggest::unsafe_path_diagnostic(
+                format!("cannot use bibliography path `{path}`: {err}"),
+                &path,
+                span,
+                &path_span,
+            ));
             return;
         }
     };
@@ -105,8 +103,8 @@ fn bibliography_path(
     args: &[SetArg],
     span: &SourceSpan,
     diagnostics: &mut Vec<Diagnostic>,
-) -> Option<String> {
-    let mut path: Option<String> = None;
+) -> Option<(String, SourceSpan)> {
+    let mut path: Option<(String, SourceSpan)> = None;
     let mut invalid_path_arg = false;
     for arg in args {
         match arg {
@@ -124,7 +122,7 @@ fn bibliography_path(
                             .with_span(value_span.clone()),
                         );
                     } else {
-                        path = Some(s.clone());
+                        path = Some((s.clone(), value_span.clone()));
                     }
                 } else {
                     invalid_path_arg = true;
@@ -156,7 +154,7 @@ fn bibliography_path(
                                 .with_span(value_span.clone()),
                             );
                         } else {
-                            path = Some(s.clone());
+                            path = Some((s.clone(), value_span.clone()));
                         }
                     } else {
                         invalid_path_arg = true;
@@ -193,9 +191,10 @@ fn bibliography_path(
         );
         return None;
     };
+    let (path_text, path_span) = path;
     // A bare empty / whitespace-only path is the same mistake as omitting
     // it -- they wrote `#bibliography("")` and meant to fill in a filename.
-    if path.trim().is_empty() {
+    if path_text.trim().is_empty() {
         diagnostics.push(
             Diagnostic::simple(
                 &codes::MOS0040,
@@ -206,7 +205,7 @@ fn bibliography_path(
         );
         return None;
     }
-    Some(path)
+    Some((path_text, path_span))
 }
 
 /// Resolve citation keys against declared bibliography sources.

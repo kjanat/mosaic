@@ -68,6 +68,19 @@ fn insert_label_attributes(attributes: &mut AttrMap, label: &str, label_span: Op
     attributes.insert(LABEL_SPAN_END_ATTR.to_owned(), AttrValue::Int(end));
 }
 
+/// The span of a string literal's contents, excluding its quotes.
+pub(crate) fn string_content_span(value_span: &SourceSpan) -> SourceSpan {
+    if value_span.end() > value_span.start().saturating_add(1) {
+        SourceSpan::new(
+            value_span.file.clone(),
+            value_span.start() + 1,
+            value_span.end() - 1,
+        )
+    } else {
+        value_span.clone()
+    }
+}
+
 /// Document-level metadata harvested from `#set document(...)` directives.
 ///
 /// The PDF backend writes `title` and `author` to the Info dictionary;
@@ -1710,6 +1723,109 @@ mod tests {
         assert!(entries.is_empty(), "{entries:?}");
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn mos0049_diagnostic(diagnostics: &[Diagnostic]) -> &Diagnostic {
+        let found: Vec<&Diagnostic> = diagnostics
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0049.code())
+            .collect();
+        assert_eq!(found.len(), 1, "exactly one MOS0049, got {found:?}");
+        found[0]
+    }
+
+    #[test]
+    fn unsafe_named_image_and_bibliography_paths_suggest_forward_slashes() {
+        let source_text = "#image(src: \"a\\\\b.png\")\n#bibliography(path: \"c\\\\d.bib\")\n";
+        let r = lower(source_text, &PathBuf::from("test.mos"));
+        let fixes: Vec<(String, &str)> = r
+            .diagnostics
+            .iter()
+            .filter(|d| d.def().code() == codes::MOS0049.code())
+            .flat_map(|d| d.suggestions().iter())
+            .map(|s| {
+                (
+                    s.replacement.clone(),
+                    &source_text[s.span.start()..s.span.end()],
+                )
+            })
+            .collect();
+        assert_eq!(
+            fixes,
+            vec![
+                ("a/b.png".to_owned(), r"a\\b.png"),
+                ("c/d.bib".to_owned(), r"c\\d.bib"),
+            ]
+        );
+    }
+
+    #[test]
+    fn unsafe_path_fix_re_escapes_the_literal_contents() {
+        let source_text = "#image(\"a\\\"b\\\\c.png\")\n";
+        let r = lower(source_text, &PathBuf::from("test.mos"));
+        let diag = mos0049_diagnostic(&r.diagnostics);
+        let suggestions = diag.suggestions();
+        assert_eq!(suggestions.len(), 1, "one path fix, got {suggestions:?}");
+        assert_eq!(suggestions[0].replacement, r#"a\"b/c.png"#);
+        assert_eq!(
+            &source_text[suggestions[0].span.start()..suggestions[0].span.end()],
+            r#"a\"b\\c.png"#
+        );
+    }
+
+    #[test]
+    fn unsafe_image_path_suggests_forward_slashes() {
+        let source_text = "#image(\"assets\\\\logo.png\")\n";
+        let r = lower(source_text, &PathBuf::from("test.mos"));
+        let diag = mos0049_diagnostic(&r.diagnostics);
+        let suggestions = diag.suggestions();
+        assert_eq!(suggestions.len(), 1, "one path fix, got {suggestions:?}");
+        assert_eq!(suggestions[0].replacement, "assets/logo.png");
+        assert_eq!(
+            &source_text[suggestions[0].span.start()..suggestions[0].span.end()],
+            r"assets\\logo.png",
+            "the fix replaces the literal's contents, quotes excluded"
+        );
+    }
+
+    #[test]
+    fn unsafe_figure_image_path_suggests_forward_slashes() {
+        let source_text = "#figure(image: \"img\\\\a.png\", caption: \"c\")\n";
+        let r = lower(source_text, &PathBuf::from("test.mos"));
+        let diag = mos0049_diagnostic(&r.diagnostics);
+        let suggestions = diag.suggestions();
+        assert_eq!(suggestions.len(), 1, "one path fix, got {suggestions:?}");
+        assert_eq!(suggestions[0].replacement, "img/a.png");
+        assert_eq!(
+            &source_text[suggestions[0].span.start()..suggestions[0].span.end()],
+            r"img\\a.png"
+        );
+    }
+
+    #[test]
+    fn unsafe_bibliography_path_suggests_forward_slashes() {
+        let source_text = "#bibliography(\"refs\\\\x.bib\")\n";
+        let r = lower(source_text, &PathBuf::from("test.mos"));
+        let diag = mos0049_diagnostic(&r.diagnostics);
+        let suggestions = diag.suggestions();
+        assert_eq!(suggestions.len(), 1, "one path fix, got {suggestions:?}");
+        assert_eq!(suggestions[0].replacement, "refs/x.bib");
+        assert_eq!(
+            &source_text[suggestions[0].span.start()..suggestions[0].span.end()],
+            r"refs\\x.bib"
+        );
+    }
+
+    #[test]
+    fn drive_prefixed_image_path_gets_no_suggestion() {
+        let source_text = "#image(\"C:\\\\x.png\")\n";
+        let r = lower(source_text, &PathBuf::from("test.mos"));
+        let diag = mos0049_diagnostic(&r.diagnostics);
+        assert!(
+            diag.suggestions().is_empty(),
+            "no guess for a drive-prefixed path, got {:?}",
+            diag.suggestions()
+        );
     }
 
     #[test]

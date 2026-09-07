@@ -11,12 +11,15 @@
 //! Diagnostics:
 //!
 //! - `MOS0037`: `#image(...)` called without a path string.
+//! - `MOS0049`: the path is not a portable name (a `\` segment, drive prefix, or root).
 //! - `MOS0012`: cannot read the file on disk.
 //! - `MOS0029`: cannot decode the bytes as PNG/JPEG.
 
 use std::path::{Path, PathBuf};
 
 use mos_core::{Diagnostic, DiagnosticAnnotation, SourceSpan, codes};
+
+use crate::suggest;
 
 /// One decoded raster image, ready to be lowered onto a
 /// [`mos_core::NodeKind::Image`] node.
@@ -35,23 +38,24 @@ pub struct DecodedRaster {
 /// Resolve `src_path` (as written in the source) relative to `source_file`
 /// (the `.mos` file currently being lowered), then read + decode it.
 ///
-/// Returns `Err(Diagnostic)` on I/O or decode failure; the resolver
-/// surfaces these to the user without aborting the rest of the
-/// document so a broken `#image(...)` still produces a partial PDF.
+/// Returns `Err(Diagnostic)` on a non-portable path, an I/O failure, or a
+/// decode failure; the resolver surfaces these to the user without aborting
+/// the rest of the document so a broken `#image(...)` still produces a
+/// partial PDF. `path_span` bounds the path string literal and carries the
+/// `MOS0049` fix.
 pub fn load(
     src_path: &str,
     source_file: &Path,
     call_span: &SourceSpan,
+    path_span: &SourceSpan,
 ) -> Result<(PathBuf, DecodedRaster), Box<Diagnostic>> {
     let resolved = mos_core::resolve_source_path(src_path, source_file).map_err(|err| {
-        Box::new(
-            Diagnostic::simple(
-                &codes::MOS0049,
-                None,
-                format!("cannot use image path `{src_path}`: {err}"),
-            )
-            .with_span(call_span.clone()),
-        )
+        Box::new(suggest::unsafe_path_diagnostic(
+            format!("cannot use image path `{src_path}`: {err}"),
+            src_path,
+            call_span,
+            path_span,
+        ))
     })?;
     let bytes = std::fs::read(&resolved).map_err(|err| {
         Box::new(

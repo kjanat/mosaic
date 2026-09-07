@@ -177,6 +177,41 @@ pub fn resolve_relative(base: &Path, relative: &str) -> Result<PathBuf, PathErro
     Ok(out)
 }
 
+/// Rewrite every `\` in `path` to `/` when the result is a relative path that
+/// [`resolve_relative`] accepts. Returns `None` for a path with no `\`, and
+/// for rooted, drive-prefixed, or UNC forms, where the swap would change the
+/// path's meaning.
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::portable_path_fix;
+///
+/// assert_eq!(portable_path_fix("assets\\logo.png"), Some("assets/logo.png".to_owned()));
+/// assert_eq!(portable_path_fix("assets/logo.png"), None);
+/// assert_eq!(portable_path_fix("C:\\logo.png"), None);
+/// ```
+#[must_use]
+pub fn portable_path_fix(path: &str) -> Option<String> {
+    if !path.contains('\\') {
+        return None;
+    }
+    let candidate = path.replace('\\', "/");
+    if candidate.starts_with('/') || has_drive_segment(&candidate) {
+        return None;
+    }
+    resolve_relative(Path::new(""), &candidate)
+        .ok()
+        .map(|_| candidate)
+}
+
+fn has_drive_segment(path: &str) -> bool {
+    path.split('/').any(|segment| {
+        let bytes = segment.as_bytes();
+        bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+    })
+}
+
 /// Resolve a portable, `/`-separated `src_path` (as written in a source file)
 /// relative to the directory containing `source_file`.
 ///
@@ -215,7 +250,40 @@ pub fn resolve_source_path(src_path: &str, source_file: &Path) -> Result<PathBuf
 mod tests {
     use std::path::Path;
 
-    use super::{PathError, resolve_relative, resolve_source_path};
+    use super::{PathError, portable_path_fix, resolve_relative, resolve_source_path};
+
+    #[test]
+    fn portable_path_fix_swaps_backslashes_in_relative_paths() {
+        assert_eq!(
+            portable_path_fix("assets\\logo.png"),
+            Some("assets/logo.png".to_owned())
+        );
+        assert_eq!(
+            portable_path_fix("a\\b/c\\d.png"),
+            Some("a/b/c/d.png".to_owned())
+        );
+        assert_eq!(
+            portable_path_fix("..\\shared\\x.bib"),
+            Some("../shared/x.bib".to_owned())
+        );
+        assert_eq!(portable_path_fix("assets\\"), Some("assets/".to_owned()));
+    }
+
+    #[test]
+    fn portable_path_fix_refuses_rooted_drive_and_unc_forms() {
+        assert_eq!(portable_path_fix("C:\\x.png"), None);
+        assert_eq!(portable_path_fix("c:/x.png"), None);
+        assert_eq!(portable_path_fix("a\\C:\\b.png"), None);
+        assert_eq!(portable_path_fix("\\x.png"), None);
+        assert_eq!(portable_path_fix("\\\\server\\share\\x.png"), None);
+    }
+
+    #[test]
+    fn portable_path_fix_has_nothing_to_offer_for_already_portable_paths() {
+        assert_eq!(portable_path_fix("assets/logo.png"), None);
+        assert_eq!(portable_path_fix("/abs/x.png"), None);
+        assert_eq!(portable_path_fix(""), None);
+    }
 
     #[test]
     fn resolve_relative_normalizes_dot_dotdot_and_empty_segments() {

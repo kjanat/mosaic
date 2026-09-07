@@ -113,9 +113,55 @@ pub(crate) fn unknown_key_diagnostic(
     diagnostic
 }
 
+/// Build the `MOS0049` unsafe-path diagnostic for a `#image` / `#figure` /
+/// `#bibliography` string argument, attaching a fix that rewrites the
+/// literal's contents to the `/`-only spelling when
+/// [`mos_core::portable_path_fix`] can produce one.
+pub(crate) fn unsafe_path_diagnostic(
+    message: String,
+    path: &str,
+    span: &SourceSpan,
+    value_span: &SourceSpan,
+) -> Diagnostic {
+    let mut diagnostic = Diagnostic::simple(&codes::MOS0049, None, message).with_span(span.clone());
+    if let Some(fixed) = mos_core::portable_path_fix(path) {
+        diagnostic = diagnostic.with_suggestion(Suggestion::new(
+            crate::string_content_span(value_span),
+            escape_string_content(&fixed),
+        ));
+    }
+    diagnostic
+}
+
+/// Re-escape `text` so it can sit between the quotes of a `.mos` string
+/// literal. This inverts the parser's `\\`, `\"`, `\n`, `\t`, and `\r`
+/// escapes.
+fn escape_string_content(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{edit_distance, nearest_match};
+    use super::{edit_distance, escape_string_content, nearest_match};
+
+    #[test]
+    fn escape_string_content_round_trips_parser_escapes() {
+        assert_eq!(escape_string_content("assets/logo.png"), "assets/logo.png");
+        assert_eq!(escape_string_content("a\"b"), "a\\\"b");
+        assert_eq!(escape_string_content("a\\b"), "a\\\\b");
+        assert_eq!(escape_string_content("a\nb\tc\rd"), "a\\nb\\tc\\rd");
+    }
 
     #[test]
     fn edit_distance_counts_inserts_deletes_substitutions() {

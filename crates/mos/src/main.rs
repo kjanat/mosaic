@@ -600,7 +600,16 @@ fn suggestion_text<'a>(src: &'a str, span: &SourceSpan) -> Option<&'a str> {
 }
 
 fn display_edit_text(text: &str) -> String {
-    text.escape_debug().to_string()
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 fn clamp_to_char_boundary(src: &str, mut offset: usize) -> usize {
