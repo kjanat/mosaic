@@ -105,8 +105,7 @@ fn decode(bytes: &[u8]) -> Result<DecodedRaster, String> {
     // which is the conventional default for figure backgrounds.
     let pixel_count = pixels.len() / 4;
     let mut rgb_pixels = Vec::with_capacity(pixel_count * 3);
-    for chunk in pixels.chunks_exact(4) {
-        let [r, g, b, a] = [chunk[0], chunk[1], chunk[2], chunk[3]];
+    for &[r, g, b, a] in pixels.as_chunks::<4>().0 {
         if a == 255 {
             rgb_pixels.push(r);
             rgb_pixels.push(g);

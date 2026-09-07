@@ -429,8 +429,8 @@ fn push_cids_from_bytes(bytes: &[u8], cids: &mut Vec<u16>) -> Result<(), Box<dyn
     if !bytes.len().is_multiple_of(2) {
         return Err(format!("embedded CID string has odd byte length: {bytes:?}").into());
     }
-    for pair in bytes.chunks_exact(2) {
-        cids.push((u16::from(pair[0]) << 8) | u16::from(pair[1]));
+    for &pair in bytes.as_chunks::<2>().0 {
+        cids.push(u16::from_be_bytes(pair));
     }
     Ok(())
 }
