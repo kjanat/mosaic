@@ -45,11 +45,11 @@ impl core::error::Error for PathError {}
 /// Manifest paths spell separators with `/` only, so a `\` (a separator on
 /// Windows), a drive prefix (`C:`), or any rooted form would let the OS
 /// re-split the segment and slip past the lexical `..` normalization in
-/// [`resolve_relative`]. Backslash is rejected on every platform so a manifest
-/// resolves identically everywhere, not only where `\` happens to be a
-/// separator.
+/// [`resolve_relative`]. Backslash and a leading drive letter are rejected on
+/// every platform so a manifest resolves identically everywhere, not only where
+/// `\` happens to be a separator or `C:` a prefix.
 fn is_plain_name(segment: &str) -> bool {
-    if segment.contains('\\') {
+    if segment.contains('\\') || has_drive_prefix(segment) {
         return false;
     }
     let mut components = Path::new(segment).components();
@@ -177,39 +177,9 @@ pub fn resolve_relative(base: &Path, relative: &str) -> Result<PathBuf, PathErro
     Ok(out)
 }
 
-/// Rewrite every `\` in `path` to `/` when the result is a relative path that
-/// [`resolve_relative`] accepts. Returns `None` for a path with no `\`, and
-/// for rooted, drive-prefixed, or UNC forms, where the swap would change the
-/// path's meaning.
-///
-/// # Examples
-///
-/// ```
-/// use mos_core::portable_path_fix;
-///
-/// assert_eq!(portable_path_fix("assets\\logo.png"), Some("assets/logo.png".to_owned()));
-/// assert_eq!(portable_path_fix("assets/logo.png"), None);
-/// assert_eq!(portable_path_fix("C:\\logo.png"), None);
-/// ```
-#[must_use]
-pub fn portable_path_fix(path: &str) -> Option<String> {
-    if !path.contains('\\') {
-        return None;
-    }
-    let candidate = path.replace('\\', "/");
-    if candidate.starts_with('/') || has_drive_segment(&candidate) {
-        return None;
-    }
-    resolve_relative(Path::new(""), &candidate)
-        .ok()
-        .map(|_| candidate)
-}
-
-fn has_drive_segment(path: &str) -> bool {
-    path.split('/').any(|segment| {
-        let bytes = segment.as_bytes();
-        bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
-    })
+fn has_drive_prefix(segment: &str) -> bool {
+    let bytes = segment.as_bytes();
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
 }
 
 /// Resolve a portable, `/`-separated `src_path` (as written in a source file)
@@ -250,47 +220,7 @@ pub fn resolve_source_path(src_path: &str, source_file: &Path) -> Result<PathBuf
 mod tests {
     use std::path::Path;
 
-    use super::{PathError, portable_path_fix, resolve_relative, resolve_source_path};
-
-    #[test]
-    fn portable_path_fix_swaps_backslashes_in_relative_paths() {
-        assert_eq!(
-            portable_path_fix("assets\\logo.png"),
-            Some("assets/logo.png".to_owned())
-        );
-        assert_eq!(
-            portable_path_fix("a\\b/c\\d.png"),
-            Some("a/b/c/d.png".to_owned())
-        );
-        assert_eq!(
-            portable_path_fix("..\\shared\\x.bib"),
-            Some("../shared/x.bib".to_owned())
-        );
-        assert_eq!(portable_path_fix("assets\\"), Some("assets/".to_owned()));
-    }
-
-    #[test]
-    fn portable_path_fix_refuses_rooted_drive_and_unc_forms() {
-        assert_eq!(portable_path_fix("C:\\x.png"), None);
-        assert_eq!(portable_path_fix("c:/x.png"), None);
-        assert_eq!(portable_path_fix("a\\C:\\b.png"), None);
-        assert_eq!(portable_path_fix("\\x.png"), None);
-        assert_eq!(portable_path_fix("\\\\server\\share\\x.png"), None);
-    }
-
-    #[test]
-    fn portable_path_fix_refuses_drive_relative_forms() {
-        assert_eq!(portable_path_fix("C:foo\\bar.png"), None);
-        assert_eq!(portable_path_fix("c:foo\\bar.png"), None);
-        assert_eq!(portable_path_fix("a\\C:foo"), None);
-    }
-
-    #[test]
-    fn portable_path_fix_has_nothing_to_offer_for_already_portable_paths() {
-        assert_eq!(portable_path_fix("assets/logo.png"), None);
-        assert_eq!(portable_path_fix("/abs/x.png"), None);
-        assert_eq!(portable_path_fix(""), None);
-    }
+    use super::{PathError, resolve_relative, resolve_source_path};
 
     #[test]
     fn resolve_relative_normalizes_dot_dotdot_and_empty_segments() {
@@ -361,6 +291,22 @@ mod tests {
         assert_eq!(
             resolve_relative(Path::new("proj"), "/abs/x"),
             Ok(Path::new("/abs/x").to_path_buf()),
+        );
+    }
+
+    #[test]
+    fn resolve_relative_rejects_drive_prefixed_segments_on_every_platform() {
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "C:foo/x.png"),
+            Err(PathError::UnsafeSegment("C:foo".to_owned())),
+        );
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "a/c:/x.png"),
+            Err(PathError::UnsafeSegment("c:".to_owned())),
+        );
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "notes:draft/x.png"),
+            Ok(Path::new("proj").join("notes:draft").join("x.png")),
         );
     }
 
