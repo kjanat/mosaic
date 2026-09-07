@@ -4,7 +4,7 @@ members  = ["crates/*"]
 exclude  = ["crates/node_modules", "crates/zed-mosaic"]
 
 [workspace.package]
-version      = "0.0.1"
+version      = "0.0.2"
 edition      = "2024"
 rust-version = "1.96"
 readme       = "README.md"
@@ -16,21 +16,21 @@ categories   = ["compilers", "text-processing"]
 include      = ["/LICENSE*", "/README.md", "/examples", "/src", "/tests"]
 
 [workspace.dependencies]
-adobe-font-metrics = { path = "crates/adobe-font-metrics", version = "0.0.1" }
-mos-bib            = { path = "crates/mos-bib", version = "0.0.1" }
-mos-cache          = { path = "crates/mos-cache", version = "0.0.1" }
-mos-core           = { path = "crates/mos-core", version = "0.0.1" }
-mos-csl            = { path = "crates/mos-csl", version = "0.0.1" }
-mos-eval           = { path = "crates/mos-eval", version = "0.0.1" }
-mos-fonts          = { path = "crates/mos-fonts", version = "0.0.1" }
-mos-html           = { path = "crates/mos-html", version = "0.0.1" }
-mos-layout         = { path = "crates/mos-layout", version = "0.0.1" }
-mos-lsp            = { path = "crates/mos-lsp", version = "0.0.1" }
-mos-packages       = { path = "crates/mos-packages", version = "0.0.1" }
-mos-parse          = { path = "crates/mos-parse", version = "0.0.1" }
-mos-pdf            = { path = "crates/mos-pdf", version = "0.0.1" }
-pdf-base14-metrics = { path = "crates/pdf-base14-metrics", version = "0.0.1" }
-tree-sitter-mosaic = { path = "crates/tree-sitter-mosaic", version = "0.0.1" }
+adobe-font-metrics = { path = "crates/adobe-font-metrics", version = "0.0.2" }
+mos-bib            = { path = "crates/mos-bib", version = "0.0.2" }
+mos-cache          = { path = "crates/mos-cache", version = "0.0.2" }
+mos-core           = { path = "crates/mos-core", version = "0.0.2" }
+mos-csl            = { path = "crates/mos-csl", version = "0.0.2" }
+mos-eval           = { path = "crates/mos-eval", version = "0.0.2" }
+mos-fonts          = { path = "crates/mos-fonts", version = "0.0.2" }
+mos-html           = { path = "crates/mos-html", version = "0.0.2" }
+mos-layout         = { path = "crates/mos-layout", version = "0.0.2" }
+mos-lsp            = { path = "crates/mos-lsp", version = "0.0.2" }
+mos-packages       = { path = "crates/mos-packages", version = "0.0.2" }
+mos-parse          = { path = "crates/mos-parse", version = "0.0.2" }
+mos-pdf            = { path = "crates/mos-pdf", version = "0.0.2" }
+pdf-base14-metrics = { path = "crates/pdf-base14-metrics", version = "0.0.2" }
+tree-sitter-mosaic = { path = "crates/tree-sitter-mosaic", version = "0.0.2" }
 
 # External dependencies
 cc                    = "1.2"
