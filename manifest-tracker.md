@@ -224,6 +224,8 @@ example.
   - [x] Emit structured suggestions from duplicate-label diagnostics (#52)
   - [x] Render suggestions in CLI diagnostics (#109)
   - [x] Render suggestions in LSP output/code actions (#113)
+  - [x] Emit safe `\`→`/` fixes for unsafe `#image` / `#figure` / `#bibliography` paths, `MOS0049`
+        (#128); manifest paths stay fix-less until they carry spans
 - [ ] Add layout warnings.
 - [ ] Add float placement diagnostics.
 - [ ] Add performance diagnostics.

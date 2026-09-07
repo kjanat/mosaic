@@ -8,6 +8,17 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Safe fix-its for unsafe portable paths (https://github.com/kjanat/mosaic/issues/128): `MOS0049`
+  on a `#image`, `#figure`, or `#bibliography` path such as `"assets\\logo.png"` now carries a
+  machine-applicable [`mos-core`][mos-core] `Suggestion` rewriting the literal's contents to
+  `assets/logo.png`, so the CLI prints a `help: replace ... with ...` line and the LSP offers it
+  as a quick fix. [`mos-eval`][mos-eval] only offers the `\`→`/` swap when the result is a relative
+  path the resolver accepts; rooted, drive-prefixed (`C:\...`, `C:foo`), and UNC forms keep the
+  error without a guess. `resolve_relative` now rejects a drive-prefixed segment on every platform,
+  the way it already rejected `\`, so a `#image("C:foo")` fails identically on Linux and Windows.
+  Manifest `[project].entry` / `[output].pdf` paths still report `MOS0049` without a fix because the
+  CLI has no source span for them.
+
 - `mos-bib` value accessors (https://github.com/kjanat/mosaic/issues/149): `unwrap_value` and
   `BibEntry::field_text` strip exactly one matching outer `{}` / `""` pair from a stored field
   value, and `Citation` derives `PartialEq` / `Eq`.
@@ -270,6 +281,11 @@ All notable changes to this project will be documented here. The format is based
   (locked with a corpus test).
 
 ### Changed
+
+- `mos_eval::image::load` takes the path literal's span as a fourth argument so `MOS0049` can
+  carry a fix (https://github.com/kjanat/mosaic/issues/128). The CLI's `help:` fix-it line now
+  prints replaced and replacement text as written, escaping only line breaks and tabs, so a path
+  with a backslash shows the backslash once, matching the LSP quick-fix title.
 
 - BibTeX field values keep their outer delimiters
   (https://github.com/kjanat/mosaic/issues/149): [`mos-bib`][mos-bib] now stores `{Title}` and

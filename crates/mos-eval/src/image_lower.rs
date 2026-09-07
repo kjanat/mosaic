@@ -9,7 +9,9 @@ use mos_core::{
 };
 use mos_parse::{SetArg, SetValue};
 
-use crate::{image, insert_label_attributes, set::coerce_positive_length, suggest};
+use crate::{
+    image, insert_label_attributes, set::coerce_positive_length, string_content_span, suggest,
+};
 
 /// Keys accepted by [`collect_one_figure_arg`]'s named-argument match; the
 /// MOS0015 nearest-match candidate set. Keep in sync with the match arms.
@@ -252,7 +254,7 @@ fn build_image_attributes(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<(AttrMap, Option<String>)> {
     let image_args = collect_image_args(args, em_pt, diagnostics);
-    let Some((path, _path_span)) = image_args.src_path else {
+    let Some((path, path_span)) = image_args.src_path else {
         diagnostics.push(
             Diagnostic::simple(
                 &codes::MOS0037,
@@ -277,7 +279,7 @@ fn build_image_attributes(
         );
         return None;
     }
-    let (resolved, decoded) = match image::load(&path, source_file, span) {
+    let (resolved, decoded) = match image::load(&path, source_file, span, &path_span) {
         Ok(v) => v,
         Err(diag) => {
             diagnostics.push(*diag);
@@ -440,16 +442,4 @@ fn collect_image_path(
 fn type_error(value_span: &SourceSpan, message: &'static str, diagnostics: &mut Vec<Diagnostic>) {
     diagnostics
         .push(Diagnostic::simple(&codes::MOS0020, None, message).with_span(value_span.clone()));
-}
-
-fn string_content_span(value_span: &SourceSpan) -> SourceSpan {
-    if value_span.end() > value_span.start().saturating_add(1) {
-        SourceSpan::new(
-            value_span.file.clone(),
-            value_span.start() + 1,
-            value_span.end() - 1,
-        )
-    } else {
-        value_span.clone()
-    }
 }

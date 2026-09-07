@@ -600,7 +600,17 @@ fn suggestion_text<'a>(src: &'a str, span: &SourceSpan) -> Option<&'a str> {
 }
 
 fn display_edit_text(text: &str) -> String {
-    text.escape_debug().to_string()
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            other if other.is_control() => out.extend(other.escape_unicode()),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 fn clamp_to_char_boundary(src: &str, mut offset: usize) -> usize {
@@ -649,7 +659,15 @@ mod tests {
 
     use mos_core::{SourceSpan, Suggestion};
 
-    use super::{PdfOpen, suggestion_help};
+    use super::{PdfOpen, display_edit_text, suggestion_help};
+
+    #[test]
+    fn display_edit_text_escapes_control_characters_and_keeps_backslashes() {
+        assert_eq!(display_edit_text("a\u{1b}[31mb"), "a\\u{1b}[31mb");
+        assert_eq!(display_edit_text("x\u{7f}\u{0}y"), "x\\u{7f}\\u{0}y");
+        assert_eq!(display_edit_text("assets\\logo.png"), "assets\\logo.png");
+        assert_eq!(display_edit_text("a\nb\tc\rd"), "a\\nb\\tc\\rd");
+    }
 
     #[test]
     fn pdf_open_from_cli_distinguishes_absent_default_and_program() {

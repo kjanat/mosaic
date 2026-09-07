@@ -915,6 +915,15 @@ mod tests {
     }
 
     #[test]
+    fn code_action_request_returns_unsafe_path_fix() {
+        let src = "#image(\"assets\\\\logo.png\")\n";
+        let start = src.find("assets").expect("path literal");
+        let actions = code_actions_for_source_range(src, start, start + "assets".len());
+
+        assert_eq!(code_action_new_texts(&actions), vec!["assets/logo.png"]);
+    }
+
+    #[test]
     fn code_action_request_returns_inline_closer_at_diagnostic() {
         let src = "*unclosed\n";
         let start = src.find('*').expect("emphasis opener");

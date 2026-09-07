@@ -7,7 +7,9 @@
 //! supply their own candidate sets (reference labels, citation keys, `#set`
 //! targets, directive keyword arguments).
 
-use mos_core::{Diagnostic, SourceSpan, Suggestion, codes};
+use std::path::Path;
+
+use mos_core::{Diagnostic, SourceSpan, Suggestion, codes, resolve_relative};
 
 /// Byte-level edit distance counting an adjacent transposition as one edit
 /// (optimal string alignment, the restricted Damerau-Levenshtein variant).
@@ -113,9 +115,113 @@ pub(crate) fn unknown_key_diagnostic(
     diagnostic
 }
 
+/// Build the `MOS0049` unsafe-path diagnostic for a `#image` / `#figure` /
+/// `#bibliography` string argument, attaching a fix that rewrites the
+/// literal's contents to the `/`-only spelling when [`portable_path_fix`] can
+/// produce one.
+pub(crate) fn unsafe_path_diagnostic(
+    message: String,
+    path: &str,
+    span: &SourceSpan,
+    value_span: &SourceSpan,
+) -> Diagnostic {
+    let mut diagnostic = Diagnostic::simple(&codes::MOS0049, None, message).with_span(span.clone());
+    if let Some(fixed) = portable_path_fix(path) {
+        diagnostic = diagnostic.with_suggestion(Suggestion::new(
+            crate::string_content_span(value_span),
+            escape_string_content(&fixed),
+        ));
+    }
+    diagnostic
+}
+
+/// Rewrite every `\` in `path` to `/` when the result is a relative path that
+/// [`resolve_relative`] accepts. Returns `None` for a path with no `\`, and
+/// for rooted, drive-prefixed, or UNC forms, where the swap would change the
+/// path's meaning.
+fn portable_path_fix(path: &str) -> Option<String> {
+    if !path.contains('\\') {
+        return None;
+    }
+    let candidate = path.replace('\\', "/");
+    let as_path = Path::new(&candidate);
+    if as_path.is_absolute() || as_path.has_root() {
+        return None;
+    }
+    resolve_relative(Path::new(""), &candidate)
+        .ok()
+        .map(|_| candidate)
+}
+
+/// Re-escape `text` so it can sit between the quotes of a `.mos` string
+/// literal. This inverts the parser's `\\`, `\"`, `\n`, `\t`, and `\r`
+/// escapes.
+fn escape_string_content(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{edit_distance, nearest_match};
+    use super::{edit_distance, escape_string_content, nearest_match, portable_path_fix};
+
+    #[test]
+    fn portable_path_fix_swaps_backslashes_in_relative_paths() {
+        assert_eq!(
+            portable_path_fix("assets\\logo.png"),
+            Some("assets/logo.png".to_owned())
+        );
+        assert_eq!(
+            portable_path_fix("a\\b/c\\d.png"),
+            Some("a/b/c/d.png".to_owned())
+        );
+        assert_eq!(
+            portable_path_fix("..\\shared\\x.bib"),
+            Some("../shared/x.bib".to_owned())
+        );
+        assert_eq!(portable_path_fix("assets\\"), Some("assets/".to_owned()));
+    }
+
+    #[test]
+    fn portable_path_fix_refuses_rooted_drive_and_unc_forms() {
+        assert_eq!(portable_path_fix("C:\\x.png"), None);
+        assert_eq!(portable_path_fix("c:\\x.png"), None);
+        assert_eq!(portable_path_fix("a\\C:\\b.png"), None);
+        assert_eq!(portable_path_fix("\\x.png"), None);
+        assert_eq!(portable_path_fix("\\\\server\\share\\x.png"), None);
+    }
+
+    #[test]
+    fn portable_path_fix_refuses_drive_relative_forms() {
+        assert_eq!(portable_path_fix("C:foo\\bar.png"), None);
+        assert_eq!(portable_path_fix("c:foo\\bar.png"), None);
+        assert_eq!(portable_path_fix("a\\C:foo"), None);
+    }
+
+    #[test]
+    fn portable_path_fix_has_nothing_to_offer_for_already_portable_paths() {
+        assert_eq!(portable_path_fix("assets/logo.png"), None);
+        assert_eq!(portable_path_fix("/abs/x.png"), None);
+        assert_eq!(portable_path_fix(""), None);
+    }
+
+    #[test]
+    fn escape_string_content_round_trips_parser_escapes() {
+        assert_eq!(escape_string_content("assets/logo.png"), "assets/logo.png");
+        assert_eq!(escape_string_content("a\"b"), "a\\\"b");
+        assert_eq!(escape_string_content("a\\b"), "a\\\\b");
+        assert_eq!(escape_string_content("a\nb\tc\rd"), "a\\nb\\tc\\rd");
+    }
 
     #[test]
     fn edit_distance_counts_inserts_deletes_substitutions() {

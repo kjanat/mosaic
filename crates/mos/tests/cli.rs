@@ -362,6 +362,19 @@ fn check_renders_unknown_label_suggestion() {
 }
 
 #[test]
+fn check_renders_unsafe_path_suggestion() {
+    let dir = temp_dir("mos-check-mos0049-suggestion");
+    write_file(dir.path(), "main.mos", "#image(\"assets\\\\logo.png\")\n");
+    let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
+    assert_eq!(code, 1);
+    assert!(stderr.contains("error[MOS0049]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains(r"help: replace `assets\\logo.png` with `assets/logo.png`"),
+        "stderr={stderr:?}"
+    );
+}
+
+#[test]
 fn check_reports_duplicate_label() {
     let dir = temp_dir("mos-check-mos0030");
     write_file(dir.path(), "main.mos", "= A <dup>\n\n= B <dup>\n");

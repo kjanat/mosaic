@@ -45,11 +45,11 @@ impl core::error::Error for PathError {}
 /// Manifest paths spell separators with `/` only, so a `\` (a separator on
 /// Windows), a drive prefix (`C:`), or any rooted form would let the OS
 /// re-split the segment and slip past the lexical `..` normalization in
-/// [`resolve_relative`]. Backslash is rejected on every platform so a manifest
-/// resolves identically everywhere, not only where `\` happens to be a
-/// separator.
+/// [`resolve_relative`]. Backslash and a leading drive letter are rejected on
+/// every platform so a manifest resolves identically everywhere, not only where
+/// `\` happens to be a separator or `C:` a prefix.
 fn is_plain_name(segment: &str) -> bool {
-    if segment.contains('\\') {
+    if segment.contains('\\') || has_drive_prefix(segment) {
         return false;
     }
     let mut components = Path::new(segment).components();
@@ -177,6 +177,11 @@ pub fn resolve_relative(base: &Path, relative: &str) -> Result<PathBuf, PathErro
     Ok(out)
 }
 
+fn has_drive_prefix(segment: &str) -> bool {
+    let bytes = segment.as_bytes();
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
 /// Resolve a portable, `/`-separated `src_path` (as written in a source file)
 /// relative to the directory containing `source_file`.
 ///
@@ -286,6 +291,22 @@ mod tests {
         assert_eq!(
             resolve_relative(Path::new("proj"), "/abs/x"),
             Ok(Path::new("/abs/x").to_path_buf()),
+        );
+    }
+
+    #[test]
+    fn resolve_relative_rejects_drive_prefixed_segments_on_every_platform() {
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "C:foo/x.png"),
+            Err(PathError::UnsafeSegment("C:foo".to_owned())),
+        );
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "a/c:/x.png"),
+            Err(PathError::UnsafeSegment("c:".to_owned())),
+        );
+        assert_eq!(
+            resolve_relative(Path::new("proj"), "notes:draft/x.png"),
+            Ok(Path::new("proj").join("notes:draft").join("x.png")),
         );
     }
 
