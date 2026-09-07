@@ -400,8 +400,8 @@ For Tree-sitter naming, keep the CST shallow and stable. A first grammar only ne
 `set_directive`, `import_directive`, `include_directive`, `block_call`, `content_body`,
 `verse_block`, `pre_block`, `code_block`, `argument_list`, `attribute`, `array`, `object`,
 `call_expr`, `label`, `reference`, `emphasis`, `strong`, `strong_emphasis`, `code_span`,
-`inline_math`, `text`, `string`, `number`, `dimension`, `identifier`, and `comment`. Use
-`word: $.identifier`, keep `newline` explicit rather than in `extras`, and use `supertypes` only for
+`inline_math`, `text`, `string`, `number`, `dimension`, `identifier`, and `comment`. Use `word:
+$.identifier`, keep `newline` explicit rather than in `extras`, and use `supertypes` only for
 abstract buckets such as `_block`, `_inline`, and `_expression`.
 
 | Tree-sitter concern | Recommendation                                                                        |
@@ -444,8 +444,8 @@ advice about externals, and it keeps the first grammar much easier to reason abo
 ## Test corpus and parsing flow
 
 This corpus is deliberately small but high-yield: each example isolates one block or inline feature
-and keeps the expected CST obvious. It is suitable both as a prose reference set and as
-`tree-sitter test` corpus input for the first parser iteration.
+and keeps the expected CST obvious. It is suitable both as a prose reference set and as `tree-sitter
+test` corpus input for the first parser iteration.
 
 | Case                | Snippet                                                                                           | Expected parse highlight                                                                                                                                    |
 | ------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -454,7 +454,7 @@ and keeps the expected CST obvious. It is suitable both as a prose reference set
 | soft break          | `Line one`<br>`line two`                                                                          | one `paragraph`, one `soft_break`, **not** two paragraphs                                                                                                   |
 | explicit line break | `Line one \\`<br>`Line two`                                                                       | one `paragraph` containing a `hard_break` inline atom between the two text runs (a bare trailing `\` is `loose_backslash` + `soft_break`, not a hard break) |
 | list continuation   | <code>- Line one<br>&nbsp;&nbsp;line two<br>&nbsp;&nbsp;- child<br>&nbsp;&nbsp;parent tail</code> | one parent `list_item`; `line two` and `parent tail` continue the parent item, while `child` is a nested `list_item`                                        |
-| refs and styles     | `See @sec:intro with *emph* and **strong** and \`code\`.`                                         | one `paragraph` containing `reference`, `emphasis`, `strong`, `code_span`                                                                                   |
+| refs and styles     | ``See @sec:intro with *emph* and **strong** and \``code\`.`                                       | one `paragraph` containing `reference`, `emphasis`, `strong`, `code_span`                                                                                   |
 | import/include      | `#import "@mosaic/templates/article": article`<br>`#include "sections/intro.mos"`                 | two top-level directive nodes                                                                                                                               |
 | labeled call        | `#figure(image: "demo.png", caption: "Demo") <fig:demo>`                                          | one `block_call` with `argument_list` and trailing `label`                                                                                                  |
 | verse               | `#verse[First line`<br>`Second *line*]`                                                           | one `verse_block`; line boundaries preserved; inline emphasis still parsed                                                                                  |

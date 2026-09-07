@@ -79,8 +79,8 @@ The server replies with an `initialize` response and one `publishDiagnostics` no
 a `MOS0033` diagnostic for the unknown `@no:such` reference.
 
 Automated coverage for the same path lives in
-`server::tests::initialize_did_open_publishes_diagnostics_and_exits`; run it with
-`cargo test -p mos-lsp initialize_did_open_publishes_diagnostics_and_exits`.
+`server::tests::initialize_did_open_publishes_diagnostics_and_exits`; run it with `cargo test -p
+mos-lsp initialize_did_open_publishes_diagnostics_and_exits`.
 
 ### Protocol E2E tests
 

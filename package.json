@@ -7,11 +7,13 @@
 		".opencode"
 	],
 	"scripts": {
-		"postinstall": "bun --filter '*' postinstall",
-		"fmt": "dprint fmt"
+		"fmt": "dprint fmt",
+		"postinstall": "bun --filter '*' postinstall"
 	},
-	"patchedDependencies": {
-		"tree-sitter@0.25.0": "patches/tree-sitter@0.25.0.patch"
+	"devDependencies": {
+		"dprint": "^0.54.0",
+		"runner-run": "^0.12.0",
+		"tombi": "^1.1.1"
 	},
 	"catalog": {
 		"@types/bun": "1.3.14",
@@ -20,9 +22,7 @@
 		"typescript": "^6",
 		"@octokit/graphql": "^9.0.3"
 	},
-	"devDependencies": {
-		"dprint": "^0.54.0",
-		"runner-run": "^0.12.0",
-		"tombi": "^1.1.1"
+	"patchedDependencies": {
+		"tree-sitter@0.25.0": "patches/tree-sitter@0.25.0.patch"
 	}
 }

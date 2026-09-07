@@ -2,8 +2,8 @@
 
 This page documents the label and `@`-reference behavior that Mosaic ships **today**. Section,
 figure, and label references are resolved by a layout-free semantic pass that runs before layout and
-PDF emission. A `@page(label)` reference instead resolves to a printed **page number**, which
-`mos build` computes after layout through a bounded resolve↔layout fixpoint (see
+PDF emission. A `@page(label)` reference instead resolves to a printed **page number**, which `mos
+build` computes after layout through a bounded resolve↔layout fixpoint (see
 [Page references](#page-references-pagelabel)); `mos check` validates the label but, because it does
 not lay out, leaves the page number unresolved. Where this page and `manifest.md` disagree, this
 page (and the compiler) win.
@@ -167,11 +167,11 @@ See section @intro on page @page(intro).
 ```
 
 Unlike a section or figure number, which the resolver computes from document order: a page number is
-only known after layout, because a page reference's own width can shift where its target lands.
-`mos build` therefore resolves page references through a **bounded resolve↔layout fixpoint**: it
-lays the document out, feeds the resulting label→page map back into the resolver to rewrite each
-`@page(...)` to its target's page number, and re-lays-out, repeating until the page numbers stop
-changing. Stable documents settle in one or two rounds.
+only known after layout, because a page reference's own width can shift where its target lands. `mos
+build` therefore resolves page references through a **bounded resolve↔layout fixpoint**: it lays the
+document out, feeds the resulting label→page map back into the resolver to rewrite each `@page(...)`
+to its target's page number, and re-lays-out, repeating until the page numbers stop changing. Stable
+documents settle in one or two rounds.
 
 If the page numbers never stabilize: a pathological case where resolving a reference keeps shifting
 its target across a page boundary; the engine stops at an iteration cap and emits
