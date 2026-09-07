@@ -208,7 +208,7 @@ pub fn portable_path_fix(path: &str) -> Option<String> {
 fn has_drive_segment(path: &str) -> bool {
     path.split('/').any(|segment| {
         let bytes = segment.as_bytes();
-        bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+        bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
     })
 }
 
@@ -276,6 +276,13 @@ mod tests {
         assert_eq!(portable_path_fix("a\\C:\\b.png"), None);
         assert_eq!(portable_path_fix("\\x.png"), None);
         assert_eq!(portable_path_fix("\\\\server\\share\\x.png"), None);
+    }
+
+    #[test]
+    fn portable_path_fix_refuses_drive_relative_forms() {
+        assert_eq!(portable_path_fix("C:foo\\bar.png"), None);
+        assert_eq!(portable_path_fix("c:foo\\bar.png"), None);
+        assert_eq!(portable_path_fix("a\\C:foo"), None);
     }
 
     #[test]
