@@ -350,7 +350,9 @@ example.
 - [x] Track bibliography dependencies. *(`BibliographyDependency` pairs a `Bibliography` id with a
       `ContentHash` boundary; `mos_bib::bibliography_content_hash` hashes the raw `.bib` bytes
       (§4.1). Identity/boundary only; no `DepNode` graph or `CacheKey` wiring yet.)*
-- [ ] Keep `mos-bib` stub docs honest until real support lands.
+- [x] Keep `mos-bib` stub docs honest until real support lands. *(Record docs state the shipped
+      contract: values verbatim with outer delimiters, `unwrap_value` / `field_text` to strip one
+      pair, duplicate keys rejected, repeated fields last-wins.)*
 
 ## Incremental Builds And Cache
 

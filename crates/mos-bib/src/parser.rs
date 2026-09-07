@@ -12,9 +12,9 @@
 //!
 //! Entry types and field names are lowercased; citation keys are kept
 //! verbatim. Brace values balance nested `{}` by naive counting, so
-//! `{The {LaTeX} Companion}` is captured whole, but their contents are
-//! stored as raw text; no `TeX` decoding, no `@string` / `@preamble` macro
-//! expansion, no `#` concatenation, no name parsing.
+//! `{The {LaTeX} Companion}` is captured whole. Values are stored as raw
+//! text with their outer delimiters; no `TeX` decoding, no `@string` /
+//! `@preamble` macro expansion, no `#` concatenation, no name parsing.
 
 use std::collections::BTreeMap;
 
@@ -24,10 +24,12 @@ use crate::record::{BibEntry, Bibliography};
 /// Parse `input` as a minimal BibTeX database.
 ///
 /// Returns a [`Bibliography`] whose entries are keyed by citation key. A
-/// duplicate citation key is rejected so later resolver work can report it
-/// before any source-location context is lost. Parsing stops at the first
-/// malformed entry and returns a [`BibParseError`] pinpointing the byte offset;
-/// well-formed input never panics.
+/// duplicate citation key is rejected with [`BibParseErrorKind::DuplicateKey`]
+/// at the duplicate key's offset, so later resolver work can report it before
+/// any source-location context is lost; a repeated field name inside one entry
+/// keeps its last value. Parsing stops at the first malformed entry and returns
+/// a [`BibParseError`] pinpointing the byte offset; well-formed input never
+/// panics.
 ///
 /// # Errors
 ///
@@ -259,11 +261,10 @@ impl<'a> Parser<'a> {
     }
 
     /// Capture a `{...}` value, balancing nested braces by naive counting.
-    /// The inner text is returned verbatim, braces and all.
+    /// The text is returned verbatim, outer braces included.
     fn parse_braced(&mut self) -> Result<String, BibParseError> {
         let open_offset = self.pos;
         self.bump(); // consume '{'
-        let content_start = self.pos;
         let mut depth = 1_usize;
         while let Some(b) = self.peek() {
             match b {
@@ -271,9 +272,8 @@ impl<'a> Parser<'a> {
                 b'}' => {
                     depth -= 1;
                     if depth == 0 {
-                        let value = self.src[content_start..self.pos].to_owned();
                         self.bump(); // consume closing '}'
-                        return Ok(value);
+                        return Ok(self.src[open_offset..self.pos].to_owned());
                     }
                 }
                 _ => {}
@@ -287,12 +287,12 @@ impl<'a> Parser<'a> {
     }
 
     /// Capture a `"..."` value, reading to the next unescaped `"` outside
-    /// braced TeX groups. This still stores raw text: the brace tracking only
-    /// keeps common quoted TeX accents like `{\"o}` from ending the value.
+    /// braced TeX groups. The text is returned verbatim, outer quotes
+    /// included: the brace tracking only keeps common quoted TeX accents like
+    /// `{\"o}` from ending the value.
     fn parse_quoted(&mut self) -> Result<String, BibParseError> {
         let open_offset = self.pos;
         self.bump(); // consume opening '"'
-        let content_start = self.pos;
         let mut depth = 0_usize;
         while let Some(b) = self.peek() {
             match b {
@@ -306,9 +306,8 @@ impl<'a> Parser<'a> {
                 b'{' => depth += 1,
                 b'}' if depth > 0 => depth -= 1,
                 b'"' if depth == 0 => {
-                    let value = self.src[content_start..self.pos].to_owned();
                     self.bump(); // consume closing '"'
-                    return Ok(value);
+                    return Ok(self.src[open_offset..self.pos].to_owned());
                 }
                 _ => {}
             }

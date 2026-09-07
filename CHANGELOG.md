@@ -8,6 +8,10 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- `mos-bib` value accessors (https://github.com/kjanat/mosaic/issues/149): `unwrap_value` and
+  `BibEntry::field_text` strip exactly one matching outer `{}` / `""` pair from a stored field
+  value, and `Citation` derives `PartialEq` / `Eq`.
+
 - Source comments in `.mos` (previously typeset verbatim into the output). [`mos-parse`][mos-parse]
   now recognizes `//` line comments, `/* … */` block comments, and `/** … */` doc comments and drops
   them so they produce no rendered output. Line comments are URL-safe — the `//` must sit at a
@@ -266,6 +270,15 @@ All notable changes to this project will be documented here. The format is based
   (locked with a corpus test).
 
 ### Changed
+
+- BibTeX field values keep their outer delimiters
+  (https://github.com/kjanat/mosaic/issues/149): [`mos-bib`][mos-bib] now stores `{Title}` and
+  `"Title"` verbatim, delimiters included, where it previously stripped the outer pair (bare values
+  such as `1984` are unchanged). [`mos-eval`][mos-eval] entry rendering and [`mos-csl`][mos-csl]
+  item mapping unwrap the pair themselves, so rendered bibliographies and CSL items are
+  byte-identical to before. The record docs now state the actual contract: a duplicate citation
+  key is `BibParseErrorKind::DuplicateKey` at the duplicate's offset, while a repeated field name
+  inside one entry keeps its last value.
 
 - Public Rust crate APIs remain pre-alpha: patch releases in the `0.0.x` line may include breaking
   API cleanup when it keeps the compiler model honest. External crate consumers should pin exact

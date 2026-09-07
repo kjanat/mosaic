@@ -13,7 +13,7 @@
 
 use std::collections::BTreeMap;
 
-use mos_bib::{BibEntry, Bibliography};
+use mos_bib::{BibEntry, Bibliography, unwrap_value};
 
 use crate::item::{
     Date, DateVariable, Item, ItemType, Name, NameVariable, NumberVariable, StandardVariable,
@@ -24,7 +24,7 @@ use crate::item::{
 pub fn item_from_bib_entry(entry: &BibEntry) -> Item {
     let mut item = Item::new(entry.key.clone(), item_type_for(&entry.entry_type));
     for (field, value) in &entry.fields {
-        apply_field(&mut item, &entry.entry_type, field, value);
+        apply_field(&mut item, &entry.entry_type, field, unwrap_value(value));
     }
     item
 }
@@ -151,8 +151,8 @@ fn push_name(names: &mut Vec<Name>, token: &str) {
     }
 }
 
-/// `Last, First` and `First Last` forms become family/given; single-token names
-/// stay literal because `mos-bib` does not preserve institutional bracing yet.
+/// `Last, First` and `First Last` forms become family/given; a single-token
+/// name stays literal, braces and all.
 fn parse_one_name(token: &str) -> Name {
     match token.split_once(',') {
         Some((family, given)) => Name::person(family.trim(), given.trim()),
@@ -221,6 +221,49 @@ mod tests {
         assert_eq!(
             item.date.get(&DateVariable::Issued),
             Some(&Date::year(1984))
+        );
+    }
+
+    #[test]
+    fn unwraps_outer_value_delimiters_before_mapping() {
+        let bib_entry = entry(
+            "article",
+            "knuth1984",
+            &[
+                ("title", "{The {TeX}book}"),
+                ("journal", r#""The Computer Journal""#),
+                ("year", "{1984}"),
+                ("volume", r#""27""#),
+                ("author", "{Knuth, Donald E. and Ada Lovelace}"),
+            ],
+        );
+        let item = item_from_bib_entry(&bib_entry);
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::Title)
+                .map(String::as_str),
+            Some("The {TeX}book")
+        );
+        assert_eq!(
+            item.standard
+                .get(&StandardVariable::ContainerTitle)
+                .map(String::as_str),
+            Some("The Computer Journal")
+        );
+        assert_eq!(
+            item.date.get(&DateVariable::Issued),
+            Some(&Date::year(1984))
+        );
+        assert_eq!(
+            item.number.get(&NumberVariable::Volume).map(String::as_str),
+            Some("27")
+        );
+        assert_eq!(
+            item.name.get(&NameVariable::Author),
+            Some(&vec![
+                Name::person("Knuth", "Donald E."),
+                Name::person("Lovelace", "Ada")
+            ])
         );
     }
 

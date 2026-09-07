@@ -12,7 +12,9 @@ Implemented:
 
 - `parse_bibtex(&str) -> Result<Bibliography, BibParseError>`: zero or more `@type{...}` entries.
 - Values as `{braced}` (naive nested-brace balancing), `"quoted"`, or bare tokens (`year = 1984`),
-  stored verbatim.
+  stored verbatim with their outer delimiters (`{Title}`, `"Title"`, `1984`). `unwrap_value` /
+  `BibEntry::field_text` strip one outer layer for consumers (`mos-eval` rendering, `mos-csl`
+  mapping).
 - Lowercased entry types and field names; verbatim, case-sensitive citation keys.
 - Deterministic ordering via `BTreeMap` for both entries and fields; duplicate keys error, repeated
   fields keep the last value.
@@ -45,8 +47,8 @@ Not implemented:
 ## CONVENTIONS
 
 - Keep the public API small: `crates/mos-bib/src/lib.rs` intentionally exposes `parse_bibtex`,
-  `bibliography_content_hash`, and the record/error types: nothing more. Add a re-export only when a
-  new slice genuinely warrants it.
+  `bibliography_content_hash`, `unwrap_value`, and the record/error types: nothing more. Add a
+  re-export only when a new slice genuinely warrants it.
 - `parse_bibtex` returns the local `BibParseError` (issue #66), but it bridges into the standard
   diagnostics surface via `BibParseError::to_diagnostic` and `From<BibParseError> for CoreError`
   (code `MOS0043`). Keep the local type as the parser entry point; don't change `parse_bibtex` to

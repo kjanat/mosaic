@@ -21,6 +21,8 @@ full bibliography engine; styling, resolution, and rendering are separate concer
   record.
 - `BibParseError` / `BibParseErrorKind`: a local, recoverable parse error carrying a byte offset;
   `to_diagnostic` and `From<BibParseError> for CoreError` bridge into `mos-core` diagnostics.
+- `BibEntry::field_text(name)` / `unwrap_value(raw)`: a field value with one outer `{}` / `""` pair
+  removed.
 - `Citation { key: String }`: a document-body citation reference.
 
 ```rust
@@ -30,7 +32,7 @@ let bib = parse_bibtex("@article{knuth1984, title = {Literate Programming}, year
     .expect("valid BibTeX");
 let entry = &bib.entries["knuth1984"];
 assert_eq!(entry.entry_type, "article");
-assert_eq!(entry.fields["title"], "Literate Programming");
+assert_eq!(entry.fields["title"], "{Literate Programming}");
 assert_eq!(entry.fields["year"], "1984");
 ```
 
@@ -46,7 +48,8 @@ assert_eq!(entry.fields["year"], "1984");
   and stable across runs. Duplicate citation keys are rejected; repeated field names within an entry
   keep the last value.
 - Brace values balance nested `{}` by naive counting, so `{The {LaTeX} Companion}` is captured
-  whole. Value text is stored **verbatim** (no decoding).
+  whole. Value text is stored **verbatim**, outer `{}` / `""` delimiters included (no decoding);
+  bare values have no delimiters.
 - Panic-free, useful errors for malformed input: a missing `@`, entry type, `{`, citation key, `=`,
   or value; a duplicate citation key; an unterminated brace/quote value; or a missing separator.
   Each `BibParseError` carries the byte offset where it was detected.
