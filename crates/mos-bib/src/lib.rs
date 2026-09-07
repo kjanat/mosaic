@@ -10,7 +10,10 @@
 //! `@type{key, field = value, ...}` entry, lowercases the (case-insensitive)
 //! entry type and field names while keeping citation keys verbatim, balances
 //! nested braces, and reports malformed input as a [`BibParseError`] with a
-//! byte offset instead of panicking. Entries and fields live in
+//! byte offset instead of panicking. Field values are stored verbatim,
+//! including their outer `{}` or `""` delimiters. A duplicate citation key
+//! is a [`BibParseErrorKind::DuplicateKey`] error; a repeated field name
+//! within one entry keeps the last value. Entries and fields live in
 //! [`BTreeMap`](std::collections::BTreeMap)s, so iteration is deterministic
 //! and sorted.
 //!
@@ -30,7 +33,7 @@
 //! let bib = parse_bibtex("@article{knuth1984, title = {Literate Programming}, year = 1984}")?;
 //! let entry = &bib.entries["knuth1984"];
 //! assert_eq!(entry.entry_type, "article");
-//! assert_eq!(entry.fields["title"], "Literate Programming");
+//! assert_eq!(entry.fields["title"], "{Literate Programming}");
 //! assert_eq!(entry.fields["year"], "1984");
 //! # Ok(())
 //! # }
@@ -49,4 +52,4 @@ mod record;
 pub use content::bibliography_content_hash;
 pub use error::{BibParseError, BibParseErrorKind};
 pub use parser::parse_bibtex;
-pub use record::{BibEntry, Bibliography, Citation};
+pub use record::{BibEntry, Bibliography, Citation, unwrap_value};

@@ -5,7 +5,7 @@
 //! `clippy.toml`): the workspace also enables `clippy::panic_in_result_fn`, so a
 //! `Result`-returning test with `assert!` would itself be a clippy error.
 
-use mos_bib::{BibEntry, BibParseErrorKind, parse_bibtex};
+use mos_bib::{BibEntry, BibParseErrorKind, Citation, parse_bibtex, unwrap_value};
 
 /// Field names in their (sorted) iteration order.
 fn field_names(entry: &BibEntry) -> Vec<&str> {
@@ -25,13 +25,13 @@ fn parses_minimal_article() {
     assert_eq!(&entry.key_span, &(9..18));
     assert_eq!(
         entry.fields.get("title").map(String::as_str),
-        Some("Literate Programming")
+        Some("{Literate Programming}")
     );
     assert_eq!(
         entry.fields.get("author").map(String::as_str),
-        Some("Donald Knuth")
+        Some("{Donald Knuth}")
     );
-    assert_eq!(entry.fields.get("year").map(String::as_str), Some("1984"));
+    assert_eq!(entry.fields.get("year").map(String::as_str), Some("{1984}"));
 }
 
 #[test]
@@ -42,11 +42,11 @@ fn accepts_quoted_values() {
     let entry = bib.entries.get("lovelace").expect("entry present");
     assert_eq!(
         entry.fields.get("title").map(String::as_str),
-        Some("A Quoted Title")
+        Some(r#""A Quoted Title""#)
     );
     assert_eq!(
         entry.fields.get("author").map(String::as_str),
-        Some("Ada Lovelace")
+        Some(r#""Ada Lovelace""#)
     );
 }
 
@@ -57,7 +57,7 @@ fn quoted_values_keep_tex_accents_verbatim() {
     let entry = bib.entries.get("k").expect("entry present");
     assert_eq!(
         entry.fields.get("title").map(String::as_str),
-        Some(r#"Schr{\"o}dinger"#)
+        Some(r#""Schr{\"o}dinger""#)
     );
 }
 
@@ -67,7 +67,7 @@ fn quoted_values_keep_escaped_quotes_verbatim() {
     let entry = bib.entries.get("k").expect("entry present");
     assert_eq!(
         entry.fields.get("title").map(String::as_str),
-        Some(r#"He said \"hi\""#)
+        Some(r#""He said \"hi\"""#)
     );
 }
 
@@ -78,11 +78,11 @@ fn accepts_mixed_quote_and_brace_values() {
     let entry = bib.entries.get("k").expect("entry present");
     assert_eq!(
         entry.fields.get("title").map(String::as_str),
-        Some("Braced")
+        Some("{Braced}")
     );
     assert_eq!(
         entry.fields.get("author").map(String::as_str),
-        Some("Quoted")
+        Some(r#""Quoted""#)
     );
 }
 
@@ -158,7 +158,7 @@ fn balances_nested_braces_in_values() {
     let entry = bib.entries.get("k").expect("entry present");
     assert_eq!(
         entry.fields.get("title").map(String::as_str),
-        Some("The {LaTeX} Companion")
+        Some("{The {LaTeX} Companion}")
     );
 }
 
@@ -167,7 +167,74 @@ fn ignores_surrounding_whitespace() {
     let bib =
         parse_bibtex("\n\n  @article{ k ,\n    title = {T} ,\n  }\n").expect("input should parse");
     let entry = bib.entries.get("k").expect("entry present");
-    assert_eq!(entry.fields.get("title").map(String::as_str), Some("T"));
+    assert_eq!(entry.fields.get("title").map(String::as_str), Some("{T}"));
+}
+
+#[test]
+fn repeated_field_name_keeps_last_value_without_duplicate_key_error() {
+    let bib = parse_bibtex("@article{k, title = {First}, title = {Second}}")
+        .expect("repeated field names within one entry are not duplicate keys");
+    let entry = bib.entries.get("k").expect("entry present");
+    assert_eq!(
+        entry.fields.get("title").map(String::as_str),
+        Some("{Second}")
+    );
+    assert_eq!(entry.fields.len(), 1);
+}
+
+#[test]
+fn field_text_unwraps_one_outer_delimiter_layer() {
+    let bib = parse_bibtex(
+        r#"@article{k, title = {The {LaTeX} Companion}, author = "Ada Lovelace", year = 1984}"#,
+    )
+    .expect("input should parse");
+    let entry = bib.entries.get("k").expect("entry present");
+    assert_eq!(entry.field_text("title"), Some("The {LaTeX} Companion"));
+    assert_eq!(entry.field_text("author"), Some("Ada Lovelace"));
+    assert_eq!(entry.field_text("year"), Some("1984"));
+    assert_eq!(entry.field_text("missing"), None);
+}
+
+#[test]
+fn unwrap_value_only_strips_a_matching_outer_pair() {
+    assert_eq!(unwrap_value("{Braced}"), "Braced");
+    assert_eq!(
+        unwrap_value("{The {LaTeX} Companion}"),
+        "The {LaTeX} Companion"
+    );
+    assert_eq!(unwrap_value(r#""Quoted""#), "Quoted");
+    assert_eq!(unwrap_value(r#""Schr{\"o}dinger""#), r#"Schr{\"o}dinger"#);
+    assert_eq!(unwrap_value(r#""a\"""#), r#"a\""#);
+    assert_eq!(unwrap_value("1984"), "1984");
+    assert_eq!(unwrap_value("{}"), "");
+    assert_eq!(unwrap_value(r#""""#), "");
+}
+
+#[test]
+fn unwrap_value_leaves_unbalanced_or_multi_group_values_alone() {
+    assert_eq!(unwrap_value("{"), "{");
+    assert_eq!(unwrap_value("\""), "\"");
+    assert_eq!(unwrap_value(r#"{mixed""#), r#"{mixed""#);
+    assert_eq!(unwrap_value("{a} {b}"), "{a} {b}");
+    assert_eq!(unwrap_value("{a}}"), "{a}}");
+    assert_eq!(unwrap_value("{{a}"), "{{a}");
+    assert_eq!(unwrap_value(r#""a" "b""#), r#""a" "b""#);
+    assert_eq!(unwrap_value(r#""a\""#), r#""a\""#);
+}
+
+#[test]
+fn citation_supports_equality() {
+    let a = Citation {
+        key: "knuth1984".to_owned(),
+    };
+    let b = Citation {
+        key: "knuth1984".to_owned(),
+    };
+    let other = Citation {
+        key: "lamport1994".to_owned(),
+    };
+    assert_eq!(a, b);
+    assert_ne!(a, other);
 }
 
 #[test]
@@ -179,9 +246,12 @@ fn captures_unicode_and_latex_in_values_verbatim() {
     let entry = bib.entries.get("k").expect("entry present");
     assert_eq!(
         entry.fields.get("title").map(String::as_str),
-        Some(r"Caf\'{e} \LaTeX")
+        Some(r"{Caf\'{e} \LaTeX}")
     );
-    assert_eq!(entry.fields.get("note").map(String::as_str), Some("naïve"));
+    assert_eq!(
+        entry.fields.get("note").map(String::as_str),
+        Some("{naïve}")
+    );
 }
 
 #[test]
@@ -200,6 +270,11 @@ fn duplicate_key_is_rejected() {
     let err = parse_bibtex("@article{k, title = {First}}@article{k, title = {Second}}")
         .expect_err("duplicate key should be rejected");
     assert_eq!(err.kind(), BibParseErrorKind::DuplicateKey);
+    assert_eq!(
+        err.offset(),
+        37,
+        "offset points at the duplicate key, not the entry"
+    );
 }
 
 #[test]

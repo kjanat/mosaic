@@ -366,9 +366,8 @@ fn append_bibliography_entries(
 fn format_entry(key: &str, entry: &mos_bib::BibEntry) -> String {
     let field = |name: &str| {
         entry
-            .fields
-            .get(name)
-            .map(|raw| clean_field(raw))
+            .field_text(name)
+            .map(clean_field)
             .filter(|value| !value.is_empty())
     };
 
@@ -639,5 +638,18 @@ mod tests {
         assert_eq!(clean_field("{The {TeX}book}"), "The TeXbook");
         assert_eq!(clean_field("  spaced\n\tout  "), "spaced out");
         assert_eq!(clean_field("{}"), "");
+    }
+
+    #[test]
+    fn quoted_bibtex_values_render_without_their_quotes() {
+        let entry = entry(&[
+            ("author", r#""Knuth, Donald E.""#),
+            ("title", "{Literate Programming}"),
+            ("year", "1984"),
+        ]);
+        assert_eq!(
+            format_entry("knuth1984", &entry),
+            "Knuth, Donald E. Literate Programming. 1984."
+        );
     }
 }
