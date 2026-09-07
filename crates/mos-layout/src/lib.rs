@@ -1,12 +1,11 @@
 //! Layout engine for Mosaic.
 //!
-//! MVP 0 implements the smallest end-to-end slice that gets ink on a
-//! page: greedy line-breaking against fixed A4 metrics, walking a
-//! lowered [`Document`] into a [`PageGraph`]. Real shaping
-//! (`HarfBuzz`/`rustybuzz`), Knuth-Plass, hyphenation, and font
-//! embedding are deferred per the manifest's MVP roadmap (§30,
-//! §22.1, §22.2). Boundary-state reuse for incremental builds
-//! (§22.3, §33) is also out of scope here.
+//! Walks a lowered [`Document`] into a [`PageGraph`] with greedy
+//! line-breaking: paper size and margins from `#set page(...)`, Base-14
+//! metrics for the core fonts, and the bundled Noto Sans shaped through
+//! `rustybuzz` for glyphs they lack. Knuth-Plass, hyphenation, and
+//! boundary-state reuse for incremental builds (§22.1, §22.3, §33) are
+//! out of scope here.
 
 #![doc(
     html_logo_url = "https://mosaiclang.dev/assets/A4.svg",

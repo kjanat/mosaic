@@ -1,9 +1,9 @@
 //! `mos`: command-line interface for the Mosaic typesetting engine.
 //!
-//! Subcommands mirror manifest §15.1. MVP 0 wires `mos check` end-to-end
-//! (read source → parse → lower → report diagnostics); the remaining
-//! subcommands stay stubbed until layout (MVP 2) and the PDF backend
-//! (MVP 0 §6 stage 9) land.
+//! Subcommands mirror manifest §15.1. `mos check` (read source → parse →
+//! lower → resolve → report diagnostics) and `mos build` (the same, then
+//! layout → PDF) are wired end-to-end; every other subcommand exits with an
+//! error until its slice lands.
 
 #![doc(
     html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
@@ -233,10 +233,11 @@ fn run_check(entry: &Path) -> ExitCode {
     }
 }
 
-/// `mos build`: read source, parse, lower, lay out, and emit a PDF
-/// to `build/<entry-stem>.pdf`. MVP 0 produces a fixed-A4 document
-/// using the standard PDF base fonts (no embedding). Layout warnings
-/// (e.g. non-ASCII substitutions) print but don't fail the build.
+/// `mos build`: read source, parse, lower, lay out, and emit a PDF to
+/// `build/<entry-stem>.pdf` or the project's `[output].pdf`. Paper size and
+/// margins come from `#set page(...)`; text uses the Base-14 fonts with the
+/// bundled Noto Sans embedded and subset for glyphs they lack. Layout
+/// warnings print but don't fail the build.
 fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
     let Ok(resolved) = resolve_entry("build", entry) else {
         return ExitCode::FAILURE;
