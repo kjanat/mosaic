@@ -21,8 +21,7 @@
 //! - `MOS0046`: a citation key appears in more than one declared bibliography source.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use mos_bib::Bibliography;
 use mos_core::{
@@ -31,6 +30,7 @@ use mos_core::{
 };
 use mos_parse::{SetArg, SetValue};
 
+use crate::dependency::{DependencySet, ExternalInputs, fingerprint_file, read_fingerprinted};
 use crate::suggest;
 
 /// Named keys accepted by [`bibliography_path`]; the MOS0015 nearest-match
@@ -41,18 +41,18 @@ const BIBLIOGRAPHY_KEYS: &[&str] = &["src", "path"];
 ///
 /// The literal path is recorded under `src`; the path resolved against the
 /// source file's directory is recorded under `resolved_path`.
-pub fn lower_bibliography_directive(
+pub(crate) fn lower_bibliography_directive(
     document: &mut Document,
     root: NodeId,
     args: &[SetArg],
     span: &SourceSpan,
-    source_file: &Path,
+    inputs: &mut ExternalInputs<'_>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     let Some((path, path_span)) = bibliography_path(args, span, diagnostics) else {
         return;
     };
-    let resolved = match mos_core::resolve_source_path(&path, source_file) {
+    let resolved = match mos_core::resolve_source_path(&path, inputs.source_file) {
         Ok(resolved) => resolved,
         Err(err) => {
             diagnostics.push(suggest::unsafe_path_diagnostic(
@@ -63,6 +63,23 @@ pub fn lower_bibliography_directive(
             ));
             return;
         }
+    };
+    let Some(resolved_text) = resolved.to_str() else {
+        inputs
+            .dependencies
+            .record(resolved.clone(), fingerprint_file(&resolved));
+        diagnostics.push(
+            Diagnostic::simple(
+                &codes::MOS0041,
+                None,
+                format!(
+                    "declared bibliography source `{}` has a non-UTF-8 path and cannot be loaded",
+                    mos_core::display_path(&resolved)
+                ),
+            )
+            .with_span(span.clone()),
+        );
+        return;
     };
     // The directive only *declares* the source in this slice, so a missing
     // file is a non-fatal warning rather than the hard error `#image(...)`
@@ -86,7 +103,7 @@ pub fn lower_bibliography_directive(
     attributes.insert("src".to_owned(), AttrValue::Str(path));
     attributes.insert(
         "resolved_path".to_owned(),
-        AttrValue::Str(resolved.to_string_lossy().into_owned()),
+        AttrValue::Str(resolved_text.to_owned()),
     );
     document.alloc_child(
         root,
@@ -224,11 +241,12 @@ fn bibliography_path(
 /// tell an `@key` label reference that *misses* the label index but *matches*
 /// a bibliography key apart -- a near-certain "meant a citation" mistake --
 /// from a plain unknown label (see [`crate::resolve::resolve`]).
-pub fn resolve_citations(
+pub(crate) fn resolve_citations(
     document: &mut Document,
     diagnostics: &mut Vec<Diagnostic>,
+    dependencies: &mut DependencySet,
 ) -> BTreeSet<String> {
-    let bibliography = load_bibliography(document, diagnostics);
+    let bibliography = load_bibliography(document, diagnostics, dependencies);
     let citation_ids: Vec<NodeId> = document
         .nodes()
         .filter(|node| node.kind == NodeKind::Citation)
@@ -474,7 +492,11 @@ struct BibliographyOrigin {
     key_span: SourceSpan,
 }
 
-fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> LoadedBibliography {
+fn load_bibliography(
+    document: &Document,
+    diagnostics: &mut Vec<Diagnostic>,
+    dependencies: &mut DependencySet,
+) -> LoadedBibliography {
     let mut merged = Bibliography::default();
     let mut origins: BTreeMap<String, BibliographyOrigin> = BTreeMap::new();
     let mut complete = true;
@@ -488,21 +510,37 @@ fn load_bibliography(document: &Document, diagnostics: &mut Vec<Diagnostic>) -> 
         };
         let path_buf = PathBuf::from(path);
         if !path_buf.is_file() {
+            dependencies.record(path_buf, None);
             complete = false;
             continue;
         }
-        let source = match fs::read_to_string(&path_buf) {
+        let unreadable = |err: &dyn std::fmt::Display| {
+            Diagnostic::simple(
+                &codes::MOS0041,
+                Some(node.span.clone()),
+                format!(
+                    "declared bibliography source `{}` could not be read: {err}",
+                    mos_core::display_path(&path_buf)
+                ),
+            )
+        };
+        let bytes = match read_fingerprinted(&path_buf) {
+            Ok((bytes, fingerprint)) => {
+                dependencies.record(path_buf.clone(), Some(fingerprint));
+                bytes
+            }
+            Err(err) => {
+                dependencies.record(path_buf.clone(), None);
+                complete = false;
+                diagnostics.push(unreadable(&err));
+                continue;
+            }
+        };
+        let source = match String::from_utf8(bytes) {
             Ok(source) => source,
             Err(err) => {
                 complete = false;
-                diagnostics.push(Diagnostic::simple(
-                    &codes::MOS0041,
-                    Some(node.span.clone()),
-                    format!(
-                        "declared bibliography source `{}` could not be read: {err}",
-                        mos_core::display_path(&path_buf)
-                    ),
-                ));
+                diagnostics.push(unreadable(&err));
                 continue;
             }
         };

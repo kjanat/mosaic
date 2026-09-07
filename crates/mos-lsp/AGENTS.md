@@ -38,9 +38,11 @@ owns parse/lower/resolve policy.
 - Unknown requests return JSON-RPC `MethodNotFound`; unknown notifications drop.
 - Caches each open document's `mos-eval` lowering (`src/cache.rs`), shared by diagnostics and
   `textDocument/definition`: an edit lowers once (publish populates the cache, definition reuses
-  it). Invalidated on open/change/close. Only **pure** lowerings are cached: a `LowerResult` with
-  `reads_external_resources` (`#image` / `#figure` / `#bibliography` read files) is never stored, so
-  those docs re-lower per request and reflect the live filesystem.
+  it). Invalidated on open/change/close. A `LowerResult` lists the files it read
+  (`external_dependencies`: `#image` / `#figure` / `#bibliography`) with content fingerprints;
+  `Store::get_if_current` checks them on each hit (`stat`, re-hash only when size/mtime moved) and
+  evicts the entry when any changed, appeared, or disappeared, so those docs still reflect the live
+  filesystem (#125).
 - Advertises UTF-16 position encoding, full text sync, `definitionProvider`,
   `documentSymbolProvider`, `renameProvider`, and `codeActionProvider`.
 

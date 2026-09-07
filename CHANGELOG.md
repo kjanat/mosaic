@@ -282,6 +282,18 @@ All notable changes to this project will be documented here. The format is based
 
 ### Changed
 
+- LSP lowering cache is dependency-aware (https://github.com/kjanat/mosaic/issues/125): documents
+  that read external files (`#image` / `#figure` rasters, `#bibliography` sources) are now cached
+  like pure ones instead of being re-lowered on every request. [`mos-eval`][mos-eval]'s
+  `LowerResult` replaces the `reads_external_resources` flag with `external_dependencies`, one
+  `ExternalDependency` (resolved path plus a `Fingerprint` of size, mtime, and content hash; `None`
+  when the path was not a readable regular file) per distinct file, and keeps the old name as a
+  method. [`mos-lsp`][mos-lsp]'s cache `stat`s those files on each hit, re-hashes one only when its
+  size or mtime moved, and evicts the entry when any file changed, appeared, or disappeared, so a
+  request always reflects the current filesystem while unchanged files cost one `stat` instead of a
+  full parse + lower. Every lowering, including `mos check` / `mos build`, now hashes each image
+  and `.bib` it reads to record that fingerprint; directories, devices, and pipes are never opened.
+
 - `mos_eval::image::load` takes the path literal's span as a fourth argument so `MOS0049` can
   carry a fix (https://github.com/kjanat/mosaic/issues/128). The CLI's `help:` fix-it line now
   prints replaced and replacement text as written, escaping only line breaks and tabs, so a path

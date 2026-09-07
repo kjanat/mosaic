@@ -1,7 +1,6 @@
 //! Lower `#image` and `#figure` parser directives into semantic nodes.
 
 use std::collections::BTreeMap;
-use std::path::Path;
 use std::sync::Arc;
 
 use mos_core::{
@@ -9,6 +8,7 @@ use mos_core::{
 };
 use mos_parse::{SetArg, SetValue};
 
+use crate::dependency::ExternalInputs;
 use crate::{
     image, insert_label_attributes, set::coerce_positive_length, string_content_span, suggest,
 };
@@ -34,17 +34,16 @@ const IMAGE_KEYS: &[&str] = &["src", "path", "alt", "width", "height", "label"];
 ///
 /// Decoded pixels and dimensions are stored in node attributes so later stages
 /// do not re-open the source file.
-pub fn lower_image_directive(
+pub(crate) fn lower_image_directive(
     document: &mut Document,
     root: NodeId,
     args: &[SetArg],
     span: &SourceSpan,
-    source_file: &Path,
+    inputs: &mut ExternalInputs<'_>,
     em_pt: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let Some((attributes, _label)) =
-        build_image_attributes(args, span, source_file, em_pt, diagnostics)
+    let Some((attributes, _label)) = build_image_attributes(args, span, inputs, em_pt, diagnostics)
     else {
         return;
     };
@@ -57,12 +56,12 @@ pub fn lower_image_directive(
 /// Lower `#figure(image: ..., caption: ...)` into a figure node.
 ///
 /// The figure gets an image child and a caption paragraph child.
-pub fn lower_figure_directive(
+pub(crate) fn lower_figure_directive(
     document: &mut Document,
     root: NodeId,
     args: &[SetArg],
     span: &SourceSpan,
-    source_file: &Path,
+    inputs: &mut ExternalInputs<'_>,
     em_pt: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
@@ -70,13 +69,9 @@ pub fn lower_figure_directive(
 
     // Build the image attributes before allocating the Figure node.
     // Failed image load should not leave a phantom caption-only figure.
-    let Some((image_attrs, _label)) = build_image_attributes(
-        &figure_args.image_args,
-        span,
-        source_file,
-        em_pt,
-        diagnostics,
-    ) else {
+    let Some((image_attrs, _label)) =
+        build_image_attributes(&figure_args.image_args, span, inputs, em_pt, diagnostics)
+    else {
         return;
     };
 
@@ -249,7 +244,7 @@ fn append_caption(document: &mut Document, figure_id: NodeId, caption: (String, 
 fn build_image_attributes(
     args: &[SetArg],
     span: &SourceSpan,
-    source_file: &Path,
+    inputs: &mut ExternalInputs<'_>,
     em_pt: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<(AttrMap, Option<String>)> {
@@ -279,7 +274,7 @@ fn build_image_attributes(
         );
         return None;
     }
-    let (resolved, decoded) = match image::load(&path, source_file, span, &path_span) {
+    let (resolved, decoded) = match image::load(&path, inputs, span, &path_span) {
         Ok(v) => v,
         Err(diag) => {
             diagnostics.push(*diag);

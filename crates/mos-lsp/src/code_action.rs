@@ -240,7 +240,7 @@ mod tests {
             document: Document::new(file.clone()),
             diagnostics: vec![diagnostic],
             metadata: mos_eval::DocumentMetadata::default(),
-            reads_external_resources: false,
+            external_dependencies: Vec::new(),
         };
 
         let actions = code_actions_for_range(
@@ -275,7 +275,7 @@ mod tests {
             document: Document::new(file.clone()),
             diagnostics: vec![diagnostic],
             metadata: mos_eval::DocumentMetadata::default(),
-            reads_external_resources: false,
+            external_dependencies: Vec::new(),
         };
         let request_range = LspRange {
             start: byte_to_position(src, src.len()),
@@ -310,7 +310,7 @@ mod tests {
             document: Document::new(file.clone()),
             diagnostics: vec![diagnostic],
             metadata: mos_eval::DocumentMetadata::default(),
-            reads_external_resources: false,
+            external_dependencies: Vec::new(),
         };
         let request_range = LspRange {
             start: byte_to_position(src, src.len()),
@@ -349,7 +349,7 @@ mod tests {
             document: Document::new(file.clone()),
             diagnostics: vec![diagnostic],
             metadata: mos_eval::DocumentMetadata::default(),
-            reads_external_resources: false,
+            external_dependencies: Vec::new(),
         };
 
         let actions = code_actions_for_range(

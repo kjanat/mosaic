@@ -360,6 +360,9 @@ example.
 
 - [x] Document dependency ID categories and hash boundaries.
 - [x] Introduce dependency ID and dependency kind Rust types.
+- [x] Record the external files a lowering read, with content fingerprints, and reuse the LSP's
+      cached lowering only while they are unchanged (#125). *(`LowerResult::external_dependencies`;
+      in-memory per-document only, no persistent cache or dependency graph.)*
 - [ ] Track every computed artifact dependency.
 - [ ] Track paragraph layout dependencies:
   - [ ] paragraph text

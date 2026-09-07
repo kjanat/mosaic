@@ -42,6 +42,7 @@ Not implemented yet:
 | References    | `src/resolve.rs`                 | Label index, section/figure numbering, figure-aware refs.                                                                                  |
 | Page refs     | `src/pageref.rs`                 | `@page(label)`: `resolve_page_references` + `resolve_page_reference_fixpoint` (injected layout); undeclared-label MOS0033 in `resolve.rs`. |
 | Bibliography  | `src/bibliography.rs`            | Source paths, `.bib` loading, citation-key diagnostics, numeric labels.                                                                    |
+| Dependencies  | `src/dependency.rs`              | `ExternalDependency` / `Fingerprint` records, `read_fingerprinted`, `ExternalInputs`; `LowerResult::external_dependencies` (#125).         |
 | Unit coercion | length helpers                   | `em` depends on current text size.                                                                                                         |
 
 ## CONVENTIONS
