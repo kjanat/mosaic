@@ -1642,6 +1642,8 @@ mod tests {
                 metadata: DocumentMetadata::default(),
                 external_dependencies: vec![ExternalDependency::observe(&image)],
                 bibliography: mos_eval::Bibliography::default(),
+                bibliography_complete: false,
+                citation_spans: Vec::new(),
             },
         );
         assert_eq!(

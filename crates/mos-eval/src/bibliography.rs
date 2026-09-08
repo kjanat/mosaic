@@ -239,7 +239,8 @@ fn bibliography_path(
 /// (issue #67), not full CSL: no author-year styles, sorted output, or
 /// citation clusters.
 /// Resolve `[@key]` citations and return the records loaded from the
-/// declared bibliography sources, merged across sources. The reference
+/// declared bibliography sources, merged across sources, and whether every
+/// source loaded successfully. The reference
 /// resolver consumes their key set to tell an `@key` label reference that
 /// *misses* the label index but *matches* a bibliography key apart -- a
 /// near-certain "meant a citation" mistake -- from a plain unknown label (see
@@ -249,7 +250,7 @@ pub(crate) fn resolve_citations(
     document: &mut Document,
     diagnostics: &mut Vec<Diagnostic>,
     dependencies: &mut DependencySet,
-) -> Bibliography {
+) -> (Bibliography, bool) {
     let bibliography = load_bibliography(document, diagnostics, dependencies);
     let citation_ids: Vec<NodeId> = document
         .nodes()
@@ -328,7 +329,7 @@ pub(crate) fn resolve_citations(
         append_bibliography_entries(document, bib_id, &bib_span, &bibliography, &numbers);
     }
 
-    bibliography.records
+    (bibliography.records, bibliography.complete)
 }
 
 /// Append one rendered entry per *cited* key as children of the first

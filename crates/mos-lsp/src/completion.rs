@@ -23,14 +23,24 @@ pub struct CitationPrefix {
 }
 
 /// The citation key token covering `offset`, or `None` when the cursor is
-/// not inside a `[@key` token on its line.
+/// not inside a `[@key` token on its line in parsed markup. `lowered` must
+/// come from the same source; its citation spans exclude verbatim contexts
+/// and comments while retaining unfinished citations.
 #[must_use]
-pub fn citation_prefix_at(src: &str, offset: usize) -> Option<CitationPrefix> {
-    let line_start = src[..offset].rfind('\n').map_or(0, |newline| newline + 1);
+pub fn citation_prefix_at(
+    lowered: &LowerResult,
+    src: &str,
+    offset: usize,
+) -> Option<CitationPrefix> {
+    let before = src.get(..offset)?;
+    let line_start = before.rfind('\n').map_or(0, |newline| newline + 1);
     let opener = src[line_start..offset].rfind("[@")? + line_start;
     let start = opener + 2;
     let end = scan_label_chars(src.as_bytes(), start);
     if end < offset {
+        return None;
+    }
+    if !lowered.citation_spans.contains(&(opener..end)) {
         return None;
     }
     Some(CitationPrefix {
@@ -45,7 +55,10 @@ pub fn citation_prefix_at(src: &str, offset: usize) -> Option<CitationPrefix> {
 /// the whole key and appends the closing `]` when none follows it.
 #[must_use]
 pub fn citation_completions(lowered: &LowerResult, src: &str, position: LspPosition) -> Vec<Value> {
-    let Some(prefix) = citation_prefix_at(src, position_to_byte(src, position)) else {
+    if !lowered.bibliography_complete {
+        return Vec::new();
+    }
+    let Some(prefix) = citation_prefix_at(lowered, src, position_to_byte(src, position)) else {
         return Vec::new();
     };
     let range = LspRange {
@@ -93,10 +106,15 @@ mod tests {
     use super::*;
     use crate::diagnostics::byte_to_position;
 
+    fn prefix_at(src: &str, offset: usize) -> Option<CitationPrefix> {
+        let lowered = mos_eval::lower(src, &PathBuf::from("/virtual/main.mos"));
+        citation_prefix_at(&lowered, src, offset)
+    }
+
     #[test]
     fn prefix_after_an_open_citation_covers_the_typed_key() {
         let src = "Cite [@pat";
-        let prefix = citation_prefix_at(src, src.len()).expect("inside a citation");
+        let prefix = prefix_at(src, src.len()).expect("inside a citation");
         assert_eq!(prefix.start, src.find("pat").unwrap());
         assert_eq!(prefix.end, src.len());
         assert!(!prefix.closed);
@@ -105,7 +123,7 @@ mod tests {
     #[test]
     fn prefix_with_an_empty_key_is_still_a_citation() {
         let src = "Cite [@";
-        let prefix = citation_prefix_at(src, src.len()).expect("inside a citation");
+        let prefix = prefix_at(src, src.len()).expect("inside a citation");
         assert_eq!(prefix.start, src.len());
         assert_eq!(prefix.end, src.len());
     }
@@ -114,7 +132,7 @@ mod tests {
     fn prefix_inside_an_existing_key_covers_the_whole_key_and_sees_its_closer() {
         let src = "See [@patashnik1988] here.\n";
         let cursor = src.find("pat").unwrap() + 3;
-        let prefix = citation_prefix_at(src, cursor).expect("inside a citation");
+        let prefix = prefix_at(src, cursor).expect("inside a citation");
         assert_eq!(&src[prefix.start..prefix.end], "patashnik1988");
         assert!(prefix.closed);
     }
@@ -122,13 +140,51 @@ mod tests {
     #[test]
     fn cursor_off_any_citation_yields_no_prefix() {
         let plain_reference = "see @pat";
-        assert!(citation_prefix_at(plain_reference, plain_reference.len()).is_none());
+        assert!(prefix_at(plain_reference, plain_reference.len()).is_none());
         let after_closed = "[@a] tail";
-        assert!(citation_prefix_at(after_closed, after_closed.len()).is_none());
+        assert!(prefix_at(after_closed, after_closed.len()).is_none());
         let broken_key = "[@a b";
-        assert!(citation_prefix_at(broken_key, broken_key.len()).is_none());
+        assert!(prefix_at(broken_key, broken_key.len()).is_none());
         let previous_line = "[@a\nb";
-        assert!(citation_prefix_at(previous_line, previous_line.len()).is_none());
+        assert!(prefix_at(previous_line, previous_line.len()).is_none());
+    }
+
+    #[test]
+    fn prefixes_in_code_verbatim_and_comments_are_rejected() {
+        for src in [
+            "`[@al]`",
+            "`[@al`",
+            "// [@al",
+            "Text // [@al]",
+            "/* [@al] */",
+            "/** [@al] */",
+            "/* comment\n[@al",
+            "#code[[\n[@al]\n]]",
+            "#pre[=[\n[@al\n]=]",
+            "#set document(title: \"[@al]\")",
+            "*[@al] /* [@al] */*",
+        ] {
+            let cursor = src.rfind("[@al").unwrap() + "[@al".len();
+            assert!(prefix_at(src, cursor).is_none(), "{src}");
+        }
+    }
+
+    #[test]
+    fn prefixes_in_prose_survive_surrounding_markup() {
+        for src in [
+            "*[@al]*",
+            "**[@al",
+            "- item\n  - [@al",
+            "= Heading [@al",
+            "`code` [@al",
+            "/* comment */ [@al",
+            "Text // comment\n[@al",
+            "https://example.test/[@al",
+            "é 😀 [@al",
+        ] {
+            let cursor = src.find("[@al").unwrap() + "[@al".len();
+            assert!(prefix_at(src, cursor).is_some(), "{src}");
+        }
     }
 
     fn unique_temp_dir(name: &str) -> PathBuf {
@@ -213,6 +269,21 @@ mod tests {
         let items = citation_completions(&lowered, src, byte_to_position(src, cursor));
 
         assert!(items.is_empty(), "{items:?}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn rejected_contexts_produce_no_completion_edits() {
+        let dir = unique_temp_dir("contexts");
+        std::fs::write(dir.join("refs.bib"), "@book{alpha, title={A}}\n").expect("write bib");
+        let main = dir.join("main.mos");
+        for body in ["`[@al]`", "Text // [@al", "#pre[[[@al]]]", "/* [@al */"] {
+            let src = format!("#bibliography(\"refs.bib\")\n\n{body}");
+            let lowered = mos_eval::lower(&src, &main);
+            let cursor = src.find("[@al").unwrap() + "[@al".len();
+            let items = citation_completions(&lowered, &src, byte_to_position(&src, cursor));
+            assert!(items.is_empty(), "{body}: {items:?}");
+        }
         std::fs::remove_dir_all(&dir).ok();
     }
 

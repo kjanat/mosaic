@@ -654,6 +654,69 @@ fn completion_offers_citation_keys_from_real_bib_fixture() -> TestResult {
 }
 
 #[test]
+fn completion_with_mixed_sources_is_empty_until_all_sources_load() -> TestResult {
+    let dir = TempDir::new("mos-lsp-e2e-completion-mixed")?;
+    let main_path = dir.path().join("main.mos");
+    std::fs::write(dir.path().join("refs.bib"), "@book{alpha, title={A}}\n")?;
+    let broken = dir.path().join("broken.bib");
+    let src = "#bibliography(\"refs.bib\")\n\n#bibliography(\"broken.bib\")\n\nCite [@al";
+    std::fs::write(&main_path, src)?;
+    let uri = mos_lsp::definition::path_to_uri(&main_path);
+
+    // Missing, invalid UTF-8, and malformed BibTeX must all suppress even
+    // the valid source's keys. Repairing the file invalidates the cache.
+    for (contents, expected_diagnostic) in [
+        (None, Some("MOS0041")),
+        (Some(b"\xff".as_slice()), Some("MOS0041")),
+        (Some(b"@book{".as_slice()), None),
+    ] {
+        if let Some(contents) = contents {
+            std::fs::write(&broken, contents)?;
+        }
+        let mut server = Server::spawn()?;
+        initialize(&mut server, &zed_like_initialize_params())?;
+        server.open_document(&uri, src)?;
+        let diagnostics = server.diagnostics_for(&uri)?;
+        if let Some(code) = expected_diagnostic {
+            ensure(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.get("code").and_then(Value::as_str) == Some(code)),
+                "the invalid bibliography source still publishes MOS0041",
+            )?;
+        }
+        let params = json!({
+            "textDocument": { "uri": uri },
+            "position": position_of(src, "[@al", "[@al".len())?,
+        });
+        let reply = server.request(2, "textDocument/completion", &params)?;
+        ensure_eq(
+            &reply.get("result"),
+            &Some(&json!([])),
+            "an incomplete bibliography must not offer partial results",
+        )?;
+
+        std::fs::write(&broken, "@book{beta, title={B}}\n")?;
+        let repaired = server.request(3, "textDocument/completion", &params)?;
+        let items = repaired
+            .get("result")
+            .and_then(Value::as_array)
+            .ok_or("completion array after bibliography repair")?;
+        let labels: Vec<&str> = items
+            .iter()
+            .filter_map(|item| item.get("label").and_then(Value::as_str))
+            .collect();
+        ensure_eq(
+            labels.as_slice(),
+            ["alpha", "beta"].as_slice(),
+            "repairing the source restores the complete key set",
+        )?;
+        server.shutdown(4)?;
+    }
+    Ok(())
+}
+
+#[test]
 fn rename_returns_workspace_edit_for_declaration_and_references() -> TestResult {
     let uri = "file:///virtual/main.mos";
     let src = "= Intro <intro>\n\nSee @intro here.\n";

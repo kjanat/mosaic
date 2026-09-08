@@ -223,6 +223,7 @@ impl<'parser, 'slice, 'src> InlineSegmentParser<'parser, 'slice, 'src> {
             Delimiter::Emphasis
         };
         let diagnostic_checkpoint = self.parser.diagnostics.len();
+        let citation_checkpoint = self.parser.citation_spans.len();
         let parsed = self.parser.parse_inline_segment(
             self.slice,
             self.base,
@@ -240,6 +241,7 @@ impl<'parser, 'slice, 'src> InlineSegmentParser<'parser, 'slice, 'src> {
             self.text_start = self.i;
         } else {
             self.parser.diagnostics.truncate(diagnostic_checkpoint);
+            self.parser.citation_spans.truncate(citation_checkpoint);
             if self.close.is_none() {
                 self.parser
                     .warn_unterminated_delimiter(self.slice, self.base, self.i, delimiter);
@@ -425,6 +427,9 @@ impl<'parser, 'slice, 'src> InlineSegmentParser<'parser, 'slice, 'src> {
     fn handle_citation(&mut self) {
         let key_start = self.i + 2;
         let key_end = scan_label_chars(self.bytes, key_start);
+        self.parser
+            .citation_spans
+            .push(self.base + self.i..self.base + key_end);
         if key_end > key_start && key_end < self.bytes.len() && self.bytes[key_end] == b']' {
             self.flush(self.i);
             let end = key_end + 1;

@@ -150,6 +150,12 @@ pub struct LowerResult {
     /// merged across sources and keyed by citation key. Empty after a bare
     /// [`Evaluator::evaluate`], which has not yet opened bibliography sources.
     pub bibliography: Bibliography,
+    /// Whether every declared bibliography source was successfully read and
+    /// parsed. False before source loading; records may be partial when false.
+    pub bibliography_complete: bool,
+    /// Parser-recognized citation ranges, including unfinished citations.
+    /// See [`SyntaxTree::citation_spans`].
+    pub citation_spans: Vec<std::ops::Range<usize>>,
 }
 
 impl LowerResult {
@@ -247,7 +253,7 @@ impl Evaluator {
         for item in &tree.items {
             state.lower_item(item, &tree.file);
         }
-        state.finish()
+        state.finish(tree)
     }
 }
 
@@ -276,13 +282,15 @@ impl EvaluationState {
         }
     }
 
-    fn finish(self) -> LowerResult {
+    fn finish(self, tree: &SyntaxTree) -> LowerResult {
         LowerResult {
             document: self.document,
             diagnostics: self.diagnostics,
             metadata: self.metadata,
             external_dependencies: self.dependencies.into_vec(),
             bibliography: Bibliography::default(),
+            bibliography_complete: false,
+            citation_spans: tree.citation_spans.clone(),
         }
     }
 
@@ -529,6 +537,8 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
                 metadata: DocumentMetadata::default(),
                 external_dependencies: Vec::new(),
                 bibliography: Bibliography::default(),
+                bibliography_complete: false,
+                citation_spans: Vec::new(),
             };
         }
     };
@@ -541,6 +551,8 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
         metadata: lowered.metadata,
         external_dependencies: lowered.external_dependencies,
         bibliography: lowered.bibliography,
+        bibliography_complete: lowered.bibliography_complete,
+        citation_spans: lowered.citation_spans,
     }
 }
 
@@ -572,7 +584,7 @@ pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
     let mut lowered = Evaluator::evaluate(tree);
     let mut diagnostics = std::mem::take(&mut lowered.diagnostics);
     let mut dependencies = DependencySet::from(std::mem::take(&mut lowered.external_dependencies));
-    let bibliography =
+    let (bibliography, bibliography_complete) =
         resolve_citations(&mut lowered.document, &mut diagnostics, &mut dependencies);
     let bib_keys: BTreeSet<String> = bibliography.entries.keys().cloned().collect();
     diagnostics.extend(resolve(&mut lowered.document, &bib_keys));
@@ -582,6 +594,8 @@ pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
         metadata: lowered.metadata,
         external_dependencies: dependencies.into_vec(),
         bibliography,
+        bibliography_complete,
+        citation_spans: lowered.citation_spans,
     }
 }
 
@@ -1625,6 +1639,7 @@ mod tests {
         let keys: Vec<&str> = r.bibliography.entries.keys().map(String::as_str).collect();
         assert_eq!(keys, ["alpha", "beta"]);
         assert_eq!(r.bibliography.entries["beta"].entry_type, "article");
+        assert!(!r.bibliography_complete);
         assert!(
             r.diagnostics
                 .iter()
@@ -1632,6 +1647,13 @@ mod tests {
             "{:?}",
             r.diagnostics
         );
+        std::fs::write(dir.join("missing.bib"), "@book{gamma, title={C}}\n").unwrap();
+        let complete = lower(
+            "#bibliography(\"a.bib\")\n\n#bibliography(\"b.bib\")\n\n#bibliography(\"missing.bib\")\n",
+            &source,
+        );
+        assert!(complete.bibliography_complete);
+        assert_eq!(complete.bibliography.entries.len(), 3);
         std::fs::remove_dir_all(&dir).ok();
     }
 

@@ -242,6 +242,8 @@ mod tests {
             metadata: mos_eval::DocumentMetadata::default(),
             external_dependencies: Vec::new(),
             bibliography: mos_eval::Bibliography::default(),
+            bibliography_complete: false,
+            citation_spans: Vec::new(),
         };
 
         let actions = code_actions_for_range(
@@ -278,6 +280,8 @@ mod tests {
             metadata: mos_eval::DocumentMetadata::default(),
             external_dependencies: Vec::new(),
             bibliography: mos_eval::Bibliography::default(),
+            bibliography_complete: false,
+            citation_spans: Vec::new(),
         };
         let request_range = LspRange {
             start: byte_to_position(src, src.len()),
@@ -314,6 +318,8 @@ mod tests {
             metadata: mos_eval::DocumentMetadata::default(),
             external_dependencies: Vec::new(),
             bibliography: mos_eval::Bibliography::default(),
+            bibliography_complete: false,
+            citation_spans: Vec::new(),
         };
         let request_range = LspRange {
             start: byte_to_position(src, src.len()),
@@ -354,6 +360,8 @@ mod tests {
             metadata: mos_eval::DocumentMetadata::default(),
             external_dependencies: Vec::new(),
             bibliography: mos_eval::Bibliography::default(),
+            bibliography_complete: false,
+            citation_spans: Vec::new(),
         };
 
         let actions = code_actions_for_range(
