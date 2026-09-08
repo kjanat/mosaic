@@ -279,12 +279,13 @@ fn hover_result(state: &mut ServerState, message: &Value) -> Value {
 /// fresh `mos_eval::lower`. Returns `None` only when `uri` names no open
 /// document; otherwise `Some(f(...))`.
 ///
-/// A freshly-lowered **pure** result is stored in the cache for reuse across
-/// the next diagnostics/definition request on the unchanged source (issue
-/// #106). An **impure** lowering: one that read external files (`#image` /
-/// `#figure` / `#bibliography`, see `reads_external_resources`) is used
-/// once and dropped, never cached, so such a document is re-lowered on every
-/// request and always reflects the current filesystem (issue #106 review).
+/// A freshly-lowered result is stored in the cache for reuse across the next
+/// diagnostics/definition request on the unchanged source (issue #106). A
+/// lowering that read external files (`#image` / `#figure` /
+/// `#bibliography`) is reused only while every file it read is still current
+/// (a `stat` per file, a re-hash only when size or mtime moved);
+/// `Store::get_if_current` evicts it otherwise, so the document is re-lowered
+/// against the current filesystem (issue #125).
 fn with_lowering<T>(
     state: &mut ServerState,
     uri: &str,
@@ -298,14 +299,12 @@ fn with_lowering<T>(
     } = state;
     let src = documents.get(uri)?;
     let path = path_from_uri(uri);
-    if let Some(cached) = lowerings.get(uri) {
+    if let Some(cached) = lowerings.get_if_current(uri) {
         return Some(f(cached, &path, src));
     }
     let fresh = mos_eval::lower(src, &path);
     let result = f(&fresh, &path, src);
-    if !fresh.reads_external_resources {
-        lowerings.store(uri, fresh);
-    }
+    lowerings.store(uri, fresh);
     Some(result)
 }
 
@@ -544,6 +543,10 @@ mod tests {
     )]
 
     use std::io::Cursor;
+    use std::path::PathBuf;
+
+    use mos_core::{Diagnostic, Document, codes};
+    use mos_eval::{DocumentMetadata, ExternalDependency};
 
     use super::*;
     use crate::diagnostics::byte_to_position;
@@ -1439,29 +1442,111 @@ mod tests {
         );
     }
 
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "mos-lsp-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    fn diagnostic_codes(state: &mut ServerState, uri: &str) -> Vec<String> {
+        with_lowering(state, uri, |lowered, _, _| {
+            lowered
+                .diagnostics
+                .iter()
+                .map(|d| d.def().code().to_string())
+                .collect()
+        })
+        .expect("document is open")
+    }
+
     #[test]
-    fn impure_document_is_not_cached_so_requests_relower() {
-        // #106 review: lowering `#figure(image: …)` reads an external file, so
-        // the result is impure and must NOT be cached. Otherwise publishing
-        // diagnostics at `didOpen` (image missing) would seed the cache with a
-        // figure-less lowering, and a later definition request would reuse it
-        // even after the image appears. An empty cache after publish proves the
-        // document is re-lowered fresh on each request, reflecting the
-        // filesystem.
-        let uri = "file:///virtual/main.mos";
+    fn impure_document_is_cached_while_its_files_are_unchanged() {
+        // #125: a lowering that read external files is reused for the next
+        // request as long as every file it read is still current. The cache
+        // is seeded by hand with a sentinel diagnostic the source cannot
+        // produce, so a request that re-lowers instead of reusing fails.
+        let dir = unique_temp_dir("impure-cached");
+        let main = dir.join("main.mos");
+        let image = dir.join("x.png");
+        std::fs::write(&image, b"not a png").expect("write image");
+        let src = "#figure(image: \"x.png\", label: \"fig\", caption: \"c\")\n";
+        std::fs::write(&main, src).expect("write source");
+        let uri = path_to_uri(&main);
         let mut state = ServerState::default();
-        state.documents.insert(
-            uri.to_owned(),
-            "#figure(image: \"x.png\", label: \"fig\", caption: \"c\")\n\nSee @fig\n".to_owned(),
-        );
+        state.documents.insert(uri.clone(), src.to_owned());
 
         let mut writer: Vec<u8> = Vec::new();
-        publish_diagnostics(&mut writer, &mut state, uri).expect("publish");
-
+        publish_diagnostics(&mut writer, &mut state, &uri).expect("publish");
         assert!(
-            !state.lowerings.is_cached(uri),
-            "a lowering that read external files must not be cached"
+            state.lowerings.is_cached(&uri),
+            "an impure lowering is cached with its dependency fingerprints"
         );
+        state.lowerings.store(
+            &uri,
+            LowerResult {
+                document: Document::new(main),
+                diagnostics: vec![Diagnostic::simple(&codes::MOS0045, None, "sentinel")],
+                metadata: DocumentMetadata::default(),
+                external_dependencies: vec![ExternalDependency::observe(&image)],
+            },
+        );
+        assert_eq!(
+            diagnostic_codes(&mut state, &uri),
+            ["MOS0045"],
+            "the request must be served from the cached lowering"
+        );
+
+        std::fs::write(&image, b"edited").expect("rewrite image");
+        assert_eq!(
+            diagnostic_codes(&mut state, &uri),
+            ["MOS0029"],
+            "a changed file drops the cached lowering"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn impure_document_is_relowered_when_a_file_changes() {
+        // #125: the cached lowering was made while the image was missing
+        // (`MOS0012`); once the file appears the next request must observe
+        // the new filesystem state (`MOS0029`: present but undecodable).
+        let dir = unique_temp_dir("impure-relower");
+        let main = dir.join("main.mos");
+        let image = dir.join("x.png");
+        let src = "#figure(image: \"x.png\", label: \"fig\", caption: \"c\")\n";
+        std::fs::write(&main, src).expect("write source");
+        let uri = path_to_uri(&main);
+        let mut state = ServerState::default();
+        state.documents.insert(uri.clone(), src.to_owned());
+
+        let mut writer: Vec<u8> = Vec::new();
+        publish_diagnostics(&mut writer, &mut state, &uri).expect("publish");
+        assert_eq!(diagnostic_codes(&mut state, &uri), ["MOS0012"]);
+
+        std::fs::write(&image, b"not a png").expect("write image");
+        assert_eq!(
+            diagnostic_codes(&mut state, &uri),
+            ["MOS0029"],
+            "a file that appeared invalidates the cached lowering"
+        );
+        assert!(
+            state.lowerings.is_cached(&uri),
+            "the fresh lowering is cached"
+        );
+
+        std::fs::remove_file(&image).expect("remove image");
+        assert_eq!(
+            diagnostic_codes(&mut state, &uri),
+            ["MOS0012"],
+            "a file that disappeared invalidates the cached lowering"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

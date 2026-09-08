@@ -26,7 +26,14 @@ cross-references currently supported by `mos check` / `mos build`.
 - `lower(src, file)`: parse, lower, resolve, and concatenate diagnostics.
 - `Evaluator::evaluate(tree)`: lower a parsed tree only; does not run `resolve`.
 - `resolve(document)`: mutate a lowered document in place with section numbers and reference text.
-- `LowerResult`: semantic `Document`, diagnostics, and `DocumentMetadata`.
+- `LowerResult`: semantic `Document`, diagnostics, `DocumentMetadata`, and `external_dependencies`,
+  the files the lowering read (`#image` / `#figure` rasters, `#bibliography` sources) with the
+  `Fingerprint` each had at the time; `reads_external_resources()` is true when that list is
+  non-empty.
+- `ExternalDependency` / `Fingerprint` / `FileIdentity`, `fingerprint_bytes`, `fingerprint_file`:
+  the dependency record and its hashing, plus `ExternalDependency::is_current` for cache validation
+  (a `stat`, and a re-hash only when size, mtime, or the Unix inode identity moved, or when the file
+  was modified within `RACY_WINDOW` of being fingerprinted).
 
 ## Lowering Behavior
 
@@ -50,10 +57,9 @@ sizes, or leading values produce warnings, not hard errors.
 ## Resolution Behavior
 
 - Sections receive hierarchical `number` attributes such as `1`, `1.1`, and `2`.
-- Numbered figures receive flat `number` attributes such as `1`, `2`, and `3`.
-  `#figure(numbered:
-  false)` opts out: no number, no caption prefix, and the skip does not advance
-  the counter, so the remaining figures stay contiguous.
+- Numbered figures receive flat `number` attributes such as `1`, `2`, and `3`. `#figure(numbered:
+  false)` opts out: no number, no caption prefix, and the skip does not advance the counter, so the
+  remaining figures stay contiguous.
 - References to numbered figures render as kind-aware `Figure N` text, or `{supplement} N` for a
   custom `#figure(supplement: "Plate")`, or just `N` when `supplement: ""`/`none`. A reference to a
   skipped figure renders its bare label.
@@ -90,6 +96,8 @@ sizes, or leading values produce warnings, not hard errors.
 - `set_schema.rs`: accepted `#set` targets and argument types.
 - `image.rs`: image path resolution, file read, PNG/JPEG decode, alpha compositing.
 - `image_lower.rs`: `#image` / `#figure` argument handling and semantic node creation.
+- `dependency.rs`: external-file dependency records and fingerprints, the crate-private set that
+  collects them during lowering, and the `ExternalInputs` bundle directive lowerers read through.
 - `resolve.rs`: section numbering, label index, duplicate/unknown reference diagnostics.
 
 ## Boundaries

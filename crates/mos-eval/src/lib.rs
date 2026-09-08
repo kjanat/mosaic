@@ -10,12 +10,11 @@
     html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
     html_favicon_url = "https://mosaiclang.dev/assets/A4.svg"
 )]
-#[doc(hidden)]
-pub mod bibliography;
+mod bibliography;
+mod dependency;
 #[doc(hidden)]
 pub mod image;
-#[doc(hidden)]
-pub mod image_lower;
+mod image_lower;
 #[doc(hidden)]
 pub mod inline;
 #[doc(hidden)]
@@ -38,10 +37,14 @@ use mos_core::{
 };
 use mos_parse::{DirectiveKind, Item, RawBlockKind, SyntaxTree};
 
+pub use dependency::{
+    ExternalDependency, FileIdentity, Fingerprint, RACY_WINDOW, fingerprint_bytes, fingerprint_file,
+};
 pub use pageref::{PageFixpointOutcome, resolve_page_reference_fixpoint, resolve_page_references};
 pub use resolve::resolve;
 
 use bibliography::{lower_bibliography_directive, resolve_citations};
+use dependency::{DependencySet, ExternalInputs};
 use image_lower::{lower_figure_directive, lower_image_directive};
 use inline::lower_inlines;
 use list::lower as lower_list;
@@ -134,18 +137,33 @@ pub struct LowerResult {
     pub document: Document,
     pub diagnostics: Vec<Diagnostic>,
     pub metadata: DocumentMetadata,
-    /// Whether lowering this document read external files: `#image` /
-    /// `#figure` image loads and `#bibliography` source reads. Such a
-    /// lowering is **not a pure function of the source text**: the same
-    /// `(src, file)` can lower differently as referenced files appear,
-    /// change, or fail to load. Callers that cache a `LowerResult` across
-    /// time (e.g. the language server's per-document memo) must not reuse
-    /// one with this set, since an external change would make it stale
-    /// without any source edit to invalidate it.
-    pub reads_external_resources: bool,
+    /// Every external file this lowering read (`#image` / `#figure` rasters,
+    /// `#bibliography` sources), with the fingerprint each had at the time,
+    /// sorted by path. Such a lowering is not a pure function of the source
+    /// text: a caller that caches it across time must check
+    /// [`ExternalDependency::is_current`] on each entry before reuse. The set
+    /// is complete after [`lower`] / [`lower_tree`]; a bare
+    /// [`Evaluator::evaluate`] has not yet opened bibliography sources.
+    pub external_dependencies: Vec<ExternalDependency>,
 }
 
 impl LowerResult {
+    /// Whether lowering read any external file; see
+    /// [`external_dependencies`](Self::external_dependencies).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// assert!(!mos_eval::lower("= Hello\n", Path::new("main.mos")).reads_external_resources());
+    /// assert!(mos_eval::lower("#image(\"x.png\")\n", Path::new("main.mos")).reads_external_resources());
+    /// ```
+    #[must_use]
+    pub fn reads_external_resources(&self) -> bool {
+        !self.external_dependencies.is_empty()
+    }
+
     /// Return whether any lowering diagnostic is an error.
     ///
     /// # Examples
@@ -233,7 +251,7 @@ struct EvaluationState {
     diagnostics: Vec<Diagnostic>,
     metadata: DocumentMetadata,
     current_text_size_pt: f64,
-    reads_external_resources: bool,
+    dependencies: DependencySet,
     /// Text of a `/** … */` doc comment seen but not yet attached. The next
     /// documentable block (heading, paragraph) consumes it as a `doc`
     /// attribute; a non-documentable block (`#set`, list, raw block) clears it
@@ -248,7 +266,7 @@ impl EvaluationState {
             diagnostics: Vec::new(),
             metadata: DocumentMetadata::default(),
             current_text_size_pt: 11.0,
-            reads_external_resources: false,
+            dependencies: DependencySet::default(),
             pending_doc: None,
         }
     }
@@ -258,7 +276,7 @@ impl EvaluationState {
             document: self.document,
             diagnostics: self.diagnostics,
             metadata: self.metadata,
-            reads_external_resources: self.reads_external_resources,
+            external_dependencies: self.dependencies.into_vec(),
         }
     }
 
@@ -391,6 +409,10 @@ impl EvaluationState {
         span: &SourceSpan,
         source_file: &std::path::Path,
     ) {
+        let mut inputs = ExternalInputs {
+            source_file,
+            dependencies: &mut self.dependencies,
+        };
         match kind {
             DirectiveKind::Image => {
                 let root = self.document.root;
@@ -399,11 +421,10 @@ impl EvaluationState {
                     root,
                     args,
                     span,
-                    source_file,
+                    &mut inputs,
                     self.current_text_size_pt,
                     &mut self.diagnostics,
                 );
-                self.reads_external_resources = true;
             }
             DirectiveKind::Figure => {
                 let root = self.document.root;
@@ -412,11 +433,10 @@ impl EvaluationState {
                     root,
                     args,
                     span,
-                    source_file,
+                    &mut inputs,
                     self.current_text_size_pt,
                     &mut self.diagnostics,
                 );
-                self.reads_external_resources = true;
             }
             DirectiveKind::Bibliography => {
                 let root = self.document.root;
@@ -425,10 +445,9 @@ impl EvaluationState {
                     root,
                     args,
                     span,
-                    source_file,
+                    &mut inputs,
                     &mut self.diagnostics,
                 );
-                self.reads_external_resources = true;
             }
             DirectiveKind::Set => {
                 let root = self.document.root;
@@ -502,8 +521,7 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
                 document: Document::new(file.to_path_buf()),
                 diagnostics: sink.into_diagnostics(),
                 metadata: DocumentMetadata::default(),
-                // Parse aborted before any directive ran: no external reads.
-                reads_external_resources: false,
+                external_dependencies: Vec::new(),
             };
         }
     };
@@ -514,7 +532,7 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
         document: lowered.document,
         diagnostics,
         metadata: lowered.metadata,
-        reads_external_resources: lowered.reads_external_resources,
+        external_dependencies: lowered.external_dependencies,
     }
 }
 
@@ -545,13 +563,14 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
 pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
     let mut lowered = Evaluator::evaluate(tree);
     let mut diagnostics = std::mem::take(&mut lowered.diagnostics);
-    let bib_keys = resolve_citations(&mut lowered.document, &mut diagnostics);
+    let mut dependencies = DependencySet::from(std::mem::take(&mut lowered.external_dependencies));
+    let bib_keys = resolve_citations(&mut lowered.document, &mut diagnostics, &mut dependencies);
     diagnostics.extend(resolve(&mut lowered.document, &bib_keys));
     LowerResult {
         document: lowered.document,
         diagnostics,
         metadata: lowered.metadata,
-        reads_external_resources: lowered.reads_external_resources,
+        external_dependencies: dependencies.into_vec(),
     }
 }
 
@@ -698,26 +717,112 @@ mod tests {
     }
 
     #[test]
+    fn lowering_records_external_dependencies_with_fingerprints() {
+        let dir = unique_temp_dir("deps");
+        let source = dir.join("main.mos");
+        let image = dir.join("x.png");
+        let bib = dir.join("refs.bib");
+        std::fs::write(&image, b"not a png").unwrap();
+        std::fs::write(&bib, "@book{k, title={T}}\n").unwrap();
+        let r = lower(
+            "#image(\"x.png\")\n#image(\"x.png\")\n#bibliography(\"refs.bib\")\n#image(\"missing.png\")\n",
+            &source,
+        );
+
+        let deps = &r.external_dependencies;
+        assert_eq!(
+            deps.iter().map(|d| d.path.clone()).collect::<Vec<_>>(),
+            vec![dir.join("missing.png"), bib, image.clone()],
+            "one entry per distinct file, sorted by path: {deps:?}"
+        );
+        let content = |dep: &ExternalDependency| dep.fingerprint.map(|f| f.content);
+        assert_eq!(content(&deps[0]), None, "a missing file records no hash");
+        assert_eq!(
+            content(&deps[1]),
+            Some(fingerprint_bytes(b"@book{k, title={T}}\n"))
+        );
+        assert_eq!(content(&deps[2]), Some(fingerprint_bytes(b"not a png")));
+        assert!(deps.iter().all(ExternalDependency::is_current));
+
+        std::fs::write(&image, b"changed").unwrap();
+        assert!(
+            !deps[2].is_current(),
+            "a rewritten file is no longer current"
+        );
+        assert!(deps[1].is_current());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_bibliography_path_warns_and_records_the_real_file() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = unique_temp_dir("non-utf8").join(OsStr::from_bytes(b"caf\xe9"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bib = dir.join("refs.bib");
+        std::fs::write(&bib, "@book{k, title={T}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let r = lower("#bibliography(\"refs.bib\")\n\nsee [@k]\n", &source);
+
+        let warning = r
+            .diagnostics
+            .iter()
+            .find(|d| d.def().code() == codes::MOS0041.code())
+            .expect("MOS0041 for the unloadable source");
+        assert!(
+            warning.message().contains("non-UTF-8"),
+            "message: {}",
+            warning.message()
+        );
+        let node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Bibliography)
+            .expect("the source is still declared");
+        assert_eq!(
+            node.attributes.get("src"),
+            Some(&AttrValue::Str("refs.bib".to_owned()))
+        );
+        assert!(
+            !node.attributes.contains_key("resolved_path"),
+            "a path the model cannot name is left unresolved"
+        );
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0045.code()),
+            "an unloadable source makes the record set incomplete, so no key is reported missing"
+        );
+        assert_eq!(r.external_dependencies.len(), 1);
+        assert_eq!(r.external_dependencies[0].path, bib);
+        assert!(r.external_dependencies[0].fingerprint.is_some());
+        assert!(r.external_dependencies[0].is_current());
+        std::fs::remove_dir_all(dir.parent().unwrap()).ok();
+    }
+
+    #[test]
     fn reads_external_resources_flags_filesystem_directives() {
         let file = PathBuf::from("test.mos");
         // Pure: headings, paragraphs, and references touch no files.
         assert!(
-            !lower("= Title <t>\n\nSee @t\n", &file).reads_external_resources,
+            !lower("= Title <t>\n\nSee @t\n", &file).reads_external_resources(),
             "a source with no filesystem directives lowers purely"
         );
         // Each filesystem-reading directive marks the lowering impure: even
         // when the referenced file is missing, since the *attempt* is what
         // makes the result depend on external state.
         assert!(
-            lower("#image(\"missing.png\")\n", &file).reads_external_resources,
+            lower("#image(\"missing.png\")\n", &file).reads_external_resources(),
             "`#image` reads an external file"
         );
         assert!(
-            lower("#figure(image: \"missing.png\")\n", &file).reads_external_resources,
+            lower("#figure(image: \"missing.png\")\n", &file).reads_external_resources(),
             "`#figure` loads an external image"
         );
         assert!(
-            lower("#bibliography(\"missing.bib\")\n", &file).reads_external_resources,
+            lower("#bibliography(\"missing.bib\")\n", &file).reads_external_resources(),
             "`#bibliography` reads an external source file"
         );
     }

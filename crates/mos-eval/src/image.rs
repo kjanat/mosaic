@@ -15,10 +15,11 @@
 //! - `MOS0012`: cannot read the file on disk.
 //! - `MOS0029`: cannot decode the bytes as PNG/JPEG.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use mos_core::{Diagnostic, DiagnosticAnnotation, SourceSpan, codes};
 
+use crate::dependency::{ExternalInputs, read_fingerprinted};
 use crate::suggest;
 
 /// One decoded raster image, ready to be lowered onto a
@@ -43,13 +44,13 @@ pub struct DecodedRaster {
 /// the rest of the document so a broken `#image(...)` still produces a
 /// partial PDF. `path_span` bounds the path string literal and carries the
 /// `MOS0049` fix.
-pub fn load(
+pub(crate) fn load(
     src_path: &str,
-    source_file: &Path,
+    inputs: &mut ExternalInputs<'_>,
     call_span: &SourceSpan,
     path_span: &SourceSpan,
 ) -> Result<(PathBuf, DecodedRaster), Box<Diagnostic>> {
-    let resolved = mos_core::resolve_source_path(src_path, source_file).map_err(|err| {
+    let resolved = mos_core::resolve_source_path(src_path, inputs.source_file).map_err(|err| {
         Box::new(suggest::unsafe_path_diagnostic(
             format!("cannot use image path `{src_path}`: {err}"),
             src_path,
@@ -57,19 +58,28 @@ pub fn load(
             path_span,
         ))
     })?;
-    let bytes = std::fs::read(&resolved).map_err(|err| {
-        Box::new(
-            Diagnostic::simple(
-                &codes::MOS0012,
-                None,
-                format!(
-                    "cannot read image `{}`: {err}",
-                    mos_core::display_path(&resolved)
-                ),
-            )
-            .with_span(call_span.clone()),
-        )
-    })?;
+    let bytes = match read_fingerprinted(&resolved) {
+        Ok((bytes, fingerprint)) => {
+            inputs
+                .dependencies
+                .record(resolved.clone(), Some(fingerprint));
+            bytes
+        }
+        Err(err) => {
+            inputs.dependencies.record(resolved.clone(), None);
+            return Err(Box::new(
+                Diagnostic::simple(
+                    &codes::MOS0012,
+                    None,
+                    format!(
+                        "cannot read image `{}`: {err}",
+                        mos_core::display_path(&resolved)
+                    ),
+                )
+                .with_span(call_span.clone()),
+            ));
+        }
+    };
     let decoded = decode(&bytes).map_err(|err| {
         Box::new(
             Diagnostic::simple(
@@ -143,6 +153,8 @@ fn composite(channel: u8, alpha: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use std::path::Path;
 
     use super::*;
 
