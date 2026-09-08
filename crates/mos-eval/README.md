@@ -30,9 +30,10 @@ cross-references currently supported by `mos check` / `mos build`.
   the files the lowering read (`#image` / `#figure` rasters, `#bibliography` sources) with the
   `Fingerprint` each had at the time; `reads_external_resources()` is true when that list is
   non-empty.
-- `ExternalDependency` / `Fingerprint`, `fingerprint_bytes`, `fingerprint_file`: the dependency
-  record and its hashing, plus `ExternalDependency::is_current` for cache validation (a `stat`, and
-  a re-hash only when size or mtime moved).
+- `ExternalDependency` / `Fingerprint` / `FileIdentity`, `fingerprint_bytes`, `fingerprint_file`:
+  the dependency record and its hashing, plus `ExternalDependency::is_current` for cache validation
+  (a `stat`, and a re-hash only when size, mtime, or the Unix inode identity moved, or when the file
+  was modified within `RACY_WINDOW` of being fingerprinted).
 
 ## Lowering Behavior
 

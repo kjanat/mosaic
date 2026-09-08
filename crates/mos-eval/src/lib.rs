@@ -37,7 +37,9 @@ use mos_core::{
 };
 use mos_parse::{DirectiveKind, Item, RawBlockKind, SyntaxTree};
 
-pub use dependency::{ExternalDependency, Fingerprint, fingerprint_bytes, fingerprint_file};
+pub use dependency::{
+    ExternalDependency, FileIdentity, Fingerprint, RACY_WINDOW, fingerprint_bytes, fingerprint_file,
+};
 pub use pageref::{PageFixpointOutcome, resolve_page_reference_fixpoint, resolve_page_references};
 pub use resolve::resolve;
 
@@ -774,9 +776,24 @@ mod tests {
             "message: {}",
             warning.message()
         );
+        let node = r
+            .document
+            .nodes()
+            .find(|n| n.kind == NodeKind::Bibliography)
+            .expect("the source is still declared");
+        assert_eq!(
+            node.attributes.get("src"),
+            Some(&AttrValue::Str("refs.bib".to_owned()))
+        );
         assert!(
-            !r.document.nodes().any(|n| n.kind == NodeKind::Bibliography),
-            "a source the model cannot name emits no node"
+            !node.attributes.contains_key("resolved_path"),
+            "a path the model cannot name is left unresolved"
+        );
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0045.code()),
+            "an unloadable source makes the record set incomplete, so no key is reported missing"
         );
         assert_eq!(r.external_dependencies.len(), 1);
         assert_eq!(r.external_dependencies[0].path, bib);

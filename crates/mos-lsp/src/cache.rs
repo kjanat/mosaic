@@ -223,6 +223,30 @@ mod tests {
     }
 
     #[test]
+    fn impure_entry_is_evicted_by_a_same_size_rewrite_that_restores_the_mtime() {
+        let dir = unique_temp_dir("same-size");
+        let main = dir.join("main.mos");
+        let image = dir.join("x.png");
+        std::fs::write(&image, b"version one").unwrap();
+        let modified = std::fs::metadata(&image).unwrap().modified().unwrap();
+        let mut cache = Store::default();
+        cache.store("u", mos_eval::lower("#image(\"x.png\")\n", &main));
+
+        std::fs::write(&image, b"version two").unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&image)
+            .unwrap()
+            .set_modified(modified)
+            .unwrap();
+        assert!(
+            cache.get_if_current("u").is_none(),
+            "same size and same mtime must not hide new contents"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn impure_entry_is_evicted_when_a_missing_file_appears() {
         let dir = unique_temp_dir("appears");
         let main = dir.join("main.mos");

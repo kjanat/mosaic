@@ -15,8 +15,9 @@
 //! - `MOS0042`: `#bibliography(...)` declared more than one path; first wins.
 //! - `MOS0020`: the path argument is present but not a string.
 //! - `MOS0015`: an unknown keyword argument was supplied.
-//! - `MOS0041`: the resolved path does not point to a file on disk
-//!   (a warning; the node is still emitted with its resolved path).
+//! - `MOS0041`: the resolved path does not point to a file on disk, or is not
+//!   valid UTF-8 (a warning; the node is still emitted, with `resolved_path`
+//!   only in the first case, so an unloadable source counts as incomplete).
 //! - `MOS0045`: a citation key does not exist in a complete parsed bibliography set.
 //! - `MOS0046`: a citation key appears in more than one declared bibliography source.
 
@@ -64,7 +65,13 @@ pub(crate) fn lower_bibliography_directive(
             return;
         }
     };
-    let Some(resolved_text) = resolved.to_str() else {
+    let resolved_text = resolved.to_str();
+    // The directive only *declares* the source in this slice, so a missing
+    // file is a non-fatal warning rather than the hard error `#image(...)`
+    // raises: the node is still emitted with its resolved path, and the
+    // BibTeX-reading slice surfaces a read/parse error when it opens the
+    // database for real.
+    if resolved_text.is_none() {
         inputs
             .dependencies
             .record(resolved.clone(), fingerprint_file(&resolved));
@@ -79,14 +86,7 @@ pub(crate) fn lower_bibliography_directive(
             )
             .with_span(span.clone()),
         );
-        return;
-    };
-    // The directive only *declares* the source in this slice, so a missing
-    // file is a non-fatal warning rather than the hard error `#image(...)`
-    // raises: the node is still emitted with its resolved path, and the
-    // BibTeX-reading slice surfaces a read/parse error when it opens the
-    // database for real.
-    if !resolved.is_file() {
+    } else if !resolved.is_file() {
         diagnostics.push(
             Diagnostic::simple(
                 &codes::MOS0041,
@@ -101,10 +101,12 @@ pub(crate) fn lower_bibliography_directive(
     }
     let mut attributes: AttrMap = BTreeMap::new();
     attributes.insert("src".to_owned(), AttrValue::Str(path));
-    attributes.insert(
-        "resolved_path".to_owned(),
-        AttrValue::Str(resolved_text.to_owned()),
-    );
+    if let Some(resolved_text) = resolved_text {
+        attributes.insert(
+            "resolved_path".to_owned(),
+            AttrValue::Str(resolved_text.to_owned()),
+        );
+    }
     document.alloc_child(
         root,
         NodeSpec::new(NodeKind::Bibliography, span.clone()).with_attributes(attributes),

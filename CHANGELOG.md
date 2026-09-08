@@ -286,13 +286,18 @@ All notable changes to this project will be documented here. The format is based
   that read external files (`#image` / `#figure` rasters, `#bibliography` sources) are now cached
   like pure ones instead of being re-lowered on every request. [`mos-eval`][mos-eval]'s
   `LowerResult` replaces the `reads_external_resources` flag with `external_dependencies`, one
-  `ExternalDependency` (resolved path plus a `Fingerprint` of size, mtime, and content hash; `None`
-  when the path was not a readable regular file) per distinct file, and keeps the old name as a
-  method. [`mos-lsp`][mos-lsp]'s cache `stat`s those files on each hit, re-hashes one only when its
-  size or mtime moved, and evicts the entry when any file changed, appeared, or disappeared, so a
-  request always reflects the current filesystem while unchanged files cost one `stat` instead of a
-  full parse + lower. Every lowering, including `mos check` / `mos build`, now hashes each image
-  and `.bib` it reads to record that fingerprint; directories, devices, and pipes are never opened.
+  `ExternalDependency` (resolved path plus a `Fingerprint` of size, mtime, Unix inode identity,
+  observation time, and content hash; `None` when the path was not a readable regular file) per
+  distinct file, and keeps the old name as a method. [`mos-lsp`][mos-lsp]'s cache `stat`s those
+  files on each hit, re-hashes one only when its size, mtime, or inode identity moved or when it was
+  written within two seconds of being fingerprinted (the racy-git rule), and evicts the entry when
+  any file changed, appeared, or disappeared, so a request always reflects the current filesystem,
+  including a same-size rewrite that restores the old mtime, while unchanged files cost one `stat`
+  instead of a full parse + lower. Every lowering, including `mos check` / `mos build`, now hashes
+  each image and `.bib` it reads to record that fingerprint; directories, devices, and pipes are
+  never opened. A `#bibliography` whose resolved path is not valid UTF-8 now still emits its node
+  (without `resolved_path`), so the record set counts as incomplete and no citation is falsely
+  reported as missing.
 
 - `mos_eval::image::load` takes the path literal's span as a fourth argument so `MOS0049` can
   carry a fix (https://github.com/kjanat/mosaic/issues/128). The CLI's `help:` fix-it line now
@@ -336,11 +341,11 @@ All notable changes to this project will be documented here. The format is based
   `textDocument/definition` request on the unchanged source reuses that cached
   [`mos-eval`][mos-eval] lowering instead of lowering the text a second time. Same invalidation
   invariant (source mutation drops the entry) and identical observable behavior: same diagnostics,
-  same definition `Location`/`null`: only the duplicate per-edit lowering is gone. Only **pure**
-  lowerings are cached: [`mos-eval`][mos-eval]'s `LowerResult` now reports
-  `reads_external_resources` (set when `#image` / `#figure` / `#bibliography` read files), and the
-  language server never caches such a lowering; those documents are re-lowered per request so they
-  always reflect the current filesystem rather than a stale snapshot.
+  same definition `Location`/`null`: only the duplicate per-edit lowering is gone. This slice cached
+  only **pure** lowerings, keyed on a `reads_external_resources` flag that [`mos-eval`][mos-eval]'s
+  `LowerResult` set when `#image` / `#figure` / `#bibliography` read files; the dependency-aware
+  cache under *Changed* (#125) replaced that flag with `external_dependencies` and caches those
+  lowerings too.
 
 - LSP go-to-definition no longer re-lowers on every request
   (https://github.com/kjanat/mosaic/issues/102): [`mos-lsp`][mos-lsp] now memoises each open

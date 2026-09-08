@@ -113,11 +113,13 @@ current source.
 `mos_eval::lower` is not a pure function of the source; `#image` / `#figure` and `#bibliography`
 read external files, so its `LowerResult` lists them in `external_dependencies` with the content
 fingerprint each had at lowering time (`None` for a file that could not be read). On every hit the
-cache `stat`s those files, re-hashes one only when its size or modification time moved, and drops
-the entry when any of them changed, appeared, or disappeared, so a document always reflects the
-current filesystem (a referenced image appearing after open is seen by the next request) while
-unchanged files cost one `stat` instead of a full re-lower. Pure lowerings have no dependencies and
-are reused without touching the filesystem.
+cache `stat`s those files, re-hashes one only when its size, modification time, or inode identity
+(device, inode, `ctime` on Unix) moved or when it was written within two seconds of being
+fingerprinted, and drops the entry when any of them changed, appeared, or disappeared, so a document
+always reflects the current filesystem (a referenced image appearing after open is seen by the next
+request, and so is a same-size rewrite that restores the old mtime) while unchanged files cost one
+`stat` instead of a full re-lower. Pure lowerings have no dependencies and are reused without
+touching the filesystem.
 
 Compiler phase ownership stays elsewhere:
 
