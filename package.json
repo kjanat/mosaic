@@ -11,18 +11,15 @@
 		"postinstall": "bun --filter '*' postinstall"
 	},
 	"devDependencies": {
-		"dprint": "^0.54.0",
-		"runner-run": "^0.12.0",
-		"tombi": "^1.1.1"
+		"dprint": "^0.57.4",
+		"runner-run": "^0.26.1",
+		"tombi": "^1.5.2"
 	},
 	"catalog": {
-		"@types/bun": "1.3.14",
-		"@types/node": "25.7.0",
-		"tree-sitter-cli": "^0.26.0",
-		"typescript": "^6",
-		"@octokit/graphql": "^9.0.3"
-	},
-	"patchedDependencies": {
-		"tree-sitter@0.25.0": "patches/tree-sitter@0.25.0.patch"
+		"@types/bun": "1.4.2",
+		"@types/node": "26.5.0",
+		"tree-sitter-cli": "^0.27.0",
+		"typescript": "^7",
+		"@octokit/graphql": "^9.0.5"
 	}
 }
