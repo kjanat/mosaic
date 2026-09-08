@@ -115,7 +115,9 @@ example.
 - [ ] Keep [README] Status aligned with shipped features.
 - [ ] Keep [AGENTS] aligned with crate layout, commands, and current shipped scope.
 - [ ] Update child [AGENTS] files when crate-local behavior changes.
-- [ ] Audit comments that still describe landed work as MVP 0-only stubs.
+- [x] Audit comments that still describe landed work as MVP 0-only stubs. *(The `mos` CLI and
+      `mos-layout` module docs now describe the shipped `check`/`build`, `#set page`, and Noto
+      embedding path; the remaining `MVP 0` mentions describe behavior that is still true.)*
 - [x] Audit README workspace layout for current examples and crate list.
 - [ ] Add or update tests before marking any item below complete.
 

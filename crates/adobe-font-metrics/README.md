@@ -4,7 +4,7 @@ Pure-Rust, zero-dependency parser for Adobe Font Metrics (AFM) v4.x files, per A
 In Mosaic it sits below `pdf-base14-metrics`, which bakes Core-14 PDF font metrics for the
 font/layout/PDF pipeline.
 
-This crate is workspace-internal today: `publish = false`.
+This crate is published to crates.io with the rest of the Mosaic workspace.
 
 > [!WARNING]
 > While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
