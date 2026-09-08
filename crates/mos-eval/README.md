@@ -29,7 +29,8 @@ cross-references currently supported by `mos check` / `mos build`.
 - `LowerResult`: semantic `Document`, diagnostics, `DocumentMetadata`, and `external_dependencies`,
   the files the lowering read (`#image` / `#figure` rasters, `#bibliography` sources) with the
   `Fingerprint` each had at the time; `reads_external_resources()` is true when that list is
-  non-empty.
+  non-empty. `bibliography` holds every BibTeX record loaded from the declared `#bibliography`
+  sources (a re-exported `mos_bib::Bibliography`), the same records citation resolution used.
 - `ExternalDependency` / `Fingerprint` / `FileIdentity`, `fingerprint_bytes`, `fingerprint_file`:
   the dependency record and its hashing, plus `ExternalDependency::is_current` for cache validation
   (a `stat`, and a re-hash only when size, mtime, or the Unix inode identity moved, or when the file

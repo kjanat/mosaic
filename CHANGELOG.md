@@ -6,6 +6,20 @@ All notable changes to this project will be documented here. The format is based
 
 ## [Unreleased]
 
+### Added
+
+- LSP citation-key completion (https://github.com/kjanat/mosaic/issues/111): [`mos-lsp`][mos-lsp]
+  now advertises `completionProvider` (trigger character `@`) and answers `textDocument/completion`
+  with one item per BibTeX record loaded from the document's declared `#bibliography` sources when
+  the cursor sits in a `[@key` token. The item's edit replaces the whole key under the cursor and
+  appends the closing `]` when none follows; `detail` carries the entry type and `documentation`
+  the entry's title. A cursor off a citation, or a document whose sources are missing or
+  unreadable, gets an empty list while the existing `MOS0041` / parse diagnostics stay as they are,
+  and editing a `#bibliography` line updates the offered keys on the next request through the
+  existing lowering cache. [`mos-eval`][mos-eval] exposes the merged loaded records as
+  `LowerResult::bibliography` (re-exporting `mos_bib::Bibliography`), so the server reuses what
+  citation resolution already parsed instead of opening `.bib` files itself.
+
 ## [0.0.2] - 2026-09-07
 
 ### Added

@@ -21,7 +21,7 @@
 //! - `MOS0045`: a citation key does not exist in a complete parsed bibliography set.
 //! - `MOS0046`: a citation key appears in more than one declared bibliography source.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use mos_bib::Bibliography;
@@ -238,16 +238,18 @@ fn bibliography_path(
 /// index real bibliography records. This is the numeric-placeholder slice
 /// (issue #67), not full CSL: no author-year styles, sorted output, or
 /// citation clusters.
-/// Resolve `[@key]` citations and return the set of keys declared by the
-/// loaded bibliography sources. The reference resolver consumes that set to
-/// tell an `@key` label reference that *misses* the label index but *matches*
-/// a bibliography key apart -- a near-certain "meant a citation" mistake --
-/// from a plain unknown label (see [`crate::resolve::resolve`]).
+/// Resolve `[@key]` citations and return the records loaded from the
+/// declared bibliography sources, merged across sources. The reference
+/// resolver consumes their key set to tell an `@key` label reference that
+/// *misses* the label index but *matches* a bibliography key apart -- a
+/// near-certain "meant a citation" mistake -- from a plain unknown label (see
+/// [`crate::resolve::resolve`]); the LSP offers the same records as citation
+/// completions.
 pub(crate) fn resolve_citations(
     document: &mut Document,
     diagnostics: &mut Vec<Diagnostic>,
     dependencies: &mut DependencySet,
-) -> BTreeSet<String> {
+) -> Bibliography {
     let bibliography = load_bibliography(document, diagnostics, dependencies);
     let citation_ids: Vec<NodeId> = document
         .nodes()
@@ -326,7 +328,7 @@ pub(crate) fn resolve_citations(
         append_bibliography_entries(document, bib_id, &bib_span, &bibliography, &numbers);
     }
 
-    bibliography.records.entries.keys().cloned().collect()
+    bibliography.records
 }
 
 /// Append one rendered entry per *cited* key as children of the first

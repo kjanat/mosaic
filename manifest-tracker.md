@@ -80,8 +80,8 @@ example.
   - [x] simple figure directives
 - [x] `mos-lsp` publishes parse/lower/resolve diagnostics for opened and changed documents, resolves
       `textDocument/definition` for `@label` references and resolved `[@key]` citations, renames
-      labels in-document, exposes nested heading document symbols, and surfaces compiler suggestions
-      as quick-fix code actions.
+      labels in-document, exposes nested heading document symbols, surfaces compiler suggestions as
+      quick-fix code actions, and completes citation keys after `[@`.
 - [x] Layout supports:
   - [x] greedy text flow
   - [x] headings
@@ -465,7 +465,9 @@ example.
 - [x] Add rename label.
 - [x] Spawn [`mos-lsp`] from the [`zed-mosaic`] extension (diagnostics, definition, rename, code
       actions).
-- [ ] Add citation autocomplete.
+- [x] Add citation autocomplete. *(`textDocument/completion` inside a `[@key` token offers every
+      record loaded from the document's `#bibliography` sources, reusing the records `mos-eval`
+      already parsed for citation resolution; the edit replaces the key and closes the `]`.)*
 - [ ] Add figure preview.
 - [x] Add nested heading outline.
 - [ ] Add symbol search.
