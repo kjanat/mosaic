@@ -6,6 +6,8 @@ All notable changes to this project will be documented here. The format is based
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-09-07
+
 ### Added
 
 - Safe fix-its for unsafe portable paths (https://github.com/kjanat/mosaic/issues/128): `MOS0049`
@@ -587,7 +589,8 @@ workflow.
   and semantic-token defaults.
 - An in-memory cache foundation ([`mos-cache`][mos-cache]) backed by a `HashMap`.
 
-[Unreleased]: https://github.com/kjanat/mosaic/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/kjanat/mosaic/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/kjanat/mosaic/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/kjanat/mosaic/compare/v0.0.0...v0.0.1
 [0.0.0]: https://github.com/kjanat/mosaic/releases/tag/v0.0.0
 

@@ -133,9 +133,9 @@ tree-sitter's bracket/body figure form is forward syntax, not compiler truth yet
 
 ### Comments
 
-Comments are **not currently part of the shipped Rust parser**. Tree-sitter defines `//` and
-`/* … */` comment tokens, but the Rust CST has no comment node. For `mos fmt` to be useful, the
-compiler parser must learn to attach comments as trivia to adjacent nodes. See *Parser gaps*.
+Comments are **not currently part of the shipped Rust parser**. Tree-sitter defines `//` and `/* …
+*/` comment tokens, but the Rust CST has no comment node. For `mos fmt` to be useful, the compiler
+parser must learn to attach comments as trivia to adjacent nodes. See *Parser gaps*.
 
 ## Aspirational manifest syntax (NOT shipped)
 
@@ -152,7 +152,9 @@ them today. Adding any of them is a prerequisite, not a formatter task.
   `escaped_char` rule, but the compiler parser only recognizes `\\` and `\-`. Any other `\X` keeps
   the `\` as literal text and then parses `X` normally (so `\*x*` can still start emphasis after the
   literal backslash; see `backslash_before_non_escape_byte_is_silent_literal`).
-- Multi-backtick code spans (`…`, `` ```…``` ``): only single-backtick `` `…` `` is shipped.
+- Multi-backtick code spans (<code>&#96;&#96;…&#96;&#96;</code>,
+  <code>&#96;&#96;&#96;…&#96;&#96;&#96;</code>): only single-backtick <code>&#96;…&#96;</code> is
+  shipped.
 - Single-quoted string literals (`'…'`) inside directive arguments: only `"…"` is shipped
   (`parse_set_value`).
 - Lazy unindented list continuation lines and tab indentation for list continuation: continuation

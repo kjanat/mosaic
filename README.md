@@ -1,7 +1,7 @@
 <picture height="64" align="left" alt="Mosaic logo">
-  <source media="(prefers-color-scheme: dark)" srcset="design/A4.svg">
-  <source media="(prefers-color-scheme: light)" srcset="design/A4.svg">
-  <img alt="Mosaic" height="64" align="left" src="design/A4.svg">
+	<source media="(prefers-color-scheme: dark)" srcset="design/A4.svg">
+	<source media="(prefers-color-scheme: light)" srcset="design/A4.svg">
+	<img alt="Mosaic" height="64" align="left" src="design/A4.svg">
 </picture>
 
 # Mosaic
@@ -57,7 +57,7 @@ Label and reference behavior is documented in
 Mosaic crates are published as pre-alpha `0.0.x` packages. The CLI and `.mos` language are the main
 product surface today; public Rust APIs may still break in patch releases when the internal model
 needs cleanup. If you depend on a Mosaic crate directly, pin an exact patch version such as
-`mos-parse = "=0.0.1"` until a stronger stability policy lands.
+`mos-parse = "=0.0.2"` until a stronger stability policy lands.
 
 ## Quick start
 
@@ -123,8 +123,8 @@ just examples    # runner mos build examples/*
 just doc-nightly # rustup run nightly -- runner dwn
 ```
 
-`dprint` also formats Rust through `rustfmt`, TOML through `tombi`, and the `justfile` through
-`just --dump --justfile`.
+`dprint` also formats Rust through `rustfmt`, TOML through `tombi`, and the `justfile` through `just
+--dump --justfile`.
 
 ## Cargo aliases
 

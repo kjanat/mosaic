@@ -31,8 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: tombi-toml/setup-tombi@v1
-      - uses: kjanat/install-dprint@v1
-      - uses: kjanat/install-shfmt@v1
+      - uses: kjanat/install-dprint@v2
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

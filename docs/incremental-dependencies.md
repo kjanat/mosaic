@@ -134,10 +134,9 @@ break.
 
 Identity: a `NodeId` allocated through the document arena in `mos-core` but *derived* by the lowerer
 in `mos-eval`. Today `Document::alloc` hands out a monotonic counter; the migration target (manifest
-§5.1) computes the stable ID from
-`hash(source_id, syntactic_position, explicit_label,
-local_structure)` inside the lowerer, which is
-the only stage that has the parse tree, and passes the precomputed ID into the arena.
+§5.1) computes the stable ID from `hash(source_id, syntactic_position, explicit_label,
+local_structure)` inside the lowerer, which is the only stage that has the parse tree, and passes
+the precomputed ID into the arena.
 
 This split matters for crate boundaries. `mos-core` must not learn about syntax trees, so a future
 `Document::alloc_with_id(id, node)` (or equivalent) keeps the derivation in `mos-eval` without
@@ -232,12 +231,11 @@ source/asset hashing slice without changing the `&[u8] -> ContentHash` signature
 `engine_version` absorbs the resulting value change. FNV is not collision-hardened, and no shipped
 path yet depends on adversarial collision resistance.
 
-`mos-cache` pairs this content boundary with the path identity as
-`BibliographyDependency { DependencyId::Bibliography(ProjectPath), ContentHash }` (§3): the id is
-the cache slot, the content hash is the staleness check. `mos-cache` stays free of
-bibliography-format knowledge; the caller (`mos-eval`, which reads the `.bib` and depends on both
-crates) supplies the hash. Neither type is wired into `CacheKey` or a `DepNode` graph yet; that
-remains §9.6.
+`mos-cache` pairs this content boundary with the path identity as `BibliographyDependency {
+DependencyId::Bibliography(ProjectPath), ContentHash }` (§3): the id is the cache slot, the content
+hash is the staleness check. `mos-cache` stays free of bibliography-format knowledge; the caller
+(`mos-eval`, which reads the `.bib` and depends on both crates) supplies the hash. Neither type is
+wired into `CacheKey` or a `DepNode` graph yet; that remains §9.6.
 
 ### 4.2 Semantic node hash
 
@@ -501,12 +499,11 @@ Explicitly *not* designed here:
 These are scope-sized, one-PR work items, not umbrella epics. Each can become its own GitHub issue
 when it is ready to start:
 
-1. *Stable `NodeId` derivation in `mos-eval`.* Compute the stable ID:
-   `hash(source_id,
-   syntactic_position, explicit_label, local_structure)`: inside the lowerer,
-   which is the only stage with the parse tree. Add a `Document::alloc_with_id` (or equivalent) on
-   `mos-core` so the lowerer can hand precomputed IDs to the arena without `mos-core` learning about
-   syntax. Public `NodeId(u64)` stays.
+1. *Stable `NodeId` derivation in `mos-eval`.* Compute the stable ID: `hash(source_id,
+   syntactic_position, explicit_label, local_structure)`: inside the lowerer, which is the only
+   stage with the parse tree. Add a `Document::alloc_with_id` (or equivalent) on `mos-core` so the
+   lowerer can hand precomputed IDs to the arena without `mos-core` learning about syntax. Public
+   `NodeId(u64)` stays.
 2. *Separate authored vs. derived node attributes.* Precondition for any meaningful `NodeHash`.
    Either tag each entry in `AttrMap` as authored/derived or move derived attributes (today:
    `resolved_path`, `pixels`, `pixel_width`, `pixel_height`, `colorspace`, `bits_per_component` on

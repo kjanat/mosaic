@@ -3,8 +3,8 @@
 Pre-parsed Adobe Core 14 PDF font metrics for Mosaic's PDF/font stack.
 
 This crate vendors the 14 Adobe Core PDF AFM files under `data/afm/`, parses them at build time with
-the sibling `adobe-font-metrics` crate, and bakes them into `$OUT_DIR/baked.rs` as
-`&'static FontMetrics<'static>` data. It sits below `mos-fonts` in the workspace graph.
+the sibling `adobe-font-metrics` crate, and bakes them into `$OUT_DIR/baked.rs` as `&'static
+FontMetrics<'static>` data. It sits below `mos-fonts` in the workspace graph.
 
 > [!WARNING]
 > While this crate is in the `0.0.x` line, Mosaic treats it as pre-alpha. Breaking changes are
@@ -69,7 +69,7 @@ assert_eq!(extended_glyph_name('Ł'), Some("Lslash"));
 
 ## Licenses
 
-Rust source is MIT. Vendored Core 14 AFM data is Adobe PostScript AFM License (`APAFML`). SPDX:
-`MIT AND APAFML`.
+Rust source is MIT. Vendored Core 14 AFM data is Adobe PostScript AFM License (`APAFML`). SPDX: `MIT
+AND APAFML`.
 
 The checked-in Adobe Glyph List test data is BSD-3-Clause, excluded from published crate artifacts.

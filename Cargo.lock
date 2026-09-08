@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "adobe-font-metrics"
-version = "0.0.1"
+version = "0.0.2"
 
 [[package]]
 name = "aes"
@@ -750,7 +750,7 @@ dependencies = [
 
 [[package]]
 name = "mos"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "clap",
  "lopdf",
@@ -767,14 +767,14 @@ dependencies = [
 
 [[package]]
 name = "mos-bib"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "mos-core",
 ]
 
 [[package]]
 name = "mos-cache"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "mos-core",
  "unicode-normalization",
@@ -782,14 +782,14 @@ dependencies = [
 
 [[package]]
 name = "mos-core"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
 name = "mos-csl"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "mos-bib",
  "mos-core",
@@ -798,7 +798,7 @@ dependencies = [
 
 [[package]]
 name = "mos-eval"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "image",
  "mos-bib",
@@ -808,7 +808,7 @@ dependencies = [
 
 [[package]]
 name = "mos-fonts"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "mos-core",
  "pdf-base14-metrics",
@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "mos-html"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "mos-core",
  "mos-layout",
@@ -828,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "mos-layout"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "mos-core",
  "mos-fonts",
@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "mos-lsp"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "mos-core",
  "mos-eval",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "mos-packages"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "mos-core",
  "serde",
@@ -858,14 +858,14 @@ dependencies = [
 
 [[package]]
 name = "mos-parse"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "mos-core",
 ]
 
 [[package]]
 name = "mos-pdf"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "flate2",
  "lopdf",
@@ -944,7 +944,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-base14-metrics"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "adobe-font-metrics",
 ]
@@ -1454,7 +1454,7 @@ checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
 
 [[package]]
 name = "tree-sitter-mosaic"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "cc",
  "tree-sitter",

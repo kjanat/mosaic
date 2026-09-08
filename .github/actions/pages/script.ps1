@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.0
 
-[CmdletBinding(PositionalBinding=$true)]
+[CmdletBinding(PositionalBinding = $true)]
 param(
 	[ValidatePattern('https?://.+')]
 	[Parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
@@ -48,7 +48,8 @@ begin {
 
 	$manifest = Join-Path $workspace 'Cargo.toml'
 	$versions = @{}
-	(cargo metadata --manifest-path $manifest --format-version 1 --no-deps | ConvertFrom-Json).packages | ForEach-Object { $versions[$_.name] = $_.version }
+	(cargo metadata --manifest-path $manifest --format-version 1 --no-deps | ConvertFrom-Json).packages |
+		ForEach-Object { $versions[$_.name] = $_.version }
 }
 
 process {

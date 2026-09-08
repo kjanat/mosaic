@@ -17,8 +17,8 @@ Why lockstep is the right call at `0.0.x`:
   bookkeeping.
 - One version means one bump commit, one tag, and a release workflow that can derive every crate's
   version from the tag.
-- The publish workflow (`.github/workflows/crates-io.yml`) is built on this assumption: the
-  `cargo publish` step probes and publishes every crate at `${RELEASE_TAG#v}`.
+- The publish workflow (`.github/workflows/crates-io.yml`) is built on this assumption: the `cargo
+  publish` step probes and publishes every crate at `${RELEASE_TAG#v}`.
 
 Accepted cost: unchanged crates get republished byte-identical under the new version each release.
 At this crate count that churn is cheap.
@@ -30,8 +30,8 @@ At this crate count that churn is cheap.
    downgrade: undoing a mistyped bump means editing the root `Cargo.toml` versions by hand and
    rerunning `cargo update --workspace`.
 2. Cut `CHANGELOG.md`: move `[Unreleased]` into a new version section.
-3. Commit, then tag the work commit itself (no dedicated bump commit for the tag to chase):
-   `git tag -s v0.0.2 -m "v0.0.2 — <summary>"` and push the tag.
+3. Commit, then tag the work commit itself (no dedicated bump commit for the tag to chase): `git tag
+   -s v0.0.2 -m "v0.0.2 — <summary>"` and push the tag.
 4. The `crates-release` workflow takes it from there. Two guard rails to know about:
    - **Staleness gate**: fails the release if a crate's directory changed since the previous tag
      while its version stayed the same and that version is already live on crates.io. Under lockstep
@@ -58,8 +58,8 @@ external consumer shows up.
 
 Small change, but it touches the release workflow. Steps for each crate being decoupled:
 
-1. In the crate's `Cargo.toml`, replace `version.workspace = true` with an explicit
-   `version = "X.Y.Z"`.
+1. In the crate's `Cargo.toml`, replace `version.workspace = true` with an explicit `version =
+   "X.Y.Z"`.
 2. In root `[workspace.dependencies]`, the crate's `version = "..."` pin now tracks the crate's own
    version. It only needs editing when that crate bumps.
 3. In `.github/workflows/crates-io.yml`, the `cargo publish` step assumes every crate publishes at
