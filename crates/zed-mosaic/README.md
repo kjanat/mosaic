@@ -113,6 +113,8 @@ filenames. Navigation and editing features use Zed query files such as [`outline
 - Build/check the extension crate from this directory with `cargo check`, or from the repo root with
   `cargo check --manifest-path crates/zed-mosaic/Cargo.toml`. The root Cargo workspace excludes this
   crate.
+- Run launch-environment regressions with `cargo test --manifest-path crates/zed-mosaic/Cargo.toml`
+  from the repo root. CI runs these tests and checks the `wasm32-wasip2` target separately.
 - Regenerate the Tree-sitter parser from [`crates/tree-sitter-mosaic`] with `npm run generate` when
   `grammar.js` changes.
 - Run `just sync-zed-queries` after changing canonical query files in
@@ -131,6 +133,18 @@ The default build task expects `mos` on `PATH` and runs from the current file's 
 `build/<entry-stem>.pdf` lands next to the document source. Build-and-open uses `mos build --open`,
 which selects the platform opener by default. Users can override these tasks in project or global
 Zed `tasks.json` files by binding their own task to the same runnable tags.
+
+## Invocation metadata
+
+The bundled tasks set `MOS_INVOCATION_SOURCE=zed-task` and `MOS_ZED_TASK=build-pdf` or
+`build-open-pdf`. Language-server launches set `MOS_INVOCATION_SOURCE=zed-lsp`, replacing inherited
+source markers and setting task-kind markers to an empty value so Zed's environment merge clears
+stale task attribution.
+
+These fixed markers prepare invocation attribution for future opt-in telemetry. Mosaic currently
+does not collect or transmit telemetry, and these markers do not grant consent. See the
+[invocation and privacy contract](../../docs/zed-invocations.md) for the allowed aggregate signals
+and the execution-context data excluded from future collection.
 
 ## Semantic tokens
 

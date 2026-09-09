@@ -4,6 +4,10 @@
 		"command": "mos",
 		"args": ["build", "$ZED_FILENAME"],
 		"cwd": "$ZED_DIRNAME",
+		"env": {
+			"MOS_INVOCATION_SOURCE": "zed-task",
+			"MOS_ZED_TASK": "build-pdf"
+		},
 		"tags": ["mosaic-build"],
 		"use_new_terminal": false,
 		"allow_concurrent_runs": false,
@@ -14,6 +18,10 @@
 		"command": "mos",
 		"args": ["build", "--open", "$ZED_FILENAME"],
 		"cwd": "$ZED_DIRNAME",
+		"env": {
+			"MOS_INVOCATION_SOURCE": "zed-task",
+			"MOS_ZED_TASK": "build-open-pdf"
+		},
 		"tags": ["mosaic-build-open-pdf"],
 		"use_new_terminal": false,
 		"allow_concurrent_runs": false,

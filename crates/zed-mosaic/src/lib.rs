@@ -19,6 +19,8 @@ const SERVER_ID: &str = "mos-lsp";
 const SERVER_BINARY: &str = "mos-lsp";
 /// GitHub repository (`<owner>/<repo>`) whose releases carry `mos-lsp` assets.
 const RELEASE_REPO: &str = "kjanat/mosaic";
+const INVOCATION_SOURCE: &str = "MOS_INVOCATION_SOURCE";
+const ZED_TASK: &str = "MOS_ZED_TASK";
 
 #[derive(Debug, Default)]
 struct MosaicExtension {
@@ -188,7 +190,7 @@ impl zed::Extension for MosaicExtension {
         Ok(zed::Command {
             command,
             args,
-            env: worktree.shell_env(),
+            env: language_server_env(worktree.shell_env()),
         })
     }
 
@@ -217,8 +219,72 @@ impl zed::Extension for MosaicExtension {
     }
 }
 
+/// Override attribution from a parent task. Zed merges these values into the
+/// shell environment again, so stale task markers need an explicit empty value.
+fn language_server_env(mut environment: Vec<(String, String)>) -> Vec<(String, String)> {
+    environment.retain(|(key, _)| key != INVOCATION_SOURCE && key != ZED_TASK);
+    // Override inherited alternate spellings too. Removing them would leave
+    // conflicting values when the host merges maps on case-insensitive systems.
+    for (key, value) in &mut environment {
+        if key.eq_ignore_ascii_case(INVOCATION_SOURCE) {
+            "zed-lsp".clone_into(value);
+        } else if key.eq_ignore_ascii_case(ZED_TASK) {
+            value.clear();
+        }
+    }
+    environment.push((INVOCATION_SOURCE.into(), "zed-lsp".into()));
+    environment.push((ZED_TASK.into(), String::new()));
+    environment
+}
+
 mod registration {
     use super::MosaicExtension;
 
     zed_extension_api::register_extension!(MosaicExtension);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::language_server_env;
+
+    #[test]
+    fn marks_lsp_launches_without_inherited_environment() {
+        assert_eq!(
+            language_server_env(Vec::new()),
+            vec![
+                ("MOS_INVOCATION_SOURCE".into(), "zed-lsp".into()),
+                ("MOS_ZED_TASK".into(), String::new()),
+            ]
+        );
+    }
+
+    #[test]
+    fn replaces_stale_markers_and_preserves_the_execution_environment() {
+        let inherited = vec![
+            ("PATH".into(), "/fixture/bin".into()),
+            ("MOS_INVOCATION_SOURCE".into(), "zed-task".into()),
+            ("MOS_ZED_TASK".into(), "build-open-pdf".into()),
+            ("ZED_FILE".into(), "/fixture/project/main.mos".into()),
+            ("mos_invocation_source".into(), "stale".into()),
+            ("mos_zed_task".into(), "build-pdf".into()),
+            ("CUSTOM_SETTING".into(), "keep".into()),
+        ];
+        let expected = vec![
+            ("PATH".into(), "/fixture/bin".into()),
+            ("ZED_FILE".into(), "/fixture/project/main.mos".into()),
+            ("mos_invocation_source".into(), "zed-lsp".into()),
+            ("mos_zed_task".into(), String::new()),
+            ("CUSTOM_SETTING".into(), "keep".into()),
+            ("MOS_INVOCATION_SOURCE".into(), "zed-lsp".into()),
+            ("MOS_ZED_TASK".into(), String::new()),
+        ];
+        let marked = language_server_env(inherited.clone());
+        assert_eq!(marked, expected);
+        assert_eq!(language_server_env(marked.clone()), expected);
+        // Match Zed's post-extension merge. A missing key here would retain
+        // stale values from the original shell environment.
+        let mut merged: std::collections::BTreeMap<_, _> = inherited.into_iter().collect();
+        merged.extend(marked);
+        assert_eq!(merged, expected.into_iter().collect());
+    }
 }
