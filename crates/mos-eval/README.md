@@ -20,6 +20,7 @@ cross-references currently supported by `mos check` / `mos build`.
 - Run reference resolution through `resolve`, assigning section/figure numbers and rewriting
   `@label` text.
 - Capture document metadata from `#set document(...)` for downstream emitters.
+- Snapshot deterministic authored-content hashes on lowered nodes for future incremental work.
 
 ## Public API
 
@@ -37,6 +38,19 @@ cross-references currently supported by `mos check` / `mos build`.
   was modified within `RACY_WINDOW` of being fingerprinted).
 
 ## Lowering Behavior
+
+`Node::content_hash()` covers a node's kind, authored attributes, ordered child hashes, and the
+recorded content fingerprint of its image or bibliography file. `lower` / `lower_tree` compute these
+snapshots after reading external inputs and before resolution rewrites references, stamps caption
+numbers, or generates bibliography entries. `Evaluator::evaluate` also computes hashes, but marks
+bibliography files as unloaded. Generated bibliography entry nodes retain the default hash because
+they are resolution output.
+
+Hashes exclude source spans, allocation IDs, filesystem metadata, resolved paths, decoded pixels,
+and derived numbering. Authored lengths use a 1/64-pt grid. Equal authored blocks therefore keep
+their hashes when unrelated earlier text changes or the project moves. These are semantic input
+boundaries; styles, resolved reference values, layout keys, and persistent artifact reuse need their
+own dependency tracking.
 
 - Headings become `NodeKind::Section` with `level`, optional `label`, and inline children.
 - Paragraphs become `NodeKind::Paragraph` with optional `label` and inline children.

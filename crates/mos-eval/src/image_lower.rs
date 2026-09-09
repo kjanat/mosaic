@@ -13,6 +13,13 @@ use crate::{
     image, insert_label_attributes, set::coerce_positive_length, string_content_span, suggest,
 };
 
+// Decoder-derived image attributes, excluded from authored semantic hashes.
+pub(crate) const PIXELS_ATTR: &str = "pixels";
+pub(crate) const PIXEL_WIDTH_ATTR: &str = "pixel_width";
+pub(crate) const PIXEL_HEIGHT_ATTR: &str = "pixel_height";
+pub(crate) const COLOR_SPACE_ATTR: &str = "color_space";
+pub(crate) const BITS_PER_COMPONENT_ATTR: &str = "bits_per_component";
+
 /// Keys accepted by [`collect_one_figure_arg`]'s named-argument match; the
 /// MOS0015 nearest-match candidate set. Keep in sync with the match arms.
 const FIGURE_KEYS: &[&str] = &[
@@ -301,20 +308,20 @@ fn build_image_attributes(
         insert_label_attributes(&mut attrs, label_text, Some(label_span));
     }
     attrs.insert(
-        "pixel_width".to_owned(),
+        PIXEL_WIDTH_ATTR.to_owned(),
         AttrValue::Int(i64::from(decoded.width)),
     );
     attrs.insert(
-        "pixel_height".to_owned(),
+        PIXEL_HEIGHT_ATTR.to_owned(),
         AttrValue::Int(i64::from(decoded.height)),
     );
     attrs.insert(
-        "color_space".to_owned(),
+        COLOR_SPACE_ATTR.to_owned(),
         AttrValue::Str("DeviceRGB".to_owned()),
     );
-    attrs.insert("bits_per_component".to_owned(), AttrValue::Int(8));
+    attrs.insert(BITS_PER_COMPONENT_ATTR.to_owned(), AttrValue::Int(8));
     attrs.insert(
-        "pixels".to_owned(),
+        PIXELS_ATTR.to_owned(),
         AttrValue::Bytes(Arc::from(decoded.rgb8)),
     );
     Some((attrs, image_args.label.map(|(text, _)| text)))

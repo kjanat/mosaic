@@ -4,11 +4,11 @@
 //! [`NodeId`]. Each node carries a [`NodeKind`], a [`SourceSpan`], a
 //! [`ContentHash`], a [`StyleId`], and an [`AttrMap`] of [`AttrValue`]s.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::{ContentHash, SourceSpan};
+use crate::{ContentHash, ContentHasher, SourceSpan};
 
 /// Stable identifier for a document node.
 ///
@@ -107,7 +107,7 @@ pub enum NodeKind {
 ///
 /// Nodes are allocated only by [`Document::alloc`] / [`Document::alloc_child`]
 /// from a [`NodeSpec`]: the arena assigns the [`NodeId`] and owns the
-/// `content_hash`/`style_id` placeholders. Those two fields are `pub(crate)`,
+/// `content_hash` and `style_id` fields. Those two fields are `pub(crate)`,
 /// which makes the struct literal unconstructible outside this crate, so no
 /// caller can fabricate a node with a fake id or a hand-set hash.
 ///
@@ -131,9 +131,8 @@ pub struct Node {
     pub span: SourceSpan,
     pub children: Vec<NodeId>,
     pub attributes: AttrMap,
-    /// Hash-derived identity placeholder (manifest §5.1); set by the arena,
-    /// always default until the MVP 5 cache work. `pub(crate)` to seal
-    /// external construction.
+    /// Authored subtree hash, computed by `Document::update_content_hashes`.
+    /// Default until that pass runs. `pub(crate)` to seal external construction.
     pub(crate) content_hash: ContentHash,
     /// Resolved style slot placeholder; set by the arena, always default
     /// until styling lands. `pub(crate)` to seal external construction.
@@ -141,9 +140,12 @@ pub struct Node {
 }
 
 impl Node {
-    /// The node's content hash: a hash-derived identity placeholder
-    /// (manifest §5.1), default until the MVP 5 cache work. Read-only: the
-    /// arena owns this field.
+    /// The authored subtree hash from the last
+    /// [`Document::update_content_hashes`] pass, or default if never computed.
+    ///
+    /// This is a snapshot, not a live hash of public attributes. `mos-eval`
+    /// computes it before resolution; later numbering and reference rewrites
+    /// leave it intact. It is not a complete layout or artifact cache key.
     #[must_use]
     pub const fn content_hash(&self) -> ContentHash {
         self.content_hash
@@ -426,6 +428,59 @@ impl Document {
         self.nodes.values()
     }
 
+    /// Compute each node's content hash from its own semantic inputs and its
+    /// ordered child hashes. The caller supplies the hash of the node's kind,
+    /// authored attributes, and external inputs; this crate owns graph traversal
+    /// and subtree framing. IDs, spans, and previous hashes are not folded here.
+    ///
+    /// Hashes are snapshots: after changing authored inputs, the caller must
+    /// run this pass again with the appropriate projection. Resolvers may keep
+    /// the original hashes while adding derived attributes.
+    ///
+    /// # Panics
+    ///
+    /// Panics if children contain a cycle or refer to an unallocated node.
+    /// These are document-construction bugs, not source-document errors.
+    pub fn update_content_hashes(&mut self, mut own_content: impl FnMut(&Node) -> ContentHash) {
+        let mut hashes = BTreeMap::<NodeId, ContentHash>::new();
+        let mut active = BTreeSet::new();
+        // Iterative postorder also handles shared children, detached nodes,
+        // and children allocated before their parent without recursion.
+        for &id in self.nodes.keys() {
+            if hashes.contains_key(&id) {
+                continue;
+            }
+            let mut pending = vec![(id, false)];
+            while let Some((id, exiting)) = pending.pop() {
+                if hashes.contains_key(&id) {
+                    continue;
+                }
+                let node = &self.nodes[&id];
+                if exiting {
+                    let mut hasher = ContentHasher::new();
+                    hasher
+                        .field(b"mos-core/semantic-subtree/v1")
+                        .field(&own_content(node).0.to_le_bytes());
+                    for child in &node.children {
+                        hasher.field(&hashes[child].0.to_le_bytes());
+                    }
+                    hashes.insert(id, hasher.finish());
+                    active.remove(&id);
+                } else {
+                    assert!(
+                        active.insert(id),
+                        "Document::update_content_hashes: cycle at {id:?}"
+                    );
+                    pending.push((id, true));
+                    pending.extend(node.children.iter().rev().map(|&child| (child, false)));
+                }
+            }
+        }
+        for (id, node) in &mut self.nodes {
+            node.content_hash = hashes[id];
+        }
+    }
+
     /// Total number of nodes including the document root.
     ///
     /// # Examples
@@ -468,6 +523,108 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn content_hashes_follow_child_order_and_ignore_allocation_order() {
+        fn graph(reverse_allocation: bool) -> (Document, NodeId, NodeId) {
+            let mut document = Document::new(PathBuf::from("test.mos"));
+            let spec = || {
+                NodeSpec::new(
+                    NodeKind::Text,
+                    SourceSpan::placeholder(document.file.clone()),
+                )
+            };
+            let a_spec = spec();
+            let b_spec = spec();
+            let (a, b) = if reverse_allocation {
+                let b = document.alloc(b_spec);
+                (document.alloc(a_spec), b)
+            } else {
+                (document.alloc(a_spec), document.alloc(b_spec))
+            };
+            document.get_mut(document.root).unwrap().children = vec![a, b, a];
+            (document, a, b)
+        }
+        fn hash(document: &mut Document, a: NodeId, b: NodeId) {
+            document.update_content_hashes(|node| {
+                ContentHasher::new()
+                    .field(if node.id == a {
+                        b"a"
+                    } else if node.id == b {
+                        b"b"
+                    } else {
+                        b"root"
+                    })
+                    .finish()
+            });
+        }
+        let (mut first, a, b) = graph(false);
+        let (mut second, other_a, other_b) = graph(true);
+        hash(&mut first, a, b);
+        hash(&mut second, other_a, other_b);
+        let original = first.get(first.root).unwrap().content_hash();
+        assert_ne!(original, ContentHash::default());
+        assert_eq!(original, second.get(second.root).unwrap().content_hash());
+        let child_hash = first.get(a).unwrap().content_hash();
+        first.get_mut(first.root).unwrap().children.swap(0, 1);
+        hash(&mut first, a, b);
+        assert_ne!(original, first.get(first.root).unwrap().content_hash());
+        assert_eq!(child_hash, first.get(a).unwrap().content_hash());
+    }
+
+    #[test]
+    fn content_hashes_support_older_children_and_deep_graphs() {
+        let mut document = Document::new(PathBuf::from("test.mos"));
+        let mut child = document.alloc(NodeSpec::new(
+            NodeKind::Text,
+            SourceSpan::placeholder(document.file.clone()),
+        ));
+        for _ in 0..4_000 {
+            let parent = document.alloc(NodeSpec::new(
+                NodeKind::Paragraph,
+                SourceSpan::placeholder(document.file.clone()),
+            ));
+            document.get_mut(parent).unwrap().children.push(child);
+            child = parent;
+        }
+        document
+            .get_mut(document.root)
+            .unwrap()
+            .children
+            .push(child);
+        let mut visits = BTreeSet::new();
+        document.update_content_hashes(|node| {
+            assert!(visits.insert(node.id), "each node hashed only once");
+            ContentHash(1)
+        });
+        assert_eq!(visits.len(), document.len());
+        assert!(
+            document
+                .nodes()
+                .all(|node| node.content_hash() != ContentHash::default())
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "cycle")]
+    fn content_hashes_reject_cycles() {
+        let mut document = Document::new(PathBuf::from("test.mos"));
+        let root = document.root;
+        document.get_mut(root).unwrap().children.push(root);
+        document.update_content_hashes(|_| ContentHash(1));
+    }
+
+    #[test]
+    #[should_panic]
+    fn content_hashes_reject_missing_children() {
+        let mut document = Document::new(PathBuf::from("test.mos"));
+        document
+            .get_mut(document.root)
+            .unwrap()
+            .children
+            .push(NodeId(99));
+        document.update_content_hashes(|_| ContentHash(1));
+    }
 
     #[test]
     #[should_panic(expected = "unknown parent")]

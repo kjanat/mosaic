@@ -8,6 +8,12 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Add stable authored-content hashes for lowered blocks
+  (https://github.com/kjanat/mosaic/issues/110), exposed through `Node::content_hash()`.
+  Hashes include child content and referenced image/bibliography bytes, stay stable when
+  source spans or project locations change, and preserve authored content through numbering
+  and reference resolution. Persistent caching and artifact reuse remain future work.
+
 - LSP citation-key completion (https://github.com/kjanat/mosaic/issues/111): [`mos-lsp`][mos-lsp]
   now advertises `completionProvider` (trigger character `@`) and answers `textDocument/completion`
   with keys matching `[A-Za-z0-9_:.-]+` from the document's declared `#bibliography` sources when
