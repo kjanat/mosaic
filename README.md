@@ -174,7 +174,7 @@ crates/
   mos-cache            cache trait + in-memory implementation (manifest §7, §32)
   mos-lsp              language server (lib + mos-lsp bin)    (manifest §17)
   mos-packages         project / package manifest schema      (manifest §14)
-  adobe-font-metrics   zero-dep AFM v4 parser                 (Adobe TN 5004)
+  adobe-font-metrics   focused AFM v4 horizontal metrics      (zero deps; Adobe TN 5004)
   pdf-base14-metrics   baked Core-14 PDF font metrics         (uses adobe-font-metrics)
   tree-sitter-mosaic   Tree-sitter grammar for Mosaic
   zed-mosaic           Zed language extension for Mosaic

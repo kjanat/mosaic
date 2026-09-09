@@ -48,6 +48,12 @@ All notable changes to this project will be documented here. The format is based
   `LowerResult::bibliography` (re-exporting `mos_bib::Bibliography`), so the server reuses what
   citation resolution already parsed instead of opening `.bib` files itself.
 
+### Changed
+
+- Clarify `adobe-font-metrics` as a focused AFM v4.x horizontal metric extractor. The
+  [coverage audit](docs/afm-parser-scope.md) documents discarded fields, defaults, partial
+  validation, and the decision to retain the current scope. Parsing behavior is unchanged.
+
 ## [0.0.2] - 2026-09-07
 
 ### Added

@@ -1,22 +1,24 @@
-//! Pure-Rust, zero-dependency parser for Adobe Font Metrics (AFM) files,
-//! per Adobe Tech Note 5004 ([`5004.AFM_Spec`]).
+//! Focused, zero-dependency parser for horizontal metrics in Adobe Font
+//! Metrics (AFM) files, with Adobe Tech Note 5004 as its format reference
+//! ([`5004.AFM_Spec`]).
 //!
 //! [`5004.AFM_Spec`]: https://adobe-type-tools.github.io/font-tech-notes/pdfs/5004.AFM_Spec.pdf
 //!
 //! # Scope
 //!
-//! Supports AFM **v4.x** (the format Adobe shipped with the Core 14
-//! PostScript fonts). The single entry point is [`parse`], which
+//! Extracts a subset of AFM **v4.x**, tested with Adobe Core 14
+//! PostScript font metrics. The single entry point is [`parse`], which
 //! consumes a `&str` and returns a borrowed [`FontMetrics`] whose
 //! `Cow<'_, str>` fields point into the source slice: zero allocations
 //! for glyph names and kerning operands. Call [`FontMetrics::into_owned`]
 //! to obtain an [`OwnedFontMetrics`] (`FontMetrics<'static>`) suitable
 //! for caching, baking into static tables, or sending across threads.
 //!
-//! AFM v3.x files (e.g. older Adobe samples) are deliberately rejected
-//! with [`ParseError::UnsupportedVersion`]. The reader subset here
-//! would handle most v3 files, but the v4-only scope claim is honest;
-//! relax it once a real v3 fixture is on hand to validate against.
+//! AFM v3.x files are deliberately rejected with
+//! [`ParseError::UnsupportedVersion`]. There is no ACFM/AMFM model,
+//! CID interpretation, multiple-master interpolation, byte API, or
+//! serialization. This is a metric extractor with partial validation;
+//! it does not preserve enough information for an AFM round trip.
 //!
 //! # Coverage
 //!
@@ -30,21 +32,32 @@
 //! - Kerning: `KPX`, `KPY`, `KP` (KPY rows store `adjust = 0.0`; only
 //!   the X axis is exposed in the public type today). `StartKernPairs1`
 //!   blocks (direction-1 kerning) are accepted and dropped.
-//! - `StartComposites`/`CC` blocks are accepted and discarded per the
-//!   user-facing scope of the v0.1 surface.
+//! - `StartComposites`/`CC`/`PCC` blocks are accepted and discarded.
+//!   `KPH` records are also discarded without validation.
 //! - `StartTrackKern`/`TrackKern`/`EndTrackKern` (track kerning) are
 //!   not modelled and pass through silently.
 //! - `StartDirection 1` blocks are skipped; direction-0 and
-//!   direction-2 blocks are accepted (their inner keys read as if at
-//!   the top level, matching the layout of real Core 14 AFMs).
+//!   direction-2 blocks update the same flat fields as top-level keys.
+//!   Direction 2 means shared metrics for both directions in AFM;
+//!   the returned type has no direction tag.
 //! - Unknown keywords at the top level are silently ignored.
+//! - `CharWidth` is ignored: it supplies neither missing character
+//!   advances nor an inferred `IsFixedPitch`. Missing optional strings
+//!   and numbers become empty strings and zero; booleans become false.
+//!
+//! The [coverage audit] records the field matrix and scope decision.
+//!
+//! [coverage audit]: https://github.com/kjanat/mosaic/blob/master/docs/afm-parser-scope.md
 //!
 //! # Errors
 //!
 //! [`ParseError`] carries a 1-based `line` number on every variant
-//! that originates inside the source. The parser never panics on
-//! ill-formed input; every malformed record is converted into a
-//! [`ParseError::InvalidNumber`] or [`ParseError::MalformedRecord`].
+//! that originates inside the source. Invalid operands detected in
+//! modeled records return an error. Successful parsing does not certify
+//! AFM conformance: counts are allocation hints, closing markers are
+//! not required at EOF, and text after `EndFontMetrics` is ignored.
+//! `W`/`W0` validate only x; discarded records are generally unchecked.
+//! See the audit for further lexical and structural limits.
 
 #![doc(
     html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
@@ -58,9 +71,8 @@ use std::fmt;
 
 /// A glyph or font bounding box, in 1/1000 em.
 ///
-/// `f32` rather than `i16` so AFMs that emit fractional values for
-/// `FontBBox` or character `B` records (rare but legal) round-trip
-/// without precision loss.
+/// Uses `f32` to retain fractional `FontBBox` and character `B` values,
+/// subject to floating-point precision; original decimal text is not retained.
 ///
 /// # Examples
 ///
@@ -119,7 +131,8 @@ pub struct CharacterMetric<'a> {
     pub code: i32,
     /// PostScript glyph name (e.g. `"A"`, `"section"`).
     pub name: Cow<'a, str>,
-    /// Horizontal advance in 1/1000 em.
+    /// Horizontal advance in 1/1000 em from `WX`, `W0X`, or x of `W`/`W0`.
+    /// Defaults to zero; global `CharWidth` and direction-1 widths are ignored.
     pub width_x: f32,
     /// Glyph bounding box if the AFM provided one.
     pub bbox: Option<BBox>,
@@ -185,7 +198,8 @@ pub struct FontMetrics<'a> {
     pub weight: Cow<'a, str>,
     /// Italic angle in degrees, counter-clockwise from vertical.
     pub italic_angle: f32,
-    /// `true` if every glyph has the same advance width.
+    /// Explicit `IsFixedPitch` value, defaulting to false when absent.
+    /// Not inferred from `CharWidth` or the individual glyph advances.
     pub is_fixed_pitch: bool,
     /// Bounding box that contains every glyph in the font.
     pub font_bbox: BBox,
@@ -738,8 +752,9 @@ fn parse_declared_count(
 /// # Errors
 ///
 /// Returns [`ParseError`] if the header is missing, the version is
-/// outside the 4.x range, a required field never appears, or any
-/// record is structurally malformed.
+/// outside the 4.x range, a required field never appears, or an invalid
+/// operand is detected in a modeled record. This is partial validation;
+/// see the [crate-level limits](crate#errors).
 ///
 /// # Examples
 ///
