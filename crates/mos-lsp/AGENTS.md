@@ -7,20 +7,21 @@ owns parse/lower/resolve policy.
 
 ## WHERE TO LOOK
 
-| Task              | Location                 | Notes                                                   |
-| ----------------- | ------------------------ | ------------------------------------------------------- |
-| Server loop       | `src/server.rs`          | JSON-RPC framing, state, request dispatch.              |
-| LSP diagnostics   | `src/diagnostics.rs`     | Compiler diagnostic to LSP range conversion.            |
-| Go-to-definition  | `src/definition.rs`      | `@label` reference → declaration span; position↔byte.   |
-| Label rename      | `src/rename.rs`          | Label occurrences (decl token + refs) → WorkspaceEdit.  |
-| Code actions      | `src/code_action.rs`     | Compiler suggestions → LSP quick fixes.                 |
-| Hover             | `src/hover.rs`           | `/** … */` doc comment of the symbol under the cursor.  |
-| Completion        | `src/completion.rs`      | `[@key` prefix → items from the loaded BibTeX records.  |
-| Document symbols  | `src/document_symbol.rs` | Heading tree → nested LSP symbols.                      |
-| Lowering cache    | `src/cache.rs`           | Per-URI memo of `mos_eval::lower`; invalidated on edit. |
-| Binary entry      | `src/main.rs`            | Calls `mos_lsp::run()`.                                 |
-| Protocol E2E      | `tests/protocol_e2e.rs`  | Spawns the real binary, framed JSON-RPC over stdio.     |
-| Behavior contract | `README.md`              | Current supported messages and non-goals.               |
+| Task              | Location                 | Notes                                                                   |
+| ----------------- | ------------------------ | ----------------------------------------------------------------------- |
+| Server loop       | `src/server.rs`          | JSON-RPC framing, state, request dispatch.                              |
+| LSP diagnostics   | `src/diagnostics.rs`     | Compiler diagnostic to LSP range conversion.                            |
+| Go-to-definition  | `src/definition.rs`      | `@label` reference → declaration span; position↔byte.                   |
+| Label rename      | `src/rename.rs`          | Label occurrences (decl token + refs) → WorkspaceEdit.                  |
+| Code actions      | `src/code_action.rs`     | Compiler suggestions → LSP quick fixes.                                 |
+| Hover             | `src/hover.rs`           | `/** … */` doc comment of the symbol under the cursor.                  |
+| Completion        | `src/completion.rs`      | `[@key` prefix → items from the loaded BibTeX records.                  |
+| Inlay hints       | `src/inlay_hint.rs`      | Unnamed code blocks → stable display names at their closing delimiters. |
+| Document symbols  | `src/document_symbol.rs` | Heading tree → nested LSP symbols.                                      |
+| Lowering cache    | `src/cache.rs`           | Per-URI memo of `mos_eval::lower`; invalidated on edit.                 |
+| Binary entry      | `src/main.rs`            | Calls `mos_lsp::run()`.                                                 |
+| Protocol E2E      | `tests/protocol_e2e.rs`  | Spawns the real binary, framed JSON-RPC over stdio.                     |
+| Behavior contract | `README.md`              | Current supported messages and non-goals.                               |
 
 ## CURRENT SLICE
 
@@ -43,6 +44,10 @@ owns parse/lower/resolve policy.
   per record in a complete `LowerResult::bibliography` whose key matches `[A-Za-z0-9_:.-]+` (edit
   replaces the whole key, appends `]` when missing); otherwise `[]`. Never reads `.bib` files itself.
 - Unknown requests return JSON-RPC `MethodNotFound`; unknown notifications drop.
+- Answers `textDocument/inlayHint` from the cached lowered document: unnamed `#code` blocks get
+  a language/body preview and short content hash after the closing delimiter. Identical names
+  get document-order suffixes before range filtering. Manual labels suppress hints; generated
+  names never become compiler labels or runnable targets.
 - Caches each open document's `mos-eval` lowering (`src/cache.rs`), shared by diagnostics and
   `textDocument/definition`: an edit lowers once (publish populates the cache, definition reuses
   it). Invalidated on open/change/close. A `LowerResult` lists the files it read
@@ -52,7 +57,7 @@ owns parse/lower/resolve policy.
   filesystem (#125).
 - Advertises UTF-16 position encoding, full text sync, `definitionProvider`,
   `documentSymbolProvider`, `renameProvider`, `codeActionProvider`, `hoverProvider`, and
-  `completionProvider` (trigger character `@`).
+  `completionProvider` (trigger character `@`), and `inlayHintProvider` (no resolve request).
 
 ## BOUNDARY RULES
 

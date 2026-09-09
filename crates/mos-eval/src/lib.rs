@@ -36,7 +36,7 @@ use mos_core::{
     AttrMap, AttrValue, CollectingSink, Diagnostic, Document, NodeId, NodeKind, NodeSpec, Severity,
     SourceSpan,
 };
-use mos_parse::{DirectiveKind, Item, RawBlockKind, SyntaxTree};
+use mos_parse::{DirectiveKind, Item, RawBlockKind, RawBlockView, SetArg, SetValue, SyntaxTree};
 
 pub use dependency::{
     ExternalDependency, FileIdentity, Fingerprint, RACY_WINDOW, fingerprint_bytes, fingerprint_file,
@@ -57,6 +57,8 @@ const LABEL_SPAN_END_ATTR: &str = "label_span.end";
 /// Attribute key holding a node's attached `/** … */` doc-comment text. Read
 /// by the LSP hover handler.
 pub const DOC_ATTR: &str = "doc";
+/// Authored language name on a `#code` node, available to editor consumers.
+pub const CODE_LANGUAGE_ATTR: &str = "raw.lang";
 
 fn insert_label_attributes(attributes: &mut AttrMap, label: &str, label_span: Option<&SourceSpan>) {
     attributes.insert("label".to_owned(), AttrValue::Str(label.to_owned()));
@@ -348,25 +350,12 @@ impl EvaluationState {
                 let root = self.document.root;
                 lower_list(&mut self.document, root, *ordered, items, span);
             }
-            Item::RawBlock {
-                kind,
-                text,
-                label,
-                label_span,
-                span,
-                ..
-            } => {
+            Item::RawBlock { .. } => {
                 self.pending_doc = None;
                 let root = self.document.root;
-                lower_raw_block(
-                    &mut self.document,
-                    root,
-                    *kind,
-                    text,
-                    label.as_deref(),
-                    label_span.as_ref(),
-                    span,
-                );
+                if let Some(raw) = item.as_raw_block() {
+                    lower_raw_block(&mut self.document, root, raw);
+                }
             }
             Item::Set {
                 kind,
@@ -430,7 +419,7 @@ impl EvaluationState {
         &mut self,
         kind: DirectiveKind,
         name: &str,
-        args: &[mos_parse::SetArg],
+        args: &[SetArg],
         span: &SourceSpan,
         source_file: &std::path::Path,
     ) {
@@ -491,24 +480,34 @@ impl EvaluationState {
     }
 }
 
-fn lower_raw_block(
-    document: &mut Document,
-    root: NodeId,
-    kind: RawBlockKind,
-    text: &str,
-    label: Option<&str>,
-    label_span: Option<&SourceSpan>,
-    span: &SourceSpan,
-) {
+fn lower_raw_block(document: &mut Document, root: NodeId, raw: RawBlockView<'_>) {
     let mut attributes: AttrMap = BTreeMap::new();
-    attributes.insert("text".to_owned(), AttrValue::Str(text.to_owned()));
-    if let Some(id) = label {
-        insert_label_attributes(&mut attributes, id, label_span);
+    attributes.insert("text".to_owned(), AttrValue::Str(raw.text.to_owned()));
+    if let Some(id) = raw.label {
+        insert_label_attributes(&mut attributes, id, raw.label_span);
+    }
+    // Keep the authored language for editor context and semantic hashing.
+    // Other raw-block options remain uninterpreted; this does not introduce
+    // syntax highlighting, execution, or language-specific validation.
+    if raw.kind == RawBlockKind::Code
+        && let Some(SetArg::Named {
+            value: SetValue::Str(language) | SetValue::Ident(language),
+            ..
+        }) = raw
+            .args
+            .iter()
+            .rev()
+            .find(|arg| matches!(arg, SetArg::Named { key, .. } if key == "lang"))
+    {
+        attributes.insert(
+            CODE_LANGUAGE_ATTR.to_owned(),
+            AttrValue::Str(language.clone()),
+        );
     }
     attributes.insert(
         "raw.kind".to_owned(),
         AttrValue::Str(
-            match kind {
+            match raw.kind {
                 RawBlockKind::Pre => "pre",
                 RawBlockKind::Code => "code",
             }
@@ -517,7 +516,7 @@ fn lower_raw_block(
     );
     document.alloc_child(
         root,
-        NodeSpec::new(NodeKind::Raw, span.clone()).with_attributes(attributes),
+        NodeSpec::new(NodeKind::Raw, raw.span.clone()).with_attributes(attributes),
     );
 }
 
@@ -629,6 +628,53 @@ mod tests {
     use mos_core::{NodeKind, codes};
 
     use super::*;
+
+    #[test]
+    fn code_language_is_authored_metadata_with_last_argument_winning() {
+        let src = "#code(lang: \"rust\", lang: python)[[print(1)]] <sample>\n";
+        let result = lower(src, &PathBuf::from("main.mos"));
+        assert!(!result.has_errors());
+        let node = result
+            .document
+            .nodes()
+            .find(|node| node.kind == NodeKind::Raw)
+            .unwrap();
+        assert_eq!(
+            node.attributes[CODE_LANGUAGE_ATTR],
+            AttrValue::Str("python".into())
+        );
+        assert_eq!(node.attributes["text"], AttrValue::Str("print(1)".into()));
+        assert_eq!(node.attributes["label"], AttrValue::Str("sample".into()));
+        let changed = lower(
+            &src.replace("lang: python", "lang: rust"),
+            &PathBuf::from("main.mos"),
+        );
+        let changed = changed
+            .document
+            .nodes()
+            .find(|node| node.kind == NodeKind::Raw)
+            .unwrap();
+        assert_ne!(changed.content_hash(), node.content_hash());
+    }
+
+    #[test]
+    fn absent_or_nontext_code_language_and_pre_options_stay_uninterpreted() {
+        for src in [
+            "#code[[body]]",
+            "#code(lang: \"rust\", lang: 42)[[body]]",
+            "#pre(lang: \"rust\")[[body]]",
+        ] {
+            let result = lower(src, &PathBuf::from("main.mos"));
+            assert!(!result.has_errors(), "{:?}", result.diagnostics);
+            let node = result
+                .document
+                .nodes()
+                .find(|node| node.kind == NodeKind::Raw)
+                .unwrap();
+            assert!(!node.attributes.contains_key(CODE_LANGUAGE_ATTR));
+            assert_eq!(node.attributes["text"], AttrValue::Str("body".into()));
+        }
+    }
 
     #[cfg(target_pointer_width = "64")]
     #[test]

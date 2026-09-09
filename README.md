@@ -43,7 +43,8 @@ under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed
 - [x] `mos-lsp` publishes current compiler diagnostics over stdio LSP on open/change, answers
       `textDocument/definition` for `@label` references, renames labels, exposes compiler
       suggestions as code actions, shows a symbol's `/** … */` doc comment on hover, and completes
-      `[@key]` citation keys from the document's bibliography sources;
+      `[@key]` citation keys from the document's bibliography sources; inlay hints show generated
+      names beside unnamed `#code` block closing delimiters;
 - [ ] HTML and EPUB backends, persistent incremental cache, CSL-styled bibliographies, and richer
       LSP features; see MVP 1–6 in `manifest.md`. The numeric slice is shipped end to end: citation
       keys resolve, resolved `[@key]` markers render numeric labels (`[1]`, ...), and the cited

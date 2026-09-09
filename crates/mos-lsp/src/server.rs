@@ -19,6 +19,7 @@ use crate::completion::citation_completions;
 use crate::definition::{path_to_uri, target_in};
 use crate::diagnostics::{LspDiagnostic, LspPosition, LspRange, from_result, path_from_uri};
 use crate::document_symbol::document_symbols;
+use crate::inlay_hint::code_block_hints;
 use crate::rename::ranges as rename_ranges;
 
 /// Errors surfaced by the LSP server runtime. Compiler diagnostics
@@ -127,6 +128,10 @@ fn handle_message<W: Write>(
             write_response(writer, id, &completion_result(state, message))?;
             Ok(false)
         }
+        (Some("textDocument/inlayHint"), Some(id)) => {
+            write_response(writer, id, &inlay_hint_result(state, message))?;
+            Ok(false)
+        }
         (Some("textDocument/didOpen"), _) => {
             if let Some(doc) = message.pointer("/params/textDocument")
                 && let (Some(uri), Some(text)) = (
@@ -208,6 +213,7 @@ fn initialize_result() -> Value {
             // Hover shows a symbol's attached `/** … */` doc comment.
             "hoverProvider": true,
             "completionProvider": { "triggerCharacters": ["@"] },
+            "inlayHintProvider": { "resolveProvider": false },
         },
         "serverInfo": {
             "name": "mos-lsp",
@@ -227,6 +233,22 @@ fn document_symbol_result(state: &mut ServerState, message: &Value) -> Value {
         document_symbols(&lowered.document, src)
     });
     Value::Array(symbols.unwrap_or_default())
+}
+
+fn inlay_hint_result(state: &mut ServerState, message: &Value) -> Value {
+    let Some(uri) = message
+        .pointer("/params/textDocument/uri")
+        .and_then(Value::as_str)
+    else {
+        return Value::Array(Vec::new());
+    };
+    let Some(range) = read_range(message) else {
+        return Value::Array(Vec::new());
+    };
+    let hints = with_lowering(state, uri, |lowered, _path, src| {
+        code_block_hints(&lowered.document, src, range)
+    });
+    Value::Array(hints.unwrap_or_default())
 }
 
 /// Build the `textDocument/definition` response for `message`: a single
@@ -884,6 +906,38 @@ mod tests {
         assert_eq!(
             capabilities.pointer("/completionProvider/triggerCharacters"),
             Some(&json!(["@"]))
+        );
+        assert_eq!(
+            capabilities.get("inlayHintProvider"),
+            Some(&json!({ "resolveProvider": false }))
+        );
+    }
+
+    #[test]
+    fn inlay_hint_requests_without_a_valid_document_or_range_are_empty() {
+        let uri = "file:///virtual/main.mos";
+        let mut state = ServerState::default();
+        state.documents.insert(uri.into(), "#code[[body]]".into());
+        for params in [
+            json!({}),
+            json!({ "textDocument": { "uri": uri } }),
+            json!({ "textDocument": { "uri": uri }, "range": {
+                "start": { "line": -1, "character": 0 },
+                "end": { "line": 1, "character": 0 },
+            } }),
+            json!({ "textDocument": { "uri": "file:///unknown.mos" }, "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 1, "character": 0 },
+            } }),
+        ] {
+            assert_eq!(
+                inlay_hint_result(&mut state, &json!({ "params": params })),
+                json!([])
+            );
+        }
+        assert!(
+            !state.lowerings.is_cached(uri),
+            "invalid requests do not populate the cache"
         );
     }
 

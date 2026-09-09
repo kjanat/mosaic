@@ -9,8 +9,9 @@
 //! declaration and references. It also exposes compiler suggestions
 //! through `textDocument/codeAction` and completes `[@key]` citation
 //! keys from the document's loaded bibliography sources through
-//! `textDocument/completion`. Future slices add source ↔ PDF sync and
-//! live preview. MVP 6.
+//! `textDocument/completion`. `textDocument/inlayHint` shows stable display
+//! names beside unnamed code-block closing delimiters. Future slices add
+//! source ↔ PDF sync and live preview. MVP 6.
 
 #![doc(
     html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
@@ -31,6 +32,8 @@ pub mod diagnostics;
 pub mod document_symbol;
 #[doc(hidden)]
 pub mod hover;
+#[doc(hidden)]
+pub mod inlay_hint;
 #[doc(hidden)]
 pub mod rename;
 #[doc(hidden)]

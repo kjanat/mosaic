@@ -36,7 +36,8 @@ Shipped slice:
   heading bookmarks (`/Outlines`), deterministic provenance.
 - LSP: diagnostics, definition for labels/citations, label rename, document symbols, code actions,
   hover (a symbol's `/** … */` doc comment), citation-key completion after `[@` from the loaded
-  BibTeX records (`LowerResult::bibliography`).
+  BibTeX records (`LowerResult::bibliography`), and display-only inlay names for unnamed `#code`
+  blocks at their closing delimiters.
 
 Aspirational/stub unless user asks: HTML/EPUB/SVG, persistent cache, watch/formatter/package
 systems, math/tables/footnotes/index/glossary, float solver, TOC generation, broad pagination

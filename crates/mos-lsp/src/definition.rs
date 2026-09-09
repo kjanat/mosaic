@@ -14,8 +14,9 @@
 //!   keeps and points its "first declaration is here" note at.
 //!
 //! Scope is single-document: there is no workspace index, so a
-//! definition always lands in the file the request names. Rename,
-//! source/PDF sync, and generated labels (issue #31) are out of scope.
+//! definition always lands in the file the request names. Rename
+//! and source/PDF sync are separate concerns. Generated code-block names
+//! are inlay metadata, so they are not definition targets.
 
 use std::fs;
 use std::path::{Path, PathBuf};
