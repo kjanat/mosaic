@@ -18,7 +18,7 @@ quick fixes.
 - Implemented requests/notifications: `initialize`, `initialized`, `shutdown`, `exit`,
   `textDocument/didOpen`, `textDocument/didChange` (full sync), `textDocument/didClose`,
   `textDocument/definition`, `textDocument/documentSymbol`, `textDocument/rename`,
-  `textDocument/codeAction`.
+  `textDocument/codeAction`, `textDocument/hover`, `textDocument/completion`.
 - After every open/change the server sends `textDocument/publishDiagnostics` with the compiler
   diagnostics for that document; close clears them.
 - `textDocument/definition` resolves a cursor on an `@label` / `@page(label)` reference to a single
@@ -38,10 +38,19 @@ quick fixes.
 - `textDocument/documentSymbol` returns nested heading symbols from the lowered document. Symbol
   ranges extend until the next same-or-higher-level heading, so editor outlines and breadcrumbs
   follow Mosaic section structure rather than flat syntax nodes.
+- `textDocument/completion` offers one item per BibTeX record loaded from the document's declared
+  `#bibliography` sources when the cursor sits in a `[@key` token on its line (`@` is the trigger
+  character). Keys must match `[A-Za-z0-9_:.-]+`; the editor filters by the typed prefix. An item's
+  edit replaces the whole key under the cursor and appends the closing `]` when none follows;
+  `detail` is the entry type and `documentation` the entry's `title` field. A cursor off a citation
+  (including inside code, raw blocks, directive values, or comments), or a document with any
+  missing, unreadable, or malformed bibliography source, gets an empty list; the source diagnostics
+  stay as they are.
 - Unknown requests get a JSON-RPC `MethodNotFound` (-32601); unknown notifications are dropped.
 - Advertised capabilities are intentionally narrow: full text sync, UTF-16 position encoding,
-  `definitionProvider`, `documentSymbolProvider`, `renameProvider`, and `codeActionProvider`. Pull
-  diagnostics are not advertised.
+  `definitionProvider`, `documentSymbolProvider`, `renameProvider`, `codeActionProvider`,
+  `hoverProvider`, and `completionProvider` (trigger character `@`). Pull diagnostics are not
+  advertised.
 - Binary: `mos-lsp`, defined in `Cargo.toml`, calls `mos_lsp::run()`.
 
 ### Manual smoke test
@@ -88,9 +97,10 @@ mos-lsp initialize_did_open_publishes_diagnostics_and_exits`.
 `Content-Length`-framed JSON-RPC, like an editor would: initialize/initialized handshake (capability
 assertions under a Zed-like client profile), the didOpen/didChange/didClose diagnostics lifecycle,
 go-to-definition for `@label` references (including UTF-16 column handling for non-BMP text) and for
-`[@key]` citations against a real on-disk `.bib` fixture, rename, quickfix code actions, document
-symbols, and clean shutdown/exit. All reads are framed and timeout-guarded, so a hung server fails
-the suite instead of hanging CI. The harness runs as part of `cargo test -p mos-lsp`.
+`[@key]` citations against a real on-disk `.bib` fixture, citation-key completion against the same
+kind of fixture, rename, quickfix code actions, document symbols, and clean shutdown/exit. All reads
+are framed and timeout-guarded, so a hung server fails the suite instead of hanging CI. The harness
+runs as part of `cargo test -p mos-lsp`.
 
 ## Boundary
 
@@ -99,7 +109,8 @@ spans, and suggestions come from `mos-core` / `mos-parse` / `mos-eval`; this cra
 them into LSP positions/edits and dispatches JSON-RPC. Go-to-definition follows the same rule: it
 walks the lowered `mos-eval` `Document` (label declarations, reference spans, and resolved citation
 target spans) and translates spans to LSP ranges, mirroring resolver/bibliography state rather than
-reimplementing policy.
+reimplementing policy. Citation completion reads the `LowerResult`'s `bibliography`, the records
+`mos-eval` already loaded to resolve citations, so the server never opens a `.bib` file itself.
 
 To avoid re-lowering the same source repeatedly, the server keeps an in-memory per-document cache of
 `mos_eval::lower` output (`src/cache.rs`). Both paths share it: publishing diagnostics on `didOpen`
@@ -131,9 +142,10 @@ Compiler phase ownership stays elsewhere:
 
 ## Known Non-Goals Today
 
-- No completion, hover, or formatting. Navigation/editing is limited to go-to-definition, label
-  rename, and compiler-suggestion code actions. Rename does no cross-file work, no `prepareRename`
-  validation, and no new-name checking.
+- No formatting, and no completion beyond citation keys (no label, directive, or argument
+  completion). Navigation/editing is limited to go-to-definition, label rename, and
+  compiler-suggestion code actions. Rename does no cross-file work, no `prepareRename` validation,
+  and no new-name checking.
 - No incremental document sync: `didChange` replaces the buffer wholesale.
 - No source-to-PDF sync or live preview.
 - No persistent or cross-session compilation cache, and no workspace indexing. The only caching is

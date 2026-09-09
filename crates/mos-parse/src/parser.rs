@@ -14,6 +14,7 @@ pub struct Parser<'a> {
     pub pos: usize,
     pub items: Vec<Item>,
     pub diagnostics: Vec<Diagnostic>,
+    pub(crate) citation_spans: Vec<std::ops::Range<usize>>,
 }
 
 impl<'a> Parser<'a> {
@@ -24,6 +25,7 @@ impl<'a> Parser<'a> {
             pos: 0,
             items: Vec::new(),
             diagnostics: Vec::new(),
+            citation_spans: Vec::new(),
         }
     }
 
@@ -54,6 +56,7 @@ impl<'a> Parser<'a> {
             tree: SyntaxTree {
                 file: self.file,
                 items: self.items,
+                citation_spans: self.citation_spans,
             },
             diagnostics: self.diagnostics,
         }
@@ -225,6 +228,7 @@ mod tests {
         let tree = result.unwrap_or_else(|_| SyntaxTree {
             file,
             items: Vec::new(),
+            citation_spans: Vec::new(),
         });
         ParseResult {
             tree,
@@ -2297,6 +2301,17 @@ mod tests {
             inlines.iter().all(|i| i.kind != InlineKind::Reference),
             "multi-key form must not leak phantom References: {inlines:?}",
         );
+    }
+
+    #[test]
+    fn citation_spans_preserve_unfinished_keys_and_exclude_verbatim_contexts() {
+        for body in ["*[@key]*", "**[@key", "[@", "- parent\n  - [@key"] {
+            let src = format!("`[@code]` // [@comment]\n\n{body}");
+            let r = parse_str(&src);
+            let start = src.rfind("[@").unwrap();
+            let end = scan_label_chars(src.as_bytes(), start + 2);
+            assert_eq!(r.tree.citation_spans, vec![start..end], "{src}");
+        }
     }
 
     #[test]

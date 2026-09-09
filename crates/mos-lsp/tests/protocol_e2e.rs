@@ -392,6 +392,11 @@ fn initialize_handshake_advertises_capabilities_and_exits_cleanly() -> TestResul
         &Some(&json!(true)),
         "codeActionProvider",
     )?;
+    ensure_eq(
+        &capabilities.pointer("/completionProvider/triggerCharacters"),
+        &Some(&json!(["@"])),
+        "completionProvider.triggerCharacters",
+    )?;
     // Pull diagnostics are not implemented; advertising them would
     // deadlock pull-capable clients.
     ensure(
@@ -572,6 +577,172 @@ fn definition_resolves_citation_into_real_bib_fixture() -> TestResult {
     )?;
 
     server.shutdown(3)
+}
+
+#[test]
+fn completion_offers_citation_keys_from_real_bib_fixture() -> TestResult {
+    let dir = TempDir::new("mos-lsp-e2e-completion")?;
+    let main_path = dir.path().join("main.mos");
+    std::fs::write(
+        dir.path().join("refs.bib"),
+        "@book{other, title={Other}}\n@article{patashnik1988, title={BibTeXing}}\n\
+         @book{bad/key, title={Slash}}\n@book{café, title={Unicode}}\n",
+    )?;
+    let src = "#bibliography(\"refs.bib\")\n\nCite [@pat\n";
+    std::fs::write(&main_path, src)?;
+    let uri = mos_lsp::definition::path_to_uri(&main_path);
+
+    let mut server = Server::spawn()?;
+    initialize(&mut server, &zed_like_initialize_params())?;
+    server.open_document(&uri, src)?;
+
+    let reply = server.request(
+        2,
+        "textDocument/completion",
+        &json!({
+            "textDocument": { "uri": uri },
+            "position": position_of(src, "[@pat", "[@pat".len())?,
+            "context": { "triggerKind": 1 },
+        }),
+    )?;
+    let items = reply
+        .pointer("/result")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| format!("completion reply without an array result: {reply}"))?;
+    let labels: Vec<&str> = items
+        .iter()
+        .filter_map(|item| item.get("label").and_then(Value::as_str))
+        .collect();
+    ensure_eq(
+        labels.as_slice(),
+        ["other", "patashnik1988"].as_slice(),
+        "only keys supported by Mosaic citation syntax are offered",
+    )?;
+    let patashnik = items
+        .iter()
+        .find(|item| item.get("label") == Some(&json!("patashnik1988")))
+        .ok_or("patashnik1988 item")?;
+    ensure_eq(
+        &patashnik.pointer("/textEdit"),
+        &Some(&json!({
+            "range": range_of(src, "pat")?,
+            "newText": "patashnik1988]",
+        })),
+        "the edit replaces the typed prefix and closes the citation",
+    )?;
+    ensure_eq(
+        &patashnik.get("documentation"),
+        &Some(&json!("BibTeXing")),
+        "the entry title documents the item",
+    )?;
+
+    let miss = server.request(
+        3,
+        "textDocument/completion",
+        &json!({
+            "textDocument": { "uri": uri },
+            "position": { "line": 2, "character": 0 },
+        }),
+    )?;
+    ensure_eq(
+        &miss.get("result"),
+        &Some(&json!([])),
+        "off a citation the list is empty",
+    )?;
+
+    let range: mos_lsp::diagnostics::LspRange = serde_json::from_value(
+        patashnik
+            .pointer("/textEdit/range")
+            .cloned()
+            .ok_or("edit range")?,
+    )?;
+    let mut accepted = src.to_owned();
+    accepted.replace_range(
+        mos_lsp::definition::position_to_byte(src, range.start)
+            ..mos_lsp::definition::position_to_byte(src, range.end),
+        patashnik
+            .pointer("/textEdit/newText")
+            .and_then(Value::as_str)
+            .ok_or("edit text")?,
+    );
+    server.notify(
+        "textDocument/didChange",
+        &json!({
+            "textDocument": { "uri": uri, "version": 2 },
+            "contentChanges": [{ "text": accepted }],
+        }),
+    )?;
+    let diagnostics = server.diagnostics_for(&uri)?;
+    ensure(
+        diagnostics.is_empty(),
+        "the accepted citation parses and resolves",
+    )?;
+
+    server.shutdown(4)
+}
+
+#[test]
+fn completion_with_mixed_sources_is_empty_until_all_sources_load() -> TestResult {
+    let dir = TempDir::new("mos-lsp-e2e-completion-mixed")?;
+    let main_path = dir.path().join("main.mos");
+    std::fs::write(dir.path().join("refs.bib"), "@book{alpha, title={A}}\n")?;
+    let broken = dir.path().join("broken.bib");
+    let src = "#bibliography(\"refs.bib\")\n\n#bibliography(\"broken.bib\")\n\nCite [@al";
+    std::fs::write(&main_path, src)?;
+    let uri = mos_lsp::definition::path_to_uri(&main_path);
+
+    // Missing, invalid UTF-8, and malformed BibTeX must all suppress even
+    // the valid source's keys. Repairing the file invalidates the cache.
+    for (contents, expected_diagnostic) in [
+        (None, Some("MOS0041")),
+        (Some(b"\xff".as_slice()), Some("MOS0041")),
+        (Some(b"@book{".as_slice()), None),
+    ] {
+        if let Some(contents) = contents {
+            std::fs::write(&broken, contents)?;
+        }
+        let mut server = Server::spawn()?;
+        initialize(&mut server, &zed_like_initialize_params())?;
+        server.open_document(&uri, src)?;
+        let diagnostics = server.diagnostics_for(&uri)?;
+        if let Some(code) = expected_diagnostic {
+            ensure(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.get("code").and_then(Value::as_str) == Some(code)),
+                "the invalid bibliography source still publishes MOS0041",
+            )?;
+        }
+        let params = json!({
+            "textDocument": { "uri": uri },
+            "position": position_of(src, "[@al", "[@al".len())?,
+        });
+        let reply = server.request(2, "textDocument/completion", &params)?;
+        ensure_eq(
+            &reply.get("result"),
+            &Some(&json!([])),
+            "an incomplete bibliography must not offer partial results",
+        )?;
+
+        std::fs::write(&broken, "@book{beta, title={B}}\n")?;
+        let repaired = server.request(3, "textDocument/completion", &params)?;
+        let items = repaired
+            .get("result")
+            .and_then(Value::as_array)
+            .ok_or("completion array after bibliography repair")?;
+        let labels: Vec<&str> = items
+            .iter()
+            .filter_map(|item| item.get("label").and_then(Value::as_str))
+            .collect();
+        ensure_eq(
+            labels.as_slice(),
+            ["alpha", "beta"].as_slice(),
+            "repairing the source restores the complete key set",
+        )?;
+        server.shutdown(4)?;
+    }
+    Ok(())
 }
 
 #[test]

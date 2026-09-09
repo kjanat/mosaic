@@ -29,7 +29,7 @@ pub mod set;
 pub mod set_schema;
 mod suggest;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use mos_core::{
     AttrMap, AttrValue, CollectingSink, Diagnostic, Document, NodeId, NodeKind, NodeSpec, Severity,
@@ -40,6 +40,7 @@ use mos_parse::{DirectiveKind, Item, RawBlockKind, SyntaxTree};
 pub use dependency::{
     ExternalDependency, FileIdentity, Fingerprint, RACY_WINDOW, fingerprint_bytes, fingerprint_file,
 };
+pub use mos_bib::Bibliography;
 pub use pageref::{PageFixpointOutcome, resolve_page_reference_fixpoint, resolve_page_references};
 pub use resolve::resolve;
 
@@ -145,6 +146,16 @@ pub struct LowerResult {
     /// is complete after [`lower`] / [`lower_tree`]; a bare
     /// [`Evaluator::evaluate`] has not yet opened bibliography sources.
     pub external_dependencies: Vec<ExternalDependency>,
+    /// Every BibTeX record loaded from the declared `#bibliography` sources,
+    /// merged across sources and keyed by citation key. Empty after a bare
+    /// [`Evaluator::evaluate`], which has not yet opened bibliography sources.
+    pub bibliography: Bibliography,
+    /// Whether every declared bibliography source was successfully read and
+    /// parsed. False before source loading; records may be partial when false.
+    pub bibliography_complete: bool,
+    /// Parser-recognized citation ranges, including unfinished citations.
+    /// See [`SyntaxTree::citation_spans`].
+    pub citation_spans: Vec<std::ops::Range<usize>>,
 }
 
 impl LowerResult {
@@ -242,7 +253,7 @@ impl Evaluator {
         for item in &tree.items {
             state.lower_item(item, &tree.file);
         }
-        state.finish()
+        state.finish(tree)
     }
 }
 
@@ -271,12 +282,15 @@ impl EvaluationState {
         }
     }
 
-    fn finish(self) -> LowerResult {
+    fn finish(self, tree: &SyntaxTree) -> LowerResult {
         LowerResult {
             document: self.document,
             diagnostics: self.diagnostics,
             metadata: self.metadata,
             external_dependencies: self.dependencies.into_vec(),
+            bibliography: Bibliography::default(),
+            bibliography_complete: false,
+            citation_spans: tree.citation_spans.clone(),
         }
     }
 
@@ -522,6 +536,9 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
                 diagnostics: sink.into_diagnostics(),
                 metadata: DocumentMetadata::default(),
                 external_dependencies: Vec::new(),
+                bibliography: Bibliography::default(),
+                bibliography_complete: false,
+                citation_spans: Vec::new(),
             };
         }
     };
@@ -533,6 +550,9 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
         diagnostics,
         metadata: lowered.metadata,
         external_dependencies: lowered.external_dependencies,
+        bibliography: lowered.bibliography,
+        bibliography_complete: lowered.bibliography_complete,
+        citation_spans: lowered.citation_spans,
     }
 }
 
@@ -564,13 +584,18 @@ pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
     let mut lowered = Evaluator::evaluate(tree);
     let mut diagnostics = std::mem::take(&mut lowered.diagnostics);
     let mut dependencies = DependencySet::from(std::mem::take(&mut lowered.external_dependencies));
-    let bib_keys = resolve_citations(&mut lowered.document, &mut diagnostics, &mut dependencies);
+    let (bibliography, bibliography_complete) =
+        resolve_citations(&mut lowered.document, &mut diagnostics, &mut dependencies);
+    let bib_keys: BTreeSet<String> = bibliography.entries.keys().cloned().collect();
     diagnostics.extend(resolve(&mut lowered.document, &bib_keys));
     LowerResult {
         document: lowered.document,
         diagnostics,
         metadata: lowered.metadata,
         external_dependencies: dependencies.into_vec(),
+        bibliography,
+        bibliography_complete,
+        citation_spans: lowered.citation_spans,
     }
 }
 
@@ -1598,6 +1623,37 @@ mod tests {
             node.attributes.get("resolved_path"),
             Some(&AttrValue::Str(bib.to_string_lossy().into_owned()))
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn lowering_exposes_the_loaded_bibliography_records() {
+        let dir = unique_temp_dir("records");
+        std::fs::write(dir.join("a.bib"), "@book{alpha, title={A}}\n").unwrap();
+        std::fs::write(dir.join("b.bib"), "@article{beta, title={B}}\n").unwrap();
+        let source = dir.join("main.mos");
+        let r = lower(
+            "#bibliography(\"a.bib\")\n\n#bibliography(\"b.bib\")\n\n#bibliography(\"missing.bib\")\n",
+            &source,
+        );
+        let keys: Vec<&str> = r.bibliography.entries.keys().map(String::as_str).collect();
+        assert_eq!(keys, ["alpha", "beta"]);
+        assert_eq!(r.bibliography.entries["beta"].entry_type, "article");
+        assert!(!r.bibliography_complete);
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0041.code()),
+            "{:?}",
+            r.diagnostics
+        );
+        std::fs::write(dir.join("missing.bib"), "@book{gamma, title={C}}\n").unwrap();
+        let complete = lower(
+            "#bibliography(\"a.bib\")\n\n#bibliography(\"b.bib\")\n\n#bibliography(\"missing.bib\")\n",
+            &source,
+        );
+        assert!(complete.bibliography_complete);
+        assert_eq!(complete.bibliography.entries.len(), 3);
         std::fs::remove_dir_all(&dir).ok();
     }
 

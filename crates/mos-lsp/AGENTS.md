@@ -14,6 +14,8 @@ owns parse/lower/resolve policy.
 | Go-to-definition  | `src/definition.rs`      | `@label` reference → declaration span; position↔byte.   |
 | Label rename      | `src/rename.rs`          | Label occurrences (decl token + refs) → WorkspaceEdit.  |
 | Code actions      | `src/code_action.rs`     | Compiler suggestions → LSP quick fixes.                 |
+| Hover             | `src/hover.rs`           | `/** … */` doc comment of the symbol under the cursor.  |
+| Completion        | `src/completion.rs`      | `[@key` prefix → items from the loaded BibTeX records.  |
 | Document symbols  | `src/document_symbol.rs` | Heading tree → nested LSP symbols.                      |
 | Lowering cache    | `src/cache.rs`           | Per-URI memo of `mos_eval::lower`; invalidated on edit. |
 | Binary entry      | `src/main.rs`            | Calls `mos_lsp::run()`.                                 |
@@ -35,6 +37,11 @@ owns parse/lower/resolve policy.
   cursor off a label → `null`. Single-document, first-declaration-wins, no new-name validation.
 - Answers `textDocument/codeAction`: compiler suggestions become quick fixes where replacement spans
   map into the current document.
+- Answers `textDocument/hover`: the `/** … */` doc comment attached to the block under the cursor
+  or to the target of the `@label` reference under it; otherwise `null`.
+- Answers `textDocument/completion`: cursor inside a parsed `[@key` token on its line → one item
+  per record in a complete `LowerResult::bibliography` whose key matches `[A-Za-z0-9_:.-]+` (edit
+  replaces the whole key, appends `]` when missing); otherwise `[]`. Never reads `.bib` files itself.
 - Unknown requests return JSON-RPC `MethodNotFound`; unknown notifications drop.
 - Caches each open document's `mos-eval` lowering (`src/cache.rs`), shared by diagnostics and
   `textDocument/definition`: an edit lowers once (publish populates the cache, definition reuses
@@ -44,7 +51,8 @@ owns parse/lower/resolve policy.
   evicts the entry when any changed, appeared, or disappeared, so those docs still reflect the live
   filesystem (#125).
 - Advertises UTF-16 position encoding, full text sync, `definitionProvider`,
-  `documentSymbolProvider`, `renameProvider`, and `codeActionProvider`.
+  `documentSymbolProvider`, `renameProvider`, `codeActionProvider`, `hoverProvider`, and
+  `completionProvider` (trigger character `@`).
 
 ## BOUNDARY RULES
 

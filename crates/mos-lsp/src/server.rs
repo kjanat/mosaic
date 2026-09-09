@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 
 use crate::cache::Store as LoweringCache;
 use crate::code_action::code_actions_for_range;
+use crate::completion::citation_completions;
 use crate::definition::{path_to_uri, target_in};
 use crate::diagnostics::{LspDiagnostic, LspPosition, LspRange, from_result, path_from_uri};
 use crate::document_symbol::document_symbols;
@@ -122,6 +123,10 @@ fn handle_message<W: Write>(
             write_response(writer, id, &hover_result(state, message))?;
             Ok(false)
         }
+        (Some("textDocument/completion"), Some(id)) => {
+            write_response(writer, id, &completion_result(state, message))?;
+            Ok(false)
+        }
         (Some("textDocument/didOpen"), _) => {
             if let Some(doc) = message.pointer("/params/textDocument")
                 && let (Some(uri), Some(text)) = (
@@ -202,6 +207,7 @@ fn initialize_result() -> Value {
             "codeActionProvider": true,
             // Hover shows a symbol's attached `/** … */` doc comment.
             "hoverProvider": true,
+            "completionProvider": { "triggerCharacters": ["@"] },
         },
         "serverInfo": {
             "name": "mos-lsp",
@@ -273,6 +279,25 @@ fn hover_result(state: &mut ServerState, message: &Value) -> Value {
             .map(|doc| json!({ "contents": { "kind": "markdown", "value": doc } }))
     });
     hover.flatten().unwrap_or(Value::Null)
+}
+
+/// Build the `textDocument/completion` response: one `CompletionItem` per
+/// loaded bibliography key when the cursor sits in a `[@key` token, else an
+/// empty list.
+fn completion_result(state: &mut ServerState, message: &Value) -> Value {
+    let Some(uri) = message
+        .pointer("/params/textDocument/uri")
+        .and_then(Value::as_str)
+    else {
+        return Value::Array(Vec::new());
+    };
+    let Some(position) = read_position(message) else {
+        return Value::Array(Vec::new());
+    };
+    let items = with_lowering(state, uri, |lowered, _path, src| {
+        citation_completions(lowered, src, position)
+    });
+    Value::Array(items.unwrap_or_default())
 }
 
 /// Run `f` against the lowering for `uri`: a cached one when present, else a
@@ -856,6 +881,128 @@ mod tests {
         assert_eq!(capabilities.get("renameProvider"), Some(&json!(true)));
         assert_eq!(capabilities.get("codeActionProvider"), Some(&json!(true)));
         assert_eq!(capabilities.get("hoverProvider"), Some(&json!(true)));
+        assert_eq!(
+            capabilities.pointer("/completionProvider/triggerCharacters"),
+            Some(&json!(["@"]))
+        );
+    }
+
+    fn completion_reply(input: &mut Vec<u8>, id: u64, uri: &str, position: LspPosition) {
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "textDocument/completion",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": position.line, "character": position.character },
+            },
+        })));
+    }
+
+    fn completion_labels(messages: &[Value], id: u64) -> Vec<String> {
+        messages
+            .iter()
+            .find(|m| m.get("id") == Some(&json!(id)))
+            .and_then(|reply| reply.get("result"))
+            .and_then(Value::as_array)
+            .expect("completion response")
+            .iter()
+            .filter_map(|item| item.get("label").and_then(Value::as_str))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn completion_offers_loaded_keys_and_follows_bibliography_edits() {
+        let dir = unique_temp_dir("completion");
+        std::fs::write(
+            dir.join("refs.bib"),
+            "@book{other, title={Other}}\n@article{patashnik1988, title={BibTeXing}}\n",
+        )
+        .expect("write bib");
+        let main = dir.join("main.mos");
+        let with_bib = "#bibliography(\"refs.bib\")\n\nCite [@pat";
+        let without_bib = "Cite [@pat";
+        let uri = path_to_uri(&main);
+
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "mosaic", "version": 1, "text": with_bib,
+            } },
+        })));
+        completion_reply(
+            &mut input,
+            50,
+            &uri,
+            byte_to_position(with_bib, with_bib.len()),
+        );
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": { "uri": uri, "version": 2 },
+                "contentChanges": [{ "text": without_bib }],
+            },
+        })));
+        completion_reply(
+            &mut input,
+            51,
+            &uri,
+            byte_to_position(without_bib, without_bib.len()),
+        );
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        assert_eq!(
+            completion_labels(&messages, 50),
+            ["other", "patashnik1988"],
+            "keys from the declared source"
+        );
+        assert!(
+            completion_labels(&messages, 51).is_empty(),
+            "removing the source removes its keys"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn completion_with_a_missing_source_is_empty_and_keeps_diagnostics() {
+        let uri = "file:///virtual/main.mos";
+        let src = "#bibliography(\"missing.bib\")\n\nCite [@";
+        let mut input: Vec<u8> = Vec::new();
+        input.extend(frame(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "mosaic", "version": 1, "text": src,
+            } },
+        })));
+        completion_reply(&mut input, 52, uri, byte_to_position(src, src.len()));
+        input.extend(frame(&json!({ "jsonrpc": "2.0", "method": "exit" })));
+
+        let mut reader = BufReader::new(Cursor::new(input));
+        let mut writer: Vec<u8> = Vec::new();
+        serve(&mut reader, &mut writer).expect("server loop");
+
+        let messages = decode_messages(&writer);
+        let published = messages[0]
+            .pointer("/params/diagnostics")
+            .and_then(Value::as_array)
+            .expect("diagnostics array");
+        assert!(
+            published
+                .iter()
+                .any(|d| d.get("code").and_then(Value::as_str) == Some("MOS0041")),
+            "missing source still reports MOS0041: {published:?}"
+        );
+        assert!(completion_labels(&messages, 52).is_empty());
     }
 
     #[test]
@@ -1494,6 +1641,9 @@ mod tests {
                 diagnostics: vec![Diagnostic::simple(&codes::MOS0045, None, "sentinel")],
                 metadata: DocumentMetadata::default(),
                 external_dependencies: vec![ExternalDependency::observe(&image)],
+                bibliography: mos_eval::Bibliography::default(),
+                bibliography_complete: false,
+                citation_spans: Vec::new(),
             },
         );
         assert_eq!(

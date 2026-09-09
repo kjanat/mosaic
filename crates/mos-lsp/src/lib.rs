@@ -7,8 +7,10 @@
 //! declaration or from a resolved `[@key]` citation to the BibTeX key,
 //! and answers `textDocument/rename` to rewrite a label across its
 //! declaration and references. It also exposes compiler suggestions
-//! through `textDocument/codeAction`. Future slices add citation
-//! autocomplete, source ↔ PDF sync, and live preview. MVP 6.
+//! through `textDocument/codeAction` and completes `[@key]` citation
+//! keys from the document's loaded bibliography sources through
+//! `textDocument/completion`. Future slices add source ↔ PDF sync and
+//! live preview. MVP 6.
 
 #![doc(
     html_logo_url = "https://mosaiclang.dev/assets/A4.svg",
@@ -19,6 +21,8 @@
 pub mod cache;
 #[doc(hidden)]
 pub mod code_action;
+#[doc(hidden)]
+pub mod completion;
 #[doc(hidden)]
 pub mod definition;
 #[doc(hidden)]
