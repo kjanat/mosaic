@@ -1,18 +1,17 @@
 # Incremental dependency IDs and hash boundaries
 
-Status: design note. No persistent `.mos-cache/` is implemented in this slice. The cache
-implementation itself is out of scope; this document defines the typed identifiers and the hash
-boundaries that a future incremental engine will key off.
+Status: design note with implemented boundaries identified below. No persistent `.mos-cache/` is
+implemented. This document defines the typed identifiers and hash boundaries that a future
+incremental engine will key off.
 
-Scope: tracks issue #48 (`MVP 5: Incremental builds`, `manifest-tracker.md` → *Incremental Builds
-And Cache*).
+Scope: tracks issue #48 and the authored-node hashing slice #110 (`MVP 5: Incremental builds`,
+`manifest-tracker.md` → *Incremental Builds And Cache*).
 
 ## 1. Why this note exists now
 
-`mos-cache` already exposes `CacheKey(ContentHash)` and an `InMemoryCache`, but nothing in the
-pipeline computes meaningful hashes or declares dependencies. `Node::content_hash` is always
-`ContentHash::default()` today (see `crates/mos-eval/src/lib.rs` and the layout test fixtures), and
-the dependency graph from manifest §7 is deferred.
+`mos-cache` exposes `CacheKey(ContentHash)` and an `InMemoryCache`. The compiler records external
+file fingerprints and computes authored node hashes, bibliography source hashes, and page-boundary
+signatures. The dependency graph from manifest §7 and layout/artifact reuse are still deferred.
 
 Before paragraph-, figure-, or reference-level invalidation can ship we need a shared vocabulary:
 
@@ -22,8 +21,8 @@ Before paragraph-, figure-, or reference-level invalidation can ship we need a s
 
 This note fixes that vocabulary. The identity types for the categories with a real identity today
 have landed (`mos_cache::{DependencyId, DependencyKind, ProjectPath}`, see §3); the remaining
-categories, the hash boundaries, the dependency graph, and any `CacheKey` wiring are still sketches
-that live in this document until a concrete crate slice needs them.
+categories and unimplemented boundaries remain sketches. The dependency graph and `CacheKey` wiring
+are future work; §4 identifies the content boundaries that have landed.
 
 ## 2. Truth ground today
 
@@ -31,19 +30,21 @@ Already in code:
 
 - `mos_core::NodeId(u64)`: monotonic per-`Document`, allocated by `Document::alloc`. Not yet derived
   from a hash of `(file, syntactic position, label, local structure)` as manifest §5.1 wants.
-- `mos_core::ContentHash(u128)`: opaque, defaulted everywhere. Carried as `Node.content_hash`.
+- `mos_core::ContentHash(u128)` and `ContentHasher`: deterministic, engine-stamped content hashes.
+  `Node::content_hash()` holds an authored-input snapshot after lowering; newly allocated and
+  generated bibliography entry nodes retain the default until explicitly hashed.
 - `mos_core::StyleId(u32)`: defaulted everywhere; no resolved style bundle exists yet.
 - `mos_cache::CacheKey(ContentHash)` + `Cache` trait + `InMemoryCache`: byte-payload key/value
   store. No schema, no eviction, no disk.
-- `mos-eval::LowerResult { document, diagnostics, metadata }`; the semantic surface that a future
-  cache would key on for "did anything semantic change?".
+- `mos_eval::LowerResult`: the semantic document, diagnostics, metadata, loaded bibliography
+  records, and external-file fingerprints. Its authored node hashes provide one input boundary for
+  future caching; resolved values and style/layout inputs require separate tracking.
 - `mos-layout::LayoutEngine::layout(&Document) -> LayoutResult`; currently recomputes everything
   from scratch every call. `layout_incremental` from manifest §31 does not exist yet.
 
 Future work this note assumes will land later:
 
 - Stable hash-derived `NodeId`s.
-- Real population of `Node.content_hash`.
 - A `DepNode { id, kind, inputs, output_hash }` graph (manifest §7) and the dirtying logic.
 - A `ParagraphCacheKey` (manifest §32) and the layout-side reuse path.
 - Persistent `.mos-cache/` and the on-disk schema.
@@ -253,7 +254,7 @@ NodeHash(node) = H(
 `NodeHash` covers *authored* semantic state, not resolution residue. The lowerer in `mos-eval`
 currently stashes filesystem- and decoder-derived data directly onto node attributes: see
 `crates/mos-eval/src/image_lower.rs`, which writes `resolved_path` (an absolute path), `pixels`
-(decoded RGB8 bytes), `pixel_width`, `pixel_height`, `colorspace`, and `bits_per_component` onto an
+(decoded RGB8 bytes), `pixel_width`, `pixel_height`, `color_space`, and `bits_per_component` onto an
 `Image` node. These must *not* feed `NodeHash`:
 
 - `resolved_path` leaks the building user's filesystem layout into the cache and would force a miss
@@ -269,7 +270,7 @@ omitted entirely because it is rederivable.
 
 Concretely for `NodeKind::Image`: `NodeHash` consumes `src`, `alt`, requested `width`/`height`,
 `label`, and `AssetHash(resolved asset)`. It does not consume `resolved_path`, `pixels`,
-`pixel_width`, `pixel_height`, `colorspace`, or `bits_per_component`. The decoded pixel buffer is
+`pixel_width`, `pixel_height`, `color_space`, or `bits_per_component`. The decoded pixel buffer is
 addressed through the asset's content hash; the resolved path is a build-machine detail.
 
 Other notes:
@@ -277,13 +278,46 @@ Other notes:
 - Span byte offsets are *excluded*. A paragraph that shifts down because an earlier paragraph grew
   must hash identically; that is the whole point of the boundary.
 - `canonical_attrs` sorts by key (already a `BTreeMap`), normalizes float NaNs, quantizes authored
-  layout dimensions per §6, and rejects `AttrValue::Bytes` entries (which today only appear as
-  derived pixel buffers and therefore fail the carve-out above).
-- Child hashes feed in as a flat list, not a Merkle root, so adding/removing a sibling re-hashes the
-  parent but does not re-hash unaffected siblings.
-- The carve-out implies an `mos-eval` follow-up: tag each attribute as authored vs. derived, or move
-  derived attributes off the `Node` and onto a side-table the lowerer owns. The design here treats
-  that as a precondition for ever computing a meaningful `NodeHash`.
+  layout dimensions per §6, and encodes values with explicit type tags. The authored projection
+  excludes decoded pixel buffers, the only `AttrValue::Bytes` attribute currently lowered.
+- Child hashes feed in as an ordered list. Changing a child changes its ancestor hashes while
+  unaffected siblings retain their hashes.
+- The authored projection must remain available when computing a hash. The current lowerer takes a
+  snapshot before resolution (§4.2 below). Hashing an already-resolved graph would require tagging
+  attributes as authored/derived or preserving authored attributes separately.
+
+#### What has landed: authored node snapshots (#110)
+
+`mos-eval` now computes `Node::content_hash()` for authored nodes after loading external files and
+before citation/reference resolution. Taking the snapshot at that boundary provides the authored
+projection without retaining a second attribute map: numbering, rewritten reference/caption text,
+link targets, and generated bibliography entries have not been added yet. The pass excludes label
+edit offsets, resolved paths, decoded image fields, and reference placeholder text from the
+remaining attributes. A future pass that hashes an already-resolved graph will still need explicit
+authored/derived storage as described above.
+
+The snapshot covers headings, paragraphs, images, figures, bibliography source nodes, lists, raw
+blocks, and their authored inline children. `mos-core::Document::update_content_hashes` combines
+each caller-provided local input hash with ordered child hashes in postorder; `mos-eval` owns the
+attribute and external-input projection. Both use engine-stamped `ContentHasher` domains. Node kind
+and attribute values have explicit type tags and framed fields; attributes are ordered by their
+`BTreeMap` keys. Float NaNs and signed zeros are canonicalized. Lengths are rounded to the 1/64-pt
+grid and encoded as canonical `f64` integral-count bits, following the existing page-hash approach
+without narrowing authored `f64` inputs to `f32`.
+
+Image and bibliography nodes fold their already-recorded external-file content fingerprint; no
+second file read or image-byte hash is required. The existing `fingerprint_bytes` domain supplies
+this boundary, with node kind separating image and bibliography inputs. Read, unreadable, and
+not-yet-loaded inputs have distinct tags. Neither filesystem metadata nor resolved absolute paths
+enter the encoding. Authored `src` paths remain inputs. All spans and allocation IDs are excluded;
+there is no meaningful separate span-role identity in the current single-source lowerer.
+
+`lower` / `lower_tree` provide the complete input snapshot. Bare `Evaluator::evaluate` also hashes
+authored nodes but leaves bibliography sources tagged as unloaded. Resolution preserves these
+snapshots; generated bibliography entries keep the default hash. They are input hashes, so changing
+citation use or figure numbering does not change an unchanged bibliography source or figure's
+authored hash. Reference/style/layout dependencies remain necessary before using these as part of an
+artifact cache key. Stable node IDs, persistent storage, and artifact reuse have not landed.
 
 ### 4.3 Asset hash
 
@@ -412,8 +446,10 @@ These are the rules a future implementation must follow for the boundaries above
    NFC-normalize and the cache must reflect what the parser actually consumed.
 4. Floating-point inputs (widths, leading, sizes) MUST be quantized to the same fixed-point
    resolution used by layout before hashing. See §6.
-5. `Node.content_hash` is *not* identity. Two nodes with the same `content_hash` are interchangeable
-   as layout inputs but are still distinct `NodeId`s.
+5. `Node.content_hash` identifies an authored-input boundary; nodes with equal hashes still have
+   distinct `NodeId`s. Equal node hashes alone do not establish interchangeable layout inputs:
+   resolved references, styles, fonts, available width, and other layout dependencies must also
+   agree before reuse.
 6. The cache is a hint, not a source of truth. A cold cache and a warm cache MUST produce
    byte-identical output artifacts. This is the property reproducible builds (manifest §22.1,
    `manifest-tracker.md` → Reproducible Builds) will lean on.
@@ -447,11 +483,12 @@ that switch invalidates cleanly rather than silently.
 The boundaries above give the future engine enough structure to do the work `manifest-tracker.md`
 describes under *Layout* and *Page Reflow And Fixpoints*:
 
-- **Reuse clean semantic nodes.** Compare `NodeHash` before vs. after a parse. Unchanged hashes →
-  the `Node` is clean and its downstream `LayoutInput`/`LayoutOutput` entries stay valid.
+- **Reuse clean semantic nodes.** Compare `NodeHash` before vs. after a parse to identify unchanged
+  authored content. Reusing resolved nodes or downstream layout output additionally requires
+  matching reference, style, and layout dependencies. Source spans must reflect the current input.
 - **Recompute only affected paragraphs.** A paragraph layout entry is keyed by `ParagraphInputHash`.
-  A change confined to that paragraph changes only its `NodeHash`, hence its `ParagraphInputHash`,
-  hence its line set. Surrounding paragraphs hit the cache.
+  An authored edit changes that paragraph's `NodeHash` and its ancestor hashes. Other paragraphs
+  retain their node hashes and can reuse layout when their complete layout inputs also match.
 - **Reflow only affected pages.** Page reflow consumes page-boundary signatures (manifest §33).
   `PageInputHash` (§4.5) is the cache lookup key; `PageOutputHash` is the convergence digest the
   reflow loop compares against the next page's incoming boundary. Downstream pages whose incoming
@@ -486,13 +523,14 @@ Explicitly *not* designed here:
 
 - The disk layout of `.mos-cache/`. There is no on-disk schema yet.
 - Eviction, locking, GC, cross-process sharing.
-- The actual hasher choice and the on-wire encoding for `canonical_attrs`.
+- A persistent wire format for hashes and attributes. Current in-memory encodings are specified by
+  the implemented boundaries in §4; the engine version stamps changes to them.
 - Watch-mode loop and CLI surface (`mos watch`, `mos graph`, `mos profile`).
 - Float solver and Knuth-Plass; those produce `LayoutOutput` shapes whose hashing this document
   already permits, but the algorithms themselves are MVP 2+.
-- The `DepNode` graph, hashing, and any wiring into `CacheKey`. The landed `DependencyId` /
-  `DependencyKind` types (§3) are *identities only*; the remaining sketch categories and the graph
-  stay design-side until §9 lands them.
+- The `DepNode` graph and its wiring into `CacheKey`. The landed `DependencyId` / `DependencyKind`
+  types (§3) are *identities only*; the remaining sketch categories and the graph stay design-side
+  until §9 lands them.
 
 ## 9. Concrete follow-up issue candidates
 
@@ -504,13 +542,12 @@ when it is ready to start:
    stage with the parse tree. Add a `Document::alloc_with_id` (or equivalent) on `mos-core` so the
    lowerer can hand precomputed IDs to the arena without `mos-core` learning about syntax. Public
    `NodeId(u64)` stays.
-2. *Separate authored vs. derived node attributes.* Precondition for any meaningful `NodeHash`.
-   Either tag each entry in `AttrMap` as authored/derived or move derived attributes (today:
-   `resolved_path`, `pixels`, `pixel_width`, `pixel_height`, `colorspace`, `bits_per_component` on
-   `Image` nodes) off `Node` and onto a side-table the lowerer owns.
-3. *Populate `Node.content_hash` in the lowerer.* Compute `NodeHash` per §4.2 during `mos-eval`'s
-   lowering pass, drawing only from authored attributes plus `AssetHash` for any referenced asset.
-   Cache stays untouched.
+2. *Preserve authored vs. derived attributes for later mutation.* Needed if a future incremental
+   pass edits an already-resolved graph and must recompute authored hashes. The current #110
+   snapshot precedes resolution, so it does not require this additional storage.
+3. *Populate `Node.content_hash` in the lowerer.* Implemented by #110 as described in §4.2: authored
+   attributes, ordered child hashes, and recorded external-file content fingerprints. Cache storage
+   and reuse remain separate work.
 4. *Source and asset hashing helpers in `mos-core`.* Provide functions that produce `SourceHash` /
    `AssetHash` per §4.1 and §4.3 with the agreed engine-version stamping. No public `DepId` yet.
 5. *Layout-dimension quantization helper.* A small `i32`-of-1/64-pt newtype used wherever layout

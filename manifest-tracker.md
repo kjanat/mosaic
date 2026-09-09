@@ -211,7 +211,10 @@ example.
       iterates layout until the label→page map stabilizes; cap + oscillation detection emit
       `MOS0047`. Currently drives page references; other layout-dependent values reuse it later.)*
 - [ ] Add stable node IDs derived from durable inputs.
-- [ ] Add content hashes for semantic nodes.
+- [x] Add content hashes for semantic nodes. *(`Node::content_hash()` snapshots authored attributes,
+      ordered child hashes, and referenced image/bibliography byte fingerprints before resolution;
+      excludes source spans and derived output. Stable node IDs and layout cache keys remain
+      separate work, #110.)*
 
 ## Diagnostics
 

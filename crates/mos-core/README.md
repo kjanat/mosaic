@@ -36,26 +36,24 @@ Main public types:
   integers, floats, strings, lists, point lengths, and shared byte buffers for decoded image data.
 - `SourceSpan`: byte range in a source file.
 - `Document::{get,get_mut,nodes,len,is_empty}`: read/update/traverse the arena.
+- `Document::update_content_hashes`: combine caller-provided semantic input hashes with ordered
+  child hashes. `Node::content_hash()` exposes the resulting snapshot; callers refresh it after
+  authored edits. `mos-eval` takes its snapshot before resolution adds derived output.
 
 Example:
 
 ```rust
 use std::path::PathBuf;
 
-use mos_core::{AttrMap, ContentHash, Document, Node, NodeId, NodeKind, SourceSpan, StyleId};
+use mos_core::{Document, NodeKind, NodeSpec, SourceSpan};
 
 let file = PathBuf::from("main.mos");
 let mut doc = Document::new(file.clone());
 
-let para = doc.alloc_child(doc.root, Node {
-    id: NodeId::default(),
-    kind: NodeKind::Paragraph,
-    span: SourceSpan::placeholder(file),
-    content_hash: ContentHash::default(),
-    style_id: StyleId::default(),
-    children: Vec::new(),
-    attributes: AttrMap::new(),
-});
+let para = doc.alloc_child(
+    doc.root,
+    NodeSpec::new(NodeKind::Paragraph, SourceSpan::placeholder(file)),
+);
 
 assert_eq!(doc.get(doc.root).map(|node| node.children.as_slice()), Some(&[para][..]));
 ```

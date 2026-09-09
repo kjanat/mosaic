@@ -23,6 +23,7 @@ pub mod list;
 pub mod pageref;
 #[doc(hidden)]
 pub mod resolve;
+mod semantic_hash;
 #[doc(hidden)]
 pub mod set;
 #[doc(hidden)]
@@ -44,7 +45,7 @@ pub use mos_bib::Bibliography;
 pub use pageref::{PageFixpointOutcome, resolve_page_reference_fixpoint, resolve_page_references};
 pub use resolve::resolve;
 
-use bibliography::{lower_bibliography_directive, resolve_citations};
+use bibliography::{load_bibliography, lower_bibliography_directive, resolve_citations};
 use dependency::{DependencySet, ExternalInputs};
 use image_lower::{lower_figure_directive, lower_image_directive};
 use inline::lower_inlines;
@@ -135,6 +136,8 @@ pub struct DocumentMetadata {
 /// ```
 #[derive(Debug)]
 pub struct LowerResult {
+    /// Authored nodes carry [`mos_core::Node::content_hash`] snapshots taken
+    /// before resolution. Generated bibliography entries keep the default hash.
     pub document: Document,
     pub diagnostics: Vec<Diagnostic>,
     pub metadata: DocumentMetadata,
@@ -225,7 +228,9 @@ impl Evaluator {
         Self
     }
 
-    /// Lower `tree` into a semantic [`Document`].
+    /// Lower `tree` into a semantic [`Document`] and hash its authored nodes.
+    /// Bibliography sources are marked unloaded in those hashes; use
+    /// [`lower_tree`] to include their contents as well.
     ///
     /// # Examples
     ///
@@ -249,6 +254,12 @@ impl Evaluator {
     /// ```
     #[must_use]
     pub fn evaluate(tree: &SyntaxTree) -> LowerResult {
+        let mut lowered = Self::evaluate_unhashed(tree);
+        semantic_hash::stamp(&mut lowered.document, &lowered.external_dependencies);
+        lowered
+    }
+
+    fn evaluate_unhashed(tree: &SyntaxTree) -> LowerResult {
         let mut state = EvaluationState::new(tree);
         for item in &tree.items {
             state.lower_item(item, &tree.file);
@@ -581,18 +592,24 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
 /// ```
 #[must_use]
 pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
-    let mut lowered = Evaluator::evaluate(tree);
+    let mut lowered = Evaluator::evaluate_unhashed(tree);
     let mut diagnostics = std::mem::take(&mut lowered.diagnostics);
     let mut dependencies = DependencySet::from(std::mem::take(&mut lowered.external_dependencies));
+    let loaded_bibliography =
+        load_bibliography(&lowered.document, &mut diagnostics, &mut dependencies);
+    let external_dependencies = dependencies.into_vec();
+    // Capture authored state after all file reads, before numbering, reference
+    // rewrites, and generated bibliography entry nodes add resolution output.
+    semantic_hash::stamp(&mut lowered.document, &external_dependencies);
     let (bibliography, bibliography_complete) =
-        resolve_citations(&mut lowered.document, &mut diagnostics, &mut dependencies);
+        resolve_citations(&mut lowered.document, &mut diagnostics, loaded_bibliography);
     let bib_keys: BTreeSet<String> = bibliography.entries.keys().cloned().collect();
     diagnostics.extend(resolve(&mut lowered.document, &bib_keys));
     LowerResult {
         document: lowered.document,
         diagnostics,
         metadata: lowered.metadata,
-        external_dependencies: dependencies.into_vec(),
+        external_dependencies,
         bibliography,
         bibliography_complete,
         citation_spans: lowered.citation_spans,

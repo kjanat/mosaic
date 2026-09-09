@@ -61,6 +61,9 @@ Not implemented yet:
   malformed, suppress missing-key diagnostics to avoid false negatives from an incomplete record
   set.
 - `current_text_size_pt` affects `em` conversion order. Be careful around `#set text(size: ...)`.
+- `semantic_hash::stamp` snapshots authored content after external reads and before resolution.
+  Keep derived attributes out of its projection; generated bibliography entries have no authored
+  hash. Do not rehash resolved reference/caption text as if it were source content.
 
 ## STATUS WARNINGS
 

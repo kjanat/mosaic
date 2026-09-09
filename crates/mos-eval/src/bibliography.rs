@@ -227,7 +227,7 @@ fn bibliography_path(
     Some((path_text, path_span))
 }
 
-/// Resolve citation keys against declared bibliography sources.
+/// Resolve citation keys against the already-loaded bibliography sources.
 ///
 /// Known citations are rewritten to dense numeric labels assigned by first-use
 /// order. Unknown keys emit `MOS0045` and keep `[?key?]` placeholders.
@@ -249,9 +249,8 @@ fn bibliography_path(
 pub(crate) fn resolve_citations(
     document: &mut Document,
     diagnostics: &mut Vec<Diagnostic>,
-    dependencies: &mut DependencySet,
+    bibliography: LoadedBibliography,
 ) -> (Bibliography, bool) {
-    let bibliography = load_bibliography(document, diagnostics, dependencies);
     let citation_ids: Vec<NodeId> = document
         .nodes()
         .filter(|node| node.kind == NodeKind::Citation)
@@ -486,7 +485,7 @@ fn nearest_citation_key(
     .map(str::to_owned)
 }
 
-struct LoadedBibliography {
+pub(crate) struct LoadedBibliography {
     records: Bibliography,
     origins: BTreeMap<String, BibliographyOrigin>,
     complete: bool,
@@ -497,7 +496,7 @@ struct BibliographyOrigin {
     key_span: SourceSpan,
 }
 
-fn load_bibliography(
+pub(crate) fn load_bibliography(
     document: &Document,
     diagnostics: &mut Vec<Diagnostic>,
     dependencies: &mut DependencySet,
