@@ -33,6 +33,9 @@ examples/<name>/
 - `just examples` runs `runner mos build examples/*` after `just setup`; each example manifest
   declares `[output].pdf` so the CLI writes `<name>.pdf` directly.
 - Commit `<name>.pdf`; do not commit generated `build/*.pdf`.
+- `lsp`, `code`, and `lists` also include `<name>.layout.pdf` debug snapshots. Regenerate with
+  `mos build --debug-layout examples/lsp examples/code examples/lists`; only the PDF snapshots
+  are committed, not the generated `.layout.json` reports.
 - `mosaic.toml` is partly active: CLI directory builds honor `project.entry` and `output.pdf`.
   Current CLI still does not honor `document.output = ["html"]`.
 - `hello/demo.png` has a generator at `crates/mos-eval/examples/gen_demo_png.rs`.

@@ -59,6 +59,7 @@ impl LayoutState {
         let entry_left = saved_left + gutter;
 
         for entry in entries {
+            self.begin_debug_block(entry);
             let text = marker_text(entry);
             let subruns = shape_with_fallback(regular, self.text.family.fallbacks, size, &text);
             let width_pt: f32 = subruns.iter().map(|s| s.advance_pt).sum();
@@ -89,6 +90,7 @@ impl LayoutState {
                     self.flush_line(&[], leading);
                 }
             }
+            self.end_debug_block();
         }
 
         self.current_left_pt = saved_left;

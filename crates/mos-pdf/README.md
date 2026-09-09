@@ -42,6 +42,9 @@ not parse `.mos`, lower documents, or decide layout policy.
 - Emits decoded image data as RGB8 `/DeviceRGB` image XObjects compressed with `/FlateDecode`.
 - PNG/JPEG decoding and image deduplication happen before this crate, in earlier pipeline stages.
 - Alpha/soft masks are not emitted; upstream image handling composites to opaque RGB.
+- `emit_debug` overlays the matching layout report: content/block/line/run/image bounds, baselines,
+  and a legend outside the original paper. Normal `emit` output is unchanged. See the
+  [debug layout guide](../../docs/debug-layout.md).
 
 ## Module Layout
 
@@ -50,6 +53,7 @@ not parse `.mos`, lower documents, or decide layout policy.
 - `src/encoding.rs`: Base-14 `/Differences` and `/ToUnicode` planning.
 - `src/embedded.rs`: embedded Type 0/CID font subset object emission.
 - `src/images.rs`: image XObject resources, Flate compression, placement operators.
+- `src/debug.rs`: recorded-geometry overlays, legend, and report compatibility checks.
 
 ## Deterministic Behavior
 
@@ -89,8 +93,7 @@ let diagnostics = mos_pdf::emit(&graph, &metadata, Path::new("build/main.pdf"))?
 ## Known Non-goals
 
 - No source parsing, semantic lowering, line breaking, page breaking, or image decoding here.
-- No hyperlinks, bookmarks, tagged PDF, PDF/A, vector graphics, SVG page emission, or debug layout
-  backend.
+- No hyperlinks, tagged PDF, PDF/A, general vector graphics, or SVG page emission.
 - No catalog language metadata yet.
 - No font shaping invented here; layout/fonts provide shaped embedded glyph runs.
 - No manifest-roadmap PDF features unless current code and tests prove them.

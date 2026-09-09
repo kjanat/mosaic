@@ -28,6 +28,10 @@ Implemented now:
 
 - `--open`: open the generated PDF with the platform default viewer.
 - `--open=PROGRAM`: open the generated PDF with a specific viewer.
+- `--debug-layout`: write an annotated `<pdf-stem>.layout.pdf` with visible boxes and baselines,
+  plus a `<pdf-stem>.layout.json` report with source spans and exact geometry. `--open` opens the
+  annotated PDF. Project output paths and multiple inputs are supported. See the
+  [output guide](../../docs/debug-layout.md).
 
 Parsed but not wired to behavior yet:
 

@@ -496,4 +496,7 @@ define_codes! {
     /// Internal: missing embedded font plan for a shaped run.
     MOS0021 = 21, Error, Internal, "internal-missing-font-plan", "mos-pdf",
         "internal: missing embedded font plan for a shaped run";
+    /// Internal: debug layout report does not match the emitted page graph.
+    MOS0051 = 51, Error, Internal, "internal-debug-layout-mismatch", "mos-pdf",
+        "internal: debug layout report does not match page geometry";
 }

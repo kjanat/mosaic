@@ -16,6 +16,9 @@ Implemented:
 - Images and simple figures with caption keep-together when possible.
 - Raw blocks with monospace flow, tab expansion, and original text preservation.
 - Page breaking and layout diagnostics for invalid config.
+- Optional geometry/source tracing through `LayoutEngine::layout_with_debug` and
+  `LayoutResult::debug`; `src/debug.rs` owns the serializable report. Record only committed
+  placements, never figure measurement. The CLI owns JSON/file output.
 
 Not implemented here yet:
 

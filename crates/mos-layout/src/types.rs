@@ -191,6 +191,8 @@ pub struct PageGraph {
 pub struct LayoutResult {
     pub graph: PageGraph,
     pub diagnostics: Vec<Diagnostic>,
+    /// Geometry and source tracing, populated only by an explicitly debug-enabled layout.
+    pub debug: Option<crate::debug::Report>,
     /// Map from a declared label to the 1-based number of the page its
     /// target first lands on (issue #72). Built during layout as each
     /// labelled block commits its first content; first placement wins, so a

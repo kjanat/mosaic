@@ -8,6 +8,16 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Layout geometry reports (https://github.com/kjanat/mosaic/issues/73): `mos build --debug-layout`
+  writes an annotated `<pdf-stem>.layout.pdf` and a `<pdf-stem>.layout.json` report beside each
+  generated PDF, including project-declared outputs. The annotated PDF shows colored boxes and
+  baselines with a legend outside the original paper; `--open` opens this debug view.
+  Reports describe the final page-reference layout with page/content bounds, source-block bounds,
+  text lines and baselines, shaped run advances, and image placements. Source node IDs, byte spans,
+  and labels connect geometry to authored blocks. Tracing is opt-in through
+  `LayoutEngine::layout_with_debug`; ordinary builds and PDF bytes are unchanged. See
+  [`docs/debug-layout.md`](docs/debug-layout.md) for the versioned format and geometry conventions.
+
 - Code-block inlay hints (https://github.com/kjanat/mosaic/issues/31): `mos-lsp` shows a generated
   language/body name with a short content hash after each unnamed `#code` closing delimiter.
   Names stay stable through unrelated edits and relocation; duplicate names are disambiguated

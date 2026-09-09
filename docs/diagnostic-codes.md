@@ -110,9 +110,10 @@ codes use the next free integer.
 
 ### Internal
 
-| Code    | Slug                       | Default severity | Owner crate | Summary                                               |
-| ------- | -------------------------- | ---------------- | ----------- | ----------------------------------------------------- |
-| MOS0021 | internal-missing-font-plan | Error            | mos-pdf     | internal: missing embedded font plan for a shaped run |
+| Code    | Slug                           | Default severity | Owner crate | Summary                                                    |
+| ------- | ------------------------------ | ---------------- | ----------- | ---------------------------------------------------------- |
+| MOS0021 | internal-missing-font-plan     | Error            | mos-pdf     | internal: missing embedded font plan for a shaped run      |
+| MOS0051 | internal-debug-layout-mismatch | Error            | mos-pdf     | internal: debug layout report does not match page geometry |
 
 ## CLI rendering
 

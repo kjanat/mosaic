@@ -38,6 +38,402 @@ fn temp_dir(label: &str) -> tempdir::Dir {
     tempdir::Dir::new(label)
 }
 
+fn assert_debug_pdf(dir: &Path, stem: &str) -> lopdf::Document {
+    let ordinary = lopdf::Document::load(dir.join(format!("{stem}.pdf"))).unwrap();
+    let debug = lopdf::Document::load(dir.join(format!("{stem}.layout.pdf"))).unwrap();
+    assert_eq!(ordinary.get_pages().len(), debug.get_pages().len());
+    for ((number, plain_id), (_, debug_id)) in
+        ordinary.get_pages().into_iter().zip(debug.get_pages())
+    {
+        let plain_box = ordinary
+            .get_dictionary(plain_id)
+            .unwrap()
+            .get(b"MediaBox")
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let debug_box = debug
+            .get_dictionary(debug_id)
+            .unwrap()
+            .get(b"MediaBox")
+            .unwrap()
+            .as_array()
+            .unwrap();
+        assert_eq!(&plain_box[..2], &debug_box[..2]);
+        assert_eq!(
+            debug_box[2].as_float().unwrap(),
+            plain_box[2].as_float().unwrap().max(420.0)
+        );
+        assert!(
+            (debug_box[3].as_float().unwrap() - plain_box[3].as_float().unwrap() - 36.0).abs()
+                < 0.01
+        );
+        let plain_stream = ordinary.get_page_content(plain_id).unwrap();
+        let debug_stream = debug.get_page_content(debug_id).unwrap();
+        let mut expected_prefix = b"q\n".to_vec();
+        expected_prefix.extend_from_slice(&plain_stream);
+        expected_prefix.extend_from_slice(b"\nQ\n");
+        assert!(
+            debug_stream.starts_with(&expected_prefix),
+            "original content changed on page {number}"
+        );
+        let stream = String::from_utf8_lossy(&debug_stream);
+        assert!(stream.contains(&format!("LAYOUT DEBUG | page {number}")));
+        assert!(stream.contains("(baseline)"));
+        let (resources, _) = debug.get_page_resources(debug_id).unwrap();
+        let resources = resources.expect("debug page resources");
+        let fonts = resources.get(b"Font").unwrap().as_dict().unwrap();
+        let font = debug
+            .get_dictionary(fonts.get(b"LayoutDebug").unwrap().as_reference().unwrap())
+            .unwrap();
+        assert_eq!(
+            font.get(b"BaseFont").unwrap().as_name().unwrap(),
+            b"Helvetica"
+        );
+        assert_eq!(
+            font.get(b"Encoding").unwrap().as_name().unwrap(),
+            b"WinAnsiEncoding"
+        );
+    }
+    debug
+}
+
+#[test]
+fn debug_layout_is_deterministic_and_preserves_pdf_bytes() {
+    let dir = temp_dir("mos-debug-layout-stable");
+    let source = "#set page(paper: \"Letter\", margin: 36pt)\n\
+                  #set text(font: \"Helvetica\", size: 10pt)\nHello\n";
+    write_file(dir.path(), "main.mos", source);
+    let pdf_path = dir.path().join("build/main.pdf");
+    let report_path = dir.path().join("build/main.layout.json");
+    let debug_pdf_path = dir.path().join("build/main.layout.pdf");
+    let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    let ordinary_pdf = std::fs::read(&pdf_path).unwrap();
+    assert!(!report_path.exists());
+    assert!(!debug_pdf_path.exists());
+
+    let (code, stdout, stderr) = run(&["build", "--debug-layout", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.contains("main.layout.json"));
+    assert!(stdout.contains("main.layout.pdf"));
+    let debug = assert_debug_pdf(&dir.path().join("build"), "main");
+    let debug_pdf = std::fs::read(&debug_pdf_path).unwrap();
+    let stream = debug.get_page_content(debug.get_pages()[&1]).unwrap();
+    let operations = lopdf::content::Content::decode(&stream).unwrap().operations;
+    let has_operation =
+        |operator: &str, expected: &[f32]| {
+            operations.iter().any(|op| {
+                op.operator == operator
+                    && op.operands.len() == expected.len()
+                    && op.operands.iter().zip(expected).all(|(value, expected)| {
+                        (value.as_float().unwrap() - expected).abs() < 0.01
+                    })
+            })
+        };
+    // PDF uses bottom-left coordinates. These assert the Letter-page content
+    // box, Hello's metrics rectangle and its actual text baseline.
+    assert!(has_operation("re", &[36.0, 36.0, 540.0, 720.0]));
+    assert!(has_operation("re", &[36.0, 746.75, 22.78, 9.25]));
+    assert!(has_operation("m", &[36.0, 748.82]));
+    assert!(has_operation("l", &[58.78, 748.82]));
+    assert!(has_operation("RG", &[0.9, 0.1, 0.15]));
+    assert_eq!(std::fs::read(&pdf_path).unwrap(), ordinary_pdf);
+    let bytes = std::fs::read(&report_path).unwrap();
+    assert_eq!(bytes.last(), Some(&b'\n'));
+    let report: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(report["schema_version"], 1);
+    assert_eq!(report["units"], "pt");
+    assert_eq!(report["origin"], "top-left");
+    assert_eq!(report["pages"].as_array().unwrap().len(), 1);
+    let page = &report["pages"][0];
+    assert_eq!(page["number"], 1);
+    assert_eq!(
+        page["bounds"],
+        serde_json::json!({
+            "x_pt": 0.0, "y_pt": 0.0, "width_pt": 612.0, "height_pt": 792.0
+        })
+    );
+    assert_eq!(
+        page["content_bounds"],
+        serde_json::json!({
+            "x_pt": 36.0, "y_pt": 36.0, "width_pt": 540.0, "height_pt": 720.0
+        })
+    );
+    assert_eq!(page["images"], serde_json::json!([]));
+    assert_eq!(page["lines"].as_array().unwrap().len(), 1);
+    let line = &page["lines"][0];
+    let text_run = &line["runs"][0];
+    assert_eq!(line["runs"].as_array().unwrap().len(), 1);
+    assert_eq!(text_run["run_index"], 0);
+    assert_eq!(text_run["text"], "Hello");
+    assert_eq!(text_run["font"], "Helvetica");
+    assert_eq!(text_run["size_pt"], 10.0);
+    let rounded = |value: &serde_json::Value| format!("{:.2}", value.as_f64().unwrap());
+    assert_eq!(rounded(&line["baseline_from_top_pt"]), "43.18");
+    assert_eq!(rounded(&text_run["bounds"]["x_pt"]), "36.00");
+    assert_eq!(rounded(&text_run["bounds"]["y_pt"]), "36.00");
+    assert_eq!(rounded(&text_run["bounds"]["width_pt"]), "22.78");
+    assert_eq!(rounded(&text_run["bounds"]["height_pt"]), "9.25");
+    assert_eq!(line["source"]["kind"], "paragraph");
+    assert!(
+        line["source"]["file"]
+            .as_str()
+            .unwrap()
+            .ends_with("main.mos")
+    );
+    assert_eq!(line["source"]["byte_start"], source.find("Hello").unwrap());
+    assert_eq!(line["source"]["byte_end"], source.len() - 1);
+    assert!(line["source"]["node_id"].as_u64().is_some());
+    assert_eq!(page["blocks"].as_array().unwrap().len(), 1);
+    assert_eq!(page["blocks"][0]["source"], line["source"]);
+    assert_eq!(page["blocks"][0]["bounds"], line["bounds"]);
+
+    let (code, stdout, stderr) = run(&["build", "--debug-layout", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert_eq!(std::fs::read(&report_path).unwrap(), bytes);
+    assert_eq!(std::fs::read(&debug_pdf_path).unwrap(), debug_pdf);
+}
+
+#[test]
+fn debug_layout_reports_final_page_references_and_every_page() {
+    let dir = temp_dir("mos-debug-layout-pages");
+    write_file(
+        dir.path(),
+        "main.mos",
+        &format!(
+            "#set text(font: \"Helvetica\")\nSee page @page(end).\n\n{}\n\n= End <end>\n",
+            "wrapping text ".repeat(1500)
+        ),
+    );
+    let (code, stdout, stderr) = run(&["build", "--debug-layout", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    let bytes = std::fs::read(dir.path().join("build/main.layout.json")).unwrap();
+    let report: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let pages = report["pages"].as_array().unwrap();
+    assert!(pages.len() > 1);
+    let pdf_bytes = std::fs::read(dir.path().join("build/main.pdf")).unwrap();
+    let pdf = lopdf::Document::load_mem(&pdf_bytes).unwrap();
+    assert_eq!(pages.len(), pdf.get_pages().len());
+    assert_debug_pdf(&dir.path().join("build"), "main");
+    let target_page = pages
+        .iter()
+        .find(|page| {
+            page["blocks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|block| block["source"]["label"] == "end")
+        })
+        .unwrap();
+    let text = pages[0]["lines"][0]["runs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|run| run["text"].as_str().unwrap())
+        .collect::<String>();
+    assert_eq!(text, format!("Seepage{}.", target_page["number"]));
+    let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert_eq!(
+        std::fs::read(dir.path().join("build/main.pdf")).unwrap(),
+        pdf_bytes
+    );
+}
+
+#[test]
+fn debug_layout_traces_images_figures_and_shaped_text() {
+    let dir = temp_dir("mos-debug-layout-images");
+    write_tiny_png(&dir.path().join("scan.png"));
+    let source = "= Résumé\n\nCafé *italic* **bold** a≤b.\n\n\
+                  #image(\"scan.png\", width: 40pt)\n\n\
+                  #figure(image: \"scan.png\", caption: \"A scan.\", label: \"fig:scan\")\n";
+    write_file(dir.path(), "main.mos", source);
+    let (code, stdout, stderr) = run(&["build", "--debug-layout", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.path().join("build/main.layout.json")).unwrap())
+            .unwrap();
+    let page = &report["pages"][0];
+    let images = page["images"].as_array().unwrap();
+    assert_eq!(images.len(), 2);
+    assert_eq!(images[0]["image_id"], images[1]["image_id"]);
+    assert_eq!(images[0]["bounds"]["width_pt"], 40.0);
+    assert_eq!(images[0]["bounds"]["height_pt"], 30.0);
+    for (index, image) in images.iter().enumerate() {
+        assert_eq!(image["image_index"], index);
+        assert_eq!(image["pixel_width"], 4);
+        assert_eq!(image["pixel_height"], 3);
+        assert_eq!(image["source"]["kind"], "image");
+        assert!(image.get("rgb8").is_none() && image.get("resolved_path").is_none());
+    }
+    assert!(page["blocks"].as_array().unwrap().iter().any(|block| {
+        block["source"]["kind"] == "figure" && block["source"]["label"] == "fig:scan"
+    }));
+    for line in page["lines"].as_array().unwrap() {
+        let start = usize::try_from(line["source"]["byte_start"].as_u64().unwrap()).unwrap();
+        let end = usize::try_from(line["source"]["byte_end"].as_u64().unwrap()).unwrap();
+        assert!(source.get(start..end).is_some());
+        for run in line["runs"].as_array().unwrap() {
+            assert!(run["bounds"]["width_pt"].as_f64().unwrap() > 0.0);
+            assert!(run["font"].as_str().unwrap().starts_with("Noto"));
+        }
+    }
+    let traced_pdf = std::fs::read(dir.path().join("build/main.pdf")).unwrap();
+    assert_debug_pdf(&dir.path().join("build"), "main");
+    let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert_eq!(
+        std::fs::read(dir.path().join("build/main.pdf")).unwrap(),
+        traced_pdf
+    );
+}
+
+#[test]
+fn debug_layout_follows_each_project_pdf_output() {
+    let dir = temp_dir("mos-debug-layout-projects");
+    for name in ["one", "two"] {
+        let project = dir.path().join(name);
+        std::fs::create_dir(&project).unwrap();
+        write_file(
+            &project,
+            "mosaic.toml",
+            &format!(
+                "[project]\nname = \"{name}\"\nversion = \"0.1.0\"\nentry = \"main.mos\"\n\
+             [output]\npdf = \"out/{name}.pdf\"\n"
+            ),
+        );
+        write_file(&project, "main.mos", name);
+    }
+    let (code, stdout, stderr) = run(&["build", "--debug-layout", "one", "two"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    for name in ["one", "two"] {
+        let output = dir.path().join(name).join("out");
+        assert!(output.join(format!("{name}.pdf")).exists());
+        assert_debug_pdf(&output, name);
+        let bytes = std::fs::read(output.join(format!("{name}.layout.json"))).unwrap();
+        let report: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(report["pages"][0]["lines"][0]["runs"][0]["text"], name);
+    }
+}
+
+#[test]
+fn debug_layout_does_not_write_reports_after_compiler_errors() {
+    for (name, source) in [
+        ("parse", "#set page(\nunclosed\n"),
+        ("eval", "#image(\"missing.png\")\n"),
+        ("layout", "#set page(paper: \"invalid\")\ntext\n"),
+    ] {
+        let dir = temp_dir(name);
+        write_file(dir.path(), "main.mos", source);
+        let (code, stdout, stderr) = run(&["build", "--debug-layout", "main.mos"], dir.path());
+        assert_eq!(code, 1, "stdout={stdout} stderr={stderr}");
+        assert!(!dir.path().join("build/main.layout.json").exists());
+        assert!(!dir.path().join("build/main.layout.pdf").exists());
+        assert!(!dir.path().join("build/main.pdf").exists());
+    }
+}
+
+#[test]
+fn debug_layout_write_failures_fail_the_build() {
+    let dir = temp_dir("mos-debug-layout-write-fail");
+    write_file(dir.path(), "main.mos", "text\n");
+    std::fs::create_dir_all(dir.path().join("build/main.layout.json")).unwrap();
+    let (code, stdout, stderr) = run(&["build", "--debug-layout", "main.mos"], dir.path());
+    assert_eq!(code, 1, "stdout={stdout} stderr={stderr}");
+    assert!(stderr.contains("cannot write layout debug report"));
+    assert!(stderr.contains("main.layout.json"));
+    assert!(stdout.is_empty());
+}
+
+#[test]
+fn build_help_documents_debug_layout() {
+    let dir = temp_dir("mos-debug-layout-help");
+    let (code, stdout, stderr) = run(&["build", "--help"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert!(stdout.contains("--debug-layout"));
+    assert!(stdout.contains(".layout.json"));
+    assert!(stdout.contains(".layout.pdf"));
+}
+
+#[test]
+fn debug_pdf_handles_empty_and_zero_margin_pages() {
+    for source in [
+        "",
+        "#set page(margin: 0pt)\nAt the page edge.\n",
+        "#set page(paper: \"A8\", margin: 0pt)\nSmall.\n",
+    ] {
+        let dir = temp_dir("mos-debug-layout-edge");
+        write_file(dir.path(), "main.mos", source);
+        let (code, stdout, stderr) = run(&["build", "--debug-layout", "main.mos"], dir.path());
+        assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+        assert_debug_pdf(&dir.path().join("build"), "main");
+    }
+}
+
+#[test]
+fn debug_pdf_overlays_image_only_pages() {
+    let dir = temp_dir("mos-debug-pdf-image-only");
+    write_tiny_png(&dir.path().join("scan.png"));
+    write_file(
+        dir.path(),
+        "main.mos",
+        "#image(\"scan.png\", width: 40pt)\n",
+    );
+    let (code, stdout, stderr) = run(&["build", "--debug-layout", "main.mos"], dir.path());
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    let pdf = assert_debug_pdf(&dir.path().join("build"), "main");
+    let stream = pdf.get_page_content(pdf.get_pages()[&1]).unwrap();
+    let operations = lopdf::content::Content::decode(&stream).unwrap().operations;
+    assert!(operations.iter().any(|op| op.operator == "re"
+        && op.operands.len() == 4
+        && op.operands[2].as_float().unwrap() == 40.0
+        && op.operands[3].as_float().unwrap() == 30.0));
+}
+
+#[test]
+fn debug_pdf_write_failure_fails_before_opening_viewer() {
+    let dir = temp_dir("mos-debug-pdf-write-fail");
+    write_file(dir.path(), "main.mos", "text\n");
+    std::fs::create_dir_all(dir.path().join("build/main.layout.pdf")).unwrap();
+    let (code, stdout, stderr) = run(
+        &[
+            "build",
+            "--debug-layout",
+            "--open=missing-viewer",
+            "main.mos",
+        ],
+        dir.path(),
+    );
+    assert_eq!(code, 1, "stdout={stdout} stderr={stderr}");
+    assert!(stderr.contains("MOS0014") && stderr.contains("main.layout.pdf"));
+    assert!(!stderr.contains("missing-viewer"));
+}
+
+#[cfg(unix)]
+#[test]
+fn debug_layout_opens_the_annotated_pdf() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = temp_dir("mos-debug-pdf-open");
+    write_file(dir.path(), "main.mos", "text\n");
+    let viewer = write_file(
+        dir.path(),
+        "viewer",
+        "#!/bin/sh\nprintf '%s' \"$1\" > opened-path\n",
+    );
+    std::fs::set_permissions(&viewer, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (code, stdout, stderr) = run(
+        &["build", "--debug-layout", "--open=./viewer", "main.mos"],
+        dir.path(),
+    );
+    assert_eq!(code, 0, "stdout={stdout} stderr={stderr}");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("opened-path")).unwrap(),
+        "build/main.layout.pdf"
+    );
+}
+
 #[test]
 fn check_clean_source_succeeds() {
     let dir = temp_dir("mos-check-ok");

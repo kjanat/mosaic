@@ -24,6 +24,7 @@
 
 #[doc(hidden)]
 pub mod content;
+mod debug;
 #[doc(hidden)]
 pub mod embedded;
 #[doc(hidden)]
@@ -113,6 +114,35 @@ pub struct PdfMetadata {
 /// ```
 pub fn emit(graph: &PageGraph, metadata: &PdfMetadata, out: &Path) -> Result<Vec<Diagnostic>> {
     let (bytes, diagnostics) = build_pdf(graph, metadata)?;
+    write_pdf(&bytes, out)?;
+    Ok(diagnostics)
+}
+
+/// Emit a PDF with visible layout geometry from the graph's matching report.
+///
+/// Each page retains its original content and coordinates. A 36-point strip
+/// above the original page holds the legend, outside the document's bounds.
+/// The debug canvas is at least 420 points wide to keep the legend legible.
+/// Use the graph and report from the same `LayoutEngine::layout_with_debug`
+/// result. The ordinary [`emit`] output is unaffected.
+///
+/// # Errors
+///
+/// Returns `MOS0051` for mismatched page geometry, or the same font and I/O
+/// errors as [`emit`].
+pub fn emit_debug(
+    graph: &PageGraph,
+    report: &mos_layout::debug::Report,
+    metadata: &PdfMetadata,
+    out: &Path,
+) -> Result<Vec<Diagnostic>> {
+    debug::validate(graph, report)?;
+    let (bytes, diagnostics) = build_pdf_impl(graph, metadata, Some(report))?;
+    write_pdf(&bytes, out)?;
+    Ok(diagnostics)
+}
+
+fn write_pdf(bytes: &[u8], out: &Path) -> Result<()> {
     if let Some(parent) = out.parent()
         && !parent.as_os_str().is_empty()
     {
@@ -129,7 +159,7 @@ pub fn emit(graph: &PageGraph, metadata: &PdfMetadata, out: &Path) -> Result<Vec
             mos_core::display_path(out)
         ))
     })?;
-    Ok(diagnostics)
+    Ok(())
 }
 
 fn io_diagnostic(message: String) -> CoreError {
@@ -140,7 +170,7 @@ fn io_diagnostic(message: String) -> CoreError {
 /// can round-trip without touching the filesystem. Returns the bytes
 /// plus any encoding diagnostics (currently `MOS0032` for Base14
 /// `/Differences` overflow). Kept `pub(crate)`; the public surface
-/// is [`emit`].
+/// includes [`emit`] and [`emit_debug`].
 ///
 /// # Errors
 ///
@@ -150,6 +180,14 @@ fn io_diagnostic(message: String) -> CoreError {
 pub(crate) fn build_pdf(
     graph: &PageGraph,
     metadata: &PdfMetadata,
+) -> Result<(Vec<u8>, Vec<Diagnostic>)> {
+    build_pdf_impl(graph, metadata, None)
+}
+
+fn build_pdf_impl(
+    graph: &PageGraph,
+    metadata: &PdfMetadata,
+    debug: Option<&mos_layout::debug::Report>,
 ) -> Result<(Vec<u8>, Vec<Diagnostic>)> {
     // Phase 1a: scan every run and plan per-face Base14 /Differences
     // encodings (embedded-font runs are skipped: they take the Type 0
@@ -238,8 +276,8 @@ pub(crate) fn build_pdf(
 
     let page_refs: Vec<(Ref, Ref)> = graph.pages.iter().map(|_| (alloc(), alloc())).collect();
 
-    // Outline (bookmark) refs are allocated LAST, after every other
-    // object, so a heading-free document — where `outline` is empty and
+    // Outline (bookmark) refs follow the document's page/font/image
+    // objects, so a heading-free document — where `outline` is empty and
     // this is `None` — produces byte-identical output to before outlines
     // existed. Allocation walks `graph.outline` in document order, so the
     // root and per-entry ids are deterministic across runs.
@@ -248,6 +286,14 @@ pub(crate) fn build_pdf(
         let items: Vec<Ref> = graph.outline.iter().map(|_| alloc()).collect();
         (root, items)
     });
+    // Independent WinAnsi font: document /Differences may reuse ASCII slots
+    // that the legend needs. Allocate only for debug output.
+    let debug_font_ref = debug.map(|_| alloc());
+    if let Some(font_ref) = debug_font_ref {
+        pdf.type1_font(font_ref)
+            .base_font(Name(b"Helvetica"))
+            .encoding_predefined(Name(b"WinAnsiEncoding"));
+    }
 
     {
         let mut catalog = pdf.catalog(catalog_id);
@@ -273,6 +319,8 @@ pub(crate) fn build_pdf(
             image_refs: &image_refs,
             encodings: &encodings,
             embedded_by_id: &embedded_by_id,
+            debug,
+            debug_font_ref,
         },
     )?;
 
@@ -449,6 +497,8 @@ struct PageEmitContext<'a> {
     image_refs: &'a [Ref],
     encodings: &'a HashMap<Font, DocEncoding>,
     embedded_by_id: &'a HashMap<EmbeddedFontId, &'a EmbeddedFontPlan>,
+    debug: Option<&'a mos_layout::debug::Report>,
+    debug_font_ref: Option<Ref>,
 }
 
 fn plan_base14_encodings(
@@ -463,9 +513,22 @@ fn plan_base14_encodings(
 }
 
 fn emit_pages(pdf: &mut Pdf, graph: &PageGraph, ctx: &PageEmitContext<'_>) -> Result<()> {
-    for (page, (page_id, content_id)) in graph.pages.iter().zip(ctx.page_refs.iter()) {
+    for (index, (page, (page_id, content_id))) in
+        graph.pages.iter().zip(ctx.page_refs.iter()).enumerate()
+    {
+        let debug_page = ctx.debug.map(|report| &report.pages[index]);
+        let extra_height = if debug_page.is_some() {
+            debug::LEGEND_HEIGHT_PT
+        } else {
+            0.0
+        };
+        let width = if debug_page.is_some() {
+            debug::canvas_width(page.width_pt)
+        } else {
+            page.width_pt
+        };
         let mut page_obj = pdf.page(*page_id);
-        page_obj.media_box(Rect::new(0.0, 0.0, page.width_pt, page.height_pt));
+        page_obj.media_box(Rect::new(0.0, 0.0, width, page.height_pt + extra_height));
         page_obj.parent(ctx.page_tree_id);
         page_obj.contents(*content_id);
         {
@@ -474,6 +537,9 @@ fn emit_pages(pdf: &mut Pdf, graph: &PageGraph, ctx: &PageEmitContext<'_>) -> Re
                 let mut fonts = resources.fonts();
                 for (face, font_id) in ctx.base14_refs {
                     fonts.pair(Name(face.pdf_resource_name()), *font_id);
+                }
+                if let Some(font_ref) = ctx.debug_font_ref {
+                    fonts.pair(debug::FONT_NAME, font_ref);
                 }
                 for id in EmbeddedFontId::ALL {
                     if let Some(refs) = ctx.embedded_refs.get(&id) {
@@ -491,8 +557,15 @@ fn emit_pages(pdf: &mut Pdf, graph: &PageGraph, ctx: &PageEmitContext<'_>) -> Re
         }
         page_obj.finish();
 
-        let stream_bytes =
+        let mut stream_bytes =
             content::build_content_stream(page.height_pt, page, ctx.encodings, ctx.embedded_by_id)?;
+        if let Some(debug_page) = debug_page {
+            // Isolate both streams: text state (e.g. character spacing) and
+            // drawing state from the document must not affect the legend.
+            stream_bytes.splice(..0, b"q\n".iter().copied());
+            stream_bytes.extend_from_slice(b"\nQ\n");
+            stream_bytes.extend_from_slice(&debug::overlay(debug_page));
+        }
         pdf.stream(*content_id, &stream_bytes);
     }
     Ok(())

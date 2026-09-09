@@ -9,7 +9,8 @@ fonts, encodings, embedded subsets, images, and PDF metadata currently supported
 
 Implemented:
 
-- PDF file emission through `emit`.
+- PDF file emission through `emit`; `emit_debug` adds recorded boxes/baselines and an external
+  legend strip without changing document layout.
 - Pages, content streams, text runs, image XObjects.
 - Base-14 font resources and custom `/Differences` for extended glyphs.
 - Embedded Noto Sans Type0/CID fonts with subsets and `/ToUnicode`.
@@ -19,8 +20,8 @@ Implemented:
 
 Not implemented yet:
 
-- Hyperlinks, bookmarks, tagged PDF, PDF/A, vector graphics, full catalog language metadata, debug
-  layout backend, SVG pages.
+- Hyperlinks, tagged PDF, PDF/A, general vector graphics, full catalog language metadata, SVG
+  pages. Debug output covers recorded geometry; constraints and float decisions remain deferred.
 - `/CreationDate` + `/ModDate` (deferred: needs a deterministic `SOURCE_DATE_EPOCH`-style input to
   avoid breaking byte stability) and an XMP metadata packet.
 

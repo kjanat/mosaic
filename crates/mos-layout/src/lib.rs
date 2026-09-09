@@ -36,6 +36,7 @@ use word::{ShyBreak, Word, WordItem, split_soft_hyphens, try_shy_break, word_clu
 pub mod bibliography;
 #[doc(hidden)]
 pub mod boundary;
+pub mod debug;
 #[doc(hidden)]
 pub mod image;
 #[doc(hidden)]
@@ -120,9 +121,23 @@ impl LayoutEngine {
     /// ```
     #[must_use]
     pub fn layout(self, document: &Document) -> LayoutResult {
+        self.layout_impl(document, false)
+    }
+
+    /// Lay out a document while recording final geometry and source blocks.
+    /// The report is returned alongside the ordinary graph and diagnostics.
+    #[must_use]
+    pub fn layout_with_debug(self, document: &Document) -> LayoutResult {
+        self.layout_impl(document, true)
+    }
+
+    fn layout_impl(self, document: &Document, capture_debug: bool) -> LayoutResult {
         let Self = self;
         let (page_style, text_style, mut diagnostics) = resolve_styles(document);
         let mut state = LayoutState::new(page_style, text_style);
+        if capture_debug {
+            state.debug = Some(debug::Recorder::default());
+        }
         state.diagnostics.append(&mut diagnostics);
         let Some(root) = document.get(document.root) else {
             return state.finish();
@@ -135,6 +150,7 @@ impl LayoutEngine {
             // first content actually lands on (issue #72), not the page the
             // cursor happens to sit on before a break.
             state.queue_label(node);
+            state.begin_debug_block(node);
             match node.kind {
                 NodeKind::Section => state.layout_heading(document, node),
                 NodeKind::Paragraph => state.layout_paragraph(document, node),
@@ -159,6 +175,7 @@ impl LayoutEngine {
             // kind, a `#set` block); drop it so it never binds to a later
             // block's page (issue #72).
             state.discard_unbound_labels();
+            state.end_debug_block();
         }
         state.finish()
     }
@@ -166,6 +183,7 @@ impl LayoutEngine {
 
 /// Mutable cursor + accumulator threaded through the layout.
 struct LayoutState {
+    debug: Option<debug::Recorder>,
     pages: Vec<Page>,
     /// In-progress page being filled.
     current_page: Page,
@@ -233,6 +251,7 @@ struct PendingSpace {
 impl LayoutState {
     const fn new(page: PageStyle, text: TextStyle) -> Self {
         Self {
+            debug: None,
             pages: Vec::new(),
             current_page: blank_page(1, page),
             cursor_y: page.margin,
@@ -315,6 +334,7 @@ impl LayoutState {
         if self.page_has_content || self.pages.is_empty() {
             self.pages.push(self.current_page);
         }
+        let debug = self.debug.map(|trace| trace.finish(&self.pages, self.page));
         LayoutResult {
             graph: PageGraph {
                 pages: self.pages,
@@ -322,8 +342,28 @@ impl LayoutState {
                 outline: self.outline,
             },
             diagnostics: self.diagnostics,
+            debug,
             label_pages: self.label_pages,
         }
+    }
+
+    fn begin_debug_block(&mut self, node: &Node) {
+        if let Some(trace) = &mut self.debug {
+            trace.begin_block(node);
+        }
+    }
+
+    fn end_debug_block(&mut self) {
+        if let Some(trace) = &mut self.debug {
+            trace.end_block();
+        }
+    }
+
+    fn push_text_run(&mut self, run: TextRun, advance_pt: f32) {
+        if let Some(trace) = &mut self.debug {
+            trace.run(self.current_page.runs.len(), &run, advance_pt);
+        }
+        self.current_page.runs.push(run);
     }
 
     fn layout_heading(&mut self, document: &Document, section: &Node) {
@@ -854,15 +894,18 @@ impl LayoutState {
         if let Some(marker) = self.pending_marker.take() {
             let mut marker_x = marker.x_pt;
             for sub in marker.word.subruns {
-                self.current_page.runs.push(TextRun {
-                    x_pt: marker_x,
-                    baseline_from_top_pt: self.cursor_y,
-                    size_pt: marker.word.size_pt,
-                    font: sub.font,
-                    text: sub.text,
-                    actual_text: None,
-                    glyphs: sub.glyphs,
-                });
+                self.push_text_run(
+                    TextRun {
+                        x_pt: marker_x,
+                        baseline_from_top_pt: self.cursor_y,
+                        size_pt: marker.word.size_pt,
+                        font: sub.font,
+                        text: sub.text,
+                        actual_text: None,
+                        glyphs: sub.glyphs,
+                    },
+                    sub.advance_pt,
+                );
                 marker_x += sub.advance_pt;
             }
         }
@@ -877,17 +920,23 @@ impl LayoutState {
             // switch fires naturally at the font boundary between
             // sub-runs (Latin → Math → Latin in `a≤b`-style runs).
             for sub in &word.subruns {
-                self.current_page.runs.push(TextRun {
-                    x_pt: x,
-                    baseline_from_top_pt: self.cursor_y,
-                    size_pt: word.size_pt,
-                    font: sub.font,
-                    text: sub.text.clone(),
-                    actual_text: word.actual_text.clone(),
-                    glyphs: sub.glyphs.clone(),
-                });
+                self.push_text_run(
+                    TextRun {
+                        x_pt: x,
+                        baseline_from_top_pt: self.cursor_y,
+                        size_pt: word.size_pt,
+                        font: sub.font,
+                        text: sub.text.clone(),
+                        actual_text: word.actual_text.clone(),
+                        glyphs: sub.glyphs.clone(),
+                    },
+                    sub.advance_pt,
+                );
                 x += sub.advance_pt;
             }
+        }
+        if let Some(trace) = &mut self.debug {
+            trace.line(self.current_page.number, self.cursor_y);
         }
         self.page_has_content = true;
         self.cursor_y = max_size.mul_add(leading, self.cursor_y);

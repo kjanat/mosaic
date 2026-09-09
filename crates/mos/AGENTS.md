@@ -14,6 +14,8 @@ Implemented:
   `[output].pdf`.
 - Multiple entries; non-`.mos` files are skipped only when many entries are supplied.
 - `--open` after successful PDF build.
+- `--debug-layout` writes `<pdf-stem>.layout.json` and an annotated `<pdf-stem>.layout.pdf` beside
+  each PDF. `--open` selects the annotated PDF. Any output write failure fails the command.
 
 Parsed/stubbed:
 
