@@ -47,8 +47,8 @@ zed-mosaic/
 - Verify the crate (it is workspace-excluded) with:
   `cargo check --manifest-path crates/zed-mosaic/Cargo.toml --target wasm32-wasip2`. CI runs the
   same check. Install the server for live testing with `cargo mosils`.
-- Run the extension's environment-merge regressions with
-  `cargo test --manifest-path crates/zed-mosaic/Cargo.toml`; CI runs these separately too.
+- Run the extension's environment-merge regressions from this directory with `cargo test`; CI runs
+  these separately too.
 
 ## ANTI-PATTERNS
 
