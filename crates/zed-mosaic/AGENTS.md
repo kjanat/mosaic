@@ -34,6 +34,10 @@ zed-mosaic/
 - Sync skips `locals.scm` and `tags.scm`; Zed does not load them under those names.
 - Generated/local artifacts stay untracked: `*.wasm`, `grammars/`, `target/`, `Cargo.lock`.
 - Keep grammar source in `tree-sitter-mosaic`, not here.
+- Tasks set fixed `MOS_INVOCATION_SOURCE=zed-task` / `MOS_ZED_TASK` markers. LSP launch replaces
+  inherited invocation markers with `zed-lsp` and explicitly empties stale task markers in its command
+  environment; other shell entries are preserved. No collector/transport exists. The boundary is
+  documented in `../../docs/zed-invocations.md`.
 - `mos-lsp` binary discovery in `src/lib.rs`: settings `binary.path` → `mos-lsp` on `PATH` → cached
   download → matching GitHub release asset (`current_platform()` → `mos-lsp-<target>.{tar.gz,zip}`,
   via the `extension.toml` `download_file` capability). Keep this order; surface a clear error when
@@ -43,6 +47,8 @@ zed-mosaic/
 - Verify the crate (it is workspace-excluded) with:
   `cargo check --manifest-path crates/zed-mosaic/Cargo.toml --target wasm32-wasip2`. CI runs the
   same check. Install the server for live testing with `cargo mosils`.
+- Run the extension's environment-merge regressions from this directory with `cargo test`; CI runs
+  these separately too.
 
 ## ANTI-PATTERNS
 

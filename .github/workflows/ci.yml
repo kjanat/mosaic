@@ -70,6 +70,9 @@ jobs:
       - name: check zed extension
         run: cargo check --manifest-path crates/zed-mosaic/Cargo.toml --target wasm32-wasip2
 
+      - name: test zed extension
+        run: cargo test --manifest-path crates/zed-mosaic/Cargo.toml
+
   msrv:
     name: build on workspace MSRV
     runs-on: ubuntu-latest

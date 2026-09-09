@@ -8,6 +8,11 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Zed invocation markers (https://github.com/kjanat/mosaic/issues/133): bundled build tasks identify
+  `zed-task` and their task kind; language-server launches identify `zed-lsp` and clear inherited
+  task attribution. The [privacy contract](docs/zed-invocations.md) limits future opt-in telemetry
+  to aggregate metadata. No telemetry collection or transport is enabled.
+
 - Layout geometry reports (https://github.com/kjanat/mosaic/issues/73): `mos build --debug-layout`
   writes an annotated `<pdf-stem>.layout.pdf` and a `<pdf-stem>.layout.json` report beside each
   generated PDF, including project-declared outputs. The annotated PDF shows colored boxes and

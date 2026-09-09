@@ -405,6 +405,10 @@ Where to read more:
 
 ## Suggested Next Slices
 
+The invocation metadata follow-up (#133) is implemented in the bundled tasks and LSP launcher. See
+[Zed invocation metadata](zed-invocations.md) for the marker values and future opt-in telemetry
+boundary. The markers do not collect data or enable a transport.
+
 1. Remove or document inert `semantic_token_rules.json`.
 2. Decide whether comments are real Mosaic syntax; align compiler and Zed config either way.
 3. Remove `$` auto-close or implement inline math.

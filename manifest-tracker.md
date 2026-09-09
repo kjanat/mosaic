@@ -470,6 +470,9 @@ example.
 - [x] Add rename label.
 - [x] Spawn [`mos-lsp`] from the [`zed-mosaic`] extension (diagnostics, definition, rename, code
       actions).
+- [x] Mark Zed task and LSP invocation sources (#133), with a documented
+      [privacy boundary](docs/zed-invocations.md) for future opt-in telemetry. Collection and
+      transport remain unimplemented.
 - [x] Add citation autocomplete. *(`textDocument/completion` inside a `[@key` token offers every
       record with a key matching `[A-Za-z0-9_:.-]+` loaded from the document's `#bibliography`
       sources, reusing the records `mos-eval` already parsed for citation resolution; the edit
