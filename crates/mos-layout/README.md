@@ -13,6 +13,9 @@ objects.
 ## Current Support
 
 - Entry point: `LayoutEngine::layout(&Document) -> LayoutResult`.
+- Optional tracing: `LayoutEngine::layout_with_debug(&Document)` also fills `LayoutResult::debug`
+  with a serializable geometry/source report. Normal layout returns `None`; both paths produce the
+  same page graph. See the [report format](../../docs/debug-layout.md).
 - Output: `PageGraph { pages, images }` with `TextRun` and `ImagePlacement`.
 - Defaults: A4 page, symmetric 24mm margin, 11pt Noto Sans body text, 1.35 leading.
 - `#set page(...)`: paper size and symmetric margin.
@@ -26,8 +29,9 @@ objects.
 - Figures: image plus caption flow, keep-together when remaining page space allows.
 - Fonts: uses `mos-fonts` for Base-14 metrics, bundled Noto Sans, shaping, and fallback sub-runs.
 
-Invalid layout config emits diagnostics and keeps the prior valid style where possible. Layout
-warnings/errors currently do not make `mos build` fail by themselves.
+Invalid layout config emits diagnostics and keeps the prior valid style where possible. The CLI
+fails the build on layout errors before emitting either the PDF or its debug report; warnings allow
+output.
 
 ## Module Layout
 
@@ -39,6 +43,7 @@ warnings/errors currently do not make `mos build` fail by themselves.
 - `src/list.rs`: ordered/unordered list layout, marker gutter, nested list state restore.
 - `src/word.rs`: shaped word representation and cluster splitting for oversized words.
 - `src/support.rs`: small attribute readers, blank pages, tab expansion.
+- `src/debug.rs`: opt-in recording of final text/image placements and enclosing source-block bounds.
 
 Tests live inline near the behavior they cover.
 

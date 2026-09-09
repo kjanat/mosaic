@@ -28,6 +28,9 @@ Implemented now:
 
 - `--open`: open the generated PDF with the platform default viewer.
 - `--open=PROGRAM`: open the generated PDF with a specific viewer.
+- `--debug-layout`: write `<pdf-stem>.layout.json` beside each generated PDF. It contains final page
+  and source-block bounds, text baselines, run metrics, and image placements. Project output paths
+  and multiple inputs are supported. See the [report format](../../docs/debug-layout.md).
 
 Parsed but not wired to behavior yet:
 

@@ -49,13 +49,21 @@ impl LayoutState {
         self.bind_pending_labels();
 
         let x = (column_w - render_w).mul_add(0.5, self.current_left_pt);
-        self.current_page.images.push(ImagePlacement {
+        let placement = ImagePlacement {
             handle,
             x_pt: x,
             top_from_top_pt: self.cursor_y,
             width_pt: render_w,
             height_pt: render_h,
-        });
+        };
+        if let Some(trace) = &mut self.debug {
+            trace.image(
+                self.current_page.number,
+                self.current_page.images.len(),
+                &placement,
+            );
+        }
+        self.current_page.images.push(placement);
         self.page_has_content = true;
 
         // `cursor_y` is the next text baseline. Add body ascent so
@@ -109,11 +117,13 @@ impl LayoutState {
             let Some(child) = document.get(*child_id) else {
                 continue;
             };
+            self.begin_debug_block(child);
             match child.kind {
                 NodeKind::Image => self.layout_image(*child_id, child),
                 NodeKind::Paragraph => self.layout_paragraph(document, child),
                 _ => {}
             }
+            self.end_debug_block();
         }
     }
 

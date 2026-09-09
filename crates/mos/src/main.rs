@@ -68,6 +68,9 @@ enum Command {
             require_equals = true
         )]
         open: Option<String>,
+        /// Write a .layout.json geometry report beside each generated PDF.
+        #[arg(long)]
+        debug_layout: bool,
         /// Refuse to update dependencies (manifest §15.3).
         #[arg(long)]
         frozen: bool,
@@ -121,9 +124,10 @@ fn main() -> ExitCode {
         Command::Build {
             entries,
             open,
+            debug_layout,
             frozen: _,
             reproducible: _,
-        } => run_builds(&entries, PdfOpen::from_cli(open.as_deref())),
+        } => run_builds(&entries, PdfOpen::from_cli(open.as_deref()), debug_layout),
         Command::Init { .. } => unimplemented_subcommand("init"),
         Command::Watch { .. } => unimplemented_subcommand("watch"),
         Command::Fmt { .. } => unimplemented_subcommand("fmt"),
@@ -146,8 +150,8 @@ fn run_checks(entries: &[PathBuf]) -> ExitCode {
     run_many(entries, run_check)
 }
 
-fn run_builds(entries: &[PathBuf], open: PdfOpen<'_>) -> ExitCode {
-    run_many(entries, |entry| run_build(entry, open))
+fn run_builds(entries: &[PathBuf], open: PdfOpen<'_>, debug_layout: bool) -> ExitCode {
+    run_many(entries, |entry| run_build(entry, open, debug_layout))
 }
 
 fn run_many(entries: &[PathBuf], mut run_one: impl FnMut(&Path) -> ExitCode) -> ExitCode {
@@ -238,7 +242,7 @@ fn run_check(entry: &Path) -> ExitCode {
 /// margins come from `#set page(...)`; text uses the Base-14 fonts with the
 /// bundled Noto Sans embedded and subset for glyphs they lack. Layout
 /// warnings print but don't fail the build.
-fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
+fn run_build(entry: &Path, open: PdfOpen<'_>, debug_layout: bool) -> ExitCode {
     let Ok(resolved) = resolve_entry("build", entry) else {
         return ExitCode::FAILURE;
     };
@@ -279,7 +283,12 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
     let (page_outcome, layout) = mos_eval::resolve_page_reference_fixpoint(
         &mut document,
         |doc| {
-            let layout = mos_layout::LayoutEngine::new().layout(doc);
+            let engine = mos_layout::LayoutEngine::new();
+            let layout = if debug_layout {
+                engine.layout_with_debug(doc)
+            } else {
+                engine.layout(doc)
+            };
             (layout.label_pages.clone(), layout)
         },
         MAX_PAGE_FIXPOINT_ITERATIONS,
@@ -337,6 +346,28 @@ fn run_build(entry: &Path, open: PdfOpen<'_>) -> ExitCode {
             }
             return ExitCode::FAILURE;
         }
+    }
+
+    if let Some(report) = &layout.debug {
+        let debug_out = out.with_extension("layout.json");
+        let data = match serde_json::to_vec_pretty(report) {
+            Ok(mut data) => {
+                data.push(b'\n');
+                data
+            }
+            Err(err) => {
+                eprintln!("mos build: cannot encode layout debug report: {err}");
+                return ExitCode::FAILURE;
+            }
+        };
+        if let Err(err) = std::fs::write(&debug_out, data) {
+            eprintln!(
+                "mos build: cannot write layout debug report to {}: {err}",
+                display_path(&debug_out)
+            );
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {}", display_path(&debug_out));
     }
 
     println!(

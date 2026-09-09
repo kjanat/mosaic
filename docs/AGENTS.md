@@ -12,6 +12,7 @@ manifest dreams last.
 | Diagnostic catalog  | `diagnostic-codes.md`                 | Mirrors `mos-core::codes`; drift-tested.   |
 | Labels/references   | `labels-and-references.md`            | Current resolver boundary and next slices. |
 | Page refs/fixpoints | `page-reference-fixpoint-boundary.md` | Layout coupling risks.                     |
+| Layout inspection   | `debug-layout.md`                     | JSON geometry report and source mapping.   |
 | Formatter trivia    | `formatter-trivia-requirements.md`    | Formatter contract, not implementation.    |
 | Incremental deps    | `incremental-dependencies.md`         | Cache/dependency design intent.            |
 

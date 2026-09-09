@@ -23,7 +23,8 @@ features because manifest dreams loudly.
 Shipped slice:
 
 - `mos check`: parse, lower, resolve, source diagnostics for files/projects.
-- `mos build`: parse, lower, layout, PDF output under direct-file or `[output].pdf` paths.
+- `mos build`: parse, lower, layout, PDF output under direct-file or `[output].pdf` paths;
+  `--debug-layout` writes a sibling `<pdf-stem>.layout.json` geometry/source report.
 - Parser/eval: headings, paragraphs, lists, inline styling/code/refs/page-refs/citations, raw
   `#pre`/`#code` blocks, `#set`, images, figures, hard breaks, soft hyphen, NBSP, `#bibliography`,
   `//` + `/* */` comments (recognized and dropped) plus `/** */` doc comments (preserved as an

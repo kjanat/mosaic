@@ -53,6 +53,7 @@ impl LayoutState {
             if item.kind != NodeKind::ListItem {
                 continue;
             }
+            self.begin_debug_block(item);
             item_idx += 1;
 
             let marker_text = if ordered {
@@ -102,10 +103,13 @@ impl LayoutState {
                         continue;
                     };
                     if child.kind == NodeKind::List {
+                        self.begin_debug_block(child);
                         self.layout_list(document, child);
+                        self.end_debug_block();
                     }
                 }
             }
+            self.end_debug_block();
         }
 
         self.current_left_pt = saved_left;
@@ -129,6 +133,7 @@ impl LayoutState {
             };
             match child.kind {
                 NodeKind::Paragraph => {
+                    self.begin_debug_block(child);
                     let words = self.collect_words(document, child, regular, size);
                     if words.is_empty() {
                         if self.pending_marker.is_some() {
@@ -139,12 +144,15 @@ impl LayoutState {
                         self.flush_marker_only_line_if_pending(leading);
                     }
                     saw_block = true;
+                    self.end_debug_block();
                 }
                 NodeKind::List => {
                     if self.pending_marker.is_some() {
                         self.flush_line(&[], leading);
                     }
+                    self.begin_debug_block(child);
                     self.layout_list(document, child);
+                    self.end_debug_block();
                     saw_block = true;
                 }
                 _ => {}

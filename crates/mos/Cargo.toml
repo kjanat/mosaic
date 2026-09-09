@@ -26,8 +26,9 @@ mos-packages.workspace = true
 mos-parse.workspace    = true
 mos-pdf.workspace      = true
 
-clap.workspace   = true
-opener.workspace = true
+clap.workspace       = true
+opener.workspace     = true
+serde_json.workspace = true
 
 [dev-dependencies]
 lopdf.workspace = true

@@ -14,6 +14,8 @@ Implemented:
   `[output].pdf`.
 - Multiple entries; non-`.mos` files are skipped only when many entries are supplied.
 - `--open` after successful PDF build.
+- `--debug-layout` serializes the final `mos-layout` trace to `<pdf-stem>.layout.json` beside each
+  PDF, before opening the viewer. A report write failure fails the command.
 
 Parsed/stubbed:
 
