@@ -10,6 +10,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use mos_core::{AttrValue, CollectingSink, ContentHash, ContentHasher, Node, NodeKind};
 
+use crate::image_lower::{
+    BITS_PER_COMPONENT_ATTR, COLOR_SPACE_ATTR, PIXEL_HEIGHT_ATTR, PIXEL_WIDTH_ATTR, PIXELS_ATTR,
+};
 use crate::{Evaluator, LowerResult, lower};
 
 const BIB: &str = "@book{one, title={First}}\n@book{two, title={Second}}\n";
@@ -237,6 +240,53 @@ fn bare_evaluation_and_resolved_lowering_agree_on_authored_nodes() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn non_utf8_paths_keep_bibliographies_unloaded_and_images_fingerprinted() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let fixture = Fixture::new();
+    let loaded = block_hashes(&fixture.lower(SOURCE));
+    let mut sink = CollectingSink::new();
+    let tree = mos_parse::parse(SOURCE, &fixture.0.join("main.mos"), &mut sink).unwrap();
+    let unloaded = block_hashes(&Evaluator::evaluate(&tree))["refs.bib"];
+    let dir = fixture.0.join(OsStr::from_bytes(b"caf\xe9"));
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::copy(fixture.0.join("image.png"), dir.join("image.png")).unwrap();
+    std::fs::write(dir.join("refs.bib"), BIB).unwrap();
+    let result = lower(SOURCE, &dir.join("main.mos"));
+    assert!(!result.bibliography_complete);
+    assert!(result.bibliography.entries.is_empty());
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic.def().code() == mos_core::codes::MOS0041.code()
+            && diagnostic.message().contains("non-UTF-8")
+    }));
+    assert!(result.external_dependencies.iter().any(|dependency| {
+        dependency.path == dir.join("refs.bib") && dependency.fingerprint.is_some()
+    }));
+    let hashes = block_hashes(&result);
+    assert_eq!(hashes["refs.bib"], unloaded);
+    assert_ne!(hashes["refs.bib"], loaded["refs.bib"]);
+    for label in ["image", "figure"] {
+        assert_eq!(hashes[label], loaded[label], "use the real image path");
+    }
+
+    // The bibliography remains unloaded when its recorded bytes change, while
+    // image changes must still reach the image and its containing figure.
+    std::fs::write(dir.join("refs.bib"), "@book{changed, title={Changed}}").unwrap();
+    fixture.write_image([30, 20, 10]);
+    std::fs::copy(fixture.0.join("image.png"), dir.join("image.png")).unwrap();
+    let changed = block_hashes(&lower(SOURCE, &dir.join("main.mos")));
+    assert_eq!(changed["refs.bib"], unloaded);
+    for label in ["image", "figure"] {
+        assert_ne!(
+            changed[label], hashes[label],
+            "hash the changed image bytes"
+        );
+    }
+}
+
 #[test]
 fn decoded_metadata_and_file_timestamps_do_not_enter_authored_hashes() {
     let fixture = Fixture::new();
@@ -253,11 +303,11 @@ fn decoded_metadata_and_file_timestamps_do_not_enter_authored_hashes() {
         ),
         ("label_span.start", AttrValue::Int(1)),
         ("label_span.end", AttrValue::Int(2)),
-        ("pixel_width", AttrValue::Int(999)),
-        ("pixel_height", AttrValue::Int(888)),
-        ("color_space", AttrValue::Str("Changed".into())),
-        ("bits_per_component", AttrValue::Int(16)),
-        ("pixels", AttrValue::Bytes(vec![255; 12].into())),
+        (PIXEL_WIDTH_ATTR, AttrValue::Int(999)),
+        (PIXEL_HEIGHT_ATTR, AttrValue::Int(888)),
+        (COLOR_SPACE_ATTR, AttrValue::Str("Changed".into())),
+        (BITS_PER_COMPONENT_ATTR, AttrValue::Int(16)),
+        (PIXELS_ATTR, AttrValue::Bytes(vec![255; 12].into())),
     ] {
         attrs.insert(key.to_owned(), value);
     }

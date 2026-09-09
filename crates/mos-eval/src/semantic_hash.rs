@@ -1,9 +1,13 @@
 //! Authored semantic input snapshots, taken before resolution mutates nodes.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use mos_core::{AttrValue, ContentHasher, Document, NodeKind};
 
+use crate::image_lower::{
+    BITS_PER_COMPONENT_ATTR, COLOR_SPACE_ATTR, PIXEL_HEIGHT_ATTR, PIXEL_WIDTH_ATTR, PIXELS_ATTR,
+};
 use crate::{ExternalDependency, LABEL_SPAN_END_ATTR, LABEL_SPAN_START_ATTR};
 
 /// Must run before citation/label resolution: derived bibliography children
@@ -35,11 +39,11 @@ pub(crate) fn stamp(document: &mut Document, dependencies: &[ExternalDependency]
             ) || (node.kind == NodeKind::Image
                 && matches!(
                     key.as_str(),
-                    "pixels"
-                        | "pixel_width"
-                        | "pixel_height"
-                        | "color_space"
-                        | "bits_per_component"
+                    PIXELS_ATTR
+                        | PIXEL_WIDTH_ATTR
+                        | PIXEL_HEIGHT_ATTR
+                        | COLOR_SPACE_ATTR
+                        | BITS_PER_COMPONENT_ATTR
                 ))
                 || (matches!(
                     node.kind,
@@ -52,11 +56,22 @@ pub(crate) fn stamp(document: &mut Document, dependencies: &[ExternalDependency]
             hash_value(&mut hasher, value);
         }
         if matches!(node.kind, NodeKind::Image | NodeKind::Bibliography) {
-            let path = match node.attributes.get("src") {
-                Some(AttrValue::Str(src)) => {
-                    mos_core::resolve_source_path(src, &node.span.file).ok()
+            let path = if node.kind == NodeKind::Bibliography {
+                // The bibliography loader skips sources without a UTF-8 path,
+                // even when lowering records their fingerprint for invalidation.
+                match node.attributes.get("resolved_path") {
+                    Some(AttrValue::Str(path)) => Some(PathBuf::from(path)),
+                    _ => None,
                 }
-                _ => None,
+            } else {
+                // Images load using the original path; their resolved_path
+                // attribute is a lossy display string on non-UTF-8 filesystems.
+                match node.attributes.get("src") {
+                    Some(AttrValue::Str(src)) => {
+                        mos_core::resolve_source_path(src, &node.span.file).ok()
+                    }
+                    _ => None,
+                }
             };
             hasher.field(b"external-input");
             match path.as_deref().and_then(|path| files.get(path)) {
