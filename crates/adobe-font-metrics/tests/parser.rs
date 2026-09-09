@@ -89,7 +89,10 @@ fn times_roman_carries_kerning() {
     let av = m
         .kerning_pairs
         .iter()
-        .find(|kp| matches!(&kp.operands, KerningOperands::Names { left, right } if left == "A" && right == "V"));
+        .find(|kp| {
+            kp.direction == Direction::Zero
+                && matches!(&kp.operands, KerningOperands::Names { left, right } if left == "A" && right == "V")
+        });
     assert!(
         av.is_some_and(|kp| kp.adjustment.x < 0.0),
         "A/V kern should exist and be negative, got {av:?}"
