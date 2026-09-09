@@ -27,9 +27,16 @@ FontMetrics<'static>` data. It sits below `mos-fonts` in the workspace graph.
 
 ## Data Model
 
-The AFM files are the source of truth for font metrics. `build.rs` generates Rust constants for
-glyph metrics, kerning pairs, per-Latin-font WinAnsi width tables, and sorted glyph-name width
-indexes.
+The AFM files are the source of truth for font metrics. `build.rs` generates Rust constants for the
+complete parsed model: font metadata, both direction slots, glyph vectors/ligatures, kerning,
+tracks, composites, and retained comments/extensions. Per-Latin-font WinAnsi width tables and sorted
+glyph-name indexes explicitly project the effective direction-0 advance onto its x component.
+
+The expanded AFM types are re-exported here. Optional metadata and glyph names now use `Option`,
+character codes distinguish decimal from hexadecimal forms, and kerning retains vectors and
+directions. Callers reading raw metrics should follow the
+[AFM migration guide](https://github.com/kjanat/mosaic/blob/master/docs/afm-parser-scope.md). The
+public glyph-width and WinAnsi lookup methods retain their existing signatures and values.
 
 The Adobe Glyph List is also checked in under `data/agl/`, but only as a test oracle for
 `tests/winansi_vendor.rs`. Cargo excludes it from published crates; the build script uses the

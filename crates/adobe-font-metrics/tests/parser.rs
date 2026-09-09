@@ -6,7 +6,7 @@
 //! per-crate rather than shared with `pdf-base14-metrics` so each
 //! crate stays independently buildable.
 
-use adobe_font_metrics::{FontMetrics, ParseError, parse};
+use adobe_font_metrics::{Direction, FontMetrics, KerningOperands, ParseError, parse};
 
 const HELVETICA: &str = include_str!("fixtures/Helvetica.afm");
 const COURIER: &str = include_str!("fixtures/Courier.afm");
@@ -16,8 +16,9 @@ fn glyph_width(metrics: &FontMetrics<'_>, name: &str) -> Option<f32> {
     metrics
         .character_metrics
         .iter()
-        .find(|m| m.name == name)
-        .map(|m| m.width_x)
+        .find(|m| m.name.as_deref() == Some(name))
+        .and_then(|m| metrics.advance(m, Direction::Zero))
+        .map(|advance| advance.x)
 }
 
 fn approx_eq(a: f32, b: f32) -> bool {
@@ -30,8 +31,8 @@ const fn is_static<T: 'static>(_: &T) {}
 fn parses_helvetica() {
     let m = parse(HELVETICA).expect("Helvetica.afm should parse");
     assert_eq!(m.font_name, "Helvetica");
-    assert_eq!(m.full_name, "Helvetica");
-    assert_eq!(m.family_name, "Helvetica");
+    assert_eq!(m.full_name.as_deref(), Some("Helvetica"));
+    assert_eq!(m.family_name.as_deref(), Some("Helvetica"));
     assert!(
         m.character_metrics.len() > 200,
         "expected > 200 glyphs, got {}",
@@ -44,15 +45,18 @@ fn parses_helvetica() {
         "Helvetica A width should be 667, got {a:?}"
     );
     // Ascender / descender pinning (matches mos-layout::metrics).
-    assert!(approx_eq(m.ascender, 718.0));
-    assert!(approx_eq(m.descender, -207.0));
+    assert!(approx_eq(m.ascender.unwrap_or_default(), 718.0));
+    assert!(approx_eq(m.descender.unwrap_or_default(), -207.0));
 }
 
 #[test]
 fn parses_courier_monospace() {
     let m = parse(COURIER).expect("Courier.afm should parse");
     assert_eq!(m.font_name, "Courier");
-    assert!(m.is_fixed_pitch, "Courier must be marked fixed pitch");
+    assert!(
+        m.direction(Direction::Zero).fixed_pitch(),
+        "Courier must be marked fixed pitch"
+    );
     assert!(m.character_metrics.len() > 200);
     // Every glyph in Courier is 600 units wide.
     for name in ["A", "M", "i"] {
@@ -68,7 +72,7 @@ fn parses_courier_monospace() {
 fn parses_times_roman() {
     let m = parse(TIMES_ROMAN).expect("Times-Roman.afm should parse");
     assert_eq!(m.font_name, "Times-Roman");
-    assert_eq!(m.family_name, "Times");
+    assert_eq!(m.family_name.as_deref(), Some("Times"));
     assert!(m.character_metrics.len() > 200);
     let a = glyph_width(&m, "A");
     assert!(
@@ -85,9 +89,12 @@ fn times_roman_carries_kerning() {
     let av = m
         .kerning_pairs
         .iter()
-        .find(|kp| kp.left == "A" && kp.right == "V");
+        .find(|kp| {
+            kp.direction == Direction::Zero
+                && matches!(&kp.operands, KerningOperands::Names { left, right } if left == "A" && right == "V")
+        });
     assert!(
-        av.is_some_and(|kp| kp.adjust < 0.0),
+        av.is_some_and(|kp| kp.adjustment.x < 0.0),
         "A/V kern should exist and be negative, got {av:?}"
     );
 }
@@ -283,16 +290,11 @@ fn accepts_multibyte_ch_code() {
                EndFontMetrics\n";
     let m = parse(src).expect("parse");
     assert_eq!(m.character_metrics.len(), 1);
-    assert_eq!(m.character_metrics[0].code, 0x8000);
+    assert_eq!(m.character_metrics[0].code.as_u32(), Some(0x8000));
 }
 
 #[test]
-fn direction_1_kerns_dropped_not_conflated() {
-    // Without the `StartKernPairs1` skip, the second KPX would either
-    // be appended to the same vector (silent conflation) or silently
-    // dropped depending on which path the state machine took.
-    // Either way the output misrepresents the AFM. Here we pin the
-    // intended behaviour: only the direction-0 pair survives.
+fn direction_1_kerns_retained_without_conflation() {
     let src = "StartFontMetrics 4.1\n\
                FontName Test\n\
                FontBBox 0 0 0 0\n\
@@ -306,8 +308,11 @@ fn direction_1_kerns_dropped_not_conflated() {
                EndKernData\n\
                EndFontMetrics\n";
     let m = parse(src).expect("parse");
-    assert_eq!(m.kerning_pairs.len(), 1);
-    assert!((m.kerning_pairs[0].adjust - -80.0).abs() < f32::EPSILON);
+    assert_eq!(m.kerning_pairs.len(), 2);
+    assert_eq!(m.kerning_pairs[0].direction, Direction::Zero);
+    assert_eq!(m.kerning_pairs[1].direction, Direction::One);
+    assert!((m.kerning_pairs[0].adjustment.x - -80.0).abs() < f32::EPSILON);
+    assert!((m.kerning_pairs[1].adjustment.x - -999.0).abs() < f32::EPSILON);
 }
 
 #[test]
@@ -412,9 +417,7 @@ fn invalid_start_direction_returns_parse_error() {
 
 #[test]
 fn non_zero_start_direction_does_not_clobber() {
-    // `StartDirection 1` carries direction-1 metrics. Without the
-    // skip, `UnderlinePosition -999` inside the block would overwrite
-    // the top-level `-100` we already read for direction-0.
+    // Direction-1 metrics retain their values without overwriting direction 0.
     let src = "StartFontMetrics 4.1\n\
                FontName Test\n\
                FontBBox 0 0 0 0\n\
@@ -424,5 +427,9 @@ fn non_zero_start_direction_does_not_clobber() {
                EndDirection\n\
                EndFontMetrics\n";
     let m = parse(src).expect("parse");
-    assert!((m.underline_position - -100.0).abs() < f32::EPSILON);
+    assert_eq!(
+        m.direction(Direction::Zero).underline_position,
+        Some(-100.0)
+    );
+    assert_eq!(m.direction(Direction::One).underline_position, Some(-999.0));
 }

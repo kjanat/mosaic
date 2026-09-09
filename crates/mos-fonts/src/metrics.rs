@@ -108,7 +108,7 @@ pub fn glyph_width(font: Font, size: f32, ch: char) -> f32 {
 #[must_use]
 pub fn ascent(font: Font, size: f32) -> f32 {
     match font {
-        Font::Base14(f) => f.metrics().ascender * size / 1000.0,
+        Font::Base14(f) => f.metrics().ascender.unwrap_or_default() * size / 1000.0,
         Font::Embedded(id) => {
             let ef = id.data();
             f32::from(ef.ascender) * size / f32::from(ef.units_per_em)
@@ -130,7 +130,7 @@ pub fn ascent(font: Font, size: f32) -> f32 {
 #[must_use]
 pub fn descent(font: Font, size: f32) -> f32 {
     match font {
-        Font::Base14(f) => -f.metrics().descender * size / 1000.0,
+        Font::Base14(f) => -f.metrics().descender.unwrap_or_default() * size / 1000.0,
         Font::Embedded(id) => {
             let ef = id.data();
             -f32::from(ef.descender) * size / f32::from(ef.units_per_em)

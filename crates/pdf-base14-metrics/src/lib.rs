@@ -53,7 +53,11 @@
 )]
 #![deny(missing_docs)]
 
-pub use adobe_font_metrics::{BBox, CharacterMetric, FontMetrics, KerningPair};
+pub use adobe_font_metrics::{
+    BBox, CharacterCode, CharacterMetric, Composite, CompositeComponent, Direction,
+    DirectionMetrics, FontMetrics, KerningOperands, KerningPair, Ligature, MetricsSets,
+    RecordContext, SourceRecord, TrackKern, Vector,
+};
 
 use std::borrow::Cow;
 
@@ -225,8 +229,9 @@ impl Base14Font {
         self.metrics()
             .character_metrics
             .iter()
-            .find(|c| c.name == name)
-            .map(|c| c.width_x)
+            .find(|c| c.name.as_deref() == Some(name))
+            .and_then(|c| self.metrics().advance(c, Direction::Zero))
+            .map(|advance| advance.x)
     }
 
     /// Width of the glyph with the given PostScript name, looked up
@@ -449,10 +454,15 @@ mod tests {
     fn glyph_width_by_name_matches_linear_scan_for_every_helvetica_glyph() {
         let face = Base14Font::Helvetica;
         for c in face.metrics().character_metrics.iter() {
-            let by_name = face.glyph_width_by_name(c.name.as_ref());
+            let by_name = c
+                .name
+                .as_deref()
+                .and_then(|name| face.glyph_width_by_name(name));
             assert_eq!(
                 by_name,
-                Some(c.width_x),
+                face.metrics()
+                    .advance(c, Direction::Zero)
+                    .map(|advance| advance.x),
                 "by-name mismatch for {:?}",
                 c.name
             );

@@ -12,7 +12,21 @@
 //!   `None` cases (control char and PDF-WinAnsi gap), plus the
 //!   "Symbol/`ZapfDingbats` don't use `WinAnsi`" rule.
 
-use pdf_base14_metrics::Base14Font;
+use pdf_base14_metrics::{Base14Font, Direction};
+
+#[test]
+fn every_baked_font_preserves_the_complete_parsed_afm() {
+    for face in Base14Font::ALL {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("data/afm")
+            .join(format!("{}.afm", face.pdf_base_name()));
+        let source = std::fs::read_to_string(path).expect("vendored AFM");
+        let parsed = adobe_font_metrics::parse(&source)
+            .expect("vendored AFM should parse")
+            .into_owned();
+        assert_eq!(face.metrics().clone().into_owned(), parsed, "{face:?}");
+    }
+}
 
 // AFM widths are integers (per Adobe spec) and integer values up to
 // 1015 round-trip exactly through f32, so bare `==` is safe here.
@@ -51,7 +65,7 @@ fn courier_is_monospace() {
             assert_eq!(f.glyph_width(g), Some(600.0), "{f:?}/{g}");
         }
         assert!(
-            f.metrics().is_fixed_pitch,
+            f.metrics().direction(Direction::Zero).fixed_pitch(),
             "{f:?} should be marked is_fixed_pitch"
         );
     }
@@ -94,8 +108,16 @@ fn text_fonts_have_ascender_and_descender() {
     ];
     for f in text_fonts {
         let m = f.metrics();
-        assert!(m.ascender > 0.0, "{f:?} ascender = {}", m.ascender);
-        assert!(m.descender < 0.0, "{f:?} descender = {}", m.descender);
+        assert!(
+            m.ascender.is_some_and(|value| value > 0.0),
+            "{f:?} ascender = {:?}",
+            m.ascender
+        );
+        assert!(
+            m.descender.is_some_and(|value| value < 0.0),
+            "{f:?} descender = {:?}",
+            m.descender
+        );
     }
 }
 

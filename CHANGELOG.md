@@ -48,6 +48,16 @@ All notable changes to this project will be documented here. The format is based
   `LowerResult::bibliography` (re-exporting `mos_bib::Bibliography`), so the server reuses what
   citation resolution already parsed instead of opening `.bib` files itself.
 
+### Changed
+
+- Expand `adobe-font-metrics` with optional font metadata, both writing directions, complete
+  character and kerning vectors, ligatures, track kerning, composites, comments, and extension
+  records. Add borrowed byte parsing, global width/origin resolution, and complete owned conversion.
+  Parsing now validates finite numbers, operand arity, section boundaries/counts, and complete files.
+  This breaks public metric struct fields and their `pdf-base14-metrics` re-exports; the
+  [migration guide](docs/afm-parser-scope.md) documents the new model and remaining format limits.
+  Core-14 static baking retains the expanded data while existing horizontal widths remain unchanged.
+
 ## [0.0.2] - 2026-09-07
 
 ### Added

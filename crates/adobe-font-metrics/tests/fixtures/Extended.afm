@@ -1,0 +1,66 @@
+StartFontMetrics 4.1
+Comment Synthetic AFM fixture authored for this crate; MIT licensed.
+FontName Extended
+FullName Extended Metrics
+FamilyName Extended Family
+Weight Medium
+FontBBox -20.5 -200 1200 900.25
+MetricsSets 2
+Version 2.7
+Notice Synthetic font metadata
+EncodingScheme FontSpecific
+MappingScheme 3
+EscChar 27
+CharacterSet ExampleSet
+Characters 3
+IsBaseFont false
+IsCIDFont false
+VVector 300 800
+IsFixedV true
+CapHeight 700
+XHeight 450
+Ascender 720
+Descender -180
+StdHW 50
+StdVW 60
+BlendAxisTypes [/Weight /Width]
+customFontData retained
+StartDirection 2
+UnderlineThickness 40
+ItalicAngle -12
+EndDirection
+StartDirection 0
+CharWidth 600 0
+IsFixedPitch true
+UnderlinePosition -100
+EndDirection
+StartDirection 1
+CharWidth 0 -1000
+IsFixedPitch true
+UnderlinePosition -40
+customDirectionData retained
+EndDirection
+StartCharMetrics 3
+C 65 ; W 600 0 ; W1 0 -1000 ; N A ; B -1.5 0 599.25 700.5 ; VV 300 800 ; L V AV ; L A AA ; customGlyphData retained ;
+CH <008000> ; N wide ;
+C -1 ; W0 600 0 ; W1Y -1000 ; N Aacute ; B 0 0 600 850 ;
+EndCharMetrics
+StartKernData
+StartTrackKern 2
+TrackKern -1 8 -0.5 72 -3
+TrackKern 1 8 0.5 72 3
+EndTrackKern
+StartKernPairs0 3
+KP A V -80 20
+KPY A wide -35
+KPH <0041> <56> -10 11
+EndKernPairs
+StartKernPairs1 2
+KP A V 30 -100
+KPX A wide 15
+EndKernPairs
+EndKernData
+StartComposites 1
+CC Aacute 2 ; PCC A 0 0 ; PCC acute 160.5 170.25 ;
+EndComposites
+EndFontMetrics
