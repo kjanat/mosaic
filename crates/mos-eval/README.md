@@ -61,7 +61,10 @@ own dependency tracking.
 - Citations start with visible placeholder text like `[?smith2024?]`; bibliography loading and
   citation resolution are later work.
 - Lists become `List` nodes with an `ordered` boolean and nested `ListItem` children.
-- Raw pre/code blocks become `Raw` nodes with `text`, optional `label`, and `raw.kind` attributes.
+- Raw pre/code blocks become `Raw` nodes with `text`, optional `label`, and `raw.kind` attributes. A
+  code block's final `lang` argument, when a string or identifier, is preserved under
+  `CODE_LANGUAGE_ATTR` (`raw.lang`) and participates in its authored content hash. This metadata
+  supports editor hints; code rendering and execution do not interpret the language yet.
 - `#set` directives become `Raw` nodes tagged with `set` and `set.arg.*` attributes.
 
 Supported `#set` targets are `page`, `text`, `document`, and `image`. Values are coerced at this

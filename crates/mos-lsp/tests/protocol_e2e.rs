@@ -280,6 +280,7 @@ fn zed_like_initialize_params() -> Value {
                 "definition": { "linkSupport": false },
                 "documentSymbol": { "hierarchicalDocumentSymbolSupport": true },
                 "rename": { "prepareSupport": false },
+                "inlayHint": {},
                 "codeAction": {
                     "codeActionLiteralSupport": {
                         "codeActionKind": { "valueSet": ["quickfix"] },
@@ -396,6 +397,11 @@ fn initialize_handshake_advertises_capabilities_and_exits_cleanly() -> TestResul
         &capabilities.pointer("/completionProvider/triggerCharacters"),
         &Some(&json!(["@"])),
         "completionProvider.triggerCharacters",
+    )?;
+    ensure_eq(
+        &capabilities.get("inlayHintProvider"),
+        &Some(&json!({ "resolveProvider": false })),
+        "inlayHintProvider",
     )?;
     // Pull diagnostics are not implemented; advertising them would
     // deadlock pull-capable clients.
@@ -876,6 +882,142 @@ fn document_symbol_returns_nested_heading_outline() -> TestResult {
     )?;
 
     server.shutdown(3)
+}
+
+#[test]
+fn inlay_hints_follow_code_edits_manual_labels_and_document_lifecycle() -> TestResult {
+    let uri = "file:///virtual/main.mos";
+    let src = "#code(lang: \"rust\")[[\nfn main() {}\n]]";
+    let params = json!({
+        "textDocument": { "uri": uri },
+        "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 100, "character": 0 },
+        },
+    });
+    let mut server = Server::spawn()?;
+    initialize(&mut server, &zed_like_initialize_params())?;
+    server.open_document(uri, src)?;
+    ensure(server.diagnostics_for(uri)?.is_empty(), "valid code block")?;
+    let original = server.request(2, "textDocument/inlayHint", &params)?;
+    let original_hints = original["result"].as_array().ok_or("inlay hint array")?;
+    ensure_eq(&original_hints.len(), &1, "one unnamed code block")?;
+    let name = original_hints[0]["label"]
+        .as_str()
+        .ok_or("generated name")?
+        .to_owned();
+    ensure(
+        name.starts_with("rust: fn main() {} ["),
+        "readable Rust name",
+    )?;
+    ensure_eq(
+        &original_hints[0]["position"],
+        &position_of(src, "]]", 2)?,
+        "closing position",
+    )?;
+    ensure(
+        original_hints[0].get("textEdits").is_none(),
+        "display-only hint",
+    )?;
+
+    let moved = format!("= Introduction 😀\n\n{src}");
+    server.notify(
+        "textDocument/didChange",
+        &json!({
+            "textDocument": { "uri": uri, "version": 2 },
+            "contentChanges": [{ "text": moved }],
+        }),
+    )?;
+    let after_move = server.request(3, "textDocument/inlayHint", &params)?;
+    ensure_eq(
+        &after_move["result"][0]["label"],
+        &json!(name),
+        "stable name after unrelated edit",
+    )?;
+    ensure_eq(
+        &after_move["result"][0]["position"],
+        &position_of(&moved, "]]", 2)?,
+        "updated closing position",
+    )?;
+    let visible = json!({
+        "textDocument": { "uri": uri },
+        "range": range_of(&moved, "]]")?,
+    });
+    let viewport = server.request(4, "textDocument/inlayHint", &visible)?;
+    ensure_eq(
+        &viewport["result"],
+        &after_move["result"],
+        "closing-only viewport",
+    )?;
+
+    server.notify(
+        "textDocument/didChange",
+        &json!({
+            "textDocument": { "uri": uri, "version": 3 },
+            "contentChanges": [{ "text": src.replace("main", "changed") }],
+        }),
+    )?;
+    let changed = server.request(5, "textDocument/inlayHint", &params)?;
+    ensure(
+        changed["result"][0]["label"]
+            .as_str()
+            .is_some_and(|label| label.starts_with("rust: fn changed() {} [") && label != name),
+        "body edit replaces cached hint",
+    )?;
+
+    server.notify(
+        "textDocument/didChange",
+        &json!({
+            "textDocument": { "uri": uri, "version": 4 },
+            "contentChanges": [{ "text": format!("{src} <ex:main>\n\n@ex:main\n") }],
+        }),
+    )?;
+    ensure(
+        server.diagnostics_for(uri)?.is_empty(),
+        "manual label resolves",
+    )?;
+    ensure_eq(
+        &server.request(6, "textDocument/inlayHint", &params)?["result"],
+        &json!([]),
+        "manual label removes generated hint",
+    )?;
+
+    server.notify(
+        "textDocument/didChange",
+        &json!({
+            "textDocument": { "uri": uri, "version": 5 },
+            "contentChanges": [{ "text": "#code[[incomplete" }],
+        }),
+    )?;
+    ensure(
+        server
+            .diagnostics_for(uri)?
+            .iter()
+            .any(|diagnostic| diagnostic["code"] == "MOS0016"),
+        "incomplete block keeps compiler diagnostic",
+    )?;
+    ensure_eq(
+        &server.request(7, "textDocument/inlayHint", &params)?["result"],
+        &json!([]),
+        "incomplete block removes hint",
+    )?;
+
+    server.notify(
+        "textDocument/didClose",
+        &json!({ "textDocument": { "uri": uri } }),
+    )?;
+    ensure_eq(
+        &server.request(8, "textDocument/inlayHint", &params)?["result"],
+        &json!([]),
+        "closed document has no hints",
+    )?;
+    server.open_document(uri, src)?;
+    ensure_eq(
+        &server.request(9, "textDocument/inlayHint", &params)?["result"],
+        &original["result"],
+        "reopen restores current hints",
+    )?;
+    server.shutdown(10)
 }
 
 #[test]

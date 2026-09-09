@@ -42,6 +42,11 @@ Write the label in angle brackets, `<id>`:
 There is no trailing-`<id>` form on [call-style directives](#call-style-directives) like
 `#image(...)` and `#figure(...)`; those use a [`label:` argument](#label-arguments) instead.
 
+Editors with inlay hints enabled show a
+[generated display name](../crates/mos-lsp/README.md#code-block-names) after an unnamed `#code`
+block. Adding a manual `<label>` suppresses that hint. Generated names are editor context only; `@`
+references and rename operate on authored labels.
+
 ### Call-style directives
 
 `#image(...)` and `#figure(...)` are directive calls with structured arguments.

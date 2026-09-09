@@ -18,7 +18,8 @@ quick fixes.
 - Implemented requests/notifications: `initialize`, `initialized`, `shutdown`, `exit`,
   `textDocument/didOpen`, `textDocument/didChange` (full sync), `textDocument/didClose`,
   `textDocument/definition`, `textDocument/documentSymbol`, `textDocument/rename`,
-  `textDocument/codeAction`, `textDocument/hover`, `textDocument/completion`.
+  `textDocument/codeAction`, `textDocument/hover`, `textDocument/completion`,
+  `textDocument/inlayHint`.
 - After every open/change the server sends `textDocument/publishDiagnostics` with the compiler
   diagnostics for that document; close clears them.
 - `textDocument/definition` resolves a cursor on an `@label` / `@page(label)` reference to a single
@@ -47,11 +48,43 @@ quick fixes.
   missing, unreadable, or malformed bibliography source, gets an empty list; the source diagnostics
   stay as they are.
 - Unknown requests get a JSON-RPC `MethodNotFound` (-32601); unknown notifications are dropped.
+- `textDocument/inlayHint` shows a generated name after the closing delimiter of each unnamed
+  `#code` block in the requested range. It uses the cached lowered document and updates after edits.
+  Manually labelled blocks, `#pre`, inline code, comments, and unfinished blocks get no hint. The
+  names are display-only: they add no labels, text edits, or runnable commands.
 - Advertised capabilities are intentionally narrow: full text sync, UTF-16 position encoding,
   `definitionProvider`, `documentSymbolProvider`, `renameProvider`, `codeActionProvider`,
-  `hoverProvider`, and `completionProvider` (trigger character `@`). Pull diagnostics are not
-  advertised.
+  `hoverProvider`, `completionProvider` (trigger character `@`), and `inlayHintProvider`
+  (`resolveProvider: false`). Pull diagnostics are not advertised.
 - Binary: `mos-lsp`, defined in `Cargo.toml`, calls `mos_lsp::run()`.
+
+### Code-block names
+
+Enable inlay hints in your editor to see names beside unlabelled closing delimiters:
+
+```mos
+#code(lang: "rust")[[
+fn main() {}
+]]
+```
+
+The name starts with `rust: fn main() {}` and ends with an eight-digit hexadecimal content hash. The
+language is capped at 16 characters and the first nonblank body line at 40, with an ellipsis when
+truncated. Missing or empty languages use `code`; empty bodies use `empty block`. Control characters
+are omitted from previews. String and bare-identifier `lang` arguments are preserved by lowering;
+the final `lang` argument wins, and a nontext value has no language metadata.
+
+Names survive moving a block, changing unrelated text, relocating the document, and switching
+between LF and CRLF. Editing the body or language changes the name. Identical displayed names get
+`#2`, `#3`, and so on in document order, computed before viewport filtering. Their suffixes can
+change when an identical block is inserted or removed. Hashes are engine-version stamped, so these
+names are not persistent identifiers across compiler versions.
+
+Hints appear immediately after the actual closing delimiter, including long forms such as `]==]`. A
+viewport containing just that position receives the hint even when the opening delimiter is
+off-screen. Positions use UTF-16 and include the requested range's boundary points. Adding a manual
+`<ex:main>` after the delimiter suppresses the generated hint and gives the block its ordinary
+referenceable label. Code-block extraction and execution remain future CLI work.
 
 ### Manual smoke test
 
@@ -98,9 +131,10 @@ mos-lsp initialize_did_open_publishes_diagnostics_and_exits`.
 assertions under a Zed-like client profile), the didOpen/didChange/didClose diagnostics lifecycle,
 go-to-definition for `@label` references (including UTF-16 column handling for non-BMP text) and for
 `[@key]` citations against a real on-disk `.bib` fixture, citation-key completion against the same
-kind of fixture, rename, quickfix code actions, document symbols, and clean shutdown/exit. All reads
-are framed and timeout-guarded, so a hung server fails the suite instead of hanging CI. The harness
-runs as part of `cargo test -p mos-lsp`.
+kind of fixture, rename, quickfix code actions, document symbols, code-block hints through edits,
+labelling, close/reopen, and clean shutdown/exit. All reads are framed and timeout-guarded, so a
+hung server fails the suite instead of hanging CI. The harness runs as part of `cargo test -p
+mos-lsp`.
 
 ## Boundary
 
@@ -111,6 +145,8 @@ walks the lowered `mos-eval` `Document` (label declarations, reference spans, an
 target spans) and translates spans to LSP ranges, mirroring resolver/bibliography state rather than
 reimplementing policy. Citation completion reads the `LowerResult`'s `bibliography`, the records
 `mos-eval` already loaded to resolve citations, so the server never opens a `.bib` file itself.
+Code-block hints read the lowered raw node's language, text, span, and authored content hash. The
+LSP derives display names without reparsing source or changing compiler labels.
 
 To avoid re-lowering the same source repeatedly, the server keeps an in-memory per-document cache of
 `mos_eval::lower` output (`src/cache.rs`). Both paths share it: publishing diagnostics on `didOpen`

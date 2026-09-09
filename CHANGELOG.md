@@ -8,6 +8,13 @@ All notable changes to this project will be documented here. The format is based
 
 ### Added
 
+- Code-block inlay hints (https://github.com/kjanat/mosaic/issues/31): `mos-lsp` shows a generated
+  language/body name with a short content hash after each unnamed `#code` closing delimiter.
+  Names stay stable through unrelated edits and relocation; duplicate names are disambiguated
+  across viewport requests. Manual labels suppress hints, and unfinished blocks produce none.
+  `mos-eval` preserves the authored code language for these display-only names; compiler label
+  resolution and code execution are unchanged.
+
 - Add stable authored-content hashes for lowered blocks
   (https://github.com/kjanat/mosaic/issues/110), exposed through `Node::content_hash()`.
   Hashes include child content and referenced image/bibliography bytes, stay stable when

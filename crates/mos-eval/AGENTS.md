@@ -13,6 +13,8 @@ Implemented:
 - `InlineKind::HardBreak` lowered to `NodeKind::HardBreak` with empty attributes (no `text` payload;
   structural marker only).
 - Raw `#pre` / `#code` blocks lowered to `NodeKind::Raw` with a `raw.kind` attribute.
+  `#code` preserves its final string/identifier `lang` argument as `CODE_LANGUAGE_ATTR`
+  (`raw.lang`) for editor consumers and authored hashing; it does not execute or highlight code.
 - Lists lowered to `List`/`ListItem` nodes.
 - `#set` nodes for document/page/text/image settings.
 - Document metadata: title, author, language.

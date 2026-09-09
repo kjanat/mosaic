@@ -473,6 +473,10 @@ example.
       sources, reusing the records `mos-eval` already parsed for citation resolution; the edit
       replaces the key and closes the `]`.)*
 - [ ] Add figure preview.
+- [x] Add generated code-block names and inlay hints (#31). *(`textDocument/inlayHint` shows the
+      language, first nonblank body line, and a short authored-content hash at an unnamed `#code`
+      block's closing delimiter. Manual labels suppress hints. Names are display metadata;
+      code-block extraction/execution and persistent runnable identities remain future work.)*
 - [x] Add nested heading outline.
 - [ ] Add symbol search.
 - [x] Add hover docs. *(`textDocument/hover` returns a symbol's attached `/** … */` doc comment as
