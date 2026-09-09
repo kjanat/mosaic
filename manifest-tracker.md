@@ -141,8 +141,8 @@ example.
 - [ ] Add `mos bundle` for archival bundles.
 - [ ] Add `mos convert` only after a scoped import plan exists.
 - [ ] Add `mos build --frozen`.
-- [x] Add `mos build --debug-layout`. *(Writes `<pdf-stem>.layout.json` beside each PDF; see
-      [the report format](docs/debug-layout.md).)*
+- [x] Add `mos build --debug-layout`. *(Writes `.layout.pdf` boxes/baselines and `.layout.json`
+      geometry beside each PDF; see [the report format](docs/debug-layout.md).)*
 
 ## Parser And Syntax
 
@@ -323,7 +323,8 @@ example.
 - [ ] Implement EPUB backend.
 - [ ] Implement SVG page backend.
 - [ ] Implement debug layout backend:
-  - [x] boxes *(JSON page/content bounds, source-block bounds, text runs, and image/figure bounds)*
+  - [x] boxes *(Annotated PDF and JSON page/content bounds, source-block bounds, text runs,
+        image/figure bounds)*
   - [x] baselines *(Final text-line baselines, including resolved page references)*
   - [ ] constraints
   - [ ] dirty nodes

@@ -1,26 +1,52 @@
 # Inspecting layout geometry
 
-`mos build --debug-layout` writes a JSON report beside each generated PDF:
+`mos build --debug-layout` writes an annotated PDF and a JSON report beside each generated PDF:
 
 ```sh
 mos build --debug-layout main.mos
-# build/main.pdf and build/main.layout.json
+# build/main.pdf, build/main.layout.pdf, and build/main.layout.json
 
 mos build --debug-layout one two
-# Each project's configured PDF output and its sibling .layout.json report
+# Each project's PDF output and its sibling .layout.pdf and .layout.json files
 ```
 
-The PDF path follows the normal build rules, including `[output].pdf` for projects. Replacing its
-extension with `.layout.json` gives the report path: `out/book.pdf` becomes `out/book.layout.json`.
-A report is written after successful PDF emission, before an optional `--open` viewer launch.
-Failure to write the report makes the command fail; the PDF may already exist. Compiler errors
-produce neither artifact. Existing artifacts from earlier builds are not removed when a later build
-fails or omits the flag.
+The PDF path follows the normal build rules, including `[output].pdf` for projects. For
+`out/book.pdf`, the debug files are `out/book.layout.pdf` and `out/book.layout.json`.
+`--debug-layout --open` opens the annotated PDF; `--open=PROGRAM` selects its viewer. All three
+files must be written successfully before opening the viewer. A write failure fails the command;
+earlier files may already exist. Compiler errors produce no new artifacts. Existing artifacts from
+earlier builds are not removed when a later build fails or omits the flag.
+
+## Visible geometry
+
+Open the `.layout.pdf` to see the original document with these overlays:
+
+| Mark                    | Geometry                                     |
+| ----------------------- | -------------------------------------------- |
+| Gray dashed rectangle   | Content area inside the page margins         |
+| Blue dashed rectangle   | Source block, including its emitted children |
+| Green rectangle         | Text line                                    |
+| Purple dotted rectangle | Individual text run                          |
+| Orange rectangle        | Image placement                              |
+| Red horizontal line     | Text baseline                                |
+
+A gray outline marks the original paper. Each page has a 36-point legend strip above that outline;
+the debug canvas is at least 420 points wide so the legend stays readable on small paper sizes. The
+original document retains its scale, coordinates, page breaks, text, images, and bookmarks. The
+legend occupies extra canvas space even on zero-margin pages. Coincident rectangles can share edges;
+use the JSON report to inspect their separate source IDs and exact bounds.
+
+Committed examples: [figures and citations](../examples/lsp/lsp.layout.pdf),
+[code blocks](../examples/code/code.layout.pdf), and
+[nested lists](../examples/lists/lists.layout.pdf). Regenerate these snapshots with `mos build
+--debug-layout examples/lsp examples/code examples/lists`. The adjacent JSON reports are generated
+inspection data and need not be committed.
 
 The report captures the final layout used for the PDF, after page-reference resolution. Tracing
-preserves PDF bytes. Identical inputs, compiler version, and source paths produce identical report
-bytes, including deterministic array ordering and a trailing newline. Reports contain no timestamps;
-relocating a document can change source paths, and edits can change node IDs.
+preserves the ordinary PDF bytes. The annotated PDF is also deterministic. Identical inputs,
+compiler version, and source paths produce identical report bytes, including deterministic array
+ordering and a trailing newline. Reports contain no timestamps; relocating a document can change
+source paths, and edits can change node IDs.
 
 ## Format version 1
 
@@ -89,8 +115,10 @@ null`.
 
 `LayoutEngine::layout_with_debug(&Document)` returns the usual `LayoutResult` plus `debug:
 Some(Report)`. The report types live in `mos_layout::debug` and implement `serde::Serialize`. Layout
-performs no file I/O; the CLI serializes the report. Ordinary `LayoutEngine::layout` calls return
-`debug: None` and do not collect trace data.
+performs no file I/O; the CLI serializes the report. `mos_pdf::emit_debug` consumes the graph and
+its matching report to draw the annotated PDF. Mismatched report versions or page geometry return
+`MOS0051` before writing output. Ordinary `LayoutEngine::layout` calls return `debug: None` and do
+not collect trace data.
 
 This report covers today's page graph: boxes, baselines, text runs, images, and source blocks. SVG
 overlays, float decisions, constraint graphs, dirty-node tracking, and page-break costs remain

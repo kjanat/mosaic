@@ -68,7 +68,7 @@ enum Command {
             require_equals = true
         )]
         open: Option<String>,
-        /// Write a .layout.json geometry report beside each generated PDF.
+        /// Write a .layout.pdf with boxes/baselines and a .layout.json report beside each PDF.
         #[arg(long)]
         debug_layout: bool,
         /// Refuse to update dependencies (manifest §15.3).
@@ -348,6 +348,7 @@ fn run_build(entry: &Path, open: PdfOpen<'_>, debug_layout: bool) -> ExitCode {
         }
     }
 
+    let mut viewer_out = out.clone();
     if let Some(report) = &layout.debug {
         let debug_out = out.with_extension("layout.json");
         let data = match serde_json::to_vec_pretty(report) {
@@ -368,6 +369,19 @@ fn run_build(entry: &Path, open: PdfOpen<'_>, debug_layout: bool) -> ExitCode {
             return ExitCode::FAILURE;
         }
         println!("wrote {}", display_path(&debug_out));
+        viewer_out = out.with_extension("layout.pdf");
+        if let Err(err) = mos_pdf::emit_debug(&layout.graph, report, &metadata, &viewer_out) {
+            // Font diagnostics were already rendered for the identical graph
+            // above; only a new emission failure needs reporting here.
+            match err {
+                mos_core::CoreError::Diagnostic(d) => {
+                    let _ = sink.emit(*d);
+                }
+                mos_core::CoreError::Unimplemented(msg) => eprintln!("mos build: {msg}"),
+            }
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {}", display_path(&viewer_out));
     }
 
     println!(
@@ -376,8 +390,8 @@ fn run_build(entry: &Path, open: PdfOpen<'_>, debug_layout: bool) -> ExitCode {
         started.elapsed().as_millis()
     );
     if open.should_open() {
-        match open_pdf(&out, open) {
-            Ok(()) => println!("opened {}", display_path(&out)),
+        match open_pdf(&viewer_out, open) {
+            Ok(()) => println!("opened {}", display_path(&viewer_out)),
             Err(err) => {
                 eprintln!("mos build: {err}");
                 return ExitCode::FAILURE;

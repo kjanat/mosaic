@@ -7,14 +7,14 @@ manifest dreams last.
 
 ## WHERE TO LOOK
 
-| Task                | Location                              | Notes                                      |
-| ------------------- | ------------------------------------- | ------------------------------------------ |
-| Diagnostic catalog  | `diagnostic-codes.md`                 | Mirrors `mos-core::codes`; drift-tested.   |
-| Labels/references   | `labels-and-references.md`            | Current resolver boundary and next slices. |
-| Page refs/fixpoints | `page-reference-fixpoint-boundary.md` | Layout coupling risks.                     |
-| Layout inspection   | `debug-layout.md`                     | JSON geometry report and source mapping.   |
-| Formatter trivia    | `formatter-trivia-requirements.md`    | Formatter contract, not implementation.    |
-| Incremental deps    | `incremental-dependencies.md`         | Cache/dependency design intent.            |
+| Task                | Location                              | Notes                                         |
+| ------------------- | ------------------------------------- | --------------------------------------------- |
+| Diagnostic catalog  | `diagnostic-codes.md`                 | Mirrors `mos-core::codes`; drift-tested.      |
+| Labels/references   | `labels-and-references.md`            | Current resolver boundary and next slices.    |
+| Page refs/fixpoints | `page-reference-fixpoint-boundary.md` | Layout coupling risks.                        |
+| Layout inspection   | `debug-layout.md`                     | Annotated PDF, JSON geometry, source mapping. |
+| Formatter trivia    | `formatter-trivia-requirements.md`    | Formatter contract, not implementation.       |
+| Incremental deps    | `incremental-dependencies.md`         | Cache/dependency design intent.               |
 
 ## TRUTH RULES
 

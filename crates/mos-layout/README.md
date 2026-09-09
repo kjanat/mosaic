@@ -82,7 +82,9 @@ In the real pipeline, `mos-eval` builds the `Document`, `mos-layout` builds the 
 - No parsing or semantic lowering.
 - No PDF, HTML, EPUB, SVG, or file emission.
 - No full constraint graph, Knuth-Plass, hyphenation, float solver, or layout fixpoint.
-- No tables, equations, footnotes, bibliography, TOC, or page-reference resolution here.
+- Bibliography layout supports the lowered plain-text cited-entry list; CSL styling is not
+  implemented.
+- No tables, equations, footnotes, TOC, or page-reference resolution here.
 - No widow/orphan or keep-with-next constraints.
 - No incremental reflow/cache boundary reuse.
 - No font discovery or advanced shaping policy beyond what `mos-fonts` exposes.
