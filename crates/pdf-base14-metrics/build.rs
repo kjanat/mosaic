@@ -1,7 +1,7 @@
 //! Build script: parses the 14 vendored Adobe Core 14 AFM files with
 //! the `adobe-font-metrics` crate and code-generates `$OUT_DIR/baked.rs`,
 //! a single Rust file containing one
-//! `static <FONT>: adobe_font_metrics::FontMetrics<'static>` per Core 14
+//! `static <FONT>: FontMetrics<'static>` per Core 14
 //! face plus a per-Latin-font `[Option<f32>; 256]`
 //! `WinAnsiEncoding` width table.
 //!
@@ -30,6 +30,11 @@
 //! lints enabled at the workspace level) by returning `Result` from
 //! `main` and writing Cargo directives with `writeln!` on a locked
 //! stdout handle.
+
+use adobe_font_metrics::{
+    BBox, CharacterCode, Direction, FontMetrics, KerningOperands, MetricsSets, RecordContext,
+    Vector, parse,
+};
 
 use std::error::Error;
 use std::fmt::Write as _;
@@ -87,214 +92,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     for (const_ident, file, is_latin) in FONTS {
         let path = manifest_dir.join("data").join("afm").join(file);
         let src = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let metrics = adobe_font_metrics::parse(&src)
-            .map_err(|e| format!("parse {}: {e}", path.display()))?;
+        let metrics = parse(&src).map_err(|e| format!("parse {}: {e}", path.display()))?;
         emit_font(&mut buf, const_ident, &metrics, *is_latin)?;
     }
 
     fs::write(out_dir.join("baked.rs"), buf)?;
     Ok(())
-}
-
-fn emit_font(
-    buf: &mut String,
-    ident: &str,
-    m: &adobe_font_metrics::FontMetrics<'_>,
-    is_latin: bool,
-) -> Result<(), Box<dyn Error>> {
-    emit_character_metrics(buf, ident, m)?;
-    emit_kerning_pairs(buf, ident, m)?;
-    if is_latin {
-        emit_latin_tables(buf, ident, m)?;
-    }
-    emit_font_static(buf, ident, m)?;
-    Ok(())
-}
-
-fn emit_character_metrics(
-    buf: &mut String,
-    ident: &str,
-    m: &adobe_font_metrics::FontMetrics<'_>,
-) -> Result<(), std::fmt::Error> {
-    writeln!(buf, "const {ident}_CHARS: &[CharacterMetric<'static>] = &[")?;
-    for c in m.character_metrics.iter() {
-        write!(buf, "    CharacterMetric {{ code: ")?;
-        write!(buf, "{}_i32", c.code)?;
-        write!(buf, ", name: Cow::Borrowed(")?;
-        emit_str_literal(buf, &c.name)?;
-        write!(buf, "), width_x: ")?;
-        emit_f32(buf, c.width_x)?;
-        write!(buf, ", bbox: ")?;
-        match c.bbox {
-            Some(bb) => {
-                write!(buf, "Some(BBox {{ llx: ")?;
-                emit_f32(buf, bb.llx)?;
-                write!(buf, ", lly: ")?;
-                emit_f32(buf, bb.lly)?;
-                write!(buf, ", urx: ")?;
-                emit_f32(buf, bb.urx)?;
-                write!(buf, ", ury: ")?;
-                emit_f32(buf, bb.ury)?;
-                write!(buf, " }})")?;
-            }
-            None => write!(buf, "None")?,
-        }
-        writeln!(buf, " }},")?;
-    }
-    writeln!(buf, "];\n")?;
-    Ok(())
-}
-
-fn emit_kerning_pairs(
-    buf: &mut String,
-    ident: &str,
-    m: &adobe_font_metrics::FontMetrics<'_>,
-) -> Result<(), std::fmt::Error> {
-    writeln!(buf, "const {ident}_KERNS: &[KerningPair<'static>] = &[")?;
-    for k in m.kerning_pairs.iter() {
-        write!(buf, "    KerningPair {{ left: Cow::Borrowed(")?;
-        emit_str_literal(buf, &k.left)?;
-        write!(buf, "), right: Cow::Borrowed(")?;
-        emit_str_literal(buf, &k.right)?;
-        write!(buf, "), adjust: ")?;
-        emit_f32(buf, k.adjust)?;
-        writeln!(buf, " }},")?;
-    }
-    writeln!(buf, "];\n")?;
-    Ok(())
-}
-
-fn emit_latin_tables(
-    buf: &mut String,
-    ident: &str,
-    m: &adobe_font_metrics::FontMetrics<'_>,
-) -> Result<(), Box<dyn Error>> {
-    writeln!(buf, "const {ident}_WINANSI: [Option<f32>; 256] = [")?;
-    for entry in &WINANSI_TABLE {
-        match entry {
-            Some(name) => match find_width(m, name) {
-                Some(w) => {
-                    write!(buf, "    Some(")?;
-                    emit_f32(buf, w)?;
-                    writeln!(buf, "),")?;
-                }
-                None => writeln!(buf, "    None,")?,
-            },
-            None => writeln!(buf, "    None,")?,
-        }
-    }
-    writeln!(buf, "];\n")?;
-
-    let pairs = sorted_name_widths(ident, m)?;
-    writeln!(buf, "const {ident}_NAME_WIDTHS: &[(&str, f32)] = &[")?;
-    for (name, w) in &pairs {
-        write!(buf, "    (")?;
-        emit_str_literal(buf, name)?;
-        write!(buf, ", ")?;
-        emit_f32(buf, *w)?;
-        writeln!(buf, "),")?;
-    }
-    writeln!(buf, "];\n")?;
-    Ok(())
-}
-
-fn sorted_name_widths<'a>(
-    ident: &str,
-    m: &'a adobe_font_metrics::FontMetrics<'_>,
-) -> Result<Vec<(&'a str, f32)>, Box<dyn Error>> {
-    let mut pairs: Vec<(&str, f32)> = m
-        .character_metrics
-        .iter()
-        .map(|c| (c.name.as_ref(), c.width_x))
-        .collect();
-    pairs.sort_by(|a, b| a.0.cmp(b.0));
-    for w in pairs.windows(2) {
-        if w[0].0 == w[1].0 {
-            return Err(format!("duplicate glyph name {:?} in {ident} AFM", w[0].0).into());
-        }
-    }
-    Ok(pairs)
-}
-
-fn emit_font_static(
-    buf: &mut String,
-    ident: &str,
-    m: &adobe_font_metrics::FontMetrics<'_>,
-) -> Result<(), std::fmt::Error> {
-    writeln!(buf, "static {ident}: FontMetrics<'static> = FontMetrics {{")?;
-
-    write!(buf, "    font_name: Cow::Borrowed(")?;
-    emit_str_literal(buf, &m.font_name)?;
-    writeln!(buf, "),")?;
-
-    write!(buf, "    full_name: Cow::Borrowed(")?;
-    emit_str_literal(buf, &m.full_name)?;
-    writeln!(buf, "),")?;
-
-    write!(buf, "    family_name: Cow::Borrowed(")?;
-    emit_str_literal(buf, &m.family_name)?;
-    writeln!(buf, "),")?;
-
-    write!(buf, "    weight: Cow::Borrowed(")?;
-    emit_str_literal(buf, &m.weight)?;
-    writeln!(buf, "),")?;
-
-    write!(buf, "    italic_angle: ")?;
-    emit_f32(buf, m.italic_angle)?;
-    writeln!(buf, ",")?;
-
-    writeln!(buf, "    is_fixed_pitch: {},", m.is_fixed_pitch)?;
-
-    write!(buf, "    font_bbox: BBox {{ llx: ")?;
-    emit_f32(buf, m.font_bbox.llx)?;
-    write!(buf, ", lly: ")?;
-    emit_f32(buf, m.font_bbox.lly)?;
-    write!(buf, ", urx: ")?;
-    emit_f32(buf, m.font_bbox.urx)?;
-    write!(buf, ", ury: ")?;
-    emit_f32(buf, m.font_bbox.ury)?;
-    writeln!(buf, " }},")?;
-
-    write!(buf, "    underline_position: ")?;
-    emit_f32(buf, m.underline_position)?;
-    writeln!(buf, ",")?;
-
-    write!(buf, "    underline_thickness: ")?;
-    emit_f32(buf, m.underline_thickness)?;
-    writeln!(buf, ",")?;
-
-    write!(buf, "    cap_height: ")?;
-    emit_f32(buf, m.cap_height)?;
-    writeln!(buf, ",")?;
-
-    write!(buf, "    x_height: ")?;
-    emit_f32(buf, m.x_height)?;
-    writeln!(buf, ",")?;
-
-    write!(buf, "    ascender: ")?;
-    emit_f32(buf, m.ascender)?;
-    writeln!(buf, ",")?;
-
-    write!(buf, "    descender: ")?;
-    emit_f32(buf, m.descender)?;
-    writeln!(buf, ",")?;
-
-    write!(buf, "    encoding_scheme: Cow::Borrowed(")?;
-    emit_str_literal(buf, &m.encoding_scheme)?;
-    writeln!(buf, "),")?;
-
-    writeln!(buf, "    character_metrics: Cow::Borrowed({ident}_CHARS),")?;
-    writeln!(buf, "    kerning_pairs: Cow::Borrowed({ident}_KERNS),")?;
-
-    writeln!(buf, "}};\n")?;
-    Ok(())
-}
-
-fn find_width(m: &adobe_font_metrics::FontMetrics<'_>, name: &str) -> Option<f32> {
-    m.character_metrics
-        .iter()
-        .find(|c| c.name == name)
-        .map(|c| c.width_x)
 }
 
 /// Emits an f32 literal with an `_f32` suffix, using the shortest
@@ -312,11 +115,9 @@ fn emit_f32(buf: &mut String, v: f32) -> Result<(), std::fmt::Error> {
     }
     // `{:?}` always produces a decimal point or exponent for finite
     // non-zero f32, so `_f32` attaches to a valid float literal.
-    // Wrap negative literals in parentheses so the suffix attaches
-    // to the magnitude rather than (visually) to the operand of a
-    // bare unary minus: `(-225.0_f32)` is unambiguous.
+    // Emit a unary minus directly so option arguments remain warning-free.
     if v.is_sign_negative() {
-        write!(buf, "(-{:?}_f32)", -v)
+        write!(buf, "-{:?}_f32", -v)
     } else {
         write!(buf, "{v:?}_f32")
     }
@@ -342,5 +143,355 @@ fn emit_str_literal(buf: &mut String, s: &str) -> Result<(), std::fmt::Error> {
         }
     }
     buf.push('"');
+    Ok(())
+}
+
+fn emit_option<T>(
+    buf: &mut String,
+    value: Option<T>,
+    emit: impl FnOnce(&mut String, T) -> std::fmt::Result,
+) -> std::fmt::Result {
+    match value {
+        Some(value) => {
+            buf.push_str("Some(");
+            emit(buf, value)?;
+            buf.push(')');
+        }
+        None => buf.push_str("None"),
+    }
+    Ok(())
+}
+
+fn emit_cow(buf: &mut String, value: &str) -> std::fmt::Result {
+    buf.push_str("Cow::Borrowed(");
+    emit_str_literal(buf, value)?;
+    buf.push(')');
+    Ok(())
+}
+
+fn emit_vector(buf: &mut String, value: Vector) -> std::fmt::Result {
+    buf.push_str("Vector { x: ");
+    emit_f32(buf, value.x)?;
+    buf.push_str(", y: ");
+    emit_f32(buf, value.y)?;
+    buf.push_str(" }");
+    Ok(())
+}
+
+fn emit_bbox(buf: &mut String, value: BBox) -> std::fmt::Result {
+    buf.push_str("BBox { llx: ");
+    emit_f32(buf, value.llx)?;
+    buf.push_str(", lly: ");
+    emit_f32(buf, value.lly)?;
+    buf.push_str(", urx: ");
+    emit_f32(buf, value.urx)?;
+    buf.push_str(", ury: ");
+    emit_f32(buf, value.ury)?;
+    buf.push_str(" }");
+    Ok(())
+}
+
+fn emit_direction(buf: &mut String, value: Direction) -> std::fmt::Result {
+    write!(buf, "Direction::{value:?}")
+}
+
+fn emit_sets(buf: &mut String, value: MetricsSets) -> std::fmt::Result {
+    write!(buf, "MetricsSets::{value:?}")
+}
+
+fn emit_bool(buf: &mut String, value: bool) -> std::fmt::Result {
+    write!(buf, "{value}")
+}
+fn emit_u32(buf: &mut String, value: u32) -> std::fmt::Result {
+    write!(buf, "{value}_u32")
+}
+fn emit_u8(buf: &mut String, value: u8) -> std::fmt::Result {
+    write!(buf, "{value}_u8")
+}
+
+fn emit_code(buf: &mut String, value: &CharacterCode<'_>) -> std::fmt::Result {
+    match value {
+        CharacterCode::Decimal(code) => write!(buf, "CharacterCode::Decimal({code}_i32)"),
+        CharacterCode::Hex(hex) => {
+            buf.push_str("CharacterCode::Hex(");
+            emit_cow(buf, hex)?;
+            buf.push(')');
+            Ok(())
+        }
+    }
+}
+
+fn emit_character_metrics(buf: &mut String, ident: &str, m: &FontMetrics<'_>) -> std::fmt::Result {
+    writeln!(buf, "const {ident}_CHARS: &[CharacterMetric<'static>] = &[")?;
+    for c in m.character_metrics.iter() {
+        buf.push_str("CharacterMetric { code: ");
+        emit_code(buf, &c.code)?;
+        buf.push_str(", name: ");
+        emit_option(buf, c.name.as_deref(), emit_cow)?;
+        buf.push_str(", advances: [");
+        for advance in c.advances {
+            emit_option(buf, advance, emit_vector)?;
+            buf.push(',');
+        }
+        buf.push_str("], bbox: ");
+        emit_option(buf, c.bbox, emit_bbox)?;
+        buf.push_str(", v_vector: ");
+        emit_option(buf, c.v_vector, emit_vector)?;
+        buf.push_str(", ligatures: Cow::Borrowed(&[");
+        for ligature in c.ligatures.iter() {
+            buf.push_str("Ligature { successor: ");
+            emit_cow(buf, &ligature.successor)?;
+            buf.push_str(", ligature: ");
+            emit_cow(buf, &ligature.ligature)?;
+            buf.push_str(" },");
+        }
+        buf.push_str("]) },\n");
+    }
+    buf.push_str("];\n");
+    Ok(())
+}
+
+fn emit_kerning_pairs(buf: &mut String, ident: &str, m: &FontMetrics<'_>) -> std::fmt::Result {
+    writeln!(buf, "const {ident}_KERNS: &[KerningPair<'static>] = &[")?;
+    for pair in m.kerning_pairs.iter() {
+        let (kind, left, right) = match &pair.operands {
+            KerningOperands::Names { left, right } => ("Names", left, right),
+            KerningOperands::Hex { left, right } => ("Hex", left, right),
+        };
+        write!(
+            buf,
+            "KerningPair {{ operands: KerningOperands::{kind} {{ left: "
+        )?;
+        emit_cow(buf, left)?;
+        buf.push_str(", right: ");
+        emit_cow(buf, right)?;
+        buf.push_str(" }, adjustment: ");
+        emit_vector(buf, pair.adjustment)?;
+        buf.push_str(", direction: ");
+        emit_direction(buf, pair.direction)?;
+        buf.push_str(" },\n");
+    }
+    buf.push_str("];\n");
+    Ok(())
+}
+
+fn emit_context(buf: &mut String, value: RecordContext) -> std::fmt::Result {
+    buf.push_str("RecordContext::");
+    match value {
+        RecordContext::Direction(sets) => {
+            buf.push_str("Direction(");
+            emit_sets(buf, sets)?;
+            buf.push(')');
+        }
+        RecordContext::KernPairs(direction) => {
+            buf.push_str("KernPairs(");
+            emit_direction(buf, direction)?;
+            buf.push(')');
+        }
+        other => write!(buf, "{other:?}")?,
+    }
+    Ok(())
+}
+
+fn emit_auxiliary(buf: &mut String, ident: &str, m: &FontMetrics<'_>) -> std::fmt::Result {
+    writeln!(buf, "const {ident}_TRACKS: &[TrackKern] = &[")?;
+    for track in m.track_kerns.iter() {
+        write!(
+            buf,
+            "TrackKern {{ degree: {}_i32, min_point_size: ",
+            track.degree
+        )?;
+        emit_f32(buf, track.min_point_size)?;
+        buf.push_str(", min_kern: ");
+        emit_f32(buf, track.min_kern)?;
+        buf.push_str(", max_point_size: ");
+        emit_f32(buf, track.max_point_size)?;
+        buf.push_str(", max_kern: ");
+        emit_f32(buf, track.max_kern)?;
+        buf.push_str(" },\n");
+    }
+    buf.push_str("];\n");
+    writeln!(buf, "const {ident}_COMPOSITES: &[Composite<'static>] = &[")?;
+    for composite in m.composites.iter() {
+        buf.push_str("Composite { name: ");
+        emit_cow(buf, &composite.name)?;
+        buf.push_str(", components: Cow::Borrowed(&[");
+        for component in composite.components.iter() {
+            buf.push_str("CompositeComponent { name: ");
+            emit_cow(buf, &component.name)?;
+            buf.push_str(", offset: ");
+            emit_vector(buf, component.offset)?;
+            buf.push_str(" },");
+        }
+        buf.push_str("]) },\n");
+    }
+    buf.push_str("];\n");
+    writeln!(buf, "const {ident}_RECORDS: &[SourceRecord<'static>] = &[")?;
+    for record in m.source_records.iter() {
+        write!(buf, "SourceRecord {{ line: {}, context: ", record.line)?;
+        emit_context(buf, record.context)?;
+        buf.push_str(", keyword: ");
+        emit_cow(buf, &record.keyword)?;
+        buf.push_str(", value: ");
+        emit_cow(buf, &record.value)?;
+        buf.push_str(" },\n");
+    }
+    buf.push_str("];\n");
+    Ok(())
+}
+
+fn emit_latin_tables(
+    buf: &mut String,
+    ident: &str,
+    m: &FontMetrics<'_>,
+) -> Result<(), Box<dyn Error>> {
+    writeln!(buf, "const {ident}_WINANSI: [Option<f32>; 256] = [")?;
+    for name in WINANSI_TABLE {
+        let width = name
+            .and_then(|name| {
+                m.character_metrics
+                    .iter()
+                    .find(|c| c.name.as_deref() == Some(name))
+            })
+            .and_then(|c| m.advance(c, Direction::Zero))
+            .map(|v| v.x);
+        emit_option(buf, width, emit_f32)?;
+        buf.push_str(",\n");
+    }
+    buf.push_str("];\n");
+    let mut pairs: Vec<_> = m
+        .character_metrics
+        .iter()
+        .filter_map(|c| Some((c.name.as_deref()?, m.advance(c, Direction::Zero)?.x)))
+        .collect();
+    pairs.sort_by_key(|(name, _)| *name);
+    for pair in pairs.windows(2) {
+        if pair[0].0 == pair[1].0 {
+            return Err(format!("duplicate glyph name {:?} in {ident} AFM", pair[0].0).into());
+        }
+    }
+    writeln!(buf, "const {ident}_NAME_WIDTHS: &[(&str, f32)] = &[")?;
+    for (name, width) in pairs {
+        buf.push('(');
+        emit_str_literal(buf, name)?;
+        buf.push(',');
+        emit_f32(buf, width)?;
+        buf.push_str("),\n");
+    }
+    buf.push_str("];\n");
+    Ok(())
+}
+
+fn emit_font(
+    buf: &mut String,
+    ident: &str,
+    m: &FontMetrics<'_>,
+    is_latin: bool,
+) -> Result<(), Box<dyn Error>> {
+    emit_character_metrics(buf, ident, m)?;
+    emit_kerning_pairs(buf, ident, m)?;
+    emit_auxiliary(buf, ident, m)?;
+    if is_latin {
+        emit_latin_tables(buf, ident, m)?;
+    }
+    emit_font_static(buf, ident, m)?;
+    Ok(())
+}
+
+fn emit_font_static(buf: &mut String, ident: &str, m: &FontMetrics<'_>) -> std::fmt::Result {
+    writeln!(buf, "static {ident}: FontMetrics<'static> = FontMetrics {{")?;
+    buf.push_str("afm_version: ");
+    emit_cow(buf, &m.afm_version)?;
+    buf.push_str(",\n");
+    buf.push_str("font_name: ");
+    emit_cow(buf, &m.font_name)?;
+    buf.push_str(",\n");
+    buf.push_str("font_bbox: ");
+    emit_bbox(buf, m.font_bbox)?;
+    buf.push_str(",\n");
+    buf.push_str("metrics_sets: ");
+    emit_option(buf, m.metrics_sets, emit_sets)?;
+    buf.push_str(",\n");
+    buf.push_str("full_name: ");
+    emit_option(buf, m.full_name.as_deref(), emit_cow)?;
+    buf.push_str(",\n");
+    buf.push_str("family_name: ");
+    emit_option(buf, m.family_name.as_deref(), emit_cow)?;
+    buf.push_str(",\n");
+    buf.push_str("weight: ");
+    emit_option(buf, m.weight.as_deref(), emit_cow)?;
+    buf.push_str(",\n");
+    buf.push_str("version: ");
+    emit_option(buf, m.version.as_deref(), emit_cow)?;
+    buf.push_str(",\n");
+    buf.push_str("notice: ");
+    emit_option(buf, m.notice.as_deref(), emit_cow)?;
+    buf.push_str(",\n");
+    buf.push_str("encoding_scheme: ");
+    emit_option(buf, m.encoding_scheme.as_deref(), emit_cow)?;
+    buf.push_str(",\n");
+    buf.push_str("character_set: ");
+    emit_option(buf, m.character_set.as_deref(), emit_cow)?;
+    buf.push_str(",\n");
+    buf.push_str("mapping_scheme: ");
+    emit_option(buf, m.mapping_scheme, emit_u32)?;
+    buf.push_str(",\n");
+    buf.push_str("esc_char: ");
+    emit_option(buf, m.esc_char, emit_u8)?;
+    buf.push_str(",\n");
+    buf.push_str("characters: ");
+    emit_option(buf, m.characters, emit_u32)?;
+    buf.push_str(",\n");
+    buf.push_str("is_base_font: ");
+    emit_option(buf, m.is_base_font, emit_bool)?;
+    buf.push_str(",\n");
+    buf.push_str("is_cid_font: ");
+    emit_option(buf, m.is_cid_font, emit_bool)?;
+    buf.push_str(",\n");
+    buf.push_str("v_vector: ");
+    emit_option(buf, m.v_vector, emit_vector)?;
+    buf.push_str(",\n");
+    buf.push_str("is_fixed_v: ");
+    emit_option(buf, m.is_fixed_v, emit_bool)?;
+    buf.push_str(",\n");
+    buf.push_str("cap_height: ");
+    emit_option(buf, m.cap_height, emit_f32)?;
+    buf.push_str(",\n");
+    buf.push_str("x_height: ");
+    emit_option(buf, m.x_height, emit_f32)?;
+    buf.push_str(",\n");
+    buf.push_str("ascender: ");
+    emit_option(buf, m.ascender, emit_f32)?;
+    buf.push_str(",\n");
+    buf.push_str("descender: ");
+    emit_option(buf, m.descender, emit_f32)?;
+    buf.push_str(",\n");
+    buf.push_str("std_hw: ");
+    emit_option(buf, m.std_hw, emit_f32)?;
+    buf.push_str(",\n");
+    buf.push_str("std_vw: ");
+    emit_option(buf, m.std_vw, emit_f32)?;
+    buf.push_str(",\n");
+    buf.push_str("directions: [");
+    for direction in &m.directions {
+        buf.push_str("DirectionMetrics { underline_position: ");
+        emit_option(buf, direction.underline_position, emit_f32)?;
+        buf.push_str(", underline_thickness: ");
+        emit_option(buf, direction.underline_thickness, emit_f32)?;
+        buf.push_str(", italic_angle: ");
+        emit_option(buf, direction.italic_angle, emit_f32)?;
+        buf.push_str(", char_width: ");
+        emit_option(buf, direction.char_width, emit_vector)?;
+        buf.push_str(", is_fixed_pitch: ");
+        emit_option(buf, direction.is_fixed_pitch, emit_bool)?;
+        buf.push_str(" },");
+    }
+    buf.push_str("],\n");
+    writeln!(buf, "character_metrics: Cow::Borrowed({ident}_CHARS),")?;
+    writeln!(buf, "kerning_pairs: Cow::Borrowed({ident}_KERNS),")?;
+    writeln!(buf, "track_kerns: Cow::Borrowed({ident}_TRACKS),")?;
+    writeln!(buf, "composites: Cow::Borrowed({ident}_COMPOSITES),")?;
+    writeln!(buf, "source_records: Cow::Borrowed({ident}_RECORDS),")?;
+    buf.push_str("};\n");
     Ok(())
 }

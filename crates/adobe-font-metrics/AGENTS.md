@@ -6,19 +6,21 @@
 
 ## WHERE TO LOOK
 
-| Task           | Location                | Notes                                   |
-| -------------- | ----------------------- | --------------------------------------- |
-| Parser         | `src/lib.rs`            | Borrows input through `Cow`.            |
-| Fixtures       | `tests/fixtures/*.afm`  | Vendored local AFM samples.             |
-| Parser tests   | `tests/parser.rs`       | Real AFM and malformed record coverage. |
-| Downstream use | `../pdf-base14-metrics` | Build-time parser consumer.             |
+| Task           | Location                | Notes                                         |
+| -------------- | ----------------------- | --------------------------------------------- |
+| Public model   | `src/model.rs`          | Optional metadata, vectors, owned conversion. |
+| Reader         | `src/parser.rs`         | Byte validation, sections, counts, defaults.  |
+| Record parsing | `src/records.rs`        | Character, pair, track, composite operands.   |
+| Fixtures       | `tests/fixtures/*.afm`  | Vendored local AFM samples.                   |
+| Parser tests   | `tests/parser.rs`       | Real AFM and malformed record coverage.       |
+| Downstream use | `../pdf-base14-metrics` | Build-time parser consumer.                   |
 
 ## CONVENTIONS
 
 - Parse bad AFM as `ParseError`, not panic.
 - Keep crate independently buildable; fixtures are intentionally local.
 - `FontMetrics::into_owned()` exists for static/cache use.
-- Unknown AFM records may be ignored; modeled malformed records should error.
+- Preserve unknown AFM records and comments with source context; modeled malformed records error.
 - Cargo metadata is source truth; README may lag.
 
 ## ANTI-PATTERNS

@@ -45,8 +45,10 @@ example.
   - [x] [`mos-lsp`]
   - [x] [`mos-packages`]
   - [x] [`adobe-font-metrics`]
-    - [x] [AFM scope audit](docs/afm-parser-scope.md): retain the focused v4.x horizontal-metric
-          model, document discarded data and validation limits, and test the consumer boundary.
+    - [x] [AFM API expansion](docs/afm-parser-scope.md): metadata, both directions, full vectors,
+          ligatures, pair/track kerning, composites, source records, and validated byte input;
+          Core-14 baking preserves the expanded model. AFM v3 and serialization remain
+          unimplemented.
   - [x] [`pdf-base14-metrics`]
   - [x] [`tree-sitter-mosaic`]
   - [x] [`zed-mosaic`]

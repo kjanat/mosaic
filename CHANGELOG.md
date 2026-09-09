@@ -50,9 +50,13 @@ All notable changes to this project will be documented here. The format is based
 
 ### Changed
 
-- Clarify `adobe-font-metrics` as a focused AFM v4.x horizontal metric extractor. The
-  [coverage audit](docs/afm-parser-scope.md) documents discarded fields, defaults, partial
-  validation, and the decision to retain the current scope. Parsing behavior is unchanged.
+- Expand `adobe-font-metrics` with optional font metadata, both writing directions, complete
+  character and kerning vectors, ligatures, track kerning, composites, comments, and extension
+  records. Add borrowed byte parsing, global width/origin resolution, and complete owned conversion.
+  Parsing now validates finite numbers, operand arity, section boundaries/counts, and complete files.
+  This breaks public metric struct fields and their `pdf-base14-metrics` re-exports; the
+  [migration guide](docs/afm-parser-scope.md) documents the new model and remaining format limits.
+  Core-14 static baking retains the expanded data while existing horizontal widths remain unchanged.
 
 ## [0.0.2] - 2026-09-07
 
