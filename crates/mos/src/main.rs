@@ -578,7 +578,7 @@ const fn severity_label(s: Severity) -> &'static str {
 
 fn render_diagnostic(diag: &Diagnostic, src: &str) {
     let label = severity_label(diag.severity());
-    let code = diag.def().code();
+    let code = format!("{} ({})", diag.def().id(), diag.def().code());
     if let Some(span) = diag.span() {
         let (line, col) = linecol(src, span.start());
         eprintln!(

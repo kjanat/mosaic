@@ -429,7 +429,7 @@ fn did_open_change_close_drive_the_diagnostics_lifecycle() -> TestResult {
     let dirty = server.diagnostics_for(uri)?;
     let undefined_reference = dirty
         .iter()
-        .find(|diagnostic| diagnostic.get("code") == Some(&json!("MOS0033")))
+        .find(|diagnostic| diagnostic.get("code") == Some(&json!("semantic.label-missing")))
         .ok_or_else(|| format!("expected a MOS0033 diagnostic, got {dirty:?}"))?;
     ensure_eq(
         &undefined_reference.get("severity"),
@@ -445,6 +445,19 @@ fn did_open_change_close_drive_the_diagnostics_lifecycle() -> TestResult {
         &undefined_reference.pointer("/range/start/line"),
         &Some(&json!(0)),
         "diagnostic start line",
+    )?;
+
+    ensure_eq(
+        &undefined_reference.pointer("/data/legacyCode"),
+        &Some(&json!("MOS0033")),
+        "numeric compatibility alias",
+    )?;
+    ensure_eq(
+        &undefined_reference.pointer("/codeDescription/href"),
+        &Some(&json!(
+            "https://github.com/kjanat/mosaic/blob/master/docs/diagnostic-codes.md#semantic.label-missing"
+        )),
+        "stable catalog link",
     )?;
 
     // Full-sync change to a clean document clears the squiggle.
@@ -701,8 +714,11 @@ fn completion_with_mixed_sources_is_empty_until_all_sources_load() -> TestResult
     // Missing, invalid UTF-8, and malformed BibTeX must all suppress even
     // the valid source's keys. Repairing the file invalidates the cache.
     for (contents, expected_diagnostic) in [
-        (None, Some("MOS0041")),
-        (Some(b"\xff".as_slice()), Some("MOS0041")),
+        (None, Some("io.bibliography-source-missing")),
+        (
+            Some(b"\xff".as_slice()),
+            Some("io.bibliography-source-missing"),
+        ),
         (Some(b"@book{".as_slice()), None),
     ] {
         if let Some(contents) = contents {
@@ -993,7 +1009,7 @@ fn inlay_hints_follow_code_edits_manual_labels_and_document_lifecycle() -> TestR
         server
             .diagnostics_for(uri)?
             .iter()
-            .any(|diagnostic| diagnostic["code"] == "MOS0016"),
+            .any(|diagnostic| diagnostic["code"] == "syntax.directive-unterminated"),
         "incomplete block keeps compiler diagnostic",
     )?;
     ensure_eq(

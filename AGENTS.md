@@ -75,7 +75,7 @@ fixpoints, Knuth-Plass, automatic hyphenation, reproducible/frozen builds, impor
 | BibTeX parser      | `crates/mos-bib/src/`                 | Minimal records; no rendering/styling.                      |
 | CSL foundations    | `crates/mos-csl/src/`                 | CSL item model, BibTeX map, style parser; no processor.     |
 | Document model     | `crates/mos-core/src/lib.rs`          | Bottom-layer IDs, nodes, diagnostics.                       |
-| Diagnostic codes   | `crates/mos-core/src/codes.rs`        | `MOS####` registry (truth source); `define_codes!` macro.   |
+| Diagnostic codes   | `crates/mos-core/src/codes.rs`        | Semantic IDs + `MOS####` aliases; `define_codes!` macro.    |
 | Diagnostic catalog | `docs/diagnostic-codes.md`            | Human mirror of the registry; drift-tested in CI.           |
 | Layout             | `crates/mos-layout/src/lib.rs`        | Biggest hotspot, stateful page/text flow.                   |
 | Font rules         | `crates/mos-fonts/src/lib.rs`         | Base-14 + embedded Noto Sans.                               |
@@ -110,7 +110,8 @@ fixpoints, Knuth-Plass, automatic hyphenation, reproducible/frozen builds, impor
 - Tests must stay clippy-clean. Many tests avoid `unwrap`, `expect`, and raw `panic`.
 - Keep domain direction one-way. CLI glues; parse does not lower; layout does not emit PDF.
 - Use existing `CoreError`/`Diagnostic` paths for user errors. No panics for bad documents.
-- Diagnostics: `MOS####` codes are opaque/stable and minted only in `mos-core::codes`. Add a code by
+- Diagnostics: semantic IDs and opaque/stable `MOS####` aliases are minted only in `mos-core::codes`.
+  Namespace and slug are immutable identity; category is metadata. Add a code by
   editing `codes.rs` + `docs/diagnostic-codes.md` together (drift-tested). CLI phase barriers run a
   phase to completion, then exit if any error was collected.
 

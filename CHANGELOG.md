@@ -50,6 +50,12 @@ All notable changes to this project will be documented here. The format is based
 
 ### Changed
 
+- Show stable semantic diagnostic IDs in CLI output and LSP `code`
+  (https://github.com/kjanat/mosaic/issues/131). Keep numeric `MOS####` aliases in CLI output and
+  LSP `data.legacyCode`; add editor catalog links and lookup by either identity. Existing Rust
+  numeric APIs remain available. Consumers parsing the old CLI brackets or numeric LSP `code`
+  must follow the [migration contract](docs/semantic-diagnostic-identifiers.md).
+
 - Expand `adobe-font-metrics` with optional font metadata, both writing directions, complete
   character and kerning vectors, ligatures, track kerning, composites, comments, and extension
   records. Add borrowed byte parsing, global width/origin resolution, and complete owned conversion.

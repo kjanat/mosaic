@@ -498,7 +498,10 @@ fn check_many_entries_fails_if_any_entry_fails() {
 
     assert_eq!(code, 1, "stdout={stdout} stderr={stderr}");
     assert!(stdout.contains("ok:"), "stdout={stdout:?}");
-    assert!(stderr.contains("error[MOS0016]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("error[syntax.directive-unterminated (MOS0016)]"),
+        "stderr={stderr:?}"
+    );
 }
 
 #[test]
@@ -507,7 +510,10 @@ fn check_unterminated_set_fails() {
     write_file(dir.path(), "main.mos", "#set page(\nunclosed\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[MOS0016]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("error[syntax.directive-unterminated (MOS0016)]"),
+        "stderr={stderr:?}"
+    );
 }
 
 #[test]
@@ -516,7 +522,10 @@ fn check_warns_on_unterminated_emphasis_but_succeeds() {
     write_file(dir.path(), "main.mos", "= Title\n\n*unclosed\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 0);
-    assert!(stderr.contains("warning[MOS0031]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("warning[syntax.unterminated-emphasis (MOS0031)]"),
+        "stderr={stderr:?}"
+    );
     assert!(
         stderr.contains("help: insert `*`"),
         "unterminated emphasis should render its structured insertion fix: {stderr:?}"
@@ -541,7 +550,10 @@ fn check_crlf_source_does_not_leak_carriage_return() {
     write_file(dir.path(), "main.mos", "= Title\r\n*unclosed\r\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 0);
-    assert!(stderr.contains("warning[MOS0031]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("warning[syntax.unterminated-emphasis (MOS0031)]"),
+        "stderr={stderr:?}"
+    );
     // The line above the caret should be the bare paragraph text,
     // with no CR character anywhere in the diagnostic frame.
     assert!(
@@ -730,7 +742,10 @@ fn check_reports_unknown_page_reference_label() {
     write_file(dir.path(), "main.mos", "see page @page(no:such)\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[MOS0033]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("error[semantic.label-missing (MOS0033)]"),
+        "stderr={stderr:?}"
+    );
 }
 
 #[test]
@@ -741,7 +756,10 @@ fn check_reports_unknown_label() {
     write_file(dir.path(), "main.mos", "see @no:such\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[MOS0033]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("error[semantic.label-missing (MOS0033)]"),
+        "stderr={stderr:?}"
+    );
 }
 
 #[test]
@@ -750,7 +768,10 @@ fn check_renders_unknown_label_suggestion() {
     write_file(dir.path(), "main.mos", "= Intro <intro>\n\nsee @intrdo\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[MOS0033]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("error[semantic.label-missing (MOS0033)]"),
+        "stderr={stderr:?}"
+    );
     assert!(
         stderr.contains("help: replace `@intrdo` with `@intro`"),
         "stderr={stderr:?}"
@@ -763,7 +784,10 @@ fn check_renders_unsafe_path_suggestion() {
     write_file(dir.path(), "main.mos", "#image(\"assets\\\\logo.png\")\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[MOS0049]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("error[semantic.path-unsafe-segment (MOS0049)]"),
+        "stderr={stderr:?}"
+    );
     assert!(
         stderr.contains(r"help: replace `assets\\logo.png` with `assets/logo.png`"),
         "stderr={stderr:?}"
@@ -776,7 +800,10 @@ fn check_reports_duplicate_label() {
     write_file(dir.path(), "main.mos", "= A <dup>\n\n= B <dup>\n");
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[MOS0030]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("error[semantic.label-duplicate (MOS0030)]"),
+        "stderr={stderr:?}"
+    );
     assert!(
         stderr.contains("help: replace `dup` with `dup-2`"),
         "stderr={stderr:?}"
@@ -789,7 +816,10 @@ fn build_renders_structured_suggestions_before_phase_exit() {
     write_file(dir.path(), "main.mos", "= Intro <intro>\n\nsee @intrdo\n");
     let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
     assert_eq!(code, 1);
-    assert!(stderr.contains("error[MOS0033]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("error[semantic.label-missing (MOS0033)]"),
+        "stderr={stderr:?}"
+    );
     assert!(
         stderr.contains("help: replace `@intrdo` with `@intro`"),
         "stderr={stderr:?}"
@@ -889,7 +919,10 @@ fn build_fails_on_layout_error_does_not_emit_pdf() {
     );
     let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
     assert_eq!(code, 1, "stderr={stderr:?}");
-    assert!(stderr.contains("error[MOS0017]"), "stderr={stderr:?}");
+    assert!(
+        stderr.contains("error[layout.paper-size-unknown (MOS0017)]"),
+        "stderr={stderr:?}"
+    );
     assert!(
         !dir.path().join("build").join("main.pdf").exists(),
         "PDF should not be written on layout error"
@@ -1189,7 +1222,9 @@ fn check_collects_multiple_errors_in_one_pass() {
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_ne!(code, 0, "stderr={stderr:?}");
     assert_eq!(
-        stderr.matches("error[MOS0022]").count(),
+        stderr
+            .matches("error[syntax.directive-malformed-arg (MOS0022)]")
+            .count(),
         2,
         "both malformed directives should be reported in one pass: {stderr:?}"
     );
@@ -1198,7 +1233,7 @@ fn check_collects_multiple_errors_in_one_pass() {
 #[test]
 fn build_substituted_font_emits_notice_and_succeeds() {
     // An unknown font family is a Notice (MOS0018), not a failure: the
-    // build substitutes bundled Noto Sans, prints `notice[MOS0018]`, and
+    // build substitutes bundled Noto Sans, prints `notice[text.font-family-substituted (MOS0018)]`, and
     // still exits 0 with a PDF written.
     let dir = temp_dir("mos-build-notice-font");
     write_file(
@@ -1209,7 +1244,7 @@ fn build_substituted_font_emits_notice_and_succeeds() {
     let (code, stdout, stderr) = run(&["build", "main.mos"], dir.path());
     assert_eq!(code, 0, "notice must not fail the build; stderr={stderr:?}");
     assert!(
-        stderr.contains("notice[MOS0018]"),
+        stderr.contains("notice[text.font-family-substituted (MOS0018)]"),
         "expected a notice for the substituted font, got {stderr:?}"
     );
     assert!(stdout.starts_with("wrote "), "stdout={stdout:?}");

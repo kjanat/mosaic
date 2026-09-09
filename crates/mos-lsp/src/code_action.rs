@@ -112,7 +112,7 @@ fn action_for_suggestion(
 }
 
 fn action_title(src: &str, diagnostic: &Diagnostic, suggestion: &Suggestion) -> String {
-    let code = diagnostic.def().code();
+    let code = format!("{} ({})", diagnostic.def().id(), diagnostic.def().code());
     match span_text(src, &suggestion.span) {
         Some("") => format!("{code}: insert `{}`", suggestion.replacement),
         Some(text) if suggestion.replacement.is_empty() => format!("{code}: delete `{text}`"),
@@ -257,7 +257,7 @@ mod tests {
         assert_eq!(actions.len(), 1, "only the first fix overlaps: {actions:?}");
         assert_eq!(
             actions[0].get("title").and_then(Value::as_str),
-            Some("MOS0033: replace `alpha` with `ALPHA`")
+            Some("semantic.label-missing (MOS0033): replace `alpha` with `ALPHA`")
         );
     }
 
@@ -337,7 +337,7 @@ mod tests {
         assert_eq!(actions.len(), 1, "insertion action: {actions:?}");
         assert_eq!(
             actions[0].get("title").and_then(Value::as_str),
-            Some("MOS0034: insert `!`")
+            Some("syntax.unterminated-code (MOS0034): insert `!`")
         );
     }
 
@@ -375,7 +375,7 @@ mod tests {
         assert_eq!(actions.len(), 1, "insertion action: {actions:?}");
         assert_eq!(
             actions[0].get("title").and_then(Value::as_str),
-            Some("MOS0034: insert ```")
+            Some("syntax.unterminated-code (MOS0034): insert ```")
         );
     }
 }

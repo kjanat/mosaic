@@ -37,8 +37,24 @@ pub struct LspDiagnostic {
     /// LSP `DiagnosticSeverity`: 1 Error, 2 Warning, 3 Information, 4 Hint.
     pub severity: u8,
     pub code: String,
+    #[serde(rename = "codeDescription")]
+    pub code_description: CodeDescription,
+    pub data: DiagnosticData,
     pub source: String,
     pub message: String,
+}
+
+/// Documentation target for an LSP diagnostic code.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CodeDescription {
+    pub href: String,
+}
+
+/// Compatibility metadata; clients should use `code` for the canonical ID.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DiagnosticData {
+    #[serde(rename = "legacyCode")]
+    pub legacy_code: String,
 }
 
 /// Convert a byte offset inside `src` into an LSP [`LspPosition`].
@@ -203,7 +219,13 @@ fn project_diagnostic(file: &Path, src: &str, diag: &CoreDiagnostic) -> Option<L
     Some(LspDiagnostic {
         range,
         severity: lsp_severity(diag.severity()),
-        code: diag.def().code().to_string(),
+        code: diag.def().id().to_owned(),
+        code_description: CodeDescription {
+            href: diag.def().documentation_url(),
+        },
+        data: DiagnosticData {
+            legacy_code: diag.def().code().to_string(),
+        },
         source: "mosaic".to_owned(),
         message: diag.message().to_owned(),
     })
@@ -376,6 +398,24 @@ mod tests {
     }
 
     #[test]
+    fn every_registered_rule_projects_both_identities_and_documentation() {
+        let file = Path::new("/virtual/main.mos");
+        for def in mos_core::codes::ALL {
+            let diagnostic = CoreDiagnostic::new(def, Severity::Notice, None, "message");
+            let projected = project_diagnostic(file, "", &diagnostic);
+            assert!(projected.is_some(), "spanless diagnostic must project");
+            let Some(projected) = projected else {
+                return;
+            };
+            assert_eq!(projected.code, def.id());
+            assert_eq!(projected.data.legacy_code, def.code().to_string());
+            assert_eq!(projected.code_description.href, def.documentation_url());
+            assert_eq!(projected.severity, 3);
+            assert_eq!(projected.message, "message");
+        }
+    }
+
+    #[test]
     fn unknown_reference_publishes_mos0033_diagnostic() {
         // Mirrors `mos-eval`'s `unknown_label_emits_mos0033` test: an
         // `@no:such` reference with no matching label should surface
@@ -384,7 +424,9 @@ mod tests {
         let file = PathBuf::from("/virtual/main.mos");
         let src = "see @no:such\n";
         let diagnostics = for_document(&file, src);
-        let maybe_mos0033 = diagnostics.iter().find(|d| d.code == "MOS0033");
+        let maybe_mos0033 = diagnostics
+            .iter()
+            .find(|d| d.code == "semantic.label-missing");
         assert!(
             maybe_mos0033.is_some(),
             "MOS0033 diagnostic must be present; got {diagnostics:?}"
