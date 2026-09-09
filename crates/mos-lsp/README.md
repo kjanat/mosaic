@@ -40,11 +40,12 @@ quick fixes.
   follow Mosaic section structure rather than flat syntax nodes.
 - `textDocument/completion` offers one item per BibTeX record loaded from the document's declared
   `#bibliography` sources when the cursor sits in a `[@key` token on its line (`@` is the trigger
-  character). Every loaded key is returned; the editor filters. An item's edit replaces the whole
-  key under the cursor and appends the closing `]` when none follows; `detail` is the entry type and
-  `documentation` the entry's `title` field. A cursor off a citation (including inside code, raw
-  blocks, directive values, or comments), or a document with any missing, unreadable, or malformed
-  bibliography source, gets an empty list; the source diagnostics stay as they are.
+  character). Keys must match `[A-Za-z0-9_:.-]+`; the editor filters by the typed prefix. An item's
+  edit replaces the whole key under the cursor and appends the closing `]` when none follows;
+  `detail` is the entry type and `documentation` the entry's `title` field. A cursor off a citation
+  (including inside code, raw blocks, directive values, or comments), or a document with any
+  missing, unreadable, or malformed bibliography source, gets an empty list; the source diagnostics
+  stay as they are.
 - Unknown requests get a JSON-RPC `MethodNotFound` (-32601); unknown notifications are dropped.
 - Advertised capabilities are intentionally narrow: full text sync, UTF-16 position encoding,
   `definitionProvider`, `documentSymbolProvider`, `renameProvider`, `codeActionProvider`,

@@ -10,7 +10,7 @@ All notable changes to this project will be documented here. The format is based
 
 - LSP citation-key completion (https://github.com/kjanat/mosaic/issues/111): [`mos-lsp`][mos-lsp]
   now advertises `completionProvider` (trigger character `@`) and answers `textDocument/completion`
-  with one item per BibTeX record loaded from the document's declared `#bibliography` sources when
+  with keys matching `[A-Za-z0-9_:.-]+` from the document's declared `#bibliography` sources when
   the cursor sits in a `[@key` token. The item's edit replaces the whole key under the cursor and
   appends the closing `]` when none follows; `detail` carries the entry type and `documentation`
   the entry's title. A cursor off a citation, or a document whose sources are missing or

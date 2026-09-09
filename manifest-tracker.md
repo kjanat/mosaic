@@ -466,8 +466,9 @@ example.
 - [x] Spawn [`mos-lsp`] from the [`zed-mosaic`] extension (diagnostics, definition, rename, code
       actions).
 - [x] Add citation autocomplete. *(`textDocument/completion` inside a `[@key` token offers every
-      record loaded from the document's `#bibliography` sources, reusing the records `mos-eval`
-      already parsed for citation resolution; the edit replaces the key and closes the `]`.)*
+      record with a key matching `[A-Za-z0-9_:.-]+` loaded from the document's `#bibliography`
+      sources, reusing the records `mos-eval` already parsed for citation resolution; the edit
+      replaces the key and closes the `]`.)*
 - [ ] Add figure preview.
 - [x] Add nested heading outline.
 - [ ] Add symbol search.

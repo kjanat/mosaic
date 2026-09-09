@@ -585,7 +585,8 @@ fn completion_offers_citation_keys_from_real_bib_fixture() -> TestResult {
     let main_path = dir.path().join("main.mos");
     std::fs::write(
         dir.path().join("refs.bib"),
-        "@book{other, title={Other}}\n@article{patashnik1988, title={BibTeXing}}\n",
+        "@book{other, title={Other}}\n@article{patashnik1988, title={BibTeXing}}\n\
+         @book{bad/key, title={Slash}}\n@book{café, title={Unicode}}\n",
     )?;
     let src = "#bibliography(\"refs.bib\")\n\nCite [@pat\n";
     std::fs::write(&main_path, src)?;
@@ -616,7 +617,7 @@ fn completion_offers_citation_keys_from_real_bib_fixture() -> TestResult {
     ensure_eq(
         labels.as_slice(),
         ["other", "patashnik1988"].as_slice(),
-        "every loaded key is offered",
+        "only keys supported by Mosaic citation syntax are offered",
     )?;
     let patashnik = items
         .iter()
@@ -648,6 +649,34 @@ fn completion_offers_citation_keys_from_real_bib_fixture() -> TestResult {
         &miss.get("result"),
         &Some(&json!([])),
         "off a citation the list is empty",
+    )?;
+
+    let range: mos_lsp::diagnostics::LspRange = serde_json::from_value(
+        patashnik
+            .pointer("/textEdit/range")
+            .cloned()
+            .ok_or("edit range")?,
+    )?;
+    let mut accepted = src.to_owned();
+    accepted.replace_range(
+        mos_lsp::definition::position_to_byte(src, range.start)
+            ..mos_lsp::definition::position_to_byte(src, range.end),
+        patashnik
+            .pointer("/textEdit/newText")
+            .and_then(Value::as_str)
+            .ok_or("edit text")?,
+    );
+    server.notify(
+        "textDocument/didChange",
+        &json!({
+            "textDocument": { "uri": uri, "version": 2 },
+            "contentChanges": [{ "text": accepted }],
+        }),
+    )?;
+    let diagnostics = server.diagnostics_for(&uri)?;
+    ensure(
+        diagnostics.is_empty(),
+        "the accepted citation parses and resolves",
     )?;
 
     server.shutdown(4)

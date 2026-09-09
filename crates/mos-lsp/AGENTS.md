@@ -39,9 +39,9 @@ owns parse/lower/resolve policy.
   map into the current document.
 - Answers `textDocument/hover`: the `/** … */` doc comment attached to the block under the cursor
   or to the target of the `@label` reference under it; otherwise `null`.
-- Answers `textDocument/completion`: cursor inside a `[@key` token on its line → one item per record
-  in `LowerResult::bibliography` (edit replaces the whole key, appends `]` when missing); otherwise
-  `[]`. Never reads `.bib` files itself.
+- Answers `textDocument/completion`: cursor inside a parsed `[@key` token on its line → one item
+  per record in a complete `LowerResult::bibliography` whose key matches `[A-Za-z0-9_:.-]+` (edit
+  replaces the whole key, appends `]` when missing); otherwise `[]`. Never reads `.bib` files itself.
 - Unknown requests return JSON-RPC `MethodNotFound`; unknown notifications drop.
 - Caches each open document's `mos-eval` lowering (`src/cache.rs`), shared by diagnostics and
   `textDocument/definition`: an edit lowers once (publish populates the cache, definition reuses

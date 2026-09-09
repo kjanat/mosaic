@@ -7,7 +7,7 @@ use mos_core::{Diagnostic, Severity, SourceSpan};
 pub struct SyntaxTree {
     pub file: PathBuf,
     pub items: Vec<Item>,
-    /// Byte ranges from `[@` through the key, excluding `]`, for citations
+    /// Byte ranges from `[@` through the contents, excluding `]`, for citations
     /// encountered in markup, including unfinished or malformed citations.
     /// Code, raw blocks, directive values, and comments contribute no ranges.
     pub citation_spans: Vec<std::ops::Range<usize>>,

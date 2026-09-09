@@ -50,9 +50,10 @@ pub fn citation_prefix_at(
     })
 }
 
-/// One LSP `CompletionItem` per loaded bibliography record when `position`
-/// sits inside a `[@key` token; empty otherwise. Each item's edit replaces
-/// the whole key and appends the closing `]` when none follows it.
+/// One LSP `CompletionItem` per loaded record whose key is valid Mosaic
+/// citation syntax when `position` sits inside a `[@key` token; empty
+/// otherwise. Each item's edit replaces the whole key and appends the
+/// closing `]` when none follows it.
 #[must_use]
 pub fn citation_completions(lowered: &LowerResult, src: &str, position: LspPosition) -> Vec<Value> {
     if !lowered.bibliography_complete {
@@ -69,6 +70,7 @@ pub fn citation_completions(lowered: &LowerResult, src: &str, position: LspPosit
         .bibliography
         .entries
         .iter()
+        .filter(|(key, _)| !key.is_empty() && scan_label_chars(key.as_bytes(), 0) == key.len())
         .map(|(key, entry)| {
             let new_text = if prefix.closed {
                 key.clone()
@@ -150,6 +152,14 @@ mod tests {
     }
 
     #[test]
+    fn malformed_closed_citations_do_not_offer_partial_key_edits() {
+        for src in ["[@al/beta]", "[@al; @beta]", "[@al beta]", "[@alé]"] {
+            let cursor = src.find("al").unwrap() + 2;
+            assert!(prefix_at(src, cursor).is_none(), "{src}");
+        }
+    }
+
+    #[test]
     fn prefixes_in_code_verbatim_and_comments_are_rejected() {
         for src in [
             "`[@al]`",
@@ -179,6 +189,8 @@ mod tests {
             "`code` [@al",
             "/* comment */ [@al",
             "Text // comment\n[@al",
+            "Cite [@al and [@beta]",
+            "Cite [@al\nand [@beta]",
             "https://example.test/[@al",
             "é 😀 [@al",
         ] {
@@ -258,6 +270,70 @@ mod tests {
     }
 
     #[test]
+    fn every_offered_edit_produces_a_resolved_citation() {
+        let dir = unique_temp_dir("accepted-edits");
+        std::fs::write(
+            dir.join("refs.bib"),
+            "@book{good, title={Good}}\n@book{k:Key_9.2-x, title={Valid}}\n\
+             @book{bad/key, title={Slash}}\n@book{café, title={Unicode}}\n\
+             @book{bad]key, title={Bracket}}\n@book{bad;key, title={Semicolon}}\n",
+        )
+        .expect("write bib");
+        let main = dir.join("main.mos");
+        for body in [
+            "Cite [@",
+            "Cite [@]",
+            "Cite [@k",
+            "Cite [@ke] tail",
+            "Cite [@ke and [@good]",
+            "*Cite [@ke]*",
+            "é 😀 Cite [@ke] tail\r\n",
+        ] {
+            let src = format!("#bibliography(\"refs.bib\")\r\n\r\n{body}");
+            let lowered = mos_eval::lower(&src, &main);
+            assert!(lowered.bibliography_complete);
+            assert_eq!(lowered.bibliography.entries.len(), 6);
+            let start = src.find("[@").unwrap() + 2;
+            let end = scan_label_chars(src.as_bytes(), start);
+            for cursor in start..=end {
+                let items = citation_completions(&lowered, &src, byte_to_position(&src, cursor));
+                assert_eq!(labels(&items), ["good", "k:Key_9.2-x"], "{body}");
+                for item in items {
+                    let range: LspRange =
+                        serde_json::from_value(item["textEdit"]["range"].clone()).unwrap();
+                    let edit_start = position_to_byte(&src, range.start);
+                    let edit_end = position_to_byte(&src, range.end);
+                    assert_eq!(edit_start..edit_end, start..end, "{body}");
+                    let mut accepted = src.clone();
+                    accepted.replace_range(
+                        edit_start..edit_end,
+                        item["textEdit"]["newText"].as_str().unwrap(),
+                    );
+                    let result = mos_eval::lower(&accepted, &main);
+                    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+                    let citations: Vec<_> = result
+                        .document
+                        .nodes()
+                        .filter(|node| node.kind == mos_core::NodeKind::Citation)
+                        .collect();
+                    assert_eq!(citations.len(), src.matches("[@").count());
+                    assert_eq!(
+                        citations[0].attributes.get("key"),
+                        Some(&mos_core::AttrValue::Str(
+                            item["label"].as_str().unwrap().to_owned()
+                        ))
+                    );
+                    assert_eq!(
+                        citations[0].attributes.get("text"),
+                        Some(&mos_core::AttrValue::Str("[1]".to_owned()))
+                    );
+                }
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn completions_off_a_citation_are_empty() {
         let dir = unique_temp_dir("off");
         std::fs::write(dir.join("refs.bib"), "@book{alpha, title={A}}\n").expect("write bib");
@@ -277,7 +353,14 @@ mod tests {
         let dir = unique_temp_dir("contexts");
         std::fs::write(dir.join("refs.bib"), "@book{alpha, title={A}}\n").expect("write bib");
         let main = dir.join("main.mos");
-        for body in ["`[@al]`", "Text // [@al", "#pre[[[@al]]]", "/* [@al */"] {
+        for body in [
+            "`[@al]`",
+            "Text // [@al",
+            "#pre[[[@al]]]",
+            "/* [@al */",
+            "[@al/beta]",
+            "[@al; @beta]",
+        ] {
             let src = format!("#bibliography(\"refs.bib\")\n\n{body}");
             let lowered = mos_eval::lower(&src, &main);
             let cursor = src.find("[@al").unwrap() + "[@al".len();

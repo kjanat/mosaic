@@ -427,10 +427,10 @@ impl<'parser, 'slice, 'src> InlineSegmentParser<'parser, 'slice, 'src> {
     fn handle_citation(&mut self) {
         let key_start = self.i + 2;
         let key_end = scan_label_chars(self.bytes, key_start);
-        self.parser
-            .citation_spans
-            .push(self.base + self.i..self.base + key_end);
         if key_end > key_start && key_end < self.bytes.len() && self.bytes[key_end] == b']' {
+            self.parser
+                .citation_spans
+                .push(self.base + self.i..self.base + key_end);
             self.flush(self.i);
             let end = key_end + 1;
             self.out.push(Inline {
@@ -443,8 +443,18 @@ impl<'parser, 'slice, 'src> InlineSegmentParser<'parser, 'slice, 'src> {
             self.text_start = self.i;
             return;
         }
-        let recovery_end =
-            find_byte(self.bytes, b']', key_start).map_or(key_start, |close| close + 1);
+        let close = find_byte(self.bytes, b']', key_start);
+        // Preserve the whole malformed body so editor consumers cannot
+        // mistake its valid leading characters for a complete key token.
+        // A later `[@` starts another citation: its closer must not prevent
+        // completing this unfinished prefix.
+        let citation_end = close
+            .filter(|&end| !self.slice[key_start..end].contains("[@"))
+            .unwrap_or(key_end);
+        self.parser
+            .citation_spans
+            .push(self.base + self.i..self.base + citation_end);
+        let recovery_end = close.map_or(key_start, |close| close + 1);
         self.parser.diagnostics.push(self.parser.warn(
             &codes::MOS0039,
             "malformed citation `[@…]`; expected `[@key]`; treated as text",
