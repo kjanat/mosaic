@@ -433,7 +433,7 @@ fn did_open_change_close_drive_the_diagnostics_lifecycle() -> TestResult {
     let dirty = server.diagnostics_for(uri)?;
     let undefined_reference = dirty
         .iter()
-        .find(|diagnostic| diagnostic.get("code") == Some(&json!("semantic.label-missing")))
+        .find(|diagnostic| diagnostic.get("code") == Some(&json!("resolution.label-missing")))
         .ok_or_else(|| format!("expected a MOS0033 diagnostic, got {dirty:?}"))?;
     ensure_eq(
         &undefined_reference.get("severity"),
@@ -459,7 +459,7 @@ fn did_open_change_close_drive_the_diagnostics_lifecycle() -> TestResult {
     ensure_eq(
         &undefined_reference.pointer("/codeDescription/href"),
         &Some(&json!(
-            "https://github.com/kjanat/mosaic/blob/master/docs/diagnostic-codes.md#semantic.label-missing"
+            "https://github.com/kjanat/mosaic/blob/master/docs/diagnostic-codes.md#resolution.label-missing"
         )),
         "stable catalog link",
     )?;
@@ -1093,7 +1093,7 @@ fn diagnostic_optional_fields_follow_client_capabilities() -> TestResult {
             ensure_eq(&diagnostic.get("data").is_some(), &data, "data opt-in")?;
             ensure_eq(
                 &diagnostic["code"],
-                &json!("semantic.label-missing"),
+                &json!("resolution.label-missing"),
                 "canonical code is always present",
             )?;
         }

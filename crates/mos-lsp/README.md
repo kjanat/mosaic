@@ -193,7 +193,7 @@ The root README and AGENTS files remain the source of truth for what is and isn'
 
 ## Diagnostic identity
 
-Diagnostics publish semantic IDs such as `semantic.label-missing` in `code`, the stable numeric
+Diagnostics publish semantic IDs such as `resolution.label-missing` in `code`, the stable numeric
 alias (`MOS0033`) in `data.legacyCode` when the client advertises `dataSupport`, and a catalog link
 in `codeDescription.href` when it advertises `codeDescriptionSupport`. Both flags are read from
 `textDocument.publishDiagnostics` during initialization and default to false. Quick-fix titles
