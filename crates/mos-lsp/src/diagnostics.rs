@@ -37,9 +37,10 @@ pub struct LspDiagnostic {
     /// LSP `DiagnosticSeverity`: 1 Error, 2 Warning, 3 Information, 4 Hint.
     pub severity: u8,
     pub code: String,
-    #[serde(rename = "codeDescription")]
-    pub code_description: CodeDescription,
-    pub data: DiagnosticData,
+    #[serde(rename = "codeDescription", skip_serializing_if = "Option::is_none")]
+    pub code_description: Option<CodeDescription>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<DiagnosticData>,
     pub source: String,
     pub message: String,
 }
@@ -220,12 +221,12 @@ fn project_diagnostic(file: &Path, src: &str, diag: &CoreDiagnostic) -> Option<L
         range,
         severity: lsp_severity(diag.severity()),
         code: diag.def().id().to_owned(),
-        code_description: CodeDescription {
+        code_description: Some(CodeDescription {
             href: diag.def().documentation_url(),
-        },
-        data: DiagnosticData {
+        }),
+        data: Some(DiagnosticData {
             legacy_code: diag.def().code().to_string(),
-        },
+        }),
         source: "mosaic".to_owned(),
         message: diag.message().to_owned(),
     })
@@ -408,8 +409,22 @@ mod tests {
                 return;
             };
             assert_eq!(projected.code, def.id());
-            assert_eq!(projected.data.legacy_code, def.code().to_string());
-            assert_eq!(projected.code_description.href, def.documentation_url());
+            assert_eq!(
+                projected
+                    .data
+                    .as_ref()
+                    .expect("compatibility metadata")
+                    .legacy_code,
+                def.code().to_string()
+            );
+            assert_eq!(
+                projected
+                    .code_description
+                    .as_ref()
+                    .expect("documentation")
+                    .href,
+                def.documentation_url()
+            );
             assert_eq!(projected.severity, 3);
             assert_eq!(projected.message, "message");
         }

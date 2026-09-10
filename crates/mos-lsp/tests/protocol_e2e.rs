@@ -422,7 +422,11 @@ fn initialize_handshake_advertises_capabilities_and_exits_cleanly() -> TestResul
 fn did_open_change_close_drive_the_diagnostics_lifecycle() -> TestResult {
     let uri = "file:///virtual/main.mos";
     let mut server = Server::spawn()?;
-    initialize(&mut server, &default_initialize_params())?;
+    let mut params = default_initialize_params();
+    params["capabilities"]["textDocument"] = json!({
+        "publishDiagnostics": { "codeDescriptionSupport": true, "dataSupport": true }
+    });
+    initialize(&mut server, &params)?;
 
     // Open a document with an undefined `@no:such` reference.
     server.open_document(uri, "see @no:such\n")?;
@@ -1053,4 +1057,47 @@ fn unknown_request_gets_method_not_found_instead_of_hanging() -> TestResult {
     )?;
 
     server.shutdown(3)
+}
+
+#[test]
+fn diagnostic_optional_fields_follow_client_capabilities() -> TestResult {
+    let mut profiles = vec![
+        (default_initialize_params(), false, false),
+        (zed_like_initialize_params(), false, false),
+    ];
+    for description in [false, true] {
+        for data in [false, true] {
+            let mut params = default_initialize_params();
+            params["capabilities"]["textDocument"] = json!({
+                "publishDiagnostics": {
+                    "codeDescriptionSupport": description,
+                    "dataSupport": data
+                }
+            });
+            profiles.push((params, description, data));
+        }
+    }
+    for (params, description, data) in profiles {
+        let mut server = Server::spawn()?;
+        initialize(&mut server, &params)?;
+        let uri = "file:///virtual/capabilities.mos";
+        server.open_document(uri, "see @no:such\n")?;
+        let diagnostics = server.diagnostics_for(uri)?;
+        ensure(!diagnostics.is_empty(), "expected diagnostics")?;
+        for diagnostic in diagnostics {
+            ensure_eq(
+                &diagnostic.get("codeDescription").is_some(),
+                &description,
+                "codeDescription opt-in",
+            )?;
+            ensure_eq(&diagnostic.get("data").is_some(), &data, "data opt-in")?;
+            ensure_eq(
+                &diagnostic["code"],
+                &json!("semantic.label-missing"),
+                "canonical code is always present",
+            )?;
+        }
+        server.shutdown(2)?;
+    }
+    Ok(())
 }
