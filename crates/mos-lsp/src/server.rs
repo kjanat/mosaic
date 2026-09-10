@@ -784,7 +784,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.get("code").and_then(Value::as_str) == Some("semantic.label-missing")),
+                .any(|d| d.get("code").and_then(Value::as_str) == Some("resolution.label-missing")),
             "expected a MOS0033 diagnostic, got {diagnostics:?}"
         );
     }
@@ -837,7 +837,7 @@ mod tests {
         assert!(
             dirty
                 .iter()
-                .any(|d| d.get("code").and_then(Value::as_str) == Some("semantic.label-missing")),
+                .any(|d| d.get("code").and_then(Value::as_str) == Some("resolution.label-missing")),
             "expected MOS0033 after didChange, got {dirty:?}"
         );
     }
@@ -1679,11 +1679,7 @@ mod tests {
 
     fn diagnostic_codes(state: &mut ServerState, uri: &str) -> Vec<String> {
         with_lowering(state, uri, |lowered, _, _| {
-            lowered
-                .diagnostics
-                .iter()
-                .map(|d| d.def().id().to_owned())
-                .collect()
+            lowered.diagnostics.iter().map(|d| d.def().id()).collect()
         })
         .expect("document is open")
     }
@@ -1724,7 +1720,7 @@ mod tests {
         );
         assert_eq!(
             diagnostic_codes(&mut state, &uri),
-            ["semantic.citation-missing"],
+            ["resolution.citation-missing"],
             "the request must be served from the cached lowering"
         );
 
@@ -1850,7 +1846,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.get("code").and_then(Value::as_str) == Some("semantic.label-missing")),
+                .any(|d| d.get("code").and_then(Value::as_str) == Some("resolution.label-missing")),
             "the edited document's undefined reference must surface MOS0033, got {diagnostics:?}"
         );
         // … and definition for the now-undefined reference is null.

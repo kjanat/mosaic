@@ -257,7 +257,7 @@ mod tests {
         assert_eq!(actions.len(), 1, "only the first fix overlaps: {actions:?}");
         assert_eq!(
             actions[0].get("title").and_then(Value::as_str),
-            Some("semantic.label-missing (MOS0033): replace `alpha` with `ALPHA`")
+            Some("resolution.label-missing (MOS0033): replace `alpha` with `ALPHA`")
         );
     }
 

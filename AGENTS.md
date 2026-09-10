@@ -111,7 +111,8 @@ fixpoints, Knuth-Plass, automatic hyphenation, reproducible/frozen builds, impor
 - Keep domain direction one-way. CLI glues; parse does not lower; layout does not emit PDF.
 - Use existing `CoreError`/`Diagnostic` paths for user errors. No panics for bad documents.
 - Diagnostics: semantic IDs and opaque/stable `MOS####` aliases are minted only in `mos-core::codes`.
-  Namespace and slug are immutable identity; category is metadata. Add a code by
+  IDs derive from the category prefix and slug; category changes require ID migration.
+  Define category prefixes once in `define_categories!`. Add a code by
   editing `codes.rs` + `docs/diagnostic-codes.md` together (drift-tested). CLI phase barriers run a
   phase to completion, then exit if any error was collected.
 

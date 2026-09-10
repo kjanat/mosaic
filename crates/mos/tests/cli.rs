@@ -743,7 +743,7 @@ fn check_reports_unknown_page_reference_label() {
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
     assert!(
-        stderr.contains("error[semantic.label-missing (MOS0033)]"),
+        stderr.contains("error[resolution.label-missing (MOS0033)]"),
         "stderr={stderr:?}"
     );
 }
@@ -757,7 +757,7 @@ fn check_reports_unknown_label() {
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
     assert!(
-        stderr.contains("error[semantic.label-missing (MOS0033)]"),
+        stderr.contains("error[resolution.label-missing (MOS0033)]"),
         "stderr={stderr:?}"
     );
 }
@@ -769,7 +769,7 @@ fn check_renders_unknown_label_suggestion() {
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
     assert!(
-        stderr.contains("error[semantic.label-missing (MOS0033)]"),
+        stderr.contains("error[resolution.label-missing (MOS0033)]"),
         "stderr={stderr:?}"
     );
     assert!(
@@ -785,7 +785,7 @@ fn check_renders_unsafe_path_suggestion() {
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
     assert!(
-        stderr.contains("error[semantic.path-unsafe-segment (MOS0049)]"),
+        stderr.contains("error[resolution.path-unsafe-segment (MOS0049)]"),
         "stderr={stderr:?}"
     );
     assert!(
@@ -801,7 +801,7 @@ fn check_reports_duplicate_label() {
     let (code, _stdout, stderr) = run(&["check", "main.mos"], dir.path());
     assert_eq!(code, 1);
     assert!(
-        stderr.contains("error[semantic.label-duplicate (MOS0030)]"),
+        stderr.contains("error[resolution.label-duplicate (MOS0030)]"),
         "stderr={stderr:?}"
     );
     assert!(
@@ -817,7 +817,7 @@ fn build_renders_structured_suggestions_before_phase_exit() {
     let (code, _stdout, stderr) = run(&["build", "main.mos"], dir.path());
     assert_eq!(code, 1);
     assert!(
-        stderr.contains("error[semantic.label-missing (MOS0033)]"),
+        stderr.contains("error[resolution.label-missing (MOS0033)]"),
         "stderr={stderr:?}"
     );
     assert!(

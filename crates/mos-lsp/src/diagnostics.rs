@@ -220,7 +220,7 @@ fn project_diagnostic(file: &Path, src: &str, diag: &CoreDiagnostic) -> Option<L
     Some(LspDiagnostic {
         range,
         severity: lsp_severity(diag.severity()),
-        code: diag.def().id().to_owned(),
+        code: diag.def().id(),
         code_description: Some(CodeDescription {
             href: diag.def().documentation_url(),
         }),
@@ -441,7 +441,7 @@ mod tests {
         let diagnostics = for_document(&file, src);
         let maybe_mos0033 = diagnostics
             .iter()
-            .find(|d| d.code == "semantic.label-missing");
+            .find(|d| d.code == "resolution.label-missing");
         assert!(
             maybe_mos0033.is_some(),
             "MOS0033 diagnostic must be present; got {diagnostics:?}"

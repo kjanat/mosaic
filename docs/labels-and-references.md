@@ -112,7 +112,7 @@ See @intro.
 ```
 
 ```console
-error[semantic.label-missing (MOS0033)]: unknown label `intro.` in `@` reference
+error[resolution.label-missing (MOS0033)]: unknown label `intro.` in `@` reference
   --> main.mos:3:5
    |
   3| See @intro.
@@ -128,7 +128,7 @@ A label may be declared once. If the same label is declared again, the **first**
 and each later one is an error, [`MOS0030`](./diagnostic-codes.md), pointing back at the first:
 
 ```console
-error[semantic.label-duplicate (MOS0030)]: label `intro` is declared more than once
+error[resolution.label-duplicate (MOS0030)]: label `intro` is declared more than once
   --> main.mos:3:1
    |
   3| = Methods <intro>
@@ -203,7 +203,7 @@ If a reference names a label that does not exist, it is an error,
 [`MOS0033`](./diagnostic-codes.md):
 
 ```console
-error[semantic.label-missing (MOS0033)]: unknown label `missing` in `@` reference
+error[resolution.label-missing (MOS0033)]: unknown label `missing` in `@` reference
   --> main.mos:1:5
    |
   1| See @missing for details.

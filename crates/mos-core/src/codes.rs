@@ -4,7 +4,7 @@
 //! Identity and severity are deliberately *separate axes*:
 //!
 //! - [`DiagnosticDef::id`] is the canonical semantic identifier shown to users.
-//!   Its namespace is fixed at registration, independent of category metadata.
+//!   Its prefix comes from the category; the registry supplies only the condition slug.
 //! - A [`DiagnosticCode`] answers "which rule fired?" It is an opaque,
 //!   namespaced, severity-free identifier rendered as `MOS0010`. The
 //!   number has no semantic meaning: it does not encode severity,
@@ -86,50 +86,58 @@ impl std::fmt::Display for DiagnosticCode {
     }
 }
 
-/// What *kind* of thing a diagnostic describes.
-///
-/// Category is metadata, never identity. The catalog groups by this so a
-/// rule can change phase (parser → evaluator, fonts → text shaping)
-/// without breaking its stable [`DiagnosticCode`].
-///
-/// # Examples
-///
-/// ```
-/// use mos_core::{DiagnosticCategory, codes};
-///
-/// assert_eq!(codes::MOS0033.category(), DiagnosticCategory::Resolution);
-/// ```
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
-pub enum DiagnosticCategory {
-    /// Surface syntax: tokenisation, directive shape, inline grammar.
-    Syntax,
-    /// Name and reference resolution, directive and argument validation.
-    Resolution,
-    /// Page geometry, paper sizes, style application.
-    Layout,
-    /// Text shaping, glyph coverage, font selection.
-    Text,
-    /// PDF backend emission and packaging.
-    Pdf,
-    /// Filesystem and asset I/O (read failure, decode failure, …).
-    Io,
-    /// Compiler-internal invariants (should never reach end users).
-    Internal,
+/// Define category variants and their canonical ID prefixes together.
+macro_rules! define_categories {
+    ($( $(#[$meta:meta])* $variant:ident => $prefix:literal, )*) => {
+        /// Diagnostic grouping and source of the diagnostic ID prefix.
+        ///
+        /// Changing a category changes the descriptive ID, but preserves its
+        /// numeric compatibility alias.
+        ///
+        /// ```
+        /// use mos_core::{DiagnosticCategory, codes};
+        /// assert_eq!(codes::MOS0033.category(), DiagnosticCategory::Resolution);
+        /// ```
+        #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+        pub enum DiagnosticCategory {
+            $( $(#[$meta])* $variant, )*
+        }
+
+        impl DiagnosticCategory {
+            /// Canonical prefix used in diagnostic identifiers.
+            #[must_use]
+            pub const fn prefix(self) -> &'static str {
+                match self {
+                    $( Self::$variant => $prefix, )*
+                }
+            }
+        }
+
+        impl std::fmt::Display for DiagnosticCategory {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $( Self::$variant => f.write_str(stringify!($variant)), )*
+                }
+            }
+        }
+    };
 }
 
-impl std::fmt::Display for DiagnosticCategory {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Self::Syntax => "Syntax",
-            Self::Resolution => "Resolution",
-            Self::Layout => "Layout",
-            Self::Text => "Text",
-            Self::Pdf => "Pdf",
-            Self::Io => "Io",
-            Self::Internal => "Internal",
-        };
-        f.write_str(s)
-    }
+define_categories! {
+    /// Surface syntax: tokenisation, directive shape, inline grammar.
+    Syntax => "syntax",
+    /// Name and reference resolution, directive and argument validation.
+    Resolution => "resolution",
+    /// Page geometry, paper sizes, style application.
+    Layout => "layout",
+    /// Text shaping, glyph coverage, font selection.
+    Text => "text",
+    /// PDF backend emission and packaging.
+    Pdf => "pdf",
+    /// Filesystem and asset I/O.
+    Io => "io",
+    /// Compiler-internal invariants.
+    Internal => "internal",
 }
 
 /// Registry entry: one code, its slug, default severity, category, owner, summary.
@@ -151,7 +159,6 @@ impl std::fmt::Display for DiagnosticCategory {
 #[derive(Clone, Copy, Debug)]
 pub struct DiagnosticDef {
     code: DiagnosticCode,
-    id: &'static str,
     slug: &'static str,
     default_severity: Severity,
     category: DiagnosticCategory,
@@ -160,15 +167,15 @@ pub struct DiagnosticDef {
 }
 
 impl DiagnosticDef {
-    /// Canonical stable semantic identifier, independent of mutable category metadata.
+    /// Canonical diagnostic identifier derived from the category and condition slug.
     ///
     /// ```
     /// use mos_core::codes;
-    /// assert_eq!(codes::MOS0033.id(), "semantic.label-missing");
+    /// assert_eq!(codes::MOS0033.id(), "resolution.label-missing");
     /// ```
     #[must_use]
-    pub const fn id(&self) -> &'static str {
-        self.id
+    pub fn id(&self) -> String {
+        format!("{}.{}", self.category.prefix(), self.slug)
     }
 
     /// Catalog URL with an explicit stable anchor for this rule.
@@ -267,7 +274,6 @@ impl DiagnosticDef {
 
     pub(crate) const fn new(
         code: DiagnosticCode,
-        id: &'static str,
         slug: &'static str,
         default_severity: Severity,
         category: DiagnosticCategory,
@@ -276,7 +282,6 @@ impl DiagnosticDef {
     ) -> Self {
         Self {
             code,
-            id,
             slug,
             default_severity,
             category,
@@ -296,14 +301,13 @@ macro_rules! define_codes {
     (
         $(
             $(#[$meta:meta])*
-            $name:ident = $num:literal, $sev:ident, $cat:ident, $namespace:literal, $slug:literal, $owner:literal, $summary:literal;
+            $name:ident = $num:literal, $sev:ident, $cat:ident, $slug:literal, $owner:literal, $summary:literal;
         )*
     ) => {
         $(
             $(#[$meta])*
             pub static $name: DiagnosticDef = DiagnosticDef::new(
                 DiagnosticCode::new("MOS", $num),
-                concat!($namespace, ".", $slug),
                 $slug,
                 Severity::$sev,
                 DiagnosticCategory::$cat,
@@ -323,15 +327,20 @@ macro_rules! define_codes {
         ///
         /// ```
         /// use mos_core::codes;
-        /// assert!(std::ptr::eq(codes::lookup("semantic.label-missing").unwrap(), &codes::MOS0033));
+        /// assert!(std::ptr::eq(codes::lookup("resolution.label-missing").unwrap(), &codes::MOS0033));
         /// assert!(std::ptr::eq(codes::lookup("MOS0033").unwrap(), &codes::MOS0033));
         /// assert!(codes::lookup("label-missing").is_none());
         /// ```
         #[must_use]
         pub fn lookup(identifier: &str) -> Option<&'static DiagnosticDef> {
             match identifier {
-                $( concat!($namespace, ".", $slug) | stringify!($name) => Some(&$name), )*
-                _ => None,
+                $( stringify!($name) => Some(&$name), )*
+                _ => {
+                    let (prefix, slug) = identifier.split_once('.')?;
+                    ALL.iter().copied().find(|def| {
+                        def.category().prefix() == prefix && def.slug() == slug
+                    })
+                }
             }
         }
 
@@ -403,145 +412,145 @@ macro_rules! define_codes {
 define_codes! {
     // ── syntax (mos-parse) ────────────────────────────────────────────
     /// `#set` not followed by an identifier.
-    MOS0010 = 10, Error, Syntax, "syntax", "set-missing-identifier", "mos-parse",
-        "syntax: #set not followed by an identifier";
+    MOS0010 = 10, Error, Syntax, "set-missing-identifier", "mos-parse",
+        "#set not followed by an identifier";
     /// Missing `(` after `#set NAME`, `#image`, or `#figure`.
-    MOS0013 = 13, Error, Syntax, "syntax", "directive-missing-paren", "mos-parse",
-        "syntax: directive missing opening parenthesis";
+    MOS0013 = 13, Error, Syntax, "directive-missing-paren", "mos-parse",
+        "directive missing opening parenthesis";
     /// Unterminated `#NAME(...)` or `#NAME[[...]]` block.
-    MOS0016 = 16, Error, Syntax, "syntax", "directive-unterminated", "mos-parse",
-        "syntax: unterminated directive block";
+    MOS0016 = 16, Error, Syntax, "directive-unterminated", "mos-parse",
+        "unterminated directive block";
     /// Unexpected trailing content after a directive on the same line.
-    MOS0019 = 19, Error, Syntax, "syntax", "directive-trailing-content", "mos-parse",
-        "syntax: unexpected trailing content after directive";
+    MOS0019 = 19, Error, Syntax, "directive-trailing-content", "mos-parse",
+        "unexpected trailing content after directive";
     /// Malformed directive argument value (bad escape, unknown unit,
     /// unterminated string, lone `-`, malformed number/length).
-    MOS0022 = 22, Error, Syntax, "syntax", "directive-malformed-arg", "mos-parse",
-        "syntax: malformed directive argument value";
+    MOS0022 = 22, Error, Syntax, "directive-malformed-arg", "mos-parse",
+        "malformed directive argument value";
     /// Argument-list shape error (missing `:`, missing `,`/`)`,
     /// positional where named expected).
-    MOS0025 = 25, Error, Syntax, "syntax", "arglist-shape", "mos-parse",
-        "syntax: malformed argument list";
+    MOS0025 = 25, Error, Syntax, "arglist-shape", "mos-parse",
+        "malformed argument list";
     /// Unterminated `**strong**` run; treated as literal text.
-    MOS0028 = 28, Warning, Syntax, "syntax", "unterminated-strong", "mos-parse",
-        "syntax: unterminated **strong** run; treated as text";
+    MOS0028 = 28, Warning, Syntax, "unterminated-strong", "mos-parse",
+        "unterminated **strong** run; treated as text";
     /// Unterminated `*emphasis*` run; treated as literal text.
-    MOS0031 = 31, Warning, Syntax, "syntax", "unterminated-emphasis", "mos-parse",
-        "syntax: unterminated *emphasis* run; treated as text";
+    MOS0031 = 31, Warning, Syntax, "unterminated-emphasis", "mos-parse",
+        "unterminated *emphasis* run; treated as text";
     /// Unterminated `` `code` `` run; treated as literal text.
-    MOS0034 = 34, Warning, Syntax, "syntax", "unterminated-code", "mos-parse",
-        "syntax: unterminated `code` run; treated as text";
+    MOS0034 = 34, Warning, Syntax, "unterminated-code", "mos-parse",
+        "unterminated `code` run; treated as text";
     /// Stray `@` not followed by a label identifier; treated as text.
-    MOS0036 = 36, Warning, Syntax, "syntax", "stray-at-sign", "mos-parse",
-        "syntax: stray @ not followed by a label; treated as text";
+    MOS0036 = 36, Warning, Syntax, "stray-at-sign", "mos-parse",
+        "stray @ not followed by a label; treated as text";
     /// Lone trailing `\` at end of input; treated as literal text.
-    MOS0038 = 38, Warning, Syntax, "syntax", "lone-trailing-backslash", "mos-parse",
-        "syntax: lone trailing backslash at end of input; treated as text";
+    MOS0038 = 38, Warning, Syntax, "lone-trailing-backslash", "mos-parse",
+        "lone trailing backslash at end of input; treated as text";
     /// Malformed citation group; treated as literal text.
-    MOS0039 = 39, Warning, Syntax, "syntax", "malformed-citation", "mos-parse",
-        "syntax: malformed citation group; treated as text";
+    MOS0039 = 39, Warning, Syntax, "malformed-citation", "mos-parse",
+        "malformed citation group; treated as text";
     /// Heading `<label>` is not trailing.
-    MOS0048 = 48, Warning, Syntax, "syntax", "heading-label-not-trailing", "mos-parse",
-        "syntax: heading label is not the last element on the line; treated as text";
+    MOS0048 = 48, Warning, Syntax, "heading-label-not-trailing", "mos-parse",
+        "heading label is not the last element on the line; treated as text";
     /// Unterminated `/*` block comment; consumed to end of input.
-    MOS0050 = 50, Warning, Syntax, "syntax", "unterminated-block-comment", "mos-parse",
-        "syntax: unterminated /* block comment; consumed to end of input";
+    MOS0050 = 50, Warning, Syntax, "unterminated-block-comment", "mos-parse",
+        "unterminated /* block comment; consumed to end of input";
     /// BibTeX database could not be parsed (`mos-bib`).
-    MOS0043 = 43, Error, Syntax, "syntax", "bibtex-parse-failed", "mos-bib",
-        "syntax: BibTeX database could not be parsed";
+    MOS0043 = 43, Error, Syntax, "bibtex-parse-failed", "mos-bib",
+        "BibTeX database could not be parsed";
     /// CSL style could not be parsed (`mos-csl`).
-    MOS0044 = 44, Error, Syntax, "syntax", "csl-parse-failed", "mos-csl",
-        "syntax: CSL style could not be parsed";
+    MOS0044 = 44, Error, Syntax, "csl-parse-failed", "mos-csl",
+        "CSL style could not be parsed";
 
     // ── resolution (mos-eval) ───────────────────────────────────────────
     /// Unknown `#set` target (only `page`, `text`, `document`, `image`).
-    MOS0011 = 11, Error, Resolution, "semantic", "set-unknown-target", "mos-eval",
-        "resolution: unknown #set target";
+    MOS0011 = 11, Error, Resolution, "set-unknown-target", "mos-eval",
+        "unknown #set target";
     /// Unknown keyword argument for `#set TARGET`, `#image`, or `#figure`.
-    MOS0015 = 15, Error, Resolution, "semantic", "unknown-kwarg", "mos-eval",
-        "resolution: unknown keyword argument";
+    MOS0015 = 15, Error, Resolution, "unknown-kwarg", "mos-eval",
+        "unknown keyword argument";
     /// Argument type mismatch or non-positive length.
-    MOS0020 = 20, Error, Resolution, "semantic", "arg-type-mismatch", "mos-eval",
-        "resolution: argument type mismatch or non-positive length";
+    MOS0020 = 20, Error, Resolution, "arg-type-mismatch", "mos-eval",
+        "argument type mismatch or non-positive length";
     /// `#set` rejecting a positional argument where named is required.
-    MOS0024 = 24, Error, Resolution, "semantic", "set-positional-rejected", "mos-eval",
-        "resolution: #set rejects positional argument";
+    MOS0024 = 24, Error, Resolution, "set-positional-rejected", "mos-eval",
+        "#set rejects positional argument";
     /// `#set` value passes typing but trips a sanity floor; still applied.
-    MOS0027 = 27, Warning, Resolution, "semantic", "set-sanity-floor", "mos-eval",
-        "resolution: #set value trips a sanity floor; value still applied";
+    MOS0027 = 27, Warning, Resolution, "set-sanity-floor", "mos-eval",
+        "#set value trips a sanity floor; value still applied";
     /// Label declared more than once; first declaration wins.
-    MOS0030 = 30, Error, Resolution, "semantic", "label-duplicate", "mos-eval",
-        "resolution: label declared more than once";
+    MOS0030 = 30, Error, Resolution, "label-duplicate", "mos-eval",
+        "label declared more than once";
     /// `@label` reference to a label that does not exist.
-    MOS0033 = 33, Error, Resolution, "semantic", "label-missing", "mos-eval",
-        "resolution: @reference to a label that does not exist";
+    MOS0033 = 33, Error, Resolution, "label-missing", "mos-eval",
+        "@reference to a label that does not exist";
     /// `#image(...)`/`#figure(...)` missing a path argument.
-    MOS0037 = 37, Error, Resolution, "semantic", "image-missing-path", "mos-eval",
-        "resolution: #image/#figure missing a path argument";
+    MOS0037 = 37, Error, Resolution, "image-missing-path", "mos-eval",
+        "#image/#figure missing a path argument";
     /// `#bibliography(...)` missing a path argument.
-    MOS0040 = 40, Error, Resolution, "semantic", "bibliography-missing-path", "mos-eval",
-        "resolution: #bibliography missing a path argument";
+    MOS0040 = 40, Error, Resolution, "bibliography-missing-path", "mos-eval",
+        "#bibliography missing a path argument";
     /// `#bibliography(...)` path declared more than once; first wins.
-    MOS0042 = 42, Error, Resolution, "semantic", "bibliography-duplicate-path", "mos-eval",
-        "resolution: #bibliography path argument declared more than once";
+    MOS0042 = 42, Error, Resolution, "bibliography-duplicate-path", "mos-eval",
+        "#bibliography path argument declared more than once";
     /// `[@key]` citation to a bibliography record that does not exist.
-    MOS0045 = 45, Error, Resolution, "semantic", "citation-missing", "mos-eval",
-        "resolution: citation key does not exist in bibliography records";
+    MOS0045 = 45, Error, Resolution, "citation-missing", "mos-eval",
+        "citation key does not exist in bibliography records";
     /// Citation key appears in more than one declared bibliography source.
-    MOS0046 = 46, Error, Resolution, "semantic", "bibliography-duplicate-key", "mos-eval",
-        "resolution: citation key appears in more than one bibliography source";
+    MOS0046 = 46, Error, Resolution, "bibliography-duplicate-key", "mos-eval",
+        "citation key appears in more than one bibliography source";
     /// Path contains a non-portable segment.
-    MOS0049 = 49, Error, Resolution, "semantic", "path-unsafe-segment", "mos-eval",
-        "resolution: path segment is not a portable name (manifest paths use `/` only)";
+    MOS0049 = 49, Error, Resolution, "path-unsafe-segment", "mos-eval",
+        "path segment is not a portable name (manifest paths use `/` only)";
 
     // ── filesystem / asset I/O ────────────────────────────────────────
     /// Image file cannot be read from disk.
-    MOS0012 = 12, Error, Io, "io", "image-read-failed", "mos-eval",
-        "io: image file cannot be read from disk";
+    MOS0012 = 12, Error, Io, "image-read-failed", "mos-eval",
+        "image file cannot be read from disk";
     /// Image file cannot be decoded (unsupported or corrupt).
-    MOS0029 = 29, Error, Io, "io", "image-decode-failed", "mos-eval",
-        "io: image file cannot be decoded";
+    MOS0029 = 29, Error, Io, "image-decode-failed", "mos-eval",
+        "image file cannot be decoded";
     /// Declared `#bibliography(...)` source file is not on disk.
-    MOS0041 = 41, Warning, Io, "io", "bibliography-source-missing", "mos-eval",
-        "io: declared bibliography source file not found";
+    MOS0041 = 41, Warning, Io, "bibliography-source-missing", "mos-eval",
+        "declared bibliography source file not found";
 
     // ── layout (mos-layout) ───────────────────────────────────────────
     /// Unknown paper size in `#set page(paper: ...)`.
-    MOS0017 = 17, Error, Layout, "layout", "paper-size-unknown", "mos-layout",
-        "layout: unknown paper size";
+    MOS0017 = 17, Error, Layout, "paper-size-unknown", "mos-layout",
+        "unknown paper size";
     /// Well-typed `#set` value breaks page geometry; previous value kept.
-    MOS0023 = 23, Error, Layout, "layout", "geometry-breaks-page", "mos-layout",
-        "layout: value breaks page geometry; previous value retained";
+    MOS0023 = 23, Error, Layout, "geometry-breaks-page", "mos-layout",
+        "value breaks page geometry; previous value retained";
     /// Image reached layout without decoded pixels; skipped on the page.
-    MOS0035 = 35, Warning, Layout, "layout", "image-skipped-no-pixels", "mos-layout",
-        "layout: image reached layout without decoded pixels; skipped";
+    MOS0035 = 35, Warning, Layout, "image-skipped-no-pixels", "mos-layout",
+        "image reached layout without decoded pixels; skipped";
     /// `@page(...)` references did not converge.
-    MOS0047 = 47, Warning, Layout, "layout", "page-fixpoint-nonconvergence", "mos-eval",
-        "layout: page references did not converge; last computed page numbers used";
+    MOS0047 = 47, Warning, Layout, "page-fixpoint-nonconvergence", "mos-eval",
+        "page references did not converge; last computed page numbers used";
 
     // ── text / fonts / shaping ────────────────────────────────────────
     /// Unknown font family; falling back to bundled Noto Sans.
-    MOS0018 = 18, Notice, Text, "text", "font-family-substituted", "mos-fonts",
-        "text: substituted bundled Noto Sans for unknown font family";
+    MOS0018 = 18, Notice, Text, "font-family-substituted", "mos-fonts",
+        "substituted bundled Noto Sans for unknown font family";
     /// Base-14 `/Differences` glyph budget exhausted for a face.
-    MOS0032 = 32, Warning, Text, "text", "glyph-budget-exhausted", "mos-pdf",
-        "text: Base-14 /Differences glyph budget exhausted";
+    MOS0032 = 32, Warning, Text, "glyph-budget-exhausted", "mos-pdf",
+        "Base-14 /Differences glyph budget exhausted";
 
     // ── PDF emission (mos-pdf) ────────────────────────────────────────
     /// PDF backend I/O failure (cannot create dir or write bytes).
-    MOS0014 = 14, Error, Pdf, "pdf", "pdf-io-failed", "mos-pdf",
-        "pdf: backend I/O failure";
+    MOS0014 = 14, Error, Pdf, "pdf-io-failed", "mos-pdf",
+        "backend I/O failure";
     /// Font subsetting failure for an embedded face.
-    MOS0026 = 26, Error, Pdf, "pdf", "font-subset-failed", "mos-pdf",
-        "pdf: font subsetting failure for an embedded face";
+    MOS0026 = 26, Error, Pdf, "font-subset-failed", "mos-pdf",
+        "font subsetting failure for an embedded face";
 
     // ── compiler-internal invariants ──────────────────────────────────
     /// Internal: missing embedded font plan for a shaped run.
-    MOS0021 = 21, Error, Internal, "internal", "internal-missing-font-plan", "mos-pdf",
-        "internal: missing embedded font plan for a shaped run";
+    MOS0021 = 21, Error, Internal, "internal-missing-font-plan", "mos-pdf",
+        "missing embedded font plan for a shaped run";
     /// Internal: debug layout report does not match the emitted page graph.
-    MOS0051 = 51, Error, Internal, "internal", "internal-debug-layout-mismatch", "mos-pdf",
-        "internal: debug layout report does not match page geometry";
+    MOS0051 = 51, Error, Internal, "internal-debug-layout-mismatch", "mos-pdf",
+        "debug layout report does not match page geometry";
 }
 
 #[cfg(test)]
@@ -553,8 +562,9 @@ mod semantic_tests {
         let mut seen = std::collections::BTreeSet::new();
         for def in ALL {
             assert!(seen.insert(def.id()), "duplicate ID: {}", def.id());
-            let segments: Vec<_> = def.id().split('.').collect();
-            assert_eq!(segments.len(), 2);
+            let id = def.id();
+            let segments: Vec<_> = id.split('.').collect();
+            assert_eq!(segments, [def.category().prefix(), def.slug()]);
             for segment in segments {
                 assert!(segment.split('-').all(|word| {
                     !word.is_empty()
@@ -563,18 +573,18 @@ mod semantic_tests {
                             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
                 }));
             }
-            for spelling in [def.id().to_owned(), def.code().to_string()] {
+            for spelling in [def.id(), def.code().to_string()] {
                 assert!(lookup(&spelling).is_some_and(|found| std::ptr::eq(found, *def)));
             }
         }
         for invalid in [
             "",
             "label-missing",
-            "Semantic.label-missing",
+            "Resolution.label-missing",
             "MOS33",
             "mos0033",
             "MOS9999",
-            "semantic.unknown",
+            "resolution.unknown",
             " MOS0033",
         ] {
             assert!(lookup(invalid).is_none(), "accepted {invalid:?}");
@@ -582,14 +592,19 @@ mod semantic_tests {
     }
 
     #[test]
-    fn metadata_changes_preserve_both_identities() {
+    fn category_changes_update_id_and_preserve_numeric_alias() {
         let changed = DiagnosticDef {
             category: DiagnosticCategory::Internal,
             default_severity: Severity::Notice,
             owner: "mos-core",
             ..MOS0033
         };
-        assert_eq!(changed.id(), "semantic.label-missing");
+        assert_eq!(changed.id(), "internal.label-missing");
+        assert!(
+            changed
+                .documentation_url()
+                .ends_with("#internal.label-missing")
+        );
         assert_eq!(changed.code(), MOS0033.code());
     }
 }
