@@ -422,14 +422,18 @@ fn initialize_handshake_advertises_capabilities_and_exits_cleanly() -> TestResul
 fn did_open_change_close_drive_the_diagnostics_lifecycle() -> TestResult {
     let uri = "file:///virtual/main.mos";
     let mut server = Server::spawn()?;
-    initialize(&mut server, &default_initialize_params())?;
+    let mut params = default_initialize_params();
+    params["capabilities"]["textDocument"] = json!({
+        "publishDiagnostics": { "codeDescriptionSupport": true, "dataSupport": true }
+    });
+    initialize(&mut server, &params)?;
 
     // Open a document with an undefined `@no:such` reference.
     server.open_document(uri, "see @no:such\n")?;
     let dirty = server.diagnostics_for(uri)?;
     let undefined_reference = dirty
         .iter()
-        .find(|diagnostic| diagnostic.get("code") == Some(&json!("MOS0033")))
+        .find(|diagnostic| diagnostic.get("code") == Some(&json!("semantic.label-missing")))
         .ok_or_else(|| format!("expected a MOS0033 diagnostic, got {dirty:?}"))?;
     ensure_eq(
         &undefined_reference.get("severity"),
@@ -445,6 +449,19 @@ fn did_open_change_close_drive_the_diagnostics_lifecycle() -> TestResult {
         &undefined_reference.pointer("/range/start/line"),
         &Some(&json!(0)),
         "diagnostic start line",
+    )?;
+
+    ensure_eq(
+        &undefined_reference.pointer("/data/legacyCode"),
+        &Some(&json!("MOS0033")),
+        "numeric compatibility alias",
+    )?;
+    ensure_eq(
+        &undefined_reference.pointer("/codeDescription/href"),
+        &Some(&json!(
+            "https://github.com/kjanat/mosaic/blob/master/docs/diagnostic-codes.md#semantic.label-missing"
+        )),
+        "stable catalog link",
     )?;
 
     // Full-sync change to a clean document clears the squiggle.
@@ -701,8 +718,11 @@ fn completion_with_mixed_sources_is_empty_until_all_sources_load() -> TestResult
     // Missing, invalid UTF-8, and malformed BibTeX must all suppress even
     // the valid source's keys. Repairing the file invalidates the cache.
     for (contents, expected_diagnostic) in [
-        (None, Some("MOS0041")),
-        (Some(b"\xff".as_slice()), Some("MOS0041")),
+        (None, Some("io.bibliography-source-missing")),
+        (
+            Some(b"\xff".as_slice()),
+            Some("io.bibliography-source-missing"),
+        ),
         (Some(b"@book{".as_slice()), None),
     ] {
         if let Some(contents) = contents {
@@ -993,7 +1013,7 @@ fn inlay_hints_follow_code_edits_manual_labels_and_document_lifecycle() -> TestR
         server
             .diagnostics_for(uri)?
             .iter()
-            .any(|diagnostic| diagnostic["code"] == "MOS0016"),
+            .any(|diagnostic| diagnostic["code"] == "syntax.directive-unterminated"),
         "incomplete block keeps compiler diagnostic",
     )?;
     ensure_eq(
@@ -1037,4 +1057,47 @@ fn unknown_request_gets_method_not_found_instead_of_hanging() -> TestResult {
     )?;
 
     server.shutdown(3)
+}
+
+#[test]
+fn diagnostic_optional_fields_follow_client_capabilities() -> TestResult {
+    let mut profiles = vec![
+        (default_initialize_params(), false, false),
+        (zed_like_initialize_params(), false, false),
+    ];
+    for description in [false, true] {
+        for data in [false, true] {
+            let mut params = default_initialize_params();
+            params["capabilities"]["textDocument"] = json!({
+                "publishDiagnostics": {
+                    "codeDescriptionSupport": description,
+                    "dataSupport": data
+                }
+            });
+            profiles.push((params, description, data));
+        }
+    }
+    for (params, description, data) in profiles {
+        let mut server = Server::spawn()?;
+        initialize(&mut server, &params)?;
+        let uri = "file:///virtual/capabilities.mos";
+        server.open_document(uri, "see @no:such\n")?;
+        let diagnostics = server.diagnostics_for(uri)?;
+        ensure(!diagnostics.is_empty(), "expected diagnostics")?;
+        for diagnostic in diagnostics {
+            ensure_eq(
+                &diagnostic.get("codeDescription").is_some(),
+                &description,
+                "codeDescription opt-in",
+            )?;
+            ensure_eq(&diagnostic.get("data").is_some(), &data, "data opt-in")?;
+            ensure_eq(
+                &diagnostic["code"],
+                &json!("semantic.label-missing"),
+                "canonical code is always present",
+            )?;
+        }
+        server.shutdown(2)?;
+    }
+    Ok(())
 }

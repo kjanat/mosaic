@@ -190,3 +190,12 @@ Compiler phase ownership stays elsewhere:
 - No multi-file projects: diagnostics are produced from the opened document in isolation.
 
 The root README and AGENTS files remain the source of truth for what is and isn't shipped overall.
+
+## Diagnostic identity
+
+Diagnostics publish semantic IDs such as `semantic.label-missing` in `code`, the stable numeric
+alias (`MOS0033`) in `data.legacyCode` when the client advertises `dataSupport`, and a catalog link
+in `codeDescription.href` when it advertises `codeDescriptionSupport`. Both flags are read from
+`textDocument.publishDiagnostics` during initialization and default to false. Quick-fix titles
+include both identities. Clients matching numeric `code` values must migrate; see the
+[migration contract](../../docs/semantic-diagnostic-identifiers.md).

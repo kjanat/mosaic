@@ -78,6 +78,8 @@ pub fn serve<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> Result<()>
 
 #[derive(Default, Debug)]
 struct ServerState {
+    code_description_support: bool,
+    data_support: bool,
     documents: HashMap<String, String>,
     /// Memoised `mos-eval` lowerings, reused across `textDocument/definition`
     /// requests and dropped whenever a document's source changes or closes.
@@ -95,6 +97,16 @@ fn handle_message<W: Write>(
     let id = message.get("id");
     match (method, id) {
         (Some("initialize"), Some(id)) => {
+            state.code_description_support = message
+                .pointer(
+                    "/params/capabilities/textDocument/publishDiagnostics/codeDescriptionSupport",
+                )
+                .and_then(Value::as_bool)
+                == Some(true);
+            state.data_support = message
+                .pointer("/params/capabilities/textDocument/publishDiagnostics/dataSupport")
+                .and_then(Value::as_bool)
+                == Some(true);
             write_response(writer, id, &initialize_result())?;
             Ok(false)
         }
@@ -343,6 +355,7 @@ fn with_lowering<T>(
     let ServerState {
         documents,
         lowerings,
+        ..
     } = state;
     let src = documents.get(uri)?;
     let path = path_from_uri(uri);
@@ -490,7 +503,15 @@ fn publish_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState, uri: &
     let diagnostics = with_lowering(state, uri, |lowered, path, src| {
         from_result(path, src, lowered)
     });
-    diagnostics.map_or(Ok(()), |diagnostics| {
+    diagnostics.map_or(Ok(()), |mut diagnostics| {
+        for diagnostic in &mut diagnostics {
+            if !state.code_description_support {
+                diagnostic.code_description = None;
+            }
+            if !state.data_support {
+                diagnostic.data = None;
+            }
+        }
         send_publish(writer, uri, &diagnostics)
     })
 }
@@ -763,7 +784,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.get("code").and_then(Value::as_str) == Some("MOS0033")),
+                .any(|d| d.get("code").and_then(Value::as_str) == Some("semantic.label-missing")),
             "expected a MOS0033 diagnostic, got {diagnostics:?}"
         );
     }
@@ -816,7 +837,7 @@ mod tests {
         assert!(
             dirty
                 .iter()
-                .any(|d| d.get("code").and_then(Value::as_str) == Some("MOS0033")),
+                .any(|d| d.get("code").and_then(Value::as_str) == Some("semantic.label-missing")),
             "expected MOS0033 after didChange, got {dirty:?}"
         );
     }
@@ -1053,7 +1074,8 @@ mod tests {
         assert!(
             published
                 .iter()
-                .any(|d| d.get("code").and_then(Value::as_str) == Some("MOS0041")),
+                .any(|d| d.get("code").and_then(Value::as_str)
+                    == Some("io.bibliography-source-missing")),
             "missing source still reports MOS0041: {published:?}"
         );
         assert!(completion_labels(&messages, 52).is_empty());
@@ -1660,7 +1682,7 @@ mod tests {
             lowered
                 .diagnostics
                 .iter()
-                .map(|d| d.def().code().to_string())
+                .map(|d| d.def().id().to_owned())
                 .collect()
         })
         .expect("document is open")
@@ -1702,14 +1724,14 @@ mod tests {
         );
         assert_eq!(
             diagnostic_codes(&mut state, &uri),
-            ["MOS0045"],
+            ["semantic.citation-missing"],
             "the request must be served from the cached lowering"
         );
 
         std::fs::write(&image, b"edited").expect("rewrite image");
         assert_eq!(
             diagnostic_codes(&mut state, &uri),
-            ["MOS0029"],
+            ["io.image-decode-failed"],
             "a changed file drops the cached lowering"
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -1731,12 +1753,12 @@ mod tests {
 
         let mut writer: Vec<u8> = Vec::new();
         publish_diagnostics(&mut writer, &mut state, &uri).expect("publish");
-        assert_eq!(diagnostic_codes(&mut state, &uri), ["MOS0012"]);
+        assert_eq!(diagnostic_codes(&mut state, &uri), ["io.image-read-failed"]);
 
         std::fs::write(&image, b"not a png").expect("write image");
         assert_eq!(
             diagnostic_codes(&mut state, &uri),
-            ["MOS0029"],
+            ["io.image-decode-failed"],
             "a file that appeared invalidates the cached lowering"
         );
         assert!(
@@ -1747,7 +1769,7 @@ mod tests {
         std::fs::remove_file(&image).expect("remove image");
         assert_eq!(
             diagnostic_codes(&mut state, &uri),
-            ["MOS0012"],
+            ["io.image-read-failed"],
             "a file that disappeared invalidates the cached lowering"
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -1828,7 +1850,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.get("code").and_then(Value::as_str) == Some("MOS0033")),
+                .any(|d| d.get("code").and_then(Value::as_str) == Some("semantic.label-missing")),
             "the edited document's undefined reference must surface MOS0033, got {diagnostics:?}"
         );
         // … and definition for the now-undefined reference is null.

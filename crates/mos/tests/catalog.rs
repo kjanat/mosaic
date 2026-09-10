@@ -6,7 +6,7 @@
 //! whitespace and compare:
 //!
 //! 1. **Every registered code has a row.** For each `DiagnosticDef`, the
-//!    canonical `| code | slug | severity | owner | summary |` row must
+//!    canonical `| code | semantic ID | slug | severity | owner | summary |` row must
 //!    appear in the doc, so renaming a slug, re-severitising a code, or
 //!    changing a summary without updating the doc fails CI.
 //! 2. **Every documented code is registered.** Any `| MOSxxxx …` table
@@ -41,15 +41,17 @@ fn every_registered_code_has_a_catalog_row() {
     // The catalog organises codes by category; each section's table omits
     // the `Category` column because the section header carries it. The
     // drift check therefore expects the same column shape humans see:
-    // `| code | slug | severity | owner | summary |`. The category itself
+    // `| code | semantic ID | slug | severity | owner | summary |`. The category itself
     // is not blind-matched (the `### Syntax` heading would be too easy to
     // satisfy with a stray substring); instead we re-check below that the
     // matching row sits under the section heading for its category.
     let haystack = normalize(CATALOG);
     for def in codes::ALL {
         let row = format!(
-            "| {} | {} | {:?} | {} | {} |",
+            "| {} | <a id=\"{}\"></a>{} | {} | {:?} | {} | {} |",
             def.code(),
+            def.id(),
+            def.id(),
             def.slug(),
             def.default_severity(),
             def.owner(),
@@ -115,6 +117,27 @@ fn every_catalog_code_is_registered() {
         assert!(
             known.contains(code),
             "docs/diagnostic-codes.md documents `{code}`, which is not in mos_core::codes::ALL"
+        );
+    }
+}
+
+#[test]
+fn every_rule_has_exactly_one_stable_documentation_anchor() {
+    for def in codes::ALL {
+        let anchor = format!("<a id=\"{}\"></a>", def.id());
+        assert_eq!(
+            CATALOG.matches(&anchor).count(),
+            1,
+            "anchor for {}",
+            def.id()
+        );
+        assert!(def.documentation_url().ends_with(&format!("#{}", def.id())));
+    }
+    for rest in CATALOG.split("<a id=\"").skip(1) {
+        let id = rest.split("\"></a>").next().unwrap_or_default();
+        assert!(
+            codes::lookup(id).is_some_and(|def| def.id() == id),
+            "unregistered anchor {id}"
         );
     }
 }

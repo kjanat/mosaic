@@ -35,6 +35,8 @@ under `crates/zed-mosaic`. MVP 0 from `manifest.md` §30 is substantially landed
 - [x] lowering to a typed semantic `Document` graph in `mos-core`, with `#image(...)`,
       `#figure(...)`, and `#bibliography(...)` source declarations evaluated in `mos-eval` (manifest
       §5, §6 stage 2);
+- [x] Semantic diagnostic IDs across CLI/LSP, with stable `MOS####` compatibility aliases and
+      [catalog links](docs/diagnostic-codes.md).
 - [x] `mos check` end-to-end: parse → lower → render diagnostics with `file:line:col` and source
       carets;
 - [x] `mos build` end-to-end: layout + PDF emission for the Base-14 core fonts and bundled Noto

@@ -112,3 +112,7 @@ mos-parse -> mos-eval -> mos-core::Document -> mos-layout -> mos-pdf
   support; bibliography resolution/rendering is not shipped.
 - No backend-specific attributes should be introduced unless all consumers can tolerate them.
 - No file IO, package registry, watcher, formatter, LSP behavior, or build orchestration lives here.
+
+Diagnostic definitions expose stable semantic IDs through `id()` and numeric compatibility aliases
+through `code()`. `codes::lookup` accepts either exact spelling; see the
+[identity and migration contract](../../docs/semantic-diagnostic-identifiers.md).
