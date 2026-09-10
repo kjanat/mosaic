@@ -5,11 +5,14 @@ numeric alias. This implements the selected scheme in the registry and all prese
 
 ## Naming and stability
 
-`DiagnosticDef::id()` returns `namespace.kebab-case-slug`. The initial namespace matches the
-registered category in lowercase (`syntax`, `semantic`, `layout`, `text`, `pdf`, `io`, `internal`).
-It is an explicit registry literal, independent of category metadata. Moving a rule to another phase
-or crate must preserve its namespace and slug. Severity changes also preserve identity. Existing
-slugs are promoted unchanged, including the `internal-` prefix on internal rules.
+`DiagnosticDef::id()` returns `namespace.kebab-case-slug`. The initial namespace was taken from the
+original category in lowercase (`syntax`, `semantic`, `layout`, `text`, `pdf`, `io`, `internal`).
+The compiler category formerly named `Semantic` is now `Resolution`; this renames the public
+`DiagnosticCategory` variant and its display label. The existing ID namespace remains pending the
+subject-based naming revision. It is an explicit registry literal, independent of category metadata.
+Moving a rule to another phase or crate must preserve its namespace and slug. Severity changes also
+preserve identity. Existing slugs are promoted unchanged, including the `internal-` prefix on
+internal rules.
 
 Names describe a condition, omit severity, and use lowercase ASCII words and digits separated by
 single hyphens. New rules receive a unique semantic ID and the next unused numeric alias. Neither

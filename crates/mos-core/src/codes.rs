@@ -97,14 +97,14 @@ impl std::fmt::Display for DiagnosticCode {
 /// ```
 /// use mos_core::{DiagnosticCategory, codes};
 ///
-/// assert_eq!(codes::MOS0033.category(), DiagnosticCategory::Semantic);
+/// assert_eq!(codes::MOS0033.category(), DiagnosticCategory::Resolution);
 /// ```
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum DiagnosticCategory {
     /// Surface syntax: tokenisation, directive shape, inline grammar.
     Syntax,
-    /// Semantic lowering: name resolution, schema validation, references.
-    Semantic,
+    /// Name and reference resolution, directive and argument validation.
+    Resolution,
     /// Page geometry, paper sizes, style application.
     Layout,
     /// Text shaping, glyph coverage, font selection.
@@ -121,7 +121,7 @@ impl std::fmt::Display for DiagnosticCategory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             Self::Syntax => "Syntax",
-            Self::Semantic => "Semantic",
+            Self::Resolution => "Resolution",
             Self::Layout => "Layout",
             Self::Text => "Text",
             Self::Pdf => "Pdf",
@@ -230,7 +230,7 @@ impl DiagnosticDef {
     /// ```
     /// use mos_core::{DiagnosticCategory, codes};
     ///
-    /// assert_eq!(codes::MOS0033.category(), DiagnosticCategory::Semantic);
+    /// assert_eq!(codes::MOS0033.category(), DiagnosticCategory::Resolution);
     /// ```
     #[must_use]
     pub const fn category(&self) -> DiagnosticCategory {
@@ -453,46 +453,46 @@ define_codes! {
     MOS0044 = 44, Error, Syntax, "syntax", "csl-parse-failed", "mos-csl",
         "syntax: CSL style could not be parsed";
 
-    // ── semantic (mos-eval) ───────────────────────────────────────────
+    // ── resolution (mos-eval) ───────────────────────────────────────────
     /// Unknown `#set` target (only `page`, `text`, `document`, `image`).
-    MOS0011 = 11, Error, Semantic, "semantic", "set-unknown-target", "mos-eval",
-        "semantic: unknown #set target";
+    MOS0011 = 11, Error, Resolution, "semantic", "set-unknown-target", "mos-eval",
+        "resolution: unknown #set target";
     /// Unknown keyword argument for `#set TARGET`, `#image`, or `#figure`.
-    MOS0015 = 15, Error, Semantic, "semantic", "unknown-kwarg", "mos-eval",
-        "semantic: unknown keyword argument";
+    MOS0015 = 15, Error, Resolution, "semantic", "unknown-kwarg", "mos-eval",
+        "resolution: unknown keyword argument";
     /// Argument type mismatch or non-positive length.
-    MOS0020 = 20, Error, Semantic, "semantic", "arg-type-mismatch", "mos-eval",
-        "semantic: argument type mismatch or non-positive length";
+    MOS0020 = 20, Error, Resolution, "semantic", "arg-type-mismatch", "mos-eval",
+        "resolution: argument type mismatch or non-positive length";
     /// `#set` rejecting a positional argument where named is required.
-    MOS0024 = 24, Error, Semantic, "semantic", "set-positional-rejected", "mos-eval",
-        "semantic: #set rejects positional argument";
+    MOS0024 = 24, Error, Resolution, "semantic", "set-positional-rejected", "mos-eval",
+        "resolution: #set rejects positional argument";
     /// `#set` value passes typing but trips a sanity floor; still applied.
-    MOS0027 = 27, Warning, Semantic, "semantic", "set-sanity-floor", "mos-eval",
-        "semantic: #set value trips a sanity floor; value still applied";
+    MOS0027 = 27, Warning, Resolution, "semantic", "set-sanity-floor", "mos-eval",
+        "resolution: #set value trips a sanity floor; value still applied";
     /// Label declared more than once; first declaration wins.
-    MOS0030 = 30, Error, Semantic, "semantic", "label-duplicate", "mos-eval",
-        "semantic: label declared more than once";
+    MOS0030 = 30, Error, Resolution, "semantic", "label-duplicate", "mos-eval",
+        "resolution: label declared more than once";
     /// `@label` reference to a label that does not exist.
-    MOS0033 = 33, Error, Semantic, "semantic", "label-missing", "mos-eval",
-        "semantic: @reference to a label that does not exist";
+    MOS0033 = 33, Error, Resolution, "semantic", "label-missing", "mos-eval",
+        "resolution: @reference to a label that does not exist";
     /// `#image(...)`/`#figure(...)` missing a path argument.
-    MOS0037 = 37, Error, Semantic, "semantic", "image-missing-path", "mos-eval",
-        "semantic: #image/#figure missing a path argument";
+    MOS0037 = 37, Error, Resolution, "semantic", "image-missing-path", "mos-eval",
+        "resolution: #image/#figure missing a path argument";
     /// `#bibliography(...)` missing a path argument.
-    MOS0040 = 40, Error, Semantic, "semantic", "bibliography-missing-path", "mos-eval",
-        "semantic: #bibliography missing a path argument";
+    MOS0040 = 40, Error, Resolution, "semantic", "bibliography-missing-path", "mos-eval",
+        "resolution: #bibliography missing a path argument";
     /// `#bibliography(...)` path declared more than once; first wins.
-    MOS0042 = 42, Error, Semantic, "semantic", "bibliography-duplicate-path", "mos-eval",
-        "semantic: #bibliography path argument declared more than once";
+    MOS0042 = 42, Error, Resolution, "semantic", "bibliography-duplicate-path", "mos-eval",
+        "resolution: #bibliography path argument declared more than once";
     /// `[@key]` citation to a bibliography record that does not exist.
-    MOS0045 = 45, Error, Semantic, "semantic", "citation-missing", "mos-eval",
-        "semantic: citation key does not exist in bibliography records";
+    MOS0045 = 45, Error, Resolution, "semantic", "citation-missing", "mos-eval",
+        "resolution: citation key does not exist in bibliography records";
     /// Citation key appears in more than one declared bibliography source.
-    MOS0046 = 46, Error, Semantic, "semantic", "bibliography-duplicate-key", "mos-eval",
-        "semantic: citation key appears in more than one bibliography source";
+    MOS0046 = 46, Error, Resolution, "semantic", "bibliography-duplicate-key", "mos-eval",
+        "resolution: citation key appears in more than one bibliography source";
     /// Path contains a non-portable segment.
-    MOS0049 = 49, Error, Semantic, "semantic", "path-unsafe-segment", "mos-eval",
-        "semantic: path segment is not a portable name (manifest paths use `/` only)";
+    MOS0049 = 49, Error, Resolution, "semantic", "path-unsafe-segment", "mos-eval",
+        "resolution: path segment is not a portable name (manifest paths use `/` only)";
 
     // ── filesystem / asset I/O ────────────────────────────────────────
     /// Image file cannot be read from disk.

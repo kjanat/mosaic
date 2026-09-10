@@ -58,23 +58,23 @@ codes use the next free integer.
 | MOS0048 | <a id="syntax.heading-label-not-trailing"></a>syntax.heading-label-not-trailing | heading-label-not-trailing | Warning          | mos-parse   | syntax: heading label is not the last element on the line; treated as text |
 | MOS0050 | <a id="syntax.unterminated-block-comment"></a>syntax.unterminated-block-comment | unterminated-block-comment | Warning          | mos-parse   | syntax: unterminated /* block comment; consumed to end of input            |
 
-### Semantic
+### Resolution
 
-| Alias   | Semantic ID                                                                           | Slug                        | Default severity | Owner crate | Summary                                                                     |
-| ------- | ------------------------------------------------------------------------------------- | --------------------------- | ---------------- | ----------- | --------------------------------------------------------------------------- |
-| MOS0011 | <a id="semantic.set-unknown-target"></a>semantic.set-unknown-target                   | set-unknown-target          | Error            | mos-eval    | semantic: unknown #set target                                               |
-| MOS0015 | <a id="semantic.unknown-kwarg"></a>semantic.unknown-kwarg                             | unknown-kwarg               | Error            | mos-eval    | semantic: unknown keyword argument                                          |
-| MOS0020 | <a id="semantic.arg-type-mismatch"></a>semantic.arg-type-mismatch                     | arg-type-mismatch           | Error            | mos-eval    | semantic: argument type mismatch or non-positive length                     |
-| MOS0024 | <a id="semantic.set-positional-rejected"></a>semantic.set-positional-rejected         | set-positional-rejected     | Error            | mos-eval    | semantic: #set rejects positional argument                                  |
-| MOS0027 | <a id="semantic.set-sanity-floor"></a>semantic.set-sanity-floor                       | set-sanity-floor            | Warning          | mos-eval    | semantic: #set value trips a sanity floor; value still applied              |
-| MOS0030 | <a id="semantic.label-duplicate"></a>semantic.label-duplicate                         | label-duplicate             | Error            | mos-eval    | semantic: label declared more than once                                     |
-| MOS0033 | <a id="semantic.label-missing"></a>semantic.label-missing                             | label-missing               | Error            | mos-eval    | semantic: @reference to a label that does not exist                         |
-| MOS0037 | <a id="semantic.image-missing-path"></a>semantic.image-missing-path                   | image-missing-path          | Error            | mos-eval    | semantic: #image/#figure missing a path argument                            |
-| MOS0040 | <a id="semantic.bibliography-missing-path"></a>semantic.bibliography-missing-path     | bibliography-missing-path   | Error            | mos-eval    | semantic: #bibliography missing a path argument                             |
-| MOS0042 | <a id="semantic.bibliography-duplicate-path"></a>semantic.bibliography-duplicate-path | bibliography-duplicate-path | Error            | mos-eval    | semantic: #bibliography path argument declared more than once               |
-| MOS0045 | <a id="semantic.citation-missing"></a>semantic.citation-missing                       | citation-missing            | Error            | mos-eval    | semantic: citation key does not exist in bibliography records               |
-| MOS0046 | <a id="semantic.bibliography-duplicate-key"></a>semantic.bibliography-duplicate-key   | bibliography-duplicate-key  | Error            | mos-eval    | semantic: citation key appears in more than one bibliography source         |
-| MOS0049 | <a id="semantic.path-unsafe-segment"></a>semantic.path-unsafe-segment                 | path-unsafe-segment         | Error            | mos-eval    | semantic: path segment is not a portable name (manifest paths use `/` only) |
+| Alias   | Semantic ID                                                                           | Slug                        | Default severity | Owner crate | Summary                                                                       |
+| ------- | ------------------------------------------------------------------------------------- | --------------------------- | ---------------- | ----------- | ----------------------------------------------------------------------------- |
+| MOS0011 | <a id="semantic.set-unknown-target"></a>semantic.set-unknown-target                   | set-unknown-target          | Error            | mos-eval    | resolution: unknown #set target                                               |
+| MOS0015 | <a id="semantic.unknown-kwarg"></a>semantic.unknown-kwarg                             | unknown-kwarg               | Error            | mos-eval    | resolution: unknown keyword argument                                          |
+| MOS0020 | <a id="semantic.arg-type-mismatch"></a>semantic.arg-type-mismatch                     | arg-type-mismatch           | Error            | mos-eval    | resolution: argument type mismatch or non-positive length                     |
+| MOS0024 | <a id="semantic.set-positional-rejected"></a>semantic.set-positional-rejected         | set-positional-rejected     | Error            | mos-eval    | resolution: #set rejects positional argument                                  |
+| MOS0027 | <a id="semantic.set-sanity-floor"></a>semantic.set-sanity-floor                       | set-sanity-floor            | Warning          | mos-eval    | resolution: #set value trips a sanity floor; value still applied              |
+| MOS0030 | <a id="semantic.label-duplicate"></a>semantic.label-duplicate                         | label-duplicate             | Error            | mos-eval    | resolution: label declared more than once                                     |
+| MOS0033 | <a id="semantic.label-missing"></a>semantic.label-missing                             | label-missing               | Error            | mos-eval    | resolution: @reference to a label that does not exist                         |
+| MOS0037 | <a id="semantic.image-missing-path"></a>semantic.image-missing-path                   | image-missing-path          | Error            | mos-eval    | resolution: #image/#figure missing a path argument                            |
+| MOS0040 | <a id="semantic.bibliography-missing-path"></a>semantic.bibliography-missing-path     | bibliography-missing-path   | Error            | mos-eval    | resolution: #bibliography missing a path argument                             |
+| MOS0042 | <a id="semantic.bibliography-duplicate-path"></a>semantic.bibliography-duplicate-path | bibliography-duplicate-path | Error            | mos-eval    | resolution: #bibliography path argument declared more than once               |
+| MOS0045 | <a id="semantic.citation-missing"></a>semantic.citation-missing                       | citation-missing            | Error            | mos-eval    | resolution: citation key does not exist in bibliography records               |
+| MOS0046 | <a id="semantic.bibliography-duplicate-key"></a>semantic.bibliography-duplicate-key   | bibliography-duplicate-key  | Error            | mos-eval    | resolution: citation key appears in more than one bibliography source         |
+| MOS0049 | <a id="semantic.path-unsafe-segment"></a>semantic.path-unsafe-segment                 | path-unsafe-segment         | Error            | mos-eval    | resolution: path segment is not a portable name (manifest paths use `/` only) |
 
 ### Layout
 
