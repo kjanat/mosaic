@@ -1,0 +1,208 @@
+# Compiler and LSP architecture direction
+
+Status: exploration note for issue #130. This records recommendations and gates, not shipped
+behavior or approval for a parser/LSP rewrite.
+
+## Decision
+
+Mosaic should borrow **boundaries** from rust-analyzer without adopting its complete implementation
+stack. Keep the direct compiler pipeline and thin synchronous LSP while the project is small. Make
+filesystem inputs explicit, put a compiler-owned analysis API between protocol adapters and semantic
+operations, and add incremental machinery only after measurements show that coarse recomputation is
+a problem.
+
+The intended direction is:
+
+```text
+source/resource inputs -> syntax -> semantic document -> diagnostics/layout
+                                      |
+                                      v
+                              analysis operations
+                               /              \
+                         CLI adapter       LSP adapter
+```
+
+These are logical boundaries; start with modules in existing crates. Compiler-owned analysis is
+justified wherever a protocol adapter currently implements language rules, even with only one
+consumer. A separate `AnalysisHost` crate needs a concrete ownership and dependency benefit; a query
+database additionally needs the performance evidence described below.
+
+## Corrections to the original research report
+
+The June 2026 report is directionally sound, but several proposed first steps have already landed or
+need narrowing against the current code:
+
+- The workspace MSRV is already Rust 1.96. Adopting `assert_matches!` is cleanup, not an MSRV
+  project, and should be done only where it improves a test over the existing assertion.
+- `LowerResult` now records every image and bibliography read as an `ExternalDependency` with a
+  fingerprint. The LSP cache does cache these lowerings and validates every dependency before reuse;
+  it no longer needs the proposed boolean-only impurity model.
+- `mos-cache` already defines the first typed dependency identities, and
+  `docs/incremental-dependencies.md` defines current and deferred hash boundaries. Future work
+  should extend that design rather than introduce a competing resource/dependency vocabulary.
+- `NodeId` provides arena identity but is monotonic within a `Document`, not stable across
+  lowerings. It must not be described as a cache-stable syntax or semantic identity.
+- `SourceSpan` owns a `PathBuf` and `usize` offsets. Merely switching the offsets to a range type
+  cannot make the span cheap or `Copy`; file identity and text range would first need to be split.
+
+## Keep, change, or defer
+
+| Candidate                     | Decision                       | Revisit when                                                                                |
+| ----------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------- |
+| Current hand-written parser   | **Keep**                       | Recovery or tooling requirements cannot be met without lossless syntax.                     |
+| rowan                         | **Spike only**                 | The formatter or a structural refactor needs trivia-preserving edits.                       |
+| Current semantic `Document`   | **Keep** as the HIR-like layer | Syntax concerns leak into consumers, or a distinct typed HIR solves a demonstrated problem. |
+| salsa                         | **Defer**                      | Inputs are explicit and profiling shows repeated analysis/invalidation cost.                |
+| Analysis facade               | **Change incrementally**       | Move language rules out of adapters, or consolidate duplicated analysis.                    |
+| Current stdio LSP loop        | **Keep**                       | Measured request blocking or concurrent work requires a different execution model.          |
+| tower-lsp-server + tokio      | **Defer**                      | One of those async requirements lands with an end-to-end test.                              |
+| Core diagnostics              | **Keep**                       | Always remain the source for codes, spans, annotations, and suggestions.                    |
+| miette                        | **Optional CLI adapter**       | A concrete diagnostic UX issue justifies the dependency and snapshot coverage.              |
+| tracing                       | **Adopt narrowly**             | There is a consumer for the events and an explicit stderr/logging policy for LSP.           |
+| insta                         | **Adopt selectively**          | A stable, reviewed representation is less brittle than focused assertions.                  |
+| proptest                      | **Adopt for invariants**       | Start with parser recovery and span safety; retain a failing seed as a regression test.     |
+| Built-in pass registry        | **Defer**                      | At least two configurable passes need shared ordering/configuration.                        |
+| inventory/static registration | **Defer**                      | Registration boilerplate is a measured problem.                                             |
+| Dynamic Rust plugins          | **Reject for now**             | Requires a separately designed stable process/Wasm boundary, not Rust ABI loading.          |
+
+## Work plan and dependencies
+
+Measurement, parser property tests, and resource-input design can begin independently. Measurements
+gate performance infrastructure, while ownership and correctness justify extracting analysis
+operations. Resource-dependent operations need the snapshot contract below; a pure label lookup can
+be extracted without waiting for it.
+
+### Establish performance baselines
+
+Add benchmarks or lightweight counters around the operations suspected of being expensive: parse,
+lower/resolve, layout, and common LSP requests. Record representative document sizes and warm/cold
+behavior. Instrumentation should have near-zero cost when disabled and must never write protocol
+noise to LSP stdout.
+
+Use this evidence to choose performance work in parsing, analysis, the existing cache, or layout and
+to set a target before introducing finer-grained recomputation.
+
+### Make resource access injectable
+
+The most valuable architectural slice is smaller than a general `AnalysisHost`: introduce a
+compiler-side resource-reader boundary for image and bibliography bytes while preserving the
+existing path resolution and `ExternalDependency` result. Production uses the filesystem; tests use
+an in-memory reader. The result should still report exactly which resolved resources were observed,
+including missing or unreadable resources, with content fingerprints derived from the bytes actually
+consumed. Keep filesystem metadata used for freshness checks in the filesystem adapter; in-memory
+inputs should not need invented mtimes or inode identities.
+
+Define an immutable input snapshot for each analysis result. Repeated reads of a resource within
+that snapshot must return the same bytes or recorded failure. Retain the text needed to interpret
+external source spans, so lowering and position conversion use the same version. Today citation
+lookup in `mos-lsp/src/definition.rs` rereads the bibliography from disk after lowering; migrating
+that path is a concrete acceptance case. An edit between lowering and response conversion must not
+cause old offsets to be interpreted against new text.
+
+The host should select open editor text when available and filesystem contents otherwise. Supporting
+unsaved bibliography buffers is future work, but this boundary must allow such overlays without
+changing compiler operations. A new resource version creates a new snapshot and invalidates affected
+results; existing results retain their original span-to-text association. This requires consistent
+captured inputs, not an atomic snapshot of the entire filesystem.
+
+This enables deterministic tests and future query inputs without committing to salsa. Do not expose
+LSP URI types, JSON values, or async traits through this boundary.
+
+### Extract analysis operations one at a time
+
+Expose language operations from a compiler-owned analysis module using compiler types. The current
+LSP definition implementation mirrors the resolver's first-declaration-wins rule: label target
+lookup is a concrete first candidate, regardless of whether the CLI needs that operation. Keep
+cursor position conversion in the adapter and return a compiler source span from the lookup.
+
+For operations needing source text, associate the lowered result with its immutable input snapshot
+and line indexes. Reuse that association for diagnostics and external definition targets. A second
+consumer can demonstrate reuse, but is not a prerequisite for establishing language ownership.
+
+Keep ownership rules explicit:
+
+- the outer host owns source text and resource snapshots;
+- compiler analysis reads only supplied inputs, with no hidden filesystem or protocol I/O;
+- diagnostics and suggestions remain `mos-core` values;
+- the LSP layer only converts positions and wire types;
+- cancellation, if later needed, is an input checked at coarse boundaries rather than an async type
+  threaded through every compiler crate.
+
+Do not create a facade that merely renames `mos_eval::lower` or centralizes unrelated helpers.
+
+### Add focused test tools
+
+Use property tests for contracts that examples undersample:
+
+1. parsing arbitrary UTF-8 never panics;
+2. emitted spans are ordered, in bounds, and on UTF-8 boundaries where slicing occurs;
+3. diagnostics are deterministic for identical source and resource inputs;
+4. parser recovery always makes progress.
+
+Use snapshots for intentionally holistic outputs such as a recovered syntax tree plus diagnostics or
+a complete LSP response. Prefer ordinary assertions for individual codes, spans, and suggestions;
+large snapshots can hide semantically important changes in review.
+
+### Run bounded spikes, then delete or graduate them
+
+A rowan spike should cover one awkward, trivia-sensitive slice rather than only the easiest grammar:
+headings and paragraphs with comments, references, malformed inline delimiters, and recovery.
+Compare source fidelity, diagnostic spans, typed-wrapper ergonomics, edit behavior, and
+allocation/time against the existing parser. Keep the spike out of the production path unless it
+wins against written criteria.
+
+A `FileId + TextRange` spike should measure size and clone reduction and define overflow behavior.
+Keep the public `SourceSpan` API compatible until all path-bearing diagnostic and source-map uses
+are accounted for. Prefer the same range representation as rowan only if rowan is actually selected;
+do not add `text-size` solely for aesthetic consistency.
+
+## Gates for larger dependencies
+
+### salsa gate
+
+Adopt salsa only when all of the following are true:
+
+- source and external resource contents are explicit inputs;
+- query outputs are deterministic from those inputs;
+- dependency ownership and invalidation rules are documented;
+- stable identities exist for the intended query keys;
+- a benchmark demonstrates that the current cache/recompute strategy misses a target;
+- cancellation and accumulator semantics have been prototyped for diagnostics.
+
+Start with parse or a similarly pure query. Do not put layout or filesystem-reading lowering into
+the first database slice.
+
+### async LSP gate
+
+Adopt tower-lsp-server/tokio only with a feature that needs cancellation or concurrency and an E2E
+test demonstrating it. Before migration, specify shutdown behavior, request cancellation, panic
+isolation, logging destinations, and ordering of diagnostics after rapid edits. Framework adoption
+alone is not a feature.
+
+### pass-registry gate
+
+First define a pass contract: inputs, outputs, diagnostic ownership, ordering, configuration,
+determinism, and whether mutation is allowed. Introduce a built-in registry only when multiple real
+passes exercise that contract. Static auto-registration and third-party loading remain separate
+questions; neither should shape the initial trait.
+
+## Suggested follow-up issues
+
+The first three slices can proceed independently. Record dependencies for the later slices as
+described below:
+
+1. **test: add parser recovery property invariants** — bounded, immediately useful, and independent
+   of architecture selection.
+2. **design/spike: inject image and bibliography resource reads** — preserve dependency reporting;
+   prove production and in-memory readers, missing inputs, and snapshot consistency with tests.
+3. **perf: establish compiler and LSP analysis baselines** — define the threshold that would justify
+   finer-grained invalidation.
+4. **design: extract compiler-owned label target lookup** — preserve resolver behavior with focused
+   tests; no second consumer required. Extend to citation targets after the resource snapshot slice.
+5. **explore: compare rowan on a trivia-and-recovery fixture** — time-boxed, with written
+   keep/delete criteria and baseline measurements.
+6. **explore: split file identity from text range** — coordinate with the rowan result and existing
+   incremental dependency IDs.
+
+Do not open salsa, async LSP, plugin, or broad parser-rewrite implementation issues until their
+gates above are met.
