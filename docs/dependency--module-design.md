@@ -576,13 +576,13 @@ Metadata file example:
 
 ```json
 {
-	"path": "pkg.mosaiclang.dev/std/report",
-	"version": "1.4.2",
-	"archive": "https://pkg.mosaiclang.dev/std/report/@v/1.4.2.tar.zst",
-	"checksum": "blake3-256:b773...",
-	"manifestChecksum": "blake3-256:f021...",
-	"publishedAt": "2026-06-18T00:00:00Z",
-	"yanked": false
+  "path": "pkg.mosaiclang.dev/std/report",
+  "version": "1.4.2",
+  "archive": "https://pkg.mosaiclang.dev/std/report/@v/1.4.2.tar.zst",
+  "checksum": "blake3-256:b773...",
+  "manifestChecksum": "blake3-256:f021...",
+  "publishedAt": "2026-06-18T00:00:00Z",
+  "yanked": false
 }
 ```
 

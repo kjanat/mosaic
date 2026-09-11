@@ -75,11 +75,11 @@ To pin a specific binary instead, add to your Zed settings:
 
 ```json
 {
-	"lsp": {
-		"mos-lsp": {
-			"binary": { "path": "/absolute/path/to/mos-lsp" }
-		}
-	}
+  "lsp": {
+    "mos-lsp": {
+      "binary": { "path": "/absolute/path/to/mos-lsp" }
+    }
+  }
 }
 ```
 

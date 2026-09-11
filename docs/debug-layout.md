@@ -92,11 +92,11 @@ points. Repeated placements can share an image ID. Decoded pixels and image asse
 
 ```json
 {
-	"node_id": 3,
-	"kind": "paragraph",
-	"file": "main.mos",
-	"byte_start": 80,
-	"byte_end": 85
+  "node_id": 3,
+  "kind": "paragraph",
+  "file": "main.mos",
+  "byte_start": 80,
+  "byte_end": 85
 }
 ```
 

@@ -1,7 +1,7 @@
 <picture height="64" align="left" alt="Mosaic logo">
-	<source media="(prefers-color-scheme: dark)" srcset="design/A4.svg">
-	<source media="(prefers-color-scheme: light)" srcset="design/A4.svg">
-	<img alt="Mosaic" height="64" align="left" src="design/A4.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="design/A4.svg">
+  <source media="(prefers-color-scheme: light)" srcset="design/A4.svg">
+  <img alt="Mosaic" height="64" align="left" src="design/A4.svg">
 </picture>
 
 # Mosaic

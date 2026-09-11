@@ -1206,12 +1206,12 @@ HTML output should preserve semantics:
 
 ```html
 <section>
-	<h1>Methods</h1>
-	<p>...</p>
-	<figure>
-		<img src="scan.png">
-		<figcaption>...</figcaption>
-	</figure>
+  <h1>Methods</h1>
+  <p>...</p>
+  <figure>
+    <img src="scan.png">
+    <figcaption>...</figcaption>
+  </figure>
 </section>
 ```
 

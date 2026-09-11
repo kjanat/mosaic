@@ -241,14 +241,14 @@ Relevant local task config:
 
 ```json
 {
-	"label": "Mosaic: Build PDF",
-	"command": "mos",
-	"args": ["build", "$ZED_FILENAME"],
-	"cwd": "$ZED_DIRNAME",
-	"tags": ["mosaic-build"],
-	"use_new_terminal": false,
-	"allow_concurrent_runs": false,
-	"reveal": "always"
+  "label": "Mosaic: Build PDF",
+  "command": "mos",
+  "args": ["build", "$ZED_FILENAME"],
+  "cwd": "$ZED_DIRNAME",
+  "tags": ["mosaic-build"],
+  "use_new_terminal": false,
+  "allow_concurrent_runs": false,
+  "reveal": "always"
 }
 ```
 

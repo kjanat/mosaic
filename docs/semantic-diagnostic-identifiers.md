@@ -50,11 +50,11 @@ Published diagnostics contain:
 
 ```json
 {
-	"code": "resolution.label-missing",
-	"codeDescription": {
-		"href": "https://github.com/kjanat/mosaic/blob/master/docs/diagnostic-codes.md#resolution.label-missing"
-	},
-	"data": { "legacyCode": "MOS0033" }
+  "code": "resolution.label-missing",
+  "codeDescription": {
+    "href": "https://github.com/kjanat/mosaic/blob/master/docs/diagnostic-codes.md#resolution.label-missing"
+  },
+  "data": { "legacyCode": "MOS0033" }
 }
 ```
 
