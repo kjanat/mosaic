@@ -92,9 +92,9 @@ impl LayoutState {
             } else {
                 let words = self.collect_words(document, item, regular, size);
                 if words.is_empty() {
-                    self.flush_line(&[], leading);
+                    self.flush_line(&mut [], leading);
                 } else {
-                    self.flow_words(&words, leading);
+                    self.flow_words(words, leading);
                     self.flush_marker_only_line_if_pending(leading);
                 }
 
@@ -137,10 +137,10 @@ impl LayoutState {
                     let words = self.collect_words(document, child, regular, size);
                     if words.is_empty() {
                         if self.pending_marker.is_some() {
-                            self.flush_line(&[], leading);
+                            self.flush_line(&mut [], leading);
                         }
                     } else {
-                        self.flow_words(&words, leading);
+                        self.flow_words(words, leading);
                         self.flush_marker_only_line_if_pending(leading);
                     }
                     saw_block = true;
@@ -148,7 +148,7 @@ impl LayoutState {
                 }
                 NodeKind::List => {
                     if self.pending_marker.is_some() {
-                        self.flush_line(&[], leading);
+                        self.flush_line(&mut [], leading);
                     }
                     self.begin_debug_block(child);
                     self.layout_list(document, child);
@@ -159,13 +159,13 @@ impl LayoutState {
             }
         }
         if !saw_block && self.pending_marker.is_some() {
-            self.flush_line(&[], leading);
+            self.flush_line(&mut [], leading);
         }
     }
 
     fn flush_marker_only_line_if_pending(&mut self, leading: f32) {
         if self.pending_marker.is_some() {
-            self.flush_line(&[], leading);
+            self.flush_line(&mut [], leading);
         }
     }
 }

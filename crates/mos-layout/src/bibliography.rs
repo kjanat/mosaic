@@ -83,11 +83,11 @@ impl LayoutState {
 
             let words = self.collect_words(document, entry, regular, size);
             if words.is_empty() {
-                self.flush_line(&[], leading);
+                self.flush_line(&mut [], leading);
             } else {
-                self.flow_words(&words, leading);
+                self.flow_words(words, leading);
                 if self.pending_marker.is_some() {
-                    self.flush_line(&[], leading);
+                    self.flush_line(&mut [], leading);
                 }
             }
             self.end_debug_block();
