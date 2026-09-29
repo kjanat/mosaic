@@ -20,8 +20,16 @@ quick fixes.
   `textDocument/definition`, `textDocument/documentSymbol`, `textDocument/rename`,
   `textDocument/codeAction`, `textDocument/hover`, `textDocument/completion`,
   `textDocument/inlayHint`.
-- After every open/change the server sends `textDocument/publishDiagnostics` with the compiler
-  diagnostics for that document; close clears them.
+- After every Mosaic source open/change the server sends `textDocument/publishDiagnostics` with the
+  compiler diagnostics for that document; close clears them.
+- Open BibTeX buffers (`bibtex` language ID or `.bib` / `.bibtex` / `.biblatex` paths) override disk
+  contents when loading bibliography resources. Opening, changing, or closing one refreshes
+  diagnostics for open Mosaic documents that depend on that path. Citation completion and
+  definitions use the same captured text; closing the buffer falls back to disk. Previously missing
+  resources are dependencies too. Unrelated documents retain their cached results.
+- BibTeX buffers are resource inputs, not Mosaic source: this server does not parse them as `.mos`
+  or provide standalone BibTeX editing features. Clients must send their open/change/close events to
+  the same server instance as the dependent Mosaic documents.
 - `textDocument/definition` resolves a cursor on an `@label` / `@page(label)` reference to a single
   `Location` covering the label's first declaration, and resolves a cursor on a known `[@key]`
   citation to the key in its declared BibTeX source file. An undeclared label, unresolved citation,
