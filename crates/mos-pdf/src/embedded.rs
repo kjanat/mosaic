@@ -131,20 +131,9 @@ fn accumulate_glyphs(
     // Walk glyphs, grouping by cluster, so multi-codepoint clusters
     // (ligatures) map their full text to the first glyph and an
     // empty string to subsequent glyphs in the same cluster.
-    let mut i = 0;
-    while i < glyphs.len() {
-        let cluster = glyphs[i].cluster as usize;
-        let mut j = i + 1;
-        while j < glyphs.len() && glyphs[j].cluster as usize == cluster {
-            j += 1;
-        }
-        let next_cluster = if j < glyphs.len() {
-            glyphs[j].cluster as usize
-        } else {
-            source.len()
-        };
-        let cluster_str = source.get(cluster..next_cluster).unwrap_or("");
-        for (k, g) in glyphs[i..j].iter().enumerate() {
+    for cluster in mos_fonts::glyph_clusters(glyphs, source.len()) {
+        let cluster_str = source.get(cluster.byte_range).unwrap_or("");
+        for (k, g) in cluster.glyphs.iter().enumerate() {
             gids.push(g.gid);
             // GID 0 is `.notdef`: rustybuzz emits it for codepoints
             // the face doesn't cover. Recording a Unicode mapping for
@@ -166,7 +155,6 @@ fn accumulate_glyphs(
                 }
             });
         }
-        i = j;
     }
 }
 
@@ -418,4 +406,60 @@ fn units_to_text_adjust(units: i32, upem: f32) -> f32 {
 )]
 const fn units_to_f32(units: i32) -> f32 {
     units as f32
+}
+
+#[cfg(test)]
+mod cluster_tests {
+    use super::*;
+
+    #[test]
+    fn unicode_mapping_preserves_ligatures_and_notdef_policy() {
+        let glyph = ShapedGlyph {
+            gid: 7,
+            cluster: 0,
+            advance_units: 0,
+            x_offset_units: 0,
+            y_offset_units: 0,
+        };
+        let glyphs = [
+            glyph,
+            ShapedGlyph { gid: 8, ..glyph },
+            ShapedGlyph {
+                gid: 0,
+                cluster: 3,
+                ..glyph
+            },
+            ShapedGlyph {
+                gid: 9,
+                cluster: 6,
+                ..glyph
+            },
+        ];
+        let mut gids = Vec::new();
+        let mut mappings = BTreeMap::new();
+        accumulate_glyphs(&mut gids, &mut mappings, "ffi日é", &glyphs);
+        assert_eq!(gids, [7, 8, 0, 9]);
+        assert_eq!(mappings.get(&7).map(String::as_str), Some("ffi"));
+        assert_eq!(mappings.get(&8).map(String::as_str), Some(""));
+        assert!(!mappings.contains_key(&0));
+        assert_eq!(mappings.get(&9).map(String::as_str), Some("é"));
+        accumulate_glyphs(&mut gids, &mut mappings, "other", &[glyph]);
+        assert_eq!(mappings.get(&7).map(String::as_str), Some("ffi"));
+    }
+
+    #[test]
+    fn invalid_cluster_ranges_keep_glyphs_without_unicode_text() {
+        let glyphs = [ShapedGlyph {
+            gid: 7,
+            cluster: 1,
+            advance_units: 0,
+            x_offset_units: 0,
+            y_offset_units: 0,
+        }];
+        let mut gids = Vec::new();
+        let mut mappings = BTreeMap::new();
+        accumulate_glyphs(&mut gids, &mut mappings, "é", &glyphs);
+        assert_eq!(gids, [7]);
+        assert_eq!(mappings.get(&7).map(String::as_str), Some(""));
+    }
 }
