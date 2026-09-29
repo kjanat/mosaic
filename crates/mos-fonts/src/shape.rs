@@ -115,6 +115,59 @@ pub struct WordSubRun {
     pub advance_pt: f32,
 }
 
+/// Split shaped runs at a byte offset in their concatenated [`WordSubRun::text`].
+///
+/// Complete runs on either side retain their glyphs and measured advances.
+/// A run crossed by the split is reshaped on both sides with its own font and
+/// the supplied fallback chain, so ligatures and positioning across the cut
+/// are recalculated. Each output run's cluster offsets remain local to its text.
+/// Use the same `size_pt` and fallback chain used to produce the input runs.
+/// The offset refers to the runs' text, which may already have been normalized,
+/// not to the document text before shaping.
+///
+/// Returns `None` if the offset exceeds the concatenated text length, falls
+/// inside a UTF-8 codepoint, or the accumulated text length overflows.
+/// Empty input accepts only offset zero. Splitting at either end reuses all
+/// runs without shaping. This operation does not insert a hyphen or choose a
+/// line-break opportunity.
+///
+/// # Examples
+/// ```
+/// use mos_fonts::{Base14Font, Font, shape_with_fallback, split_runs_at};
+///
+/// let runs = shape_with_fallback(Font::Base14(Base14Font::Helvetica), &[], 12.0, "hello");
+/// let (left, right) = split_runs_at(&runs, 2, 12.0, &[]).expect("valid split");
+/// assert_eq!(left[0].text, "he");
+/// assert_eq!(right[0].text, "llo");
+/// ```
+#[must_use]
+pub fn split_runs_at(
+    runs: &[WordSubRun],
+    offset: usize,
+    size_pt: f32,
+    fallbacks: &[EmbeddedFontId],
+) -> Option<(Vec<WordSubRun>, Vec<WordSubRun>)> {
+    let mut prefix = Vec::new();
+    let mut suffix = Vec::new();
+    let mut start = 0_usize;
+    for run in runs {
+        let end = start.checked_add(run.text.len())?;
+        if end <= offset {
+            prefix.push(run.clone());
+        } else if start >= offset {
+            suffix.push(run.clone());
+        } else {
+            let local_offset = offset - start;
+            let before = run.text.get(..local_offset)?;
+            let after = run.text.get(local_offset..)?;
+            prefix.extend(shape_with_fallback(run.font, fallbacks, size_pt, before));
+            suffix.extend(shape_with_fallback(run.font, fallbacks, size_pt, after));
+        }
+        start = end;
+    }
+    (offset <= start).then_some((prefix, suffix))
+}
+
 /// Shape `text` against `primary` with per-glyph fallback.
 ///
 /// Clusters containing `.notdef` are re-shaped against each fallback face. The
@@ -393,6 +446,74 @@ fn embedded_upem(id: EmbeddedFontId) -> f32 {
 mod tests {
     use super::*;
     use crate::Base14Font;
+
+    #[test]
+    #[allow(clippy::expect_used, reason = "test setup and required split results")]
+    fn split_runs_preserves_untouched_geometry() {
+        let font = Font::Embedded(EmbeddedFontId::Regular);
+        let mut runs = shape_with_fallback(font, &[EmbeddedFontId::Math], 11.0, "a⨌b");
+        assert!(runs.len() >= 3);
+        // Callers can adjust positioning after shaping; boundary splits must
+        // retain that geometry instead of recomputing it from the text.
+        runs[0].advance_pt += 0.25;
+        runs[0].glyphs[0].x_offset_units += 1;
+        let offset = runs[0].text.len();
+        let (left, right) =
+            split_runs_at(&runs, offset, 11.0, &[EmbeddedFontId::Math]).expect("run boundary");
+        let joined: Vec<_> = left.into_iter().chain(right).collect();
+        assert_eq!(joined.len(), runs.len());
+        for (actual, expected) in joined.iter().zip(&runs) {
+            assert_eq!(actual.font, expected.font);
+            assert_eq!(actual.text, expected.text);
+            assert_eq!(actual.glyphs, expected.glyphs);
+            assert_eq!(actual.advance_pt, expected.advance_pt);
+        }
+        for offset in [0, "a⨌b".len()] {
+            let (left, right) = split_runs_at(&runs, offset, 11.0, &[]).expect("end boundary");
+            assert_eq!(left.len() + right.len(), runs.len());
+            assert_eq!(left.is_empty(), offset == 0);
+            assert_eq!(right.is_empty(), offset != 0);
+        }
+    }
+
+    #[test]
+    #[allow(clippy::expect_used, reason = "test setup and required split results")]
+    fn split_runs_reshapes_a_cut_ligature() {
+        let font = Font::Embedded(EmbeddedFontId::Regular);
+        let runs = shape_with_fallback(font, &[], 12.0, "office");
+        assert!(runs.iter().map(|run| run.glyphs.len()).sum::<usize>() < 6);
+        let (left, right) = split_runs_at(&runs, 2, 12.0, &[]).expect("inside ffi ligature");
+        for (actual, text) in [(&left, "of"), (&right, "fice")] {
+            let expected = shape_with_fallback(font, &[], 12.0, text);
+            assert_eq!(actual.len(), expected.len());
+            for (actual, expected) in actual.iter().zip(&expected) {
+                assert_eq!(actual.text, expected.text);
+                assert_eq!(actual.glyphs, expected.glyphs);
+                assert_eq!(actual.advance_pt, expected.advance_pt);
+            }
+        }
+    }
+
+    #[test]
+    #[allow(clippy::expect_used, reason = "required split results")]
+    fn split_runs_checks_offsets_in_normalized_text() {
+        let runs = shape_with_fallback(
+            Font::Embedded(EmbeddedFontId::Regular),
+            &[],
+            12.0,
+            "e\u{301}x",
+        );
+        assert_eq!(runs[0].text, "éx");
+        assert!(split_runs_at(&runs, 1, 12.0, &[]).is_none());
+        assert!(split_runs_at(&runs, 4, 12.0, &[]).is_none());
+        assert!(split_runs_at(&runs, usize::MAX, 12.0, &[]).is_none());
+        let (left, right) = split_runs_at(&runs, 2, 12.0, &[]).expect("normalized boundary");
+        assert_eq!(left[0].text, "é");
+        assert_eq!(right[0].text, "x");
+        let (left, right) = split_runs_at(&[], 0, 12.0, &[]).expect("empty boundary");
+        assert!(left.is_empty() && right.is_empty());
+        assert!(split_runs_at(&[], 1, 12.0, &[]).is_none());
+    }
 
     #[test]
     fn embedded_shape_is_empty_for_empty_string() {

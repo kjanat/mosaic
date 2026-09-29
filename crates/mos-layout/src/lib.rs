@@ -2237,6 +2237,34 @@ mod tests {
     }
 
     #[test]
+    fn repeated_soft_hyphens_preserve_fallback_text_and_bounds() {
+        let mut doc = Document::new(PathBuf::from("test.mos"));
+        make_paragraph(&mut doc, &"a⨌b\u{ad}".repeat(64));
+        let result = LayoutEngine::new().layout(&doc);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        let runs: Vec<_> = result
+            .graph
+            .pages
+            .iter()
+            .flat_map(|page| &page.runs)
+            .collect();
+        let text: String = runs.iter().map(|run| run.text.as_str()).collect();
+        assert_eq!(text.replace('-', ""), "a⨌b".repeat(64));
+        assert!(text.contains('-'));
+        assert!(
+            runs.iter()
+                .any(|run| run.font == Font::Embedded(EmbeddedFontId::Math))
+        );
+        for run in runs {
+            let end = run.x_pt + text_width(run.font, run.size_pt, &run.text);
+            assert!(
+                end <= A4_WIDTH_PT - MARGIN_PT + 0.01,
+                "run overflows: {run:?}"
+            );
+        }
+    }
+
+    #[test]
     fn styled_soft_hyphen_split_preserves_subrun_fonts() {
         let mut doc = Document::new(PathBuf::from("test.mos"));
         pin_helvetica(&mut doc);

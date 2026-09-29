@@ -1,4 +1,6 @@
-use mos_fonts::{EmbeddedFontId, Font, ShapedGlyph, WordSubRun, shape_with_fallback, text_width};
+use mos_fonts::{
+    EmbeddedFontId, Font, ShapedGlyph, WordSubRun, shape_with_fallback, split_runs_at, text_width,
+};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Word {
@@ -62,7 +64,7 @@ pub(crate) struct ShyBreak {
 /// `[1, 1]`) are deduped on the fly.
 ///
 /// Splits through the already-collected sub-run boundaries, then
-/// re-shapes each affected slice with that sub-run's font. This keeps
+/// preserves untouched runs and re-shapes only the cut run with its font. This keeps
 /// merged no-space style runs intact (`pre` + bold `su\u{AD}per`
 /// breaks into regular `pre` + bold `su-` / bold `per`) instead of
 /// re-shaping the whole word through the first fragment's font.
@@ -160,69 +162,19 @@ fn split_subruns_at(
     offset: usize,
     fallbacks: &[EmbeddedFontId],
 ) -> Option<(Vec<WordSubRun>, Vec<WordSubRun>, Font)> {
-    let mut prefix = Vec::new();
-    let mut suffix = Vec::new();
-    let mut cursor = 0_usize;
-    let mut last_prefix_font: Option<Font> = None;
-    let mut first_suffix_font: Option<Font> = None;
-
-    for subrun in &word.subruns {
-        let start = cursor;
-        let end = start + subrun.text.len();
-        if end <= offset {
-            push_shaped_piece(
-                &mut prefix,
-                subrun.font,
-                word.size_pt,
-                fallbacks,
-                &subrun.text,
-            );
-            last_prefix_font = Some(subrun.font);
-        } else if start >= offset {
-            if first_suffix_font.is_none() {
-                first_suffix_font = Some(subrun.font);
-            }
-            push_shaped_piece(
-                &mut suffix,
-                subrun.font,
-                word.size_pt,
-                fallbacks,
-                &subrun.text,
-            );
-        } else {
-            let local = offset - start;
-            let before = subrun.text.get(..local)?;
-            let after = subrun.text.get(local..)?;
-            if !before.is_empty() {
-                push_shaped_piece(&mut prefix, subrun.font, word.size_pt, fallbacks, before);
-                last_prefix_font = Some(subrun.font);
-            }
-            if !after.is_empty() {
-                if first_suffix_font.is_none() {
-                    first_suffix_font = Some(subrun.font);
-                }
-                push_shaped_piece(&mut suffix, subrun.font, word.size_pt, fallbacks, after);
-            }
-        }
-        cursor = end;
-    }
-
-    if cursor != word.text.len() {
+    let text_len = word
+        .subruns
+        .iter()
+        .try_fold(0_usize, |length, run| length.checked_add(run.text.len()))?;
+    if text_len != word.text.len() {
         return None;
     }
-
-    let hyphen_font = last_prefix_font.or(first_suffix_font).unwrap_or(word.font);
+    let (prefix, suffix) = split_runs_at(&word.subruns, offset, word.size_pt, fallbacks)?;
+    let hyphen_font = prefix
+        .last()
+        .or_else(|| suffix.first())
+        .map_or(word.font, |run| run.font);
     Some((prefix, suffix, hyphen_font))
-}
-
-fn push_shaped_piece(
-    out: &mut Vec<WordSubRun>,
-    font: Font,
-    size_pt: f32,
-    fallbacks: &[EmbeddedFontId],
-    text: &str,
-) {
-    out.extend(shape_with_fallback(font, fallbacks, size_pt, text));
 }
 
 fn push_visible_hyphen(
@@ -372,7 +324,7 @@ fn glyphs_advance_pt(font: Font, size_pt: f32, glyphs: &[ShapedGlyph]) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{Word, split_soft_hyphens, try_shy_break};
+    use super::{Word, split_soft_hyphens, split_subruns_at, try_shy_break};
     use mos_fonts::{Base14Font, Font, WordSubRun, shape_with_fallback, text_width};
 
     fn make_shy_word(text: &str, offsets: Vec<usize>) -> Word {
@@ -390,6 +342,23 @@ mod tests {
             subruns,
             shy_break_offsets: offsets,
         }
+    }
+
+    #[test]
+    #[allow(clippy::expect_used, reason = "required split result")]
+    fn shy_split_retains_measurements_outside_the_cut_run() {
+        let mut word = make_shy_word("presuperpost", vec![5]);
+        word.subruns = ["pre", "super", "post"]
+            .into_iter()
+            .flat_map(|text| shape_with_fallback(word.font, &[], word.size_pt, text))
+            .collect();
+        word.subruns[0].advance_pt += 0.25;
+        word.subruns[2].advance_pt += 0.5;
+        let (prefix, suffix, _) = split_subruns_at(&word, 5, &[]).expect("cut middle run");
+        assert_eq!(prefix[0].advance_pt, word.subruns[0].advance_pt);
+        assert_eq!(suffix[1].advance_pt, word.subruns[2].advance_pt);
+        assert_eq!(prefix[1].text, "su");
+        assert_eq!(suffix[0].text, "per");
     }
 
     #[test]

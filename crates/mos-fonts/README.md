@@ -45,6 +45,8 @@ Noto Sans Math is currently a fallback face for math codepoints missing from Not
 - `shape_text`: shapes one run; Base-14 returns width only and no glyph stream.
 - `shape_with_fallback`: shapes embedded text cluster-by-cluster and retries `.notdef` clusters
   against configured fallback faces.
+- `split_runs_at`: splits shaped runs at a text byte offset, preserving untouched runs and reshaping
+  only the run crossed by the split. Offsets refer to the shaped runs’ text.
 - `shape`: low-level embedded TTF shaping.
 - `subset`: low-level embedded TTF subsetting for PDF `/FontFile2` streams.
 
