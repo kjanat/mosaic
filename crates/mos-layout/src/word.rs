@@ -280,42 +280,39 @@ impl WordCluster<'_> {
     }
 }
 
-pub(crate) fn word_clusters(word: &Word) -> impl Iterator<Item = WordCluster<'_>> {
-    word.subruns.iter().flat_map(move |sub| {
-        let mut characters = sub.text.char_indices();
-        let mut clusters = mos_fonts::glyph_clusters(&sub.glyphs, sub.text.len());
-        std::iter::from_fn(move || {
-            if sub.glyphs.is_empty() {
-                let (start, character) = characters.next()?;
+pub(crate) fn for_each_word_cluster<'a>(word: &'a Word, mut visit: impl FnMut(WordCluster<'a>)) {
+    for sub in &word.subruns {
+        if sub.glyphs.is_empty() {
+            for (start, character) in sub.text.char_indices() {
                 let text = &sub.text[start..start + character.len_utf8()];
-                return Some(WordCluster {
+                visit(WordCluster {
                     font: sub.font,
                     text,
                     glyphs: &[],
                     advance_pt: text_width(sub.font, word.size_pt, text),
                 });
             }
-            loop {
-                let cluster = clusters.next()?;
-                let Some(text) = sub.text.get(cluster.byte_range) else {
-                    continue;
-                };
-                return Some(WordCluster {
-                    font: sub.font,
-                    text,
-                    glyphs: cluster.glyphs,
-                    advance_pt: glyphs_advance_pt(sub.font, word.size_pt, cluster.glyphs),
-                });
-            }
-        })
-    })
+            continue;
+        }
+        let upem = match sub.font {
+            Font::Embedded(id) => f32::from(id.data().units_per_em),
+            Font::Base14(_) => 1000.0,
+        };
+        for cluster in mos_fonts::glyph_clusters(&sub.glyphs, sub.text.len()) {
+            let Some(text) = sub.text.get(cluster.byte_range) else {
+                continue;
+            };
+            visit(WordCluster {
+                font: sub.font,
+                text,
+                glyphs: cluster.glyphs,
+                advance_pt: glyphs_advance_pt(upem, word.size_pt, cluster.glyphs),
+            });
+        }
+    }
 }
 
-fn glyphs_advance_pt(font: Font, size_pt: f32, glyphs: &[ShapedGlyph]) -> f32 {
-    let upem = match font {
-        Font::Embedded(id) => f32::from(id.data().units_per_em),
-        Font::Base14(_) => 1000.0,
-    };
+fn glyphs_advance_pt(upem: f32, size_pt: f32, glyphs: &[ShapedGlyph]) -> f32 {
     // Sign-preserving conversion lives in mos-fonts to keep the
     // two crates from drifting on hmtx semantics.
     glyphs
@@ -328,6 +325,12 @@ fn glyphs_advance_pt(font: Font, size_pt: f32, glyphs: &[ShapedGlyph]) -> f32 {
 mod tests {
     use super::{Word, split_soft_hyphens, split_subruns_at, try_shy_break};
     use mos_fonts::{Base14Font, Font, WordSubRun, shape_with_fallback, text_width};
+
+    fn clusters_for_word(word: &Word) -> impl Iterator<Item = super::WordCluster<'_>> {
+        let mut clusters = Vec::new();
+        super::for_each_word_cluster(word, |cluster| clusters.push(cluster));
+        clusters.into_iter()
+    }
 
     fn make_shy_word(text: &str, offsets: Vec<usize>) -> Word {
         let font = Font::Base14(Base14Font::Helvetica);
@@ -356,7 +359,7 @@ mod tests {
             word.size_pt,
             &word.text,
         );
-        let clusters: Vec<_> = super::word_clusters(&word).collect();
+        let clusters: Vec<_> = clusters_for_word(&word).collect();
         assert_eq!(clusters.len(), word.subruns.len());
         assert_eq!(
             clusters
@@ -376,7 +379,7 @@ mod tests {
     #[test]
     fn base14_cluster_views_follow_unicode_scalar_boundaries() {
         let word = make_shy_word("aé日", Vec::new());
-        let clusters: Vec<_> = super::word_clusters(&word).collect();
+        let clusters: Vec<_> = clusters_for_word(&word).collect();
         assert_eq!(
             clusters
                 .iter()
@@ -428,7 +431,7 @@ mod tests {
                 },
             ],
         }];
-        let clusters: Vec<_> = super::word_clusters(&word)
+        let clusters: Vec<_> = clusters_for_word(&word)
             .map(super::WordCluster::into_subrun)
             .collect();
         assert_eq!(

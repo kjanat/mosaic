@@ -30,7 +30,7 @@ use mos_core::{AttrValue, Diagnostic, Document, Node, NodeKind};
 use style::resolve_styles;
 use support::{blank_page, expand_tabs, read_level, read_str_attr};
 use types::BODY_LEADING;
-use word::{ShyBreak, Word, WordItem, split_soft_hyphens, try_shy_break, word_clusters};
+use word::{ShyBreak, Word, WordItem, for_each_word_cluster, split_soft_hyphens, try_shy_break};
 
 #[doc(hidden)]
 pub mod bibliography;
@@ -951,7 +951,7 @@ impl LayoutState {
         let mut chunk_text = String::with_capacity(word.text.len());
         let mut chunk_width = 0.0_f32;
         let mut chunk_subruns = Vec::new();
-        for cluster in word_clusters(word) {
+        for_each_word_cluster(word, |cluster| {
             if chunk_width + cluster.advance_pt > line_width && !chunk_subruns.is_empty() {
                 self.flush_oversize_chunk(
                     std::mem::take(&mut chunk_text),
@@ -965,7 +965,7 @@ impl LayoutState {
             chunk_text.push_str(cluster.text);
             chunk_width += cluster.advance_pt;
             chunk_subruns.push(cluster.into_subrun());
-        }
+        });
         if !chunk_subruns.is_empty() {
             self.flush_oversize_chunk(chunk_text, chunk_width, chunk_subruns, word, leading);
         }
