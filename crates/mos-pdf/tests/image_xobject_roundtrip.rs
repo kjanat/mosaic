@@ -60,16 +60,10 @@ fn graph_with_image(width: u32, height: u32) -> PageGraph {
 #[test]
 fn image_xobject_round_trips_width_height_and_filter() -> TestResult {
     let graph = graph_with_image(8, 4);
-    let tmp = std::env::temp_dir().join(format!(
-        "mosaic-image-rt-{}.pdf",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos())
-    ));
-    let diags = mos_pdf::emit(&graph, &PdfMetadata::default(), &tmp)?;
+    let (bytes, diags) = mos_pdf::build_pdf(&graph, &PdfMetadata::default())?;
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
 
-    let doc = Document::load(&tmp)?;
+    let doc = Document::load_mem(&bytes)?;
 
     // Walk every indirect object looking for the Image XObject. There
     // should be exactly one in this single-image document.
@@ -114,6 +108,5 @@ fn image_xobject_round_trips_width_height_and_filter() -> TestResult {
         assert_eq!(filter_name, b"FlateDecode", "Filter should be FlateDecode");
     }
     assert_eq!(image_streams, 1, "expected exactly one Image XObject");
-    std::fs::remove_file(&tmp).ok();
     Ok(())
 }

@@ -136,8 +136,7 @@ pub fn emit_debug(
     metadata: &PdfMetadata,
     out: &Path,
 ) -> Result<Vec<Diagnostic>> {
-    debug::validate(graph, report)?;
-    let (bytes, diagnostics) = build_pdf_impl(graph, metadata, Some(report))?;
+    let (bytes, diagnostics) = build_debug_pdf(graph, report, metadata)?;
     write_pdf(&bytes, out)?;
     Ok(diagnostics)
 }
@@ -166,22 +165,64 @@ fn io_diagnostic(message: String) -> CoreError {
     CoreError::Diagnostic(Box::new(Diagnostic::simple(&codes::MOS0014, None, message)))
 }
 
-/// Build the PDF bytes from `graph`. Pulled out of [`emit`] so tests
-/// can round-trip without touching the filesystem. Returns the bytes
-/// plus any encoding diagnostics (currently `MOS0032` for Base14
-/// `/Differences` overflow). Kept `pub(crate)`; the public surface
-/// includes [`emit`] and [`emit_debug`].
+/// Build PDF bytes in memory without accessing the filesystem.
+///
+/// Returns the same bytes and encoding diagnostics as [`emit`], including
+/// `MOS0032` for Base14 extended-glyph budget exhaustion. Layout diagnostics
+/// remain in [`mos_layout::LayoutResult::diagnostics`]. The caller owns the
+/// returned bytes and can write, upload, or serve them as needed.
 ///
 /// # Errors
 ///
-/// Returns an error if font subsetting fails for any embedded face
-/// (only with corrupted font data; the bundled cuts have been
-/// verified).
-pub(crate) fn build_pdf(
+/// Returns an error if embedded font subsetting fails.
+///
+/// # Examples
+///
+/// ```
+/// use mos_layout::PageGraph;
+/// use mos_pdf::{PdfMetadata, build_pdf};
+///
+/// let (bytes, diagnostics) = build_pdf(&PageGraph::default(), &PdfMetadata::default())?;
+/// assert!(bytes.starts_with(b"%PDF-"));
+/// assert!(diagnostics.is_empty());
+/// # Ok::<(), mos_core::CoreError>(())
+/// ```
+pub fn build_pdf(graph: &PageGraph, metadata: &PdfMetadata) -> Result<(Vec<u8>, Vec<Diagnostic>)> {
+    build_pdf_impl(graph, metadata, None)
+}
+
+/// Build a PDF with layout-debug overlays in memory, without filesystem access.
+///
+/// Use the graph and report from the same [`mos_layout::LayoutEngine::layout_with_debug`]
+/// result. Bytes and encoding diagnostics match [`emit_debug`].
+///
+/// # Errors
+///
+/// Returns `MOS0051` when the report is incompatible with the graph, or the
+/// same font-subsetting errors as [`build_pdf`].
+///
+/// # Examples
+///
+/// ```
+/// use mos_core::Document;
+/// use mos_layout::LayoutEngine;
+/// use mos_pdf::{PdfMetadata, build_debug_pdf};
+///
+/// let layout = LayoutEngine::new().layout_with_debug(&Document::new("example.mos".into()));
+/// if let Some(report) = &layout.debug {
+///     let (bytes, diagnostics) = build_debug_pdf(&layout.graph, report, &PdfMetadata::default())?;
+///     assert!(bytes.starts_with(b"%PDF-"));
+///     assert!(diagnostics.is_empty());
+/// }
+/// # Ok::<(), mos_core::CoreError>(())
+/// ```
+pub fn build_debug_pdf(
     graph: &PageGraph,
+    report: &mos_layout::debug::Report,
     metadata: &PdfMetadata,
 ) -> Result<(Vec<u8>, Vec<Diagnostic>)> {
-    build_pdf_impl(graph, metadata, None)
+    debug::validate(graph, report)?;
+    build_pdf_impl(graph, metadata, Some(report))
 }
 
 fn build_pdf_impl(
@@ -1039,6 +1080,42 @@ mod tests {
     }
 
     #[test]
+    fn debug_bytes_match_file_output_and_validate_report() -> TestResult {
+        let layout = mos_layout::LayoutEngine::new()
+            .layout_with_debug(&mos_core::Document::new("debug.mos".into()));
+        let mut report = layout.debug.ok_or("missing debug report")?;
+        let metadata = PdfMetadata::default();
+        let (bytes, diagnostics) = build_debug_pdf(&layout.graph, &report, &metadata)?;
+        ensure!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+        let parsed = LopdfDocument::load_mem(&bytes)?;
+        ensure!(
+            parsed.get_pages().len() == layout.graph.pages.len(),
+            "page count changed"
+        );
+        let dir = unique_temp_path("debug-parity");
+        let out = dir.join("out.pdf");
+        let file_diagnostics = emit_debug(&layout.graph, &report, &metadata, &out)?;
+        let file_bytes = std::fs::read(&out)?;
+        std::fs::remove_dir_all(&dir)?;
+        ensure!(bytes == file_bytes, "debug file and memory bytes differ");
+        ensure!(file_diagnostics.is_empty(), "unexpected file diagnostics");
+        report.pages.clear();
+        let Err(CoreError::Diagnostic(diagnostic)) =
+            build_debug_pdf(&layout.graph, &report, &metadata)
+        else {
+            return Err("mismatched debug report accepted".into());
+        };
+        ensure!(
+            diagnostic.def().code() == codes::MOS0051.code(),
+            "wrong mismatch diagnostic"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn emit_writes_file() -> TestResult {
         let dir = unique_temp_path("write");
         let out = dir.join("out.pdf");
@@ -1047,7 +1124,10 @@ mod tests {
         ensure!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
         let bytes = std::fs::read(&out)?;
         ensure!(bytes.starts_with(b"%PDF-"), "missing PDF header");
-        std::fs::remove_dir_all(&dir).ok();
+        let (memory_bytes, memory_diags) = build_pdf(&sample_graph(), &PdfMetadata::default())?;
+        ensure!(memory_bytes == bytes, "file and memory bytes differ");
+        ensure!(memory_diags.is_empty(), "unexpected memory diagnostics");
+        std::fs::remove_dir_all(&dir)?;
         Ok(())
     }
 

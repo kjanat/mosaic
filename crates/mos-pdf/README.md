@@ -10,8 +10,10 @@ not parse `.mos`, lower documents, or decide layout policy.
 
 ## Purpose
 
-- Public entry point: `emit(&PageGraph, &PdfMetadata, &Path)`.
-- Creates the output parent directory when needed.
+- In-memory entry points: `build_pdf` and `build_debug_pdf` return owned PDF bytes and diagnostics
+  without accessing the filesystem.
+- File entry points: `emit` and `emit_debug` write the same output and create parent directories
+  when needed.
 - Returns PDF-emission diagnostics, currently including Base-14 extended-glyph budget warnings.
 - Writes `PdfMetadata.title` and `PdfMetadata.author` to the PDF Info dictionary.
 - Stamps a deterministic `/Producer` and `/Creator` of `Mosaic <version>` (compile-time
@@ -63,6 +65,20 @@ affect allocation or emission order. Tests prefer structural PDF checks over byt
 snapshots.
 
 ## Examples
+
+Build PDF bytes for an in-memory consumer:
+
+```rust
+use mos_layout::PageGraph;
+use mos_pdf::{PdfMetadata, build_pdf};
+
+let (bytes, diagnostics) = build_pdf(&PageGraph::default(), &PdfMetadata::default())?;
+assert!(bytes.starts_with(b"%PDF-"));
+# Ok::<(), mos_core::CoreError>(())
+```
+
+`build_debug_pdf` accepts the matching report from `LayoutEngine::layout_with_debug`. Both byte APIs
+return encoding diagnostics; layout diagnostics remain on `LayoutResult`.
 
 From the workspace root:
 
