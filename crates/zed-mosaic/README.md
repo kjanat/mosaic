@@ -48,6 +48,13 @@ Opening a `.mos` file starts [`mos-lsp`] for the `Mosaic` language. [`extension.
 diagnostics on open/change, go-to-definition for `@label` / `@page(label)` references, label rename
 via `textDocument/rename`, and quick fixes via `textDocument/codeAction`.
 
+The server also attaches to the existing `BibTeX` language, supplied by Zed's LaTeX extension. With
+both buffers attached to the same `mos-lsp` instance, unsaved bibliography edits update Mosaic
+citation diagnostics, completion, and definitions. Closing the bibliography makes Mosaic read its
+disk contents again. No BibTeX grammar is bundled or replaced here; standalone BibTeX features
+remain with its language server. Ensure `mos-lsp` is enabled for both languages when overriding
+Zed's `language_servers` settings.
+
 ### Binary discovery
 
 The extension locates `mos-lsp` in this order:

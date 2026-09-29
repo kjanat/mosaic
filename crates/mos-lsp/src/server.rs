@@ -8,9 +8,9 @@
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use mos_eval::LowerResult;
+use mos_eval::{LowerResult, ResourceReader};
 use serde_json::{Value, json};
 
 use crate::cache::Store as LoweringCache;
@@ -81,9 +81,42 @@ struct ServerState {
     code_description_support: bool,
     data_support: bool,
     documents: HashMap<String, String>,
+    bibliographies: HashMap<PathBuf, OpenBibliography>,
     /// Memoised `mos-eval` lowerings, reused across `textDocument/definition`
     /// requests and dropped whenever a document's source changes or closes.
     lowerings: LoweringCache,
+}
+
+#[derive(Debug)]
+struct OpenBibliography {
+    text: String,
+    content: mos_core::ContentHash,
+}
+
+impl OpenBibliography {
+    fn new(text: String) -> Self {
+        let content = mos_eval::fingerprint_bytes(text.as_bytes());
+        Self { text, content }
+    }
+}
+
+fn is_bibliography(path: &Path) -> bool {
+    path.extension().is_some_and(|extension| {
+        ["bib", "bibtex", "biblatex"]
+            .iter()
+            .any(|suffix| extension.eq_ignore_ascii_case(suffix))
+    })
+}
+
+fn refresh_dependents<W: Write>(
+    writer: &mut W,
+    state: &mut ServerState,
+    path: &Path,
+) -> Result<()> {
+    for uri in state.lowerings.invalidate_dependency(path) {
+        publish_diagnostics(writer, state, &uri)?;
+    }
+    Ok(())
 }
 
 /// Process a single decoded LSP message. Returns `Ok(true)` if the
@@ -153,6 +186,16 @@ fn handle_message<W: Write>(
             {
                 let uri = uri.to_owned();
                 let text = text.to_owned();
+                let path = path_from_uri(&uri);
+                if is_bibliography(&path)
+                    || doc.get("languageId").and_then(Value::as_str) == Some("bibtex")
+                {
+                    state
+                        .bibliographies
+                        .insert(path.clone(), OpenBibliography::new(text));
+                    refresh_dependents(writer, state, &path)?;
+                    return Ok(false);
+                }
                 state.documents.insert(uri.clone(), text);
                 // A re-open replaces the source; drop any prior lowering so
                 // the publish below re-lowers the new text into the cache.
@@ -171,6 +214,14 @@ fn handle_message<W: Write>(
                 .and_then(Value::as_str)
                 .map(str::to_owned);
             if let (Some(uri), Some(text)) = (uri, new_text) {
+                let path = path_from_uri(&uri);
+                if is_bibliography(&path) || state.bibliographies.contains_key(&path) {
+                    state
+                        .bibliographies
+                        .insert(path.clone(), OpenBibliography::new(text));
+                    refresh_dependents(writer, state, &path)?;
+                    return Ok(false);
+                }
                 state.documents.insert(uri.clone(), text);
                 // The edit invalidates the cached lowering; the publish below
                 // re-lowers the new text once for diagnostics and definition.
@@ -185,6 +236,12 @@ fn handle_message<W: Write>(
                 .and_then(Value::as_str)
             {
                 let uri = uri.to_owned();
+                let path = path_from_uri(&uri);
+                if state.bibliographies.remove(&path).is_some() {
+                    refresh_dependents(writer, state, &path)?;
+                    clear_diagnostics(writer, &uri)?;
+                    return Ok(false);
+                }
                 state.documents.remove(&uri);
                 state.lowerings.invalidate(&uri);
                 // Clear stale squigglies in the editor.
@@ -342,27 +399,43 @@ fn completion_result(state: &mut ServerState, message: &Value) -> Value {
 /// diagnostics/definition request on the unchanged source (issue #106). A
 /// lowering that read external files (`#image` / `#figure` /
 /// `#bibliography`) is reused only while every file it read is still current
-/// (a `stat` per file, a re-hash only when size or mtime moved);
-/// `Store::get_if_current` evicts it otherwise, so the document is re-lowered
-/// against the current filesystem (issue #125).
+/// in the active input layer: open bibliography buffers compare content hashes,
+/// while other paths use filesystem freshness checks (issue #125).
 fn with_lowering<T>(
     state: &mut ServerState,
     uri: &str,
     f: impl FnOnce(&LowerResult, &Path, &str) -> T,
 ) -> Option<T> {
-    // Disjoint field borrows: read the source from `documents`, look up /
-    // populate `lowerings`: separate fields, so neither aliases the other.
+    // The source and resource buffers remain borrowed while the disjoint cache
+    // is updated, so each lowering captures one consistent editor state.
     let ServerState {
         documents,
         lowerings,
+        bibliographies,
         ..
     } = state;
     let src = documents.get(uri)?;
     let path = path_from_uri(uri);
-    if let Some(cached) = lowerings.get_if_current(uri) {
+    if let Some(cached) = lowerings.get_if_current_with(uri, |dependency| {
+        if let Some(open) = bibliographies.get(&dependency.path) {
+            dependency
+                .fingerprint
+                .map(mos_eval::ResourceFingerprint::content)
+                == Some(open.content)
+        } else {
+            dependency.is_current()
+        }
+    }) {
         return Some(f(cached, &path, src));
     }
-    let fresh = mos_eval::lower(src, &path);
+    let reader = |path: &Path| {
+        if let Some(open) = bibliographies.get(path) {
+            Ok(mos_eval::ResourceData::new(open.text.as_bytes()))
+        } else {
+            mos_eval::FileSystemReader.read(path)
+        }
+    };
+    let fresh = mos_eval::lower_with_reader(src, &path, &reader);
     let result = f(&fresh, &path, src);
     lowerings.store(uri, fresh);
     Some(result)
@@ -1445,6 +1518,91 @@ mod tests {
         let cursor = src.find("plain").map_or(0, |at| at + 1);
         let reply = hover_reply(uri, src, byte_to_position(src, cursor));
         assert_eq!(reply.pointer("/result"), Some(&Value::Null));
+    }
+
+    #[test]
+    fn bibliography_edits_refresh_only_dependents_and_reuse_overlay_results() {
+        let mut state = ServerState::default();
+        let mut writer = Vec::new();
+        let source = "#bibliography(\"refs.bib\")\nSee [@key]\n";
+        for uri in [
+            "file:///virtual/first.mos",
+            "file:///virtual/second.mos",
+            "file:///virtual/unrelated.mos",
+        ] {
+            handle_message(&json!({"method":"textDocument/didOpen", "params":{"textDocument":{
+                "uri":uri,"languageId":"mosaic","text":if uri.contains("unrelated") { "= Unrelated" } else { source }
+            }}}), &mut state, &mut writer).unwrap();
+        }
+        let unrelated = "file:///virtual/unrelated.mos";
+        let mut sentinel = mos_eval::lower("= Unrelated", Path::new("/virtual/unrelated.mos"));
+        sentinel.metadata.title = Some("cached unrelated".to_owned());
+        state.lowerings.store(unrelated, sentinel);
+        writer.clear();
+        handle_message(&json!({"method":"textDocument/didOpen", "params":{"textDocument":{
+            "uri":"file:///virtual/refs.bib","languageId":"bibtex","text":"@book{key, title={Unsaved}}"
+        }}}), &mut state, &mut writer).unwrap();
+        let messages = decode_messages(&writer);
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["params"]["uri"], "file:///virtual/first.mos");
+        assert_eq!(messages[1]["params"]["uri"], "file:///virtual/second.mos");
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["params"]["diagnostics"] == json!([]))
+        );
+        assert!(!state.documents.contains_key("file:///virtual/refs.bib"));
+        assert_eq!(
+            with_lowering(&mut state, unrelated, |result, _, _| result
+                .metadata
+                .title
+                .clone()),
+            Some(Some("cached unrelated".to_owned()))
+        );
+
+        let reader = |_: &Path| {
+            Ok(mos_eval::ResourceData::new(
+                b"@book{key, title={Unsaved}}".as_slice(),
+            ))
+        };
+        let mut cached =
+            mos_eval::lower_with_reader(source, Path::new("/virtual/first.mos"), &reader);
+        cached.metadata.title = Some("cached overlay".to_owned());
+        state.lowerings.store("file:///virtual/first.mos", cached);
+        for _ in 0..2 {
+            assert_eq!(
+                with_lowering(&mut state, "file:///virtual/first.mos", |result, _, _| {
+                    result.metadata.title.clone()
+                }),
+                Some(Some("cached overlay".to_owned()))
+            );
+        }
+        writer.clear();
+        handle_message(
+            &json!({"method":"textDocument/didChange","params":{
+                "textDocument":{"uri":"file:///virtual/refs.bib","version":2},
+                "contentChanges":[{"text":"@book{renamed, title={Unsaved}}"}]
+            }}),
+            &mut state,
+            &mut writer,
+        )
+        .unwrap();
+        let messages = decode_messages(&writer);
+        assert_eq!(messages.len(), 2);
+        assert!(messages.iter().all(|message| {
+            message["params"]["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "resolution.citation-missing")
+        }));
+        assert_eq!(
+            with_lowering(&mut state, unrelated, |result, _, _| result
+                .metadata
+                .title
+                .clone()),
+            Some(Some("cached unrelated".to_owned()))
+        );
     }
 
     #[test]

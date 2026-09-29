@@ -18,7 +18,11 @@ languages      = ["languages/mosaic"]
 name      = "Mosaic Language Server"  # This does nothing
 # Language-server `languages` are display names from language config.toml.
 # The old singular `language = "Mosaic"` form is deprecated by Zed.
-languages = ["Mosaic"]
+languages = ["Mosaic", "BibTeX"]
+
+[language_servers.mos-lsp.language_ids]
+Mosaic = "mosaic"
+BibTeX = "bibtex"
 
 # `src/lib.rs` auto-downloads `mos-lsp` from GitHub releases via
 # `latest_github_release` + `download_file`, choosing the asset by `current_platform()`.

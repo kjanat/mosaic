@@ -1101,3 +1101,155 @@ fn diagnostic_optional_fields_follow_client_capabilities() -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn unsaved_bibliography_updates_citations_and_close_restores_disk() -> TestResult {
+    let dir = TempDir::new("mos-lsp-unsaved-bib")?;
+    let bib = dir.path().join("my refs.bib");
+    let uri = mos_lsp::definition::path_to_uri(&dir.path().join("main.mos"));
+    let bib_uri = mos_lsp::definition::path_to_uri(&bib);
+    std::fs::write(&bib, "@book{old, title={Disk}}\n")?;
+    let source = "#bibliography(\"my refs.bib\")\nSee [@old] and [@new]\n";
+    let mut server = Server::spawn()?;
+    initialize(&mut server, &zed_like_initialize_params())?;
+    server.open_document(&uri, source)?;
+    let initial = server.diagnostics_for(&uri)?;
+    ensure(
+        initial
+            .iter()
+            .any(|diagnostic| diagnostic["code"] == "resolution.citation-missing"),
+        "new key is initially missing",
+    )?;
+    server.notify("textDocument/didOpen", &json!({"textDocument":{
+        "uri":bib_uri,"languageId":"bibtex","version":1,"text":"@book{old, title={Unsaved}}\n@book{new, title={New}}\n"
+    }}))?;
+    ensure(
+        server.diagnostics_for(&uri)?.is_empty(),
+        "opening unsaved bibliography clears missing-key diagnostic",
+    )?;
+    let definition_params =
+        json!({"textDocument":{"uri":uri},"position":position_of(source,"[@new]",3)?});
+    let definition = server.request(2, "textDocument/definition", &definition_params)?;
+    ensure_eq(
+        &definition["result"]["uri"],
+        &json!(bib_uri),
+        "definition target URI",
+    )?;
+    ensure_eq(
+        &definition["result"]["range"]["start"]["line"],
+        &json!(1),
+        "unsaved definition line",
+    )?;
+    let completion_params =
+        json!({"textDocument":{"uri":uri},"position":position_of(source,"[@new]",5)?});
+    let completion = server.request(3, "textDocument/completion", &completion_params)?;
+    ensure(
+        completion["result"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item["label"] == "new")),
+        "completion contains unsaved key",
+    )?;
+
+    server.notify(
+        "textDocument/didChange",
+        &json!({
+            "textDocument":{"uri":bib_uri,"version":2},
+            "contentChanges":[{"text":"\n\n@book{new, title={Moved}}\n"}]
+        }),
+    )?;
+    let renamed = server.diagnostics_for(&uri)?;
+    ensure(
+        renamed.iter().any(|diagnostic| {
+            diagnostic["code"] == "resolution.citation-missing"
+                && diagnostic["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("old"))
+        }),
+        "removed key becomes missing without saving",
+    )?;
+    let moved = server.request(4, "textDocument/definition", &definition_params)?;
+    ensure_eq(
+        &moved["result"]["range"]["start"]["line"],
+        &json!(2),
+        "definition follows unsaved movement",
+    )?;
+    std::fs::write(&bib, "@book{old, title={Disk changed while open}}\n")?;
+    let still_open = server.request(5, "textDocument/definition", &definition_params)?;
+    ensure_eq(
+        &still_open["result"],
+        &moved["result"],
+        "disk changes cannot override open buffer",
+    )?;
+
+    server.notify(
+        "textDocument/didChange",
+        &json!({
+            "textDocument":{"uri":bib_uri,"version":3},"contentChanges":[{"text":"@book{broken"}]
+        }),
+    )?;
+    let malformed = server.diagnostics_for(&uri)?;
+    ensure(
+        !malformed
+            .iter()
+            .any(|diagnostic| diagnostic["code"] == "resolution.citation-missing"),
+        "incomplete bibliography suppresses false missing-key diagnostics",
+    )?;
+    let incomplete = server.request(6, "textDocument/completion", &completion_params)?;
+    ensure_eq(
+        &incomplete["result"],
+        &json!([]),
+        "malformed snapshot suppresses completion",
+    )?;
+
+    server.notify(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":bib_uri}}),
+    )?;
+    let restored = server.diagnostics_for(&uri)?;
+    ensure(
+        restored.iter().any(|diagnostic| {
+            diagnostic["code"] == "resolution.citation-missing"
+                && diagnostic["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("new"))
+        }),
+        "closing restores disk bibliography",
+    )?;
+    let closed = server.request(7, "textDocument/definition", &definition_params)?;
+    ensure_eq(
+        &closed["result"],
+        &Value::Null,
+        "unsaved key is unavailable after close",
+    )?;
+    server.shutdown(8)
+}
+
+#[test]
+fn bibliography_opened_before_source_can_exist_only_in_memory() -> TestResult {
+    let dir = TempDir::new("mos-lsp-only-memory-bib")?;
+    let uri = mos_lsp::definition::path_to_uri(&dir.path().join("main.mos"));
+    let bib_uri = mos_lsp::definition::path_to_uri(&dir.path().join("refs.bib"));
+    let mut server = Server::spawn()?;
+    initialize(&mut server, &zed_like_initialize_params())?;
+    server.notify(
+        "textDocument/didOpen",
+        &json!({"textDocument":{
+            "uri":bib_uri,"languageId":"bibtex","version":1,"text":"@book{key, title={Only memory}}"
+        }}),
+    )?;
+    let source = "#bibliography(\"refs.bib\")\nSee [@key]\n";
+    server.open_document(&uri, source)?;
+    ensure(
+        server.diagnostics_for(&uri)?.is_empty(),
+        "resource need not exist on disk",
+    )?;
+    server.notify(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":bib_uri}}),
+    )?;
+    ensure(
+        !server.diagnostics_for(&uri)?.is_empty(),
+        "closing missing resource refreshes dependents",
+    )?;
+    server.shutdown(2)
+}

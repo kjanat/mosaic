@@ -14,7 +14,8 @@
 //! `external_dependencies`, and [`get_if_current`](Store::get_if_current)
 //! checks each one on every hit (a `stat`, and a re-hash only when the size
 //! or modification time moved), evicting the entry the moment any file
-//! differs (issue #125). A pure lowering has no dependencies and is reused
+//! differs (issue #125). The server supplies an overlay-aware freshness check
+//! when bibliography buffers are open. A pure lowering has no dependencies and is reused
 //! without touching the filesystem.
 //!
 //! The boundary stays thin: the cache owns no parse/lower policy, it only
@@ -53,12 +54,20 @@ impl Store {
     /// ```
     #[must_use]
     pub fn get_if_current(&mut self, uri: &str) -> Option<&LowerResult> {
+        self.get_if_current_with(uri, mos_eval::ExternalDependency::is_current)
+    }
+
+    pub(crate) fn get_if_current_with(
+        &mut self,
+        uri: &str,
+        is_current: impl FnMut(&mos_eval::ExternalDependency) -> bool,
+    ) -> Option<&LowerResult> {
         let current = self
             .entries
             .get(uri)?
             .external_dependencies
             .iter()
-            .all(mos_eval::ExternalDependency::is_current);
+            .all(is_current);
         if !current {
             self.entries.remove(uri);
             return None;
@@ -101,6 +110,24 @@ impl Store {
     /// ```
     pub fn invalidate(&mut self, uri: &str) {
         self.entries.remove(uri);
+    }
+
+    pub(crate) fn invalidate_dependency(&mut self, path: &std::path::Path) -> Vec<String> {
+        let mut affected = Vec::new();
+        self.entries.retain(|uri, lowered| {
+            if lowered
+                .external_dependencies
+                .iter()
+                .any(|dependency| dependency.path == path)
+            {
+                affected.push(uri.clone());
+                false
+            } else {
+                true
+            }
+        });
+        affected.sort();
+        affected
     }
 
     /// Whether a lowering is currently cached for `uri`. Test-only: used to
