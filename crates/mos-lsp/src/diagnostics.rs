@@ -198,8 +198,46 @@ pub fn from_result(file: &Path, src: &str, lowered: &mos_eval::LowerResult) -> V
     lowered
         .diagnostics
         .iter()
+        .filter(|diagnostic| !is_resource_diagnostic(file, diagnostic))
         .filter_map(|d| project_diagnostic(file, src, d))
         .collect()
+}
+
+/// Project resource diagnostics using exactly the bytes captured by lowering.
+pub(crate) fn resource_diagnostics(
+    file: &Path,
+    lowered: &mos_eval::LowerResult,
+) -> std::collections::BTreeMap<String, Vec<LspDiagnostic>> {
+    let mut resources = std::collections::BTreeMap::<String, Vec<LspDiagnostic>>::new();
+    for diagnostic in &lowered.diagnostics {
+        let Some(span) = diagnostic
+            .span()
+            .filter(|_| is_resource_diagnostic(file, diagnostic))
+        else {
+            continue;
+        };
+        let Some(Ok(bytes)) = lowered.resources.get(&span.file) else {
+            continue;
+        };
+        let Ok(source) = std::str::from_utf8(bytes) else {
+            continue;
+        };
+        if let Some(projected) = project_diagnostic(&span.file, source, diagnostic) {
+            resources
+                .entry(crate::definition::path_to_uri(&span.file))
+                .or_default()
+                .push(projected);
+        }
+    }
+    resources
+}
+
+fn is_resource_diagnostic(file: &Path, diagnostic: &CoreDiagnostic) -> bool {
+    // BibTeX parse spans refer to captured resource bytes even when a source
+    // declares itself as its bibliography. Directive errors still use source text.
+    diagnostic.span().is_some_and(|span| {
+        span.file != file || diagnostic.def().code() == mos_core::codes::MOS0043.code()
+    })
 }
 
 fn project_diagnostic(file: &Path, src: &str, diag: &CoreDiagnostic) -> Option<LspDiagnostic> {

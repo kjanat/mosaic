@@ -1253,3 +1253,81 @@ fn bibliography_opened_before_source_can_exist_only_in_memory() -> TestResult {
     )?;
     server.shutdown(2)
 }
+
+#[test]
+fn bibliography_diagnostics_follow_buffer_repair_and_disk_fallback() -> TestResult {
+    let dir = TempDir::new("mos-lsp-bib-diagnostics")?;
+    let uri = mos_lsp::definition::path_to_uri(&dir.path().join("main.mos"));
+    let bib_path = dir.path().join("my refs.bib");
+    let bib_uri = mos_lsp::definition::path_to_uri(&bib_path);
+    std::fs::write(&bib_path, "@book{broken")?;
+    let mut server = Server::spawn()?;
+    let mut capabilities = zed_like_initialize_params();
+    capabilities["capabilities"]["textDocument"]["publishDiagnostics"]["dataSupport"] = json!(true);
+    initialize(&mut server, &capabilities)?;
+    server.open_document(&uri, "#bibliography(\"my refs.bib\")\n")?;
+    ensure(
+        server.diagnostics_for(&uri)?.is_empty(),
+        "error belongs to bibliography",
+    )?;
+    let disk_errors = server.diagnostics_for(&bib_uri)?;
+    ensure_eq(&disk_errors.len(), &1, "disk parse error published")?;
+
+    let prefix = "@book{key, title={😀}} ";
+    server.notify(
+        "textDocument/didOpen",
+        &json!({"textDocument": {
+            "uri":bib_uri,"languageId":"bibtex","version":1,
+            "text":format!("\n{prefix}!")
+        }}),
+    )?;
+    let errors = server.diagnostics_for(&bib_uri)?;
+    ensure_eq(&errors.len(), &1, "buffer replaces disk diagnostic")?;
+    ensure_eq(
+        &errors[0]["range"]["start"],
+        &json!({
+            "line":1,"character":prefix.encode_utf16().count()
+        }),
+        "range uses UTF-16 buffer positions",
+    )?;
+    ensure_eq(
+        &errors[0]["severity"],
+        &json!(1),
+        "compiler severity preserved",
+    )?;
+    ensure_eq(
+        &errors[0]["data"]["legacyCode"],
+        &json!("MOS0043"),
+        "compiler code preserved",
+    )?;
+
+    server.notify(
+        "textDocument/didChange",
+        &json!({
+            "textDocument":{"uri":bib_uri,"version":2},
+            "contentChanges":[{"text":"@book{key, title={Fixed}}"}]
+        }),
+    )?;
+    ensure(
+        server.diagnostics_for(&bib_uri)?.is_empty(),
+        "repair clears error",
+    )?;
+    server.notify(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":bib_uri}}),
+    )?;
+    ensure_eq(
+        &server.diagnostics_for(&bib_uri)?,
+        &disk_errors,
+        "close restores disk error",
+    )?;
+    server.notify(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    )?;
+    ensure(
+        server.diagnostics_for(&bib_uri)?.is_empty(),
+        "last dependent closes resource diagnostics",
+    )?;
+    server.shutdown(2)
+}
