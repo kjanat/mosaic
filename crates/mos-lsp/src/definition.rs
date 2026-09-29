@@ -18,7 +18,6 @@
 //! and source/PDF sync are separate concerns. Generated code-block names
 //! are inlay metadata, so they are not definition targets.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use mos_core::{AttrValue, Document, NodeKind, SourceSpan};
@@ -50,35 +49,36 @@ pub struct Target {
 #[must_use]
 pub fn range(file: &Path, src: &str, position: LspPosition) -> Option<LspRange> {
     let lowered = mos_eval::lower(src, file);
-    target_in(&lowered.document, file, src, position).map(|target| target.range)
+    target_in(&lowered, file, src, position).map(|target| target.range)
 }
 
 /// Resolve the reference under `position` against an already-lowered
 /// `document`, returning the LSP range of its label's first declaration.
 ///
-/// The caller supplies the [`Document`] (from a cache or a fresh lowering)
-/// alongside the `src` it was lowered from: `src` is needed only to map
-/// byte offsets to UTF-16 positions, the document carries the spans. Same
-/// `None` contract as [`range`].
+/// The caller supplies the [`mos_eval::LowerResult`] alongside the `src` it
+/// was lowered from. External targets use the result's captured bytes, while
+/// `src` maps local offsets to UTF-16 positions. Same `None` contract as [`range`].
 #[must_use]
 pub fn range_in(
-    document: &Document,
+    lowered: &mos_eval::LowerResult,
     file: &Path,
     src: &str,
     position: LspPosition,
 ) -> Option<LspRange> {
-    target_in(document, file, src, position).map(|target| target.range)
+    target_in(lowered, file, src, position).map(|target| target.range)
 }
 
-/// Resolve the reference or citation under `position` against an
-/// already-lowered `document`, returning the target file and range.
+/// Resolve the reference or citation under `position` against a
+/// lowering result, using its captured resource text for external target ranges.
+/// No filesystem reads occur during lookup.
 #[must_use]
 pub fn target_in(
-    document: &Document,
+    lowered: &mos_eval::LowerResult,
     file: &Path,
     src: &str,
     position: LspPosition,
 ) -> Option<Target> {
+    let document = &lowered.document;
     let offset = position_to_byte(src, position);
     if let Some(label) = reference_label_at(document, file, offset) {
         let span = first_declaration_span(document, &label)?;
@@ -88,10 +88,10 @@ pub fn target_in(
         });
     }
     let span = citation_target_span_at(document, file, offset)?;
-    let target_src = fs::read_to_string(&span.file).ok()?;
+    let target_src = std::str::from_utf8(lowered.resources.get(&span.file)?.ok()?).ok()?;
     Some(Target {
         path: span.file.clone(),
-        range: span_to_range(&target_src, &span),
+        range: span_to_range(target_src, &span),
     })
 }
 
@@ -263,6 +263,40 @@ mod tests {
 
     fn position(line: u32, character: u32) -> LspPosition {
         LspPosition { line, character }
+    }
+
+    #[test]
+    fn citation_definition_uses_captured_text_after_resource_changes() {
+        use std::cell::RefCell;
+        let bibliography =
+            RefCell::new("@book{other, title={µ字}}\n@book{key, title={Original}}".to_owned());
+        let reader = |_: &Path| {
+            Ok(mos_eval::ResourceData::new(
+                bibliography.borrow().as_bytes().to_vec(),
+            ))
+        };
+        let file = Path::new("virtual/main.mos");
+        let source = "#bibliography(\"refs.bib\")\nSee [@key]\n";
+        let lowered = mos_eval::lower_with_reader(source, file, &reader);
+        assert!(!lowered.has_errors());
+        let offset = source.find("@key").unwrap() + 1;
+        let expected = LspRange {
+            start: position(1, 6),
+            end: position(1, 9),
+        };
+        *bibliography.borrow_mut() = "\n\n\n@book{key, title={Changed}}".to_owned();
+        let target = target_in(&lowered, file, source, byte_position(source, offset)).unwrap();
+        assert_eq!(target.path, Path::new("virtual/refs.bib"));
+        assert_eq!(target.range, expected);
+        let updated = mos_eval::lower_with_reader(source, file, &reader);
+        assert_eq!(
+            target_in(&updated, file, source, byte_position(source, offset))
+                .unwrap()
+                .range
+                .start
+                .line,
+            3
+        );
     }
 
     #[test]

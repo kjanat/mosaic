@@ -312,13 +312,13 @@ fn decoded_metadata_and_file_timestamps_do_not_enter_authored_hashes() {
         attrs.insert(key.to_owned(), value);
     }
     for dependency in &mut result.external_dependencies {
-        if let Some(fingerprint) = &mut dependency.fingerprint {
+        if let Some(crate::ResourceFingerprint::File(fingerprint)) = &mut dependency.fingerprint {
             fingerprint.modified = Some(std::time::UNIX_EPOCH);
             fingerprint.observed = std::time::UNIX_EPOCH;
             fingerprint.identity = crate::FileIdentity::NONE;
         }
     }
-    super::stamp(&mut result.document, &result.external_dependencies);
+    super::stamp(&mut result.document, &result.external_dependencies, false);
     assert_eq!(before, block_hashes(&result));
 }
 

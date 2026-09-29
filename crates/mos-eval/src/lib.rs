@@ -39,14 +39,15 @@ use mos_core::{
 use mos_parse::{DirectiveKind, Item, RawBlockKind, RawBlockView, SetArg, SetValue, SyntaxTree};
 
 pub use dependency::{
-    ExternalDependency, FileIdentity, Fingerprint, RACY_WINDOW, fingerprint_bytes, fingerprint_file,
+    ExternalDependency, FileIdentity, FileSystemReader, Fingerprint, RACY_WINDOW, ResourceData,
+    ResourceFingerprint, ResourceReader, ResourceSnapshot, fingerprint_bytes, fingerprint_file,
 };
 pub use mos_bib::Bibliography;
 pub use pageref::{PageFixpointOutcome, resolve_page_reference_fixpoint, resolve_page_references};
 pub use resolve::resolve;
 
 use bibliography::{load_bibliography, lower_bibliography_directive, resolve_citations};
-use dependency::{DependencySet, ExternalInputs};
+use dependency::ExternalInputs;
 use image_lower::{lower_figure_directive, lower_image_directive};
 use inline::lower_inlines;
 use list::lower as lower_list;
@@ -146,14 +147,16 @@ pub struct LowerResult {
     /// Every external file this lowering read (`#image` / `#figure` rasters,
     /// `#bibliography` sources), with the fingerprint each had at the time,
     /// sorted by path. Such a lowering is not a pure function of the source
-    /// text: a caller that caches it across time must check
-    /// [`ExternalDependency::is_current`] on each entry before reuse. The set
-    /// is complete after [`lower`] / [`lower_tree`]; a bare
-    /// [`Evaluator::evaluate`] has not yet opened bibliography sources.
+    /// text. Filesystem callers can check [`ExternalDependency::is_current`]
+    /// before reuse; custom-reader callers own versioning and invalidation.
+    /// Bibliography inputs are captured even by [`Evaluator::evaluate`], which
+    /// does not yet parse their records.
     pub external_dependencies: Vec<ExternalDependency>,
+    /// Exact external bytes and failures observed during this lowering.
+    pub resources: ResourceSnapshot,
     /// Every BibTeX record loaded from the declared `#bibliography` sources,
     /// merged across sources and keyed by citation key. Empty after a bare
-    /// [`Evaluator::evaluate`], which has not yet opened bibliography sources.
+    /// [`Evaluator::evaluate`], which has not yet parsed bibliography sources.
     pub bibliography: Bibliography,
     /// Whether every declared bibliography source was successfully read and
     /// parsed. False before source loading; records may be partial when false.
@@ -256,13 +259,20 @@ impl Evaluator {
     /// ```
     #[must_use]
     pub fn evaluate(tree: &SyntaxTree) -> LowerResult {
-        let mut lowered = Self::evaluate_unhashed(tree);
-        semantic_hash::stamp(&mut lowered.document, &lowered.external_dependencies);
+        Self::evaluate_with_reader(tree, &FileSystemReader)
+    }
+
+    /// Evaluate parsed syntax using captured resource reads, without resolution.
+    /// Bibliography sources are captured but not parsed until full lowering.
+    #[must_use]
+    pub fn evaluate_with_reader(tree: &SyntaxTree, reader: &dyn ResourceReader) -> LowerResult {
+        let mut lowered = Self::evaluate_unhashed(tree, reader);
+        semantic_hash::stamp(&mut lowered.document, &lowered.external_dependencies, false);
         lowered
     }
 
-    fn evaluate_unhashed(tree: &SyntaxTree) -> LowerResult {
-        let mut state = EvaluationState::new(tree);
+    fn evaluate_unhashed(tree: &SyntaxTree, reader: &dyn ResourceReader) -> LowerResult {
+        let mut state = EvaluationState::new(tree, reader);
         for item in &tree.items {
             state.lower_item(item, &tree.file);
         }
@@ -270,12 +280,13 @@ impl Evaluator {
     }
 }
 
-struct EvaluationState {
+struct EvaluationState<'a> {
     document: Document,
     diagnostics: Vec<Diagnostic>,
     metadata: DocumentMetadata,
     current_text_size_pt: f64,
-    dependencies: DependencySet,
+    resources: ResourceSnapshot,
+    reader: &'a dyn ResourceReader,
     /// Text of a `/** … */` doc comment seen but not yet attached. The next
     /// documentable block (heading, paragraph) consumes it as a `doc`
     /// attribute; a non-documentable block (`#set`, list, raw block) clears it
@@ -283,14 +294,15 @@ struct EvaluationState {
     pending_doc: Option<String>,
 }
 
-impl EvaluationState {
-    fn new(tree: &SyntaxTree) -> Self {
+impl<'a> EvaluationState<'a> {
+    fn new(tree: &SyntaxTree, reader: &'a dyn ResourceReader) -> Self {
         Self {
             document: Document::new(tree.file.clone()),
             diagnostics: Vec::new(),
             metadata: DocumentMetadata::default(),
             current_text_size_pt: 11.0,
-            dependencies: DependencySet::default(),
+            resources: ResourceSnapshot::default(),
+            reader,
             pending_doc: None,
         }
     }
@@ -300,7 +312,8 @@ impl EvaluationState {
             document: self.document,
             diagnostics: self.diagnostics,
             metadata: self.metadata,
-            external_dependencies: self.dependencies.into_vec(),
+            external_dependencies: self.resources.dependencies(),
+            resources: self.resources,
             bibliography: Bibliography::default(),
             bibliography_complete: false,
             citation_spans: tree.citation_spans.clone(),
@@ -425,7 +438,8 @@ impl EvaluationState {
     ) {
         let mut inputs = ExternalInputs {
             source_file,
-            dependencies: &mut self.dependencies,
+            resources: &mut self.resources,
+            reader: self.reader,
         };
         match kind {
             DirectiveKind::Image => {
@@ -535,6 +549,43 @@ fn lower_raw_block(document: &mut Document, root: NodeId, raw: RawBlockView<'_>)
 /// ```
 #[must_use]
 pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
+    lower_with_reader(src, file, &FileSystemReader)
+}
+
+/// Parse, lower and resolve source using supplied external resource reads.
+///
+/// No filesystem reads occur unless `reader` performs them. Paths retain the same
+/// source-relative resolution and portability checks as [`lower`]. Each resolved
+/// path, including failures, is captured once in [`LowerResult::resources`].
+///
+/// # Examples
+///
+/// ```
+/// use std::{io, path::Path};
+/// use mos_eval::{ResourceData, lower_with_reader};
+///
+/// let reader = |path: &Path| {
+///     if path == Path::new("project/refs.bib") {
+///         Ok(ResourceData::new(b"@book{key, title={In memory}}".as_slice()))
+///     } else {
+///         Err(io::Error::from(io::ErrorKind::NotFound))
+///     }
+/// };
+/// let result = lower_with_reader(
+///     "#bibliography(\"refs.bib\")\nSee [@key]\n",
+///     Path::new("project/main.mos"),
+///     &reader,
+/// );
+/// assert!(!result.has_errors());
+/// assert!(result.bibliography_complete);
+/// assert!(result.resources.get(Path::new("project/refs.bib")).is_some());
+/// ```
+#[must_use]
+pub fn lower_with_reader(
+    src: &str,
+    file: &std::path::Path,
+    reader: &dyn ResourceReader,
+) -> LowerResult {
     let mut sink = CollectingSink::new();
     let tree = match mos_parse::parse(src, file, &mut sink) {
         Ok(tree) => tree,
@@ -546,6 +597,7 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
                 diagnostics: sink.into_diagnostics(),
                 metadata: DocumentMetadata::default(),
                 external_dependencies: Vec::new(),
+                resources: ResourceSnapshot::default(),
                 bibliography: Bibliography::default(),
                 bibliography_complete: false,
                 citation_spans: Vec::new(),
@@ -553,13 +605,14 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
         }
     };
     let mut diagnostics = sink.into_diagnostics();
-    let mut lowered = lower_tree(&tree);
+    let mut lowered = lower_tree_with_reader(&tree, reader);
     diagnostics.append(&mut lowered.diagnostics);
     LowerResult {
         document: lowered.document,
         diagnostics,
         metadata: lowered.metadata,
         external_dependencies: lowered.external_dependencies,
+        resources: lowered.resources,
         bibliography: lowered.bibliography,
         bibliography_complete: lowered.bibliography_complete,
         citation_spans: lowered.citation_spans,
@@ -591,15 +644,24 @@ pub fn lower(src: &str, file: &std::path::Path) -> LowerResult {
 /// ```
 #[must_use]
 pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
-    let mut lowered = Evaluator::evaluate_unhashed(tree);
+    lower_tree_with_reader(tree, &FileSystemReader)
+}
+
+/// Lower and resolve parsed syntax with the same resource contract as [`lower_with_reader`].
+#[must_use]
+pub fn lower_tree_with_reader(tree: &SyntaxTree, reader: &dyn ResourceReader) -> LowerResult {
+    let mut lowered = Evaluator::evaluate_unhashed(tree, reader);
     let mut diagnostics = std::mem::take(&mut lowered.diagnostics);
-    let mut dependencies = DependencySet::from(std::mem::take(&mut lowered.external_dependencies));
-    let loaded_bibliography =
-        load_bibliography(&lowered.document, &mut diagnostics, &mut dependencies);
-    let external_dependencies = dependencies.into_vec();
+    let loaded_bibliography = load_bibliography(
+        &lowered.document,
+        &mut diagnostics,
+        reader,
+        &mut lowered.resources,
+    );
+    let external_dependencies = lowered.resources.dependencies();
     // Capture authored state after all file reads, before numbering, reference
     // rewrites, and generated bibliography entry nodes add resolution output.
-    semantic_hash::stamp(&mut lowered.document, &external_dependencies);
+    semantic_hash::stamp(&mut lowered.document, &external_dependencies, true);
     let (bibliography, bibliography_complete) =
         resolve_citations(&mut lowered.document, &mut diagnostics, loaded_bibliography);
     let bib_keys: BTreeSet<String> = bibliography.entries.keys().cloned().collect();
@@ -609,6 +671,7 @@ pub fn lower_tree(tree: &SyntaxTree) -> LowerResult {
         diagnostics,
         metadata: lowered.metadata,
         external_dependencies,
+        resources: lowered.resources,
         bibliography,
         bibliography_complete,
         citation_spans: lowered.citation_spans,
@@ -628,6 +691,187 @@ mod tests {
     use mos_core::{NodeKind, codes};
 
     use super::*;
+
+    #[test]
+    fn supplied_resources_decode_images_resolve_citations_and_capture_once() {
+        use std::{cell::RefCell, io::Cursor, path::Path};
+        let mut png = Cursor::new(Vec::new());
+        ::image::RgbaImage::from_pixel(1, 1, ::image::Rgba([10, 20, 30, 255]))
+            .write_to(&mut png, ::image::ImageFormat::Png)
+            .unwrap();
+        let reads = RefCell::new(Vec::new());
+        let reader = |path: &Path| {
+            reads.borrow_mut().push(path.to_path_buf());
+            if path == Path::new("virtual/pixel.png") {
+                Ok(ResourceData::new(png.get_ref().clone()))
+            } else if path == Path::new("virtual/refs.bib") {
+                Ok(ResourceData::new(b"@book{k, title={Memory}}".as_slice()))
+            } else {
+                Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+            }
+        };
+        let result = lower_with_reader(
+            "#image(\"pixel.png\")\n#figure(image: \"./pixel.png\")\n#bibliography(\"refs.bib\")\nSee [@k]\n",
+            Path::new("virtual/main.mos"),
+            &reader,
+        );
+        assert!(!result.has_errors(), "{:?}", result.diagnostics);
+        assert!(result.bibliography_complete);
+        assert_eq!(result.bibliography.entries["k"].fields["title"], "{Memory}");
+        assert_eq!(reads.borrow().len(), 2);
+        assert_eq!(result.external_dependencies.len(), 2);
+        for dependency in &result.external_dependencies {
+            let bytes = result.resources.get(&dependency.path).unwrap().unwrap();
+            assert_eq!(
+                dependency.fingerprint,
+                Some(ResourceFingerprint::Content(fingerprint_bytes(bytes)))
+            );
+        }
+        let images: Vec<_> = result
+            .document
+            .nodes()
+            .filter(|node| node.kind == NodeKind::Image)
+            .collect();
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0].attributes["pixel_width"], AttrValue::Int(1));
+    }
+
+    #[test]
+    fn failed_reads_are_captured_once_and_suppress_missing_citations() {
+        use std::{cell::Cell, io, path::Path};
+        for kind in [io::ErrorKind::NotFound, io::ErrorKind::PermissionDenied] {
+            let calls = Cell::new(0);
+            let reader = |_: &Path| {
+                calls.set(calls.get() + 1);
+                if calls.get() == 1 {
+                    Err(io::Error::new(kind, "unavailable"))
+                } else {
+                    Ok(ResourceData::new(b"@book{k, title={Later}}".as_slice()))
+                }
+            };
+            let result = lower_with_reader(
+                "#image(\"missing.bib\")\n#bibliography(\"missing.bib\")\nSee [@k]\n",
+                Path::new("virtual/main.mos"),
+                &reader,
+            );
+            assert_eq!(calls.get(), 1);
+            assert!(!result.bibliography_complete);
+            assert!(result.bibliography.entries.is_empty());
+            assert_eq!(result.external_dependencies.len(), 1);
+            assert_eq!(result.external_dependencies[0].fingerprint, None);
+            assert_eq!(
+                result
+                    .resources
+                    .get(Path::new("virtual/missing.bib"))
+                    .unwrap()
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+            assert!(
+                !result
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.def().code() == codes::MOS0045.code())
+            );
+        }
+    }
+
+    #[test]
+    fn resource_versions_change_authored_hashes_without_mutating_old_snapshots() {
+        use std::{cell::Cell, path::Path};
+        let version = Cell::new(false);
+        let reader = |_: &Path| {
+            Ok(ResourceData::new(if version.get() {
+                b"@book{k, title={New}}".as_slice()
+            } else {
+                b"@book{k, title={Old}}".as_slice()
+            }))
+        };
+        let source = "#bibliography(\"refs.bib\")\nSee [@k]\n";
+        let old = lower_with_reader(source, Path::new("virtual/main.mos"), &reader);
+        version.set(true);
+        let new = lower_with_reader(source, Path::new("virtual/main.mos"), &reader);
+        let hash = |result: &LowerResult| {
+            result
+                .document
+                .nodes()
+                .find(|node| node.kind == NodeKind::Bibliography)
+                .unwrap()
+                .content_hash()
+        };
+        assert_ne!(hash(&old), hash(&new));
+        assert_eq!(
+            old.resources
+                .get(Path::new("virtual/refs.bib"))
+                .unwrap()
+                .unwrap(),
+            b"@book{k, title={Old}}"
+        );
+    }
+
+    #[test]
+    fn supplied_resources_match_filesystem_lowering() {
+        use std::path::Path;
+        let image = write_tiny_png("reader-equivalence.png");
+        let dir = image.parent().unwrap();
+        std::fs::write(dir.join("refs.bib"), "@book{k, title={Same}}\n").unwrap();
+        let source = "#image(\"reader-equivalence.png\")\n#bibliography(\"refs.bib\")\nSee [@k]\n";
+        let file = dir.join("main.mos");
+        let disk = lower(source, &file);
+        let reader = |path: &Path| {
+            Ok(ResourceData::new(
+                disk.resources.get(path).unwrap().unwrap(),
+            ))
+        };
+        let supplied = lower_with_reader(source, &file, &reader);
+        assert!(!disk.has_errors());
+        assert!(!supplied.has_errors());
+        assert_eq!(disk.diagnostics.len(), supplied.diagnostics.len());
+        assert_eq!(disk.document.len(), supplied.document.len());
+        for (disk_node, supplied_node) in disk.document.nodes().zip(supplied.document.nodes()) {
+            assert_eq!(disk_node.kind, supplied_node.kind);
+            assert_eq!(disk_node.attributes, supplied_node.attributes);
+            assert_eq!(disk_node.content_hash(), supplied_node.content_hash());
+        }
+        for (disk_dep, supplied_dep) in disk
+            .external_dependencies
+            .iter()
+            .zip(&supplied.external_dependencies)
+        {
+            assert_eq!(disk_dep.path, supplied_dep.path);
+            assert_eq!(
+                disk_dep.fingerprint.map(ResourceFingerprint::content),
+                supplied_dep.fingerprint.map(ResourceFingerprint::content)
+            );
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn invalid_resource_bytes_keep_existing_diagnostics() {
+        use std::path::Path;
+        let reader = |_: &Path| Ok(ResourceData::new(vec![255]));
+        let result = lower_with_reader(
+            "#image(\"bad.png\")\n#bibliography(\"bad.bib\")\nSee [@k]\n",
+            Path::new("virtual/main.mos"),
+            &reader,
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0029.code())
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.def().code() == codes::MOS0041.code())
+        );
+        assert!(!result.bibliography_complete);
+        assert_eq!(result.external_dependencies.len(), 2);
+    }
 
     #[test]
     fn code_language_is_authored_metadata_with_last_argument_winning() {
@@ -823,7 +1067,7 @@ mod tests {
             vec![dir.join("missing.png"), bib, image.clone()],
             "one entry per distinct file, sorted by path: {deps:?}"
         );
-        let content = |dep: &ExternalDependency| dep.fingerprint.map(|f| f.content);
+        let content = |dep: &ExternalDependency| dep.fingerprint.map(ResourceFingerprint::content);
         assert_eq!(content(&deps[0]), None, "a missing file records no hash");
         assert_eq!(
             content(&deps[1]),

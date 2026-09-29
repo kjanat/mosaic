@@ -282,7 +282,7 @@ fn definition_result(state: &mut ServerState, message: &Value) -> Value {
         return Value::Null;
     };
     let target = with_lowering(state, uri, |lowered, path, src| {
-        target_in(&lowered.document, path, src, position).map(|target| {
+        target_in(lowered, path, src, position).map(|target| {
             let target_uri = if target.path == *path {
                 uri.to_owned()
             } else {
@@ -1713,6 +1713,7 @@ mod tests {
                 diagnostics: vec![Diagnostic::simple(&codes::MOS0045, None, "sentinel")],
                 metadata: DocumentMetadata::default(),
                 external_dependencies: vec![ExternalDependency::observe(&image)],
+                resources: mos_eval::ResourceSnapshot::default(),
                 bibliography: mos_eval::Bibliography::default(),
                 bibliography_complete: false,
                 citation_spans: Vec::new(),

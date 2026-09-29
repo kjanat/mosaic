@@ -31,7 +31,7 @@ use mos_core::{
 };
 use mos_parse::{SetArg, SetValue};
 
-use crate::dependency::{DependencySet, ExternalInputs, fingerprint_file, read_fingerprinted};
+use crate::dependency::{ExternalInputs, ResourceReader, ResourceSnapshot};
 use crate::suggest;
 
 /// Named keys accepted by [`bibliography_path`]; the MOS0015 nearest-match
@@ -66,15 +66,13 @@ pub(crate) fn lower_bibliography_directive(
         }
     };
     let resolved_text = resolved.to_str();
+    let read = inputs.resources.read(inputs.reader, &resolved);
     // The directive only *declares* the source in this slice, so a missing
     // file is a non-fatal warning rather than the hard error `#image(...)`
     // raises: the node is still emitted with its resolved path, and the
-    // BibTeX-reading slice surfaces a read/parse error when it opens the
-    // database for real.
+    // bibliography loader surfaces other read/parse errors using these same
+    // captured bytes.
     if resolved_text.is_none() {
-        inputs
-            .dependencies
-            .record(resolved.clone(), fingerprint_file(&resolved));
         diagnostics.push(
             Diagnostic::simple(
                 &codes::MOS0041,
@@ -86,7 +84,12 @@ pub(crate) fn lower_bibliography_directive(
             )
             .with_span(span.clone()),
         );
-    } else if !resolved.is_file() {
+    } else if read.is_err_and(|err| {
+        matches!(
+            err.kind(),
+            std::io::ErrorKind::NotFound | std::io::ErrorKind::InvalidInput
+        )
+    }) {
         diagnostics.push(
             Diagnostic::simple(
                 &codes::MOS0041,
@@ -499,7 +502,8 @@ struct BibliographyOrigin {
 pub(crate) fn load_bibliography(
     document: &Document,
     diagnostics: &mut Vec<Diagnostic>,
-    dependencies: &mut DependencySet,
+    reader: &dyn ResourceReader,
+    resources: &mut ResourceSnapshot,
 ) -> LoadedBibliography {
     let mut merged = Bibliography::default();
     let mut origins: BTreeMap<String, BibliographyOrigin> = BTreeMap::new();
@@ -513,11 +517,6 @@ pub(crate) fn load_bibliography(
             continue;
         };
         let path_buf = PathBuf::from(path);
-        if !path_buf.is_file() {
-            dependencies.record(path_buf, None);
-            complete = false;
-            continue;
-        }
         let unreadable = |err: &dyn std::fmt::Display| {
             Diagnostic::simple(
                 &codes::MOS0041,
@@ -528,19 +527,20 @@ pub(crate) fn load_bibliography(
                 ),
             )
         };
-        let bytes = match read_fingerprinted(&path_buf) {
-            Ok((bytes, fingerprint)) => {
-                dependencies.record(path_buf.clone(), Some(fingerprint));
-                bytes
-            }
+        let bytes = match resources.read(reader, &path_buf) {
+            Ok(bytes) => bytes,
             Err(err) => {
-                dependencies.record(path_buf.clone(), None);
                 complete = false;
-                diagnostics.push(unreadable(&err));
+                if !matches!(
+                    err.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::InvalidInput
+                ) {
+                    diagnostics.push(unreadable(&err));
+                }
                 continue;
             }
         };
-        let source = match String::from_utf8(bytes) {
+        let source = match std::str::from_utf8(bytes) {
             Ok(source) => source,
             Err(err) => {
                 complete = false;
@@ -548,7 +548,7 @@ pub(crate) fn load_bibliography(
                 continue;
             }
         };
-        match mos_bib::parse_bibtex(&source) {
+        match mos_bib::parse_bibtex(source) {
             Ok(parsed) => {
                 for (key, entry) in parsed.entries {
                     let key_span =

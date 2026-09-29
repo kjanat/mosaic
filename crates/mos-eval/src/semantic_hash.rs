@@ -12,7 +12,11 @@ use crate::{ExternalDependency, LABEL_SPAN_END_ATTR, LABEL_SPAN_START_ATTR};
 
 /// Must run before citation/label resolution: derived bibliography children
 /// and rewritten reference/caption text are not authored semantic inputs.
-pub(crate) fn stamp(document: &mut Document, dependencies: &[ExternalDependency]) {
+pub(crate) fn stamp(
+    document: &mut Document,
+    dependencies: &[ExternalDependency],
+    bibliography_loaded: bool,
+) {
     let files: BTreeMap<_, _> = dependencies
         .iter()
         .map(|dependency| {
@@ -20,7 +24,7 @@ pub(crate) fn stamp(document: &mut Document, dependencies: &[ExternalDependency]
                 dependency.path.as_path(),
                 dependency
                     .fingerprint
-                    .map(|fingerprint| fingerprint.content),
+                    .map(crate::ResourceFingerprint::content),
             )
         })
         .collect();
@@ -59,7 +63,11 @@ pub(crate) fn stamp(document: &mut Document, dependencies: &[ExternalDependency]
             let path = if node.kind == NodeKind::Bibliography {
                 // The bibliography loader skips sources without a UTF-8 path,
                 // even when lowering records their fingerprint for invalidation.
-                match node.attributes.get("resolved_path") {
+                match node
+                    .attributes
+                    .get("resolved_path")
+                    .filter(|_| bibliography_loaded)
+                {
                     Some(AttrValue::Str(path)) => Some(PathBuf::from(path)),
                     _ => None,
                 }
