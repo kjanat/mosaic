@@ -13,7 +13,7 @@ use std::path::Path;
 use mos_core::{AttrValue, Document, Node, NodeKind};
 use mos_eval::DOC_ATTR;
 
-use crate::{LspPosition, position_to_byte};
+use crate::LspPosition;
 
 /// The doc-comment text to show for a hover at `position`, or `None` when the
 /// cursor is not on a documented symbol.
@@ -24,7 +24,18 @@ pub fn doc_at(
     src: &str,
     position: LspPosition,
 ) -> Option<String> {
-    let offset = position_to_byte(src, position);
+    doc_at_indexed(document, file, &mos_core::LineIndex::new(src), position)
+}
+
+/// Reuse an immutable source index across requests and range conversions.
+#[must_use]
+pub fn doc_at_indexed(
+    document: &Document,
+    file: &Path,
+    src: &mos_core::LineIndex,
+    position: LspPosition,
+) -> Option<String> {
+    let offset = crate::definition::indexed_byte_offset(src, position);
 
     // (a) On an `@label` / `@page(label)` reference: show the *target's* doc, so
     // documentation follows the symbol rather than only its declaration site.

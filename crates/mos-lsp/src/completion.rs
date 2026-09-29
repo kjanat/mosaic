@@ -4,8 +4,7 @@ use mos_eval::LowerResult;
 use mos_parse::scan_label_chars;
 use serde_json::{Value, json};
 
-use crate::definition::position_to_byte;
-use crate::diagnostics::{LspPosition, LspRange, byte_to_position};
+use crate::diagnostics::{LspPosition, LspRange};
 
 const REFERENCE_ITEM_KIND: u32 = 18;
 
@@ -56,15 +55,29 @@ pub fn citation_prefix_at(
 /// closing `]` when none follows it.
 #[must_use]
 pub fn citation_completions(lowered: &LowerResult, src: &str, position: LspPosition) -> Vec<Value> {
+    citation_completions_indexed(lowered, &mos_core::LineIndex::new(src), position)
+}
+
+/// Reuse an immutable source index across requests and range conversions.
+#[must_use]
+pub fn citation_completions_indexed(
+    lowered: &LowerResult,
+    src: &mos_core::LineIndex,
+    position: LspPosition,
+) -> Vec<Value> {
     if !lowered.bibliography_complete {
         return Vec::new();
     }
-    let Some(prefix) = citation_prefix_at(lowered, src, position_to_byte(src, position)) else {
+    let Some(prefix) = citation_prefix_at(
+        lowered,
+        src,
+        crate::definition::indexed_byte_offset(src, position),
+    ) else {
         return Vec::new();
     };
     let range = LspRange {
-        start: byte_to_position(src, prefix.start),
-        end: byte_to_position(src, prefix.end),
+        start: crate::diagnostics::indexed_position(src, prefix.start),
+        end: crate::diagnostics::indexed_position(src, prefix.end),
     };
     lowered
         .bibliography
@@ -106,6 +119,7 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::*;
+    use crate::definition::position_to_byte;
     use crate::diagnostics::byte_to_position;
 
     fn prefix_at(src: &str, offset: usize) -> Option<CitationPrefix> {

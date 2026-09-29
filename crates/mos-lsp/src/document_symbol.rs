@@ -3,7 +3,7 @@
 use mos_core::{AttrValue, Document, Node, NodeKind};
 use serde_json::{Value, json};
 
-use crate::diagnostics::{LspRange, byte_to_position, span_to_range};
+use crate::diagnostics::LspRange;
 
 #[derive(Clone, Debug)]
 struct SectionSymbol {
@@ -16,12 +16,18 @@ struct SectionSymbol {
 /// Build nested LSP `DocumentSymbol`s from heading/section nodes.
 #[must_use]
 pub fn document_symbols(document: &Document, src: &str) -> Vec<Value> {
+    document_symbols_indexed(document, &mos_core::LineIndex::new(src))
+}
+
+/// Reuse an immutable source index across requests and range conversions.
+#[must_use]
+pub fn document_symbols_indexed(document: &Document, src: &mos_core::LineIndex) -> Vec<Value> {
     let sections = flat_sections(document, src);
     let mut index = 0;
     build_children(&sections, &mut index, 0)
 }
 
-fn flat_sections(document: &Document, src: &str) -> Vec<SectionSymbol> {
+fn flat_sections(document: &Document, src: &mos_core::LineIndex) -> Vec<SectionSymbol> {
     let mut sections: Vec<(&Node, u8)> = document
         .nodes()
         .filter(|node| node.kind == NodeKind::Section)
@@ -38,14 +44,14 @@ fn flat_sections(document: &Document, src: &str) -> Vec<SectionSymbol> {
                 .find(|(_, next_level)| next_level <= level)
                 .map_or(src.len(), |(next, _)| next.span.start());
             let range = LspRange {
-                start: byte_to_position(src, node.span.start()),
-                end: byte_to_position(src, end.max(node.span.end())),
+                start: crate::diagnostics::indexed_position(src, node.span.start()),
+                end: crate::diagnostics::indexed_position(src, end.max(node.span.end())),
             };
             SectionSymbol {
                 name: section_title(document, node),
                 level: *level,
                 range,
-                selection_range: span_to_range(src, &node.span),
+                selection_range: crate::diagnostics::indexed_range(src, &node.span),
             }
         })
         .collect()

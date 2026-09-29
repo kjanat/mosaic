@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::fs::Metadata;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use mos_core::{ContentHash, ContentHasher};
@@ -127,6 +127,7 @@ impl ResourceFingerprint {
 #[derive(Clone, Debug)]
 pub struct ResourceData {
     bytes: Arc<[u8]>,
+    text_index: OnceLock<Option<mos_core::LineIndex>>,
     fingerprint: ResourceFingerprint,
 }
 
@@ -136,7 +137,11 @@ impl ResourceData {
     pub fn new(bytes: impl Into<Arc<[u8]>>) -> Self {
         let bytes = bytes.into();
         let fingerprint = ResourceFingerprint::Content(fingerprint_bytes(&bytes));
-        Self { bytes, fingerprint }
+        Self {
+            bytes,
+            fingerprint,
+            text_index: OnceLock::new(),
+        }
     }
 }
 
@@ -174,6 +179,7 @@ impl ResourceReader for FileSystemReader {
         let (bytes, fingerprint) = read_fingerprinted(path)?;
         Ok(ResourceData {
             bytes: bytes.into(),
+            text_index: OnceLock::new(),
             fingerprint: ResourceFingerprint::File(fingerprint),
         })
     }
@@ -190,6 +196,21 @@ pub struct ResourceSnapshot {
 }
 
 impl ResourceSnapshot {
+    /// Lazily index a captured UTF-8 resource. Repeated lookups reuse the index.
+    /// Returns `None` for absent, failed, or non-UTF-8 reads; [`Self::get`] retains
+    /// the original bytes or I/O error. Never rereads the filesystem.
+    #[must_use]
+    pub fn text_index(&self, path: &Path) -> Option<&mos_core::LineIndex> {
+        let data = self.entries.get(path)?.as_ref().ok()?;
+        data.text_index
+            .get_or_init(|| {
+                std::str::from_utf8(&data.bytes)
+                    .ok()
+                    .map(mos_core::LineIndex::new)
+            })
+            .as_ref()
+    }
+
     /// Look up a captured read. `None` means the path was never requested.
     #[must_use]
     pub fn get(&self, path: &Path) -> Option<Result<&[u8], &io::Error>> {
@@ -364,6 +385,40 @@ mod tests {
 
     fn cleanup(path: &Path) {
         std::fs::remove_dir_all(path.parent().expect("parent")).ok();
+    }
+
+    #[test]
+    fn captured_text_index_is_lazy_reused_and_revision_bound() {
+        let path = Path::new("/virtual/refs.bib");
+        let mut snapshot = ResourceSnapshot::default();
+        let reader = |_: &Path| Ok(ResourceData::new("😀\nold".as_bytes()));
+        assert!(snapshot.read(&reader, path).is_ok());
+        let first = snapshot.text_index(path).expect("UTF-8 resource");
+        let second = snapshot.text_index(path).expect("same captured resource");
+        assert!(std::ptr::eq(first, second));
+        assert_eq!(first.utf16_position(5), (1, 0));
+        let mut next = ResourceSnapshot::default();
+        let changed = |_: &Path| Ok(ResourceData::new(b"new".as_slice()));
+        assert!(next.read(&changed, path).is_ok());
+        assert_eq!(
+            next.text_index(path).map(mos_core::LineIndex::text),
+            Some("new")
+        );
+        assert_eq!(
+            snapshot.text_index(path).map(mos_core::LineIndex::text),
+            Some("😀\nold")
+        );
+        let invalid = Path::new("/virtual/image");
+        assert!(
+            snapshot
+                .read(
+                    &|_: &Path| Ok(ResourceData::new([0xff].as_slice())),
+                    invalid
+                )
+                .is_ok()
+        );
+        assert!(snapshot.text_index(invalid).is_none());
+        assert!(snapshot.text_index(Path::new("/virtual/absent")).is_none());
     }
 
     #[test]

@@ -213,3 +213,20 @@ in `codeDescription.href` when it advertises `codeDescriptionSupport`. Both flag
 `textDocument.publishDiagnostics` during initialization and default to false. Quick-fix titles
 include both identities. Clients matching numeric `code` values must migrate; see the
 [migration contract](../../docs/semantic-diagnostic-identifiers.md).
+
+## Indexed source positions
+
+Each open Mosaic document owns a `mos_core::LineIndex` snapshot, replaced on open/change and
+released on close. Diagnostics, symbols, rename, completion, hover, definitions, code actions, and
+inlay hints reuse it. Captured resource text uses `ResourceSnapshot::text_index`, lazily built once
+per resource snapshot and shared by diagnostic projection and definition lookup. Binary resources
+are not indexed unless requested, and indexing never rereads disk.
+
+Existing string-taking library helpers remain available; batch helpers build an index per call.
+Their `_indexed` counterparts accept an existing `LineIndex` for reuse across calls. The public
+single-position `byte_to_position` and `position_to_byte` helpers retain their allocation-free scan
+behavior; repeated conversions should use `LineIndex` instead.
+
+Run `cargo bench -p mos-lsp --bench source_positions` for index construction, diagnostic/symbol
+projection, scan/index comparisons, and a long Unicode line. Parsing and lowering are outside these
+timed sections. See [position profiling](../../docs/source-position-profiling.md).

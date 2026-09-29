@@ -6,13 +6,23 @@ use mos_core::{AttrValue, Document, NodeKind};
 use mos_eval::CODE_LANGUAGE_ATTR;
 use serde_json::{Value, json};
 
-use crate::diagnostics::{LspRange, byte_to_position};
+use crate::diagnostics::LspRange;
 
 /// Show a generated name immediately after each unnamed `#code` block's
 /// closing delimiter in the requested range. Names are display metadata;
 /// they never enter the label index or supply edits or runnable commands.
 #[must_use]
 pub fn code_block_hints(document: &Document, src: &str, range: LspRange) -> Vec<Value> {
+    code_block_hints_indexed(document, &mos_core::LineIndex::new(src), range)
+}
+
+/// Reuse an immutable source index across requests and range conversions.
+#[must_use]
+pub fn code_block_hints_indexed(
+    document: &Document,
+    src: &mos_core::LineIndex,
+    range: LspRange,
+) -> Vec<Value> {
     let start = (range.start.line, range.start.character);
     let end = (range.end.line, range.end.character);
     if start > end {
@@ -65,7 +75,7 @@ pub fn code_block_hints(document: &Document, src: &str, range: LspRange) -> Vec<
         } else {
             format!("{base} #{}", *occurrence)
         };
-        let position = byte_to_position(src, node.span.end());
+        let position = crate::diagnostics::indexed_position(src, node.span.end());
         let point = (position.line, position.character);
         // A hint is an insertion point: include both boundary positions, even
         // when the closing delimiter is at EOF or the range is a single point.

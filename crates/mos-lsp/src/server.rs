@@ -14,13 +14,15 @@ use mos_eval::{LowerResult, ResourceReader};
 use serde_json::{Value, json};
 
 use crate::cache::Store as LoweringCache;
-use crate::code_action::code_actions_for_range;
-use crate::completion::citation_completions;
-use crate::definition::{path_to_uri, target_in};
-use crate::diagnostics::{LspDiagnostic, LspPosition, LspRange, from_result, path_from_uri};
-use crate::document_symbol::document_symbols;
-use crate::inlay_hint::code_block_hints;
-use crate::rename::ranges as rename_ranges;
+use crate::code_action::code_actions_for_range_indexed as code_actions_for_range;
+use crate::completion::citation_completions_indexed as citation_completions;
+use crate::definition::{path_to_uri, target_in_indexed as target_in};
+use crate::diagnostics::{
+    LspDiagnostic, LspPosition, LspRange, from_result_indexed as from_result, path_from_uri,
+};
+use crate::document_symbol::document_symbols_indexed as document_symbols;
+use crate::inlay_hint::code_block_hints_indexed as code_block_hints;
+use crate::rename::ranges_indexed as rename_ranges;
 
 /// Errors surfaced by the LSP server runtime. Compiler diagnostics
 /// flow over the wire instead: they are never represented here.
@@ -80,7 +82,7 @@ pub fn serve<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> Result<()>
 struct ServerState {
     code_description_support: bool,
     data_support: bool,
-    documents: HashMap<String, String>,
+    documents: HashMap<String, mos_core::LineIndex>,
     bibliographies: HashMap<PathBuf, OpenBibliography>,
     /// Memoised `mos-eval` lowerings, reused across `textDocument/definition`
     /// requests and dropped whenever a document's source changes or closes.
@@ -213,7 +215,7 @@ fn dispatch_message<W: Write>(
                     refresh_dependents(writer, state, &path)?;
                     return Ok(false);
                 }
-                state.documents.insert(uri.clone(), text);
+                state.documents.insert(uri.clone(), text.into());
                 // A re-open replaces the source; drop any prior lowering so
                 // the publish below re-lowers the new text into the cache.
                 state.lowerings.invalidate(&uri);
@@ -239,7 +241,7 @@ fn dispatch_message<W: Write>(
                     refresh_dependents(writer, state, &path)?;
                     return Ok(false);
                 }
-                state.documents.insert(uri.clone(), text);
+                state.documents.insert(uri.clone(), text.into());
                 // The edit invalidates the cached lowering; the publish below
                 // re-lowers the new text once for diagnostics and definition.
                 state.lowerings.invalidate(&uri);
@@ -382,7 +384,7 @@ fn hover_result(state: &mut ServerState, message: &Value) -> Value {
         return Value::Null;
     };
     let hover = with_lowering(state, uri, |lowered, path, src| {
-        crate::hover::doc_at(&lowered.document, path, src, position)
+        crate::hover::doc_at_indexed(&lowered.document, path, src, position)
             .map(|doc| json!({ "contents": { "kind": "markdown", "value": doc } }))
     });
     hover.flatten().unwrap_or(Value::Null)
@@ -420,7 +422,7 @@ fn completion_result(state: &mut ServerState, message: &Value) -> Value {
 fn with_lowering<T>(
     state: &mut ServerState,
     uri: &str,
-    f: impl FnOnce(&LowerResult, &Path, &str) -> T,
+    f: impl FnOnce(&LowerResult, &Path, &mos_core::LineIndex) -> T,
 ) -> Option<T> {
     // The source and resource buffers remain borrowed while the disjoint cache
     // is updated, so each lowering captures one consistent editor state.
@@ -850,6 +852,52 @@ mod tests {
                     .and_then(Value::as_str)
             })
             .collect()
+    }
+
+    #[test]
+    fn source_index_is_reused_until_document_changes() {
+        let mut state = ServerState::default();
+        let mut writer = Vec::new();
+        let uri = "file:///virtual/index.mos";
+        handle_message(
+            &json!({"method":"textDocument/didOpen","params":{"textDocument":{
+                "uri":uri,"text":"= First 😀\n"
+            }}}),
+            &mut state,
+            &mut writer,
+        )
+        .unwrap();
+        let original = state.documents[uri].clone();
+        for method in ["textDocument/documentSymbol", "textDocument/inlayHint"] {
+            handle_message(&json!({"id":1,"method":method,"params":{
+                "textDocument":{"uri":uri}, "range":{"start":{"line":0,"character":0},"end":{"line":5,"character":0}}
+            }}), &mut state, &mut writer).unwrap();
+            assert_eq!(
+                original.text().as_ptr(),
+                state.documents[uri].text().as_ptr()
+            );
+        }
+        handle_message(
+            &json!({"method":"textDocument/didChange","params":{
+                "textDocument":{"uri":uri},"contentChanges":[{"text":"\n= Second 字\n"}]
+            }}),
+            &mut state,
+            &mut writer,
+        )
+        .unwrap();
+        assert_ne!(
+            original.text().as_ptr(),
+            state.documents[uri].text().as_ptr()
+        );
+        assert_eq!(original.text(), "= First 😀\n");
+        assert_eq!(state.documents[uri].utf16_position(1), (1, 0));
+        handle_message(
+            &json!({"method":"textDocument/didClose","params":{"textDocument":{"uri":uri}}}),
+            &mut state,
+            &mut writer,
+        )
+        .unwrap();
+        assert!(!state.documents.contains_key(uri));
     }
 
     #[test]
@@ -2225,7 +2273,7 @@ mod tests {
         let mut state = ServerState::default();
         state.documents.insert(
             uri.to_owned(),
-            "= Intro <intro>\n\nSee @intro here.\n".to_owned(),
+            "= Intro <intro>\n\nSee @intro here.\n".into(),
         );
         assert!(
             !state.lowerings.is_cached(uri),
@@ -2275,7 +2323,7 @@ mod tests {
         std::fs::write(&main, src).expect("write source");
         let uri = path_to_uri(&main);
         let mut state = ServerState::default();
-        state.documents.insert(uri.clone(), src.to_owned());
+        state.documents.insert(uri.clone(), src.into());
 
         let mut writer: Vec<u8> = Vec::new();
         publish_diagnostics(&mut writer, &mut state, &uri).expect("publish");
@@ -2323,7 +2371,7 @@ mod tests {
         std::fs::write(&main, src).expect("write source");
         let uri = path_to_uri(&main);
         let mut state = ServerState::default();
-        state.documents.insert(uri.clone(), src.to_owned());
+        state.documents.insert(uri.clone(), src.into());
 
         let mut writer: Vec<u8> = Vec::new();
         publish_diagnostics(&mut writer, &mut state, &uri).expect("publish");

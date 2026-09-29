@@ -35,6 +35,12 @@ Main public types:
 - `AttrMap` / `AttrValue`: string-keyed semantic attributes. Values currently cover booleans,
   integers, floats, strings, lists, point lengths, and shared byte buffers for decoded image data.
 - `SourceSpan`: byte range in a source file.
+- `LineIndex`: immutable UTF-8 text snapshot with reusable zero-based UTF-16/byte conversions.
+  `LineIndex::new(text)` builds once; `utf16_position(byte)` and `byte_offset(line, column)` reuse
+  line starts and sparse checkpoints, including on long lines. Clones share storage. It owns the
+  text to prevent using an index from a different revision. LF starts a line; CR counts as a
+  character. Out-of-bounds positions clamp; offsets inside UTF-8 code points round down, and UTF-16
+  positions inside surrogate pairs round up.
 - `Document::{get,get_mut,nodes,len,is_empty}`: read/update/traverse the arena.
 - `Document::update_content_hashes`: combine caller-provided semantic input hashes with ordered
   child hashes. `Node::content_hash()` exposes the resulting snapshot; callers refresh it after
