@@ -4,7 +4,7 @@ use mos_core::{AttrValue, Diagnostic, Document, Node, NodeId, NodeKind, codes};
 use mos_fonts::ascent;
 
 use crate::support::{read_int_attr, read_length_attr};
-use crate::word::{ShyBreak, Word, WordItem, try_shy_break, word_clusters};
+use crate::word::{ShyBreak, Word, WordItem, for_each_word_cluster, try_shy_break};
 use crate::{ImageHandle, ImagePlacement, LayoutState, PARA_SPACE_AFTER_PT};
 
 impl LayoutState {
@@ -310,14 +310,14 @@ fn oversize_chunk_count(word: &Word, line_width: f32) -> u32 {
     let mut chunks = 0_u32;
     let mut chunk_has_content = false;
     let mut chunk_width = 0.0_f32;
-    for cluster in word_clusters(word) {
+    for_each_word_cluster(word, |cluster| {
         if chunk_width + cluster.advance_pt > line_width && chunk_has_content {
             chunks += 1;
             chunk_width = 0.0;
         }
         chunk_width += cluster.advance_pt;
         chunk_has_content = true;
-    }
+    });
     if chunk_has_content {
         chunks += 1;
     }
