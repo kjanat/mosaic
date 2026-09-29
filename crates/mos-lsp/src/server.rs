@@ -6,7 +6,7 @@
 //! JSON-RPC 2.0 messages: implemented directly against [`std::io`]
 //! rather than pulling in `tower-lsp` for one notification.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
@@ -85,6 +85,9 @@ struct ServerState {
     /// Memoised `mos-eval` lowerings, reused across `textDocument/definition`
     /// requests and dropped whenever a document's source changes or closes.
     lowerings: LoweringCache,
+    // Contributions belong to source documents: several can share a resource.
+    resource_diagnostics: BTreeMap<String, BTreeMap<String, Vec<LspDiagnostic>>>,
+    published_resources: BTreeMap<String, Vec<LspDiagnostic>>,
 }
 
 #[derive(Debug)]
@@ -114,9 +117,9 @@ fn refresh_dependents<W: Write>(
     path: &Path,
 ) -> Result<()> {
     for uri in state.lowerings.invalidate_dependency(path) {
-        publish_diagnostics(writer, state, &uri)?;
+        update_diagnostics(writer, state, &uri)?;
     }
-    Ok(())
+    publish_resource_diagnostics(writer, state)
 }
 
 /// Process a single decoded LSP message. Returns `Ok(true)` if the
@@ -239,11 +242,12 @@ fn handle_message<W: Write>(
                 let path = path_from_uri(&uri);
                 if state.bibliographies.remove(&path).is_some() {
                     refresh_dependents(writer, state, &path)?;
-                    clear_diagnostics(writer, &uri)?;
                     return Ok(false);
                 }
                 state.documents.remove(&uri);
                 state.lowerings.invalidate(&uri);
+                state.resource_diagnostics.remove(&uri);
+                publish_resource_diagnostics(writer, state)?;
                 // Clear stale squigglies in the editor.
                 clear_diagnostics(writer, &uri)?;
             }
@@ -569,24 +573,58 @@ fn read_range(message: &Value) -> Option<LspRange> {
 /// Callers invalidate the cache *before* publishing on a source mutation,
 /// so the lowering populated here always reflects the current text.
 fn publish_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState, uri: &str) -> Result<()> {
-    // Project diagnostics from the shared lowering (cached pure result, or a
-    // fresh lower that gets stored when pure). The owned `Vec` outlives the
-    // lowering borrow, so the write below is unconstrained. Unknown URIs
-    // yield `None` and publish nothing.
-    let diagnostics = with_lowering(state, uri, |lowered, path, src| {
-        from_result(path, src, lowered)
-    });
-    diagnostics.map_or(Ok(()), |mut diagnostics| {
-        for diagnostic in &mut diagnostics {
-            if !state.code_description_support {
-                diagnostic.code_description = None;
-            }
-            if !state.data_support {
-                diagnostic.data = None;
+    update_diagnostics(writer, state, uri)?;
+    publish_resource_diagnostics(writer, state)
+}
+
+fn update_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState, uri: &str) -> Result<()> {
+    let Some((mut diagnostics, mut resources)) = with_lowering(state, uri, |lowered, path, src| {
+        (
+            from_result(path, src, lowered),
+            crate::diagnostics::resource_diagnostics(path, lowered),
+        )
+    }) else {
+        return Ok(());
+    };
+    for diagnostic in diagnostics
+        .iter_mut()
+        .chain(resources.values_mut().flatten())
+    {
+        if !state.code_description_support {
+            diagnostic.code_description = None;
+        }
+        if !state.data_support {
+            diagnostic.data = None;
+        }
+    }
+    state.resource_diagnostics.insert(uri.to_owned(), resources);
+    send_publish(writer, uri, &diagnostics)
+}
+
+fn publish_resource_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState) -> Result<()> {
+    let mut combined = BTreeMap::<String, Vec<LspDiagnostic>>::new();
+    for resources in state.resource_diagnostics.values() {
+        for (uri, diagnostics) in resources {
+            let target = combined.entry(uri.clone()).or_default();
+            for diagnostic in diagnostics {
+                if !target.contains(diagnostic) {
+                    target.push(diagnostic.clone());
+                }
             }
         }
-        send_publish(writer, uri, &diagnostics)
-    })
+    }
+    for (uri, diagnostics) in &combined {
+        if state.published_resources.get(uri) != Some(diagnostics) {
+            send_publish(writer, uri, diagnostics)?;
+        }
+    }
+    for uri in state.published_resources.keys() {
+        if !combined.contains_key(uri) {
+            clear_diagnostics(writer, uri)?;
+        }
+    }
+    state.published_resources = combined;
+    Ok(())
 }
 
 fn clear_diagnostics<W: Write>(writer: &mut W, uri: &str) -> Result<()> {
@@ -1518,6 +1556,108 @@ mod tests {
         let cursor = src.find("plain").map_or(0, |at| at + 1);
         let reply = hover_reply(uri, src, byte_to_position(src, cursor));
         assert_eq!(reply.pointer("/result"), Some(&Value::Null));
+    }
+
+    #[test]
+    fn shared_bibliography_diagnostics_are_deduplicated_and_retained_until_unused() {
+        let mut state = ServerState::default();
+        let mut writer = Vec::new();
+        let bibliography = "file:///virtual/refs.bib";
+        let first = "file:///virtual/first.mos";
+        let second = "file:///virtual/second.mos";
+        let source = "#bibliography(\"refs.bib\")\n";
+        handle_message(
+            &json!({"method":"textDocument/didOpen","params":{"textDocument":{
+                "uri":bibliography,"text":"@book{broken","languageId":"bibtex"
+            }}}),
+            &mut state,
+            &mut writer,
+        )
+        .unwrap();
+        for uri in [first, second] {
+            handle_message(
+                &json!({"method":"textDocument/didOpen","params":{"textDocument":{
+                    "uri":uri,"text":source
+                }}}),
+                &mut state,
+                &mut writer,
+            )
+            .unwrap();
+        }
+        let notifications: Vec<_> = decode_messages(&writer)
+            .into_iter()
+            .filter(|message| message["params"]["uri"] == bibliography)
+            .collect();
+        assert_eq!(notifications.len(), 1);
+        let diagnostics = notifications[0]["params"]["diagnostics"]
+            .as_array()
+            .unwrap();
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].get("codeDescription").is_none());
+        assert!(diagnostics[0].get("data").is_none());
+
+        writer.clear();
+        handle_message(
+            &json!({"method":"textDocument/didChange","params":{
+                "textDocument":{"uri":bibliography},"contentChanges":[{"text":"\n@book{broken"}]
+            }}),
+            &mut state,
+            &mut writer,
+        )
+        .unwrap();
+        let notifications: Vec<_> = decode_messages(&writer)
+            .into_iter()
+            .filter(|message| message["params"]["uri"] == bibliography)
+            .collect();
+        assert_eq!(
+            notifications.len(),
+            1,
+            "publish after all dependents refresh"
+        );
+        assert_eq!(
+            notifications[0]["params"]["diagnostics"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            notifications[0]["params"]["diagnostics"][0]["range"]["start"]["line"],
+            1
+        );
+
+        writer.clear();
+        handle_message(
+            &json!({"method":"textDocument/didClose","params":{
+                "textDocument":{"uri":first}
+            }}),
+            &mut state,
+            &mut writer,
+        )
+        .unwrap();
+        assert!(state.published_resources.contains_key(bibliography));
+        assert!(
+            decode_messages(&writer)
+                .iter()
+                .all(|message| message["params"]["uri"] != bibliography)
+        );
+
+        writer.clear();
+        handle_message(
+            &json!({"method":"textDocument/didChange","params":{
+                "textDocument":{"uri":second},"contentChanges":[{"text":"= No bibliography"}]
+            }}),
+            &mut state,
+            &mut writer,
+        )
+        .unwrap();
+        assert!(state.published_resources.is_empty());
+        assert!(
+            decode_messages(&writer)
+                .iter()
+                .any(|message| message["params"]["uri"] == bibliography
+                    && message["params"]["diagnostics"] == json!([]))
+        );
     }
 
     #[test]

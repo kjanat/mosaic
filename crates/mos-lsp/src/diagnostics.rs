@@ -202,6 +202,32 @@ pub fn from_result(file: &Path, src: &str, lowered: &mos_eval::LowerResult) -> V
         .collect()
 }
 
+/// Project resource diagnostics using exactly the bytes captured by lowering.
+pub(crate) fn resource_diagnostics(
+    file: &Path,
+    lowered: &mos_eval::LowerResult,
+) -> std::collections::BTreeMap<String, Vec<LspDiagnostic>> {
+    let mut resources = std::collections::BTreeMap::<String, Vec<LspDiagnostic>>::new();
+    for diagnostic in &lowered.diagnostics {
+        let Some(span) = diagnostic.span().filter(|span| span.file != file) else {
+            continue;
+        };
+        let Some(Ok(bytes)) = lowered.resources.get(&span.file) else {
+            continue;
+        };
+        let Ok(source) = std::str::from_utf8(bytes) else {
+            continue;
+        };
+        if let Some(projected) = project_diagnostic(&span.file, source, diagnostic) {
+            resources
+                .entry(crate::definition::path_to_uri(&span.file))
+                .or_default()
+                .push(projected);
+        }
+    }
+    resources
+}
+
 fn project_diagnostic(file: &Path, src: &str, diag: &CoreDiagnostic) -> Option<LspDiagnostic> {
     let range = match diag.span() {
         Some(span) if span.file == file => span_to_range(src, span),

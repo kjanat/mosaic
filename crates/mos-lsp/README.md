@@ -27,6 +27,10 @@ quick fixes.
   diagnostics for open Mosaic documents that depend on that path. Citation completion and
   definitions use the same captured text; closing the buffer falls back to disk. Previously missing
   resources are dependencies too. Unrelated documents retain their cached results.
+- Bibliography parse errors are published against the bibliography URI using the captured text and
+  UTF-16 ranges. Shared errors are deduplicated across open Mosaic documents and cleared on repair
+  or when their last dependent closes or removes the declaration. Closing a bibliography buffer
+  restores diagnostics from disk while dependent Mosaic documents remain open.
 - BibTeX buffers are resource inputs, not Mosaic source: this server does not parse them as `.mos`
   or provide standalone BibTeX editing features. Clients must send their open/change/close events to
   the same server instance as the dependent Mosaic documents.
@@ -195,7 +199,7 @@ Compiler phase ownership stays elsewhere:
 - No persistent or cross-session compilation cache, and no workspace indexing. The only caching is
   an in-memory per-document lowering memo shared by diagnostics and go-to-definition (see Boundary),
   rebuilt each edit.
-- No multi-file projects: diagnostics are produced from the opened document in isolation.
+- No workspace discovery: diagnostics cover open Mosaic documents and the resources they load.
 
 The root README and AGENTS files remain the source of truth for what is and isn't shipped overall.
 
