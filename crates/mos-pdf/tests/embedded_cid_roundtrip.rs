@@ -17,11 +17,7 @@
 //! 5. The content stream uses hex-string CID pairs (`<HHHH ...>`), not
 //!    ASCII literal strings.
 
-use std::{
-    error::Error,
-    path::PathBuf,
-    sync::atomic::{AtomicU64, Ordering},
-};
+use std::{error::Error, path::PathBuf};
 
 use lopdf::{Dictionary, Document, Object, content::Content};
 use mos_core::{AttrMap, AttrValue, NodeKind, NodeSpec, SourceSpan};
@@ -34,22 +30,12 @@ use mos_pdf::PdfMetadata;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
 macro_rules! ensure {
     ($cond:expr, $($arg:tt)*) => {
         if !$cond {
             return Err(format!($($arg)*).into());
         }
     };
-}
-
-fn temp_pdf_path() -> PathBuf {
-    let seq = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "mosaic-embedded-rt-{}-{seq}.pdf",
-        std::process::id(),
-    ))
 }
 
 /// Build a `PageGraph` through the real layout path so fallback tests
@@ -94,15 +80,11 @@ fn build_default_graph(text: &str) -> (PageGraph, Vec<f32>) {
 }
 
 fn emit_graph(graph: &PageGraph) -> Result<(Document, Vec<u8>), Box<dyn Error>> {
-    let tmp = temp_pdf_path();
-    let diags =
-        mos_pdf::emit(graph, &PdfMetadata::default(), &tmp).map_err(|e| format!("emit: {e:?}"))?;
+    let (bytes, diags) = mos_pdf::build_pdf(graph, &PdfMetadata::default())?;
     if !diags.is_empty() {
         return Err(format!("unexpected diagnostics: {diags:?}").into());
     }
-    let bytes = std::fs::read(&tmp)?;
     let doc = Document::load_mem(&bytes)?;
-    std::fs::remove_file(&tmp).ok();
     Ok((doc, bytes))
 }
 
@@ -126,16 +108,7 @@ fn render(face: EmbeddedFontId, text: &str) -> Result<(Document, Vec<u8>), Box<d
         images: Vec::new(),
         outline: Vec::new(),
     };
-    let tmp = temp_pdf_path();
-    let diags =
-        mos_pdf::emit(&graph, &PdfMetadata::default(), &tmp).map_err(|e| format!("emit: {e:?}"))?;
-    if !diags.is_empty() {
-        return Err(format!("unexpected diagnostics: {diags:?}").into());
-    }
-    let bytes = std::fs::read(&tmp)?;
-    let doc = Document::load_mem(&bytes)?;
-    std::fs::remove_file(&tmp).ok();
-    Ok((doc, bytes))
+    emit_graph(&graph)
 }
 
 fn deref<'d>(doc: &'d Document, obj: &'d Object) -> Result<&'d Object, Box<dyn Error>> {
