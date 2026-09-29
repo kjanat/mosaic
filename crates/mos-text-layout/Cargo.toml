@@ -1,0 +1,19 @@
+[package]
+name                 = "mos-text-layout"
+version.workspace    = true
+edition.workspace    = true
+rust-version         = "1.85"
+description          = "Source-preserving indexing of measured text segments"
+readme               = "README.md"
+homepage.workspace   = true
+repository.workspace = true
+license.workspace    = true
+keywords.workspace   = true
+categories.workspace = true
+include.workspace    = true
+
+[lib]
+path = "src/text_layout.rs"
+
+[lints]
+workspace = true
