@@ -247,19 +247,19 @@ pub fn shape_with_fallback(
 
     // Group primary glyphs by cluster. Each cluster covers source
     // bytes `[c_n..c_{n+1})` (last cluster runs to `text.len()`).
-    let clusters = group_clusters(&primary_glyphs, text.len());
+    let clusters = glyph_clusters(&primary_glyphs, text.len());
 
     // Per-cluster resolution: which face owns it + which glyphs to use.
     // `glyphs` here carry `cluster` offsets into the *parent* `text`;
     // rebasing to sub-run-local offsets happens at the merge step.
-    let mut resolutions: Vec<ClusterResolution> = Vec::with_capacity(clusters.len());
-    for cluster in &clusters {
+    let mut resolutions: Vec<ClusterResolution> = Vec::with_capacity(primary_glyphs.len());
+    for cluster in clusters {
         let has_notdef = cluster.glyphs.iter().any(|g| g.gid == 0);
         if !has_notdef {
             resolutions.push(ClusterResolution {
                 font: primary,
                 byte_range: cluster.byte_range.clone(),
-                glyphs: cluster.glyphs.clone(),
+                glyphs: cluster.glyphs.to_vec(),
             });
             continue;
         }
@@ -300,7 +300,7 @@ pub fn shape_with_fallback(
             None => resolutions.push(ClusterResolution {
                 font: primary,
                 byte_range: cluster.byte_range.clone(),
-                glyphs: cluster.glyphs.clone(),
+                glyphs: cluster.glyphs.to_vec(),
             }),
         }
     }
@@ -328,11 +328,15 @@ pub fn shape_with_fallback(
     subruns
 }
 
-/// Internal: one HarfBuzz cluster's worth of primary-shaped glyphs
-/// plus the cluster's source byte range.
-struct ClusterGroup {
-    byte_range: std::ops::Range<usize>,
-    glyphs: Vec<ShapedGlyph>,
+/// A borrowed group of consecutive glyphs sharing a source byte offset.
+///
+/// Glyph positions and cluster offsets remain unchanged from the input run.
+#[derive(Clone, Debug)]
+pub struct GlyphCluster<'a> {
+    /// Source byte range, ending at the next cluster or the supplied text length.
+    pub byte_range: std::ops::Range<usize>,
+    /// Glyphs borrowed directly from the input, in their original order.
+    pub glyphs: &'a [ShapedGlyph],
 }
 
 /// Internal: one cluster's resolution after fallback retry. `glyphs`
@@ -343,33 +347,54 @@ struct ClusterResolution {
     glyphs: Vec<ShapedGlyph>,
 }
 
-/// Walk a `rustybuzz`-ordered LTR glyph stream and group consecutive
-/// glyphs sharing the same `cluster` value. Each group's byte range is
-/// `[c..c_next)` where `c_next` is the next cluster's start (or
-/// `text_len` for the last cluster). The shaper currently forces LTR;
-/// RTL support must revisit this monotonic-cluster assumption.
-fn group_clusters(glyphs: &[ShapedGlyph], text_len: usize) -> Vec<ClusterGroup> {
-    let mut groups: Vec<ClusterGroup> = Vec::new();
-    let mut i = 0;
-    while i < glyphs.len() {
-        let cluster = glyphs[i].cluster;
-        let mut j = i + 1;
-        while j < glyphs.len() && glyphs[j].cluster == cluster {
-            j += 1;
+/// Iterate over a left-to-right shaped glyph stream without allocating or copying glyphs.
+///
+/// Consecutive glyphs with equal cluster offsets form one group. Offsets must be
+/// nondecreasing UTF-8 byte boundaries in the text used for shaping; `text_len`
+/// must be that text's byte length. For [`shape_with_fallback`], use each
+/// [`WordSubRun`]'s normalized text and local glyph stream separately.
+///
+/// This function only groups glyphs: it does not normalize text, validate byte
+/// ranges, rebase offsets, or infer grapheme or line-break boundaries. Callers
+/// accepting externally constructed glyph streams should use `str::get` to
+/// validate each returned range before slicing. Descending RTL clusters are
+/// not supported. Empty glyph streams yield no clusters, including Base-14 runs.
+///
+/// ```
+/// use mos_fonts::{EmbeddedFontId, glyph_clusters, shape};
+///
+/// let text = "office";
+/// let glyphs = shape(EmbeddedFontId::Regular.data(), text);
+/// let parts: Vec<_> = glyph_clusters(&glyphs, text.len())
+///     .filter_map(|cluster| text.get(cluster.byte_range))
+///     .collect();
+/// assert_eq!(parts.concat(), text);
+/// ```
+pub fn glyph_clusters(
+    glyphs: &[ShapedGlyph],
+    text_len: usize,
+) -> impl std::iter::FusedIterator<Item = GlyphCluster<'_>> {
+    let mut start = 0;
+    std::iter::from_fn(move || {
+        let cluster = glyphs.get(start)?.cluster;
+        let mut end = start + 1;
+        while glyphs
+            .get(end)
+            .is_some_and(|glyph| glyph.cluster == cluster)
+        {
+            end += 1;
         }
-        let end_byte = if j < glyphs.len() {
-            glyphs[j].cluster as usize
-        } else {
-            text_len
+        let end_byte = glyphs
+            .get(end)
+            .map_or(text_len, |glyph| glyph.cluster as usize);
+        let group = GlyphCluster {
+            byte_range: cluster as usize..end_byte,
+            glyphs: &glyphs[start..end],
         };
-        debug_assert!(end_byte >= cluster as usize);
-        groups.push(ClusterGroup {
-            byte_range: (cluster as usize)..end_byte,
-            glyphs: glyphs[i..j].to_vec(),
-        });
-        i = j;
-    }
-    groups
+        start = end;
+        Some(group)
+    })
+    .fuse()
 }
 
 /// Convert a `(font, byte_range, parent-relative glyphs)` triple into
@@ -445,6 +470,92 @@ fn embedded_upem(id: EmbeddedFontId) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[allow(clippy::expect_used, reason = "test requires nonempty cluster groups")]
+    fn cluster_views_borrow_glyphs_and_preserve_positioning() {
+        let glyph = ShapedGlyph {
+            gid: 1,
+            cluster: 0,
+            advance_units: -17,
+            x_offset_units: 23,
+            y_offset_units: -9,
+        };
+        let glyphs = [
+            glyph,
+            ShapedGlyph { gid: 2, ..glyph },
+            ShapedGlyph {
+                gid: 3,
+                cluster: 3,
+                ..glyph
+            },
+        ];
+        let mut clusters = glyph_clusters(&glyphs, "ffié".len());
+        let first = clusters.next().expect("first cluster");
+        assert_eq!(first.byte_range, 0..3);
+        assert!(std::ptr::eq(first.glyphs.as_ptr(), glyphs.as_ptr()));
+        assert_eq!(first.glyphs, &glyphs[..2]);
+        let last = clusters.next().expect("last cluster");
+        assert_eq!(last.byte_range, 3..5);
+        assert_eq!(last.glyphs, &glyphs[2..]);
+        assert!(clusters.next().is_none());
+        assert!(clusters.next().is_none());
+        assert!(glyph_clusters(&[], 4).next().is_none());
+    }
+
+    #[test]
+    #[allow(
+        clippy::expect_used,
+        reason = "test requires valid shaped source ranges"
+    )]
+    fn cluster_views_use_normalized_subrun_text() {
+        let runs = shape_with_fallback(
+            Font::Embedded(EmbeddedFontId::Regular),
+            &[EmbeddedFontId::Math],
+            11.0,
+            "e\u{301}office⨌",
+        );
+        assert!(
+            runs.iter()
+                .any(|run| run.font == Font::Embedded(EmbeddedFontId::Math))
+        );
+        let mut text = String::new();
+        let mut saw_ligature = false;
+        for run in &runs {
+            for cluster in glyph_clusters(&run.glyphs, run.text.len()) {
+                let part = run
+                    .text
+                    .get(cluster.byte_range)
+                    .expect("valid source range");
+                saw_ligature |= part == "ffi";
+                text.push_str(part);
+            }
+        }
+        assert_eq!(text, "éoffice⨌");
+        assert!(saw_ligature);
+    }
+
+    #[test]
+    fn cluster_views_leave_external_range_validation_to_caller() {
+        let glyph = ShapedGlyph {
+            gid: 1,
+            cluster: 1,
+            advance_units: 0,
+            x_offset_units: 0,
+            y_offset_units: 0,
+        };
+        for offsets in [[1, 3], [3, 0], [0, 9]] {
+            let glyphs = offsets.map(|cluster| ShapedGlyph { cluster, ..glyph });
+            let clusters: Vec<_> = glyph_clusters(&glyphs, "éx".len()).collect();
+            assert_eq!(clusters.len(), 2);
+            assert!(
+                clusters
+                    .iter()
+                    .any(|cluster| "éx".get(cluster.byte_range.clone()).is_none())
+            );
+        }
+    }
+
     use crate::Base14Font;
 
     #[test]
