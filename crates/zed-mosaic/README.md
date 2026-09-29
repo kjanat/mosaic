@@ -18,8 +18,8 @@ queries/tasks.
 - Editor config for two-space indentation, soft wrap, comments, bracket pairs, word characters,
   auto-closing/surround pairs, and list continuation.
 - Runnables/tasks for `mos build` and `mos build --open` on the current file.
-- Language server features through [`mos-lsp`]: diagnostics, go-to-definition, label rename, and
-  compiler-suggestion code actions.
+- Language server features through [`mos-lsp`]: diagnostics, citation completion, go-to-definition,
+  label rename, and compiler-suggestion code actions.
 - Reserved semantic token style rules for a future Mosaic language server.
 
 The Rust/WASM entrypoint in [`src/lib.rs`] registers the extension and spawns [`mos-lsp`] as the
@@ -45,8 +45,8 @@ During local grammar development, the commented `file:///home/kjanat/projects/mo
 
 Opening a `.mos` file starts [`mos-lsp`] for the `Mosaic` language. [`extension.toml`] declares the
 `mos-lsp` language server and [`src/lib.rs`] resolves the binary. Current features: compiler
-diagnostics on open/change, go-to-definition for `@label` / `@page(label)` references, label rename
-via `textDocument/rename`, and quick fixes via `textDocument/codeAction`.
+diagnostics on open/change, citation completion, go-to-definition for `@label` / `@page(label)`
+references, label rename via `textDocument/rename`, and quick fixes via `textDocument/codeAction`.
 
 The server also attaches to the existing `BibTeX` language, supplied by Zed's LaTeX extension. With
 both buffers attached to the same `mos-lsp` instance, unsaved bibliography edits update Mosaic
@@ -157,14 +157,14 @@ and the execution-context data excluded from future collection.
 
 [`languages/mosaic/semantic_token_rules.json`] reserves the `mosaic*` custom token namespace for the
 future LSP and maps those semantic tokens to Zed theme styles. It is inactive because [`mos-lsp`]
-does not yet advertise a semantic tokens provider (it ships diagnostics, definition, rename, and
-code actions); enabling Zed semantic tokens (`combined` or `full`) has no effect until the server
-emits them[^semantic-tokens].
+does not yet advertise a semantic tokens provider (it ships diagnostics, citation completion,
+definition, rename, and code actions); enabling Zed semantic tokens (`combined` or `full`) has no
+effect until the server emits them[^semantic-tokens].
 
 ## Known non-goals
 
-- No formatter, completion, package resolution, preview pane, or watch mode. LSP features are
-  limited to what [`mos-lsp`] advertises today (diagnostics, definition, rename, code actions).
+- No formatter, package resolution, preview pane, or watch mode. LSP features are limited to what
+  [`mos-lsp`] advertises today (diagnostics, citation completion, definition, rename, code actions).
 - No compiler behavior lives here. `mos check`/`mos build` and [`mos-lsp`] remain owned by the main
   Mosaic crates.
 
