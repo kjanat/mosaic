@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::fs::Metadata;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use mos_core::{ContentHash, ContentHasher};
@@ -102,12 +103,129 @@ impl Fingerprint {
     }
 }
 
+/// A resource content hash, optionally accompanied by filesystem freshness metadata.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceFingerprint {
+    /// A regular file read by [`FileSystemReader`].
+    File(Fingerprint),
+    /// Caller-supplied bytes with no filesystem identity or timestamps.
+    Content(ContentHash),
+}
+
+impl ResourceFingerprint {
+    /// Hash of the exact bytes consumed by lowering.
+    #[must_use]
+    pub const fn content(self) -> ContentHash {
+        match self {
+            Self::File(file) => file.content,
+            Self::Content(content) => content,
+        }
+    }
+}
+
+/// Bytes returned by a [`ResourceReader`].
+#[derive(Clone, Debug)]
+pub struct ResourceData {
+    bytes: Arc<[u8]>,
+    fingerprint: ResourceFingerprint,
+}
+
+impl ResourceData {
+    /// Capture supplied bytes without consulting the filesystem.
+    #[must_use]
+    pub fn new(bytes: impl Into<Arc<[u8]>>) -> Self {
+        let bytes = bytes.into();
+        let fingerprint = ResourceFingerprint::Content(fingerprint_bytes(&bytes));
+        Self { bytes, fingerprint }
+    }
+}
+
+/// Supplies image and bibliography bytes at already-resolved source paths.
+///
+/// Each path is read at most once per lowering, including failed reads. Implementors
+/// may use memory, archives, or editor overlays; they need no filesystem metadata.
+/// The reader is synchronous and need not implement `Send` or `Sync`.
+pub trait ResourceReader {
+    /// Read a resolved path, or return the underlying resource error.
+    ///
+    /// # Errors
+    ///
+    /// Return `NotFound` for absent resources, `InvalidInput` for paths that do
+    /// not identify readable resources (such as directories), and an appropriate
+    /// I/O error for other failures. Lowering preserves the error in its snapshot.
+    fn read(&self, path: &Path) -> io::Result<ResourceData>;
+}
+
+impl<F> ResourceReader for F
+where
+    F: Fn(&Path) -> io::Result<ResourceData>,
+{
+    fn read(&self, path: &Path) -> io::Result<ResourceData> {
+        self(path)
+    }
+}
+
+/// Default resource reader, restricted to regular files.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FileSystemReader;
+
+impl ResourceReader for FileSystemReader {
+    fn read(&self, path: &Path) -> io::Result<ResourceData> {
+        let (bytes, fingerprint) = read_fingerprinted(path)?;
+        Ok(ResourceData {
+            bytes: bytes.into(),
+            fingerprint: ResourceFingerprint::File(fingerprint),
+        })
+    }
+}
+
+/// Captured external inputs belonging to one lowering result.
+///
+/// Bytes and failures are retained so consumers interpret external source spans
+/// against the same version used by the compiler. This is a per-path snapshot,
+/// not an atomic snapshot of the whole filesystem.
+#[derive(Debug, Default)]
+pub struct ResourceSnapshot {
+    entries: BTreeMap<PathBuf, io::Result<ResourceData>>,
+}
+
+impl ResourceSnapshot {
+    /// Look up a captured read. `None` means the path was never requested.
+    #[must_use]
+    pub fn get(&self, path: &Path) -> Option<Result<&[u8], &io::Error>> {
+        self.entries
+            .get(path)
+            .map(|result| result.as_ref().map(|data| data.bytes.as_ref()))
+    }
+
+    pub(crate) fn read(
+        &mut self,
+        reader: &dyn ResourceReader,
+        path: &Path,
+    ) -> Result<&[u8], &io::Error> {
+        self.entries
+            .entry(path.to_path_buf())
+            .or_insert_with(|| reader.read(path))
+            .as_ref()
+            .map(|data| data.bytes.as_ref())
+    }
+
+    pub(crate) fn dependencies(&self) -> Vec<ExternalDependency> {
+        self.entries
+            .iter()
+            .map(|(path, result)| ExternalDependency {
+                path: path.clone(),
+                fingerprint: result.as_ref().ok().map(|data| data.fingerprint),
+            })
+            .collect()
+    }
+}
+
 /// One external file a lowering depended on: an `#image` / `#figure` raster or
 /// a `#bibliography` source.
 ///
-/// `fingerprint` is `None` when the path was not a readable regular file at
-/// lowering time, so a file that later appears is as much a change as one
-/// that is edited.
+/// `fingerprint` is `None` when the reader failed. Successful reads carry
+/// a content hash and, for the filesystem adapter, file freshness metadata.
 ///
 /// # Examples
 ///
@@ -124,8 +242,8 @@ impl Fingerprint {
 pub struct ExternalDependency {
     /// The resolved filesystem path that was read.
     pub path: PathBuf,
-    /// The file's [`Fingerprint`], or `None` when it could not be read.
-    pub fingerprint: Option<Fingerprint>,
+    /// The resource fingerprint, or `None` when it could not be read.
+    pub fingerprint: Option<ResourceFingerprint>,
 }
 
 impl ExternalDependency {
@@ -133,11 +251,13 @@ impl ExternalDependency {
     #[must_use]
     pub fn observe(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
-        let fingerprint = fingerprint_file(&path);
+        let fingerprint = fingerprint_file(&path).map(ResourceFingerprint::File);
         Self { path, fingerprint }
     }
 
     /// Whether the file on disk still matches the recorded fingerprint.
+    /// Caller-supplied content fingerprints conservatively return false; this
+    /// method checks the filesystem, not a custom reader or overlay.
     ///
     /// A `stat` settles the common cases: a file whose size, modification
     /// time, and [`FileIdentity`] are unchanged is current, and a file that
@@ -150,6 +270,9 @@ impl ExternalDependency {
     pub fn is_current(&self) -> bool {
         let Some(recorded) = &self.fingerprint else {
             return regular_file_metadata(&self.path).is_none();
+        };
+        let ResourceFingerprint::File(recorded) = recorded else {
+            return false;
         };
         let Some(metadata) = regular_file_metadata(&self.path) else {
             return false;
@@ -216,42 +339,11 @@ fn regular_file_metadata(path: &Path) -> Option<Metadata> {
     std::fs::metadata(path).ok().filter(Metadata::is_file)
 }
 
-/// The dependencies observed so far while lowering one document, keyed by
-/// path so a file read twice is recorded once.
-#[derive(Debug, Default)]
-pub(crate) struct DependencySet {
-    entries: BTreeMap<PathBuf, Option<Fingerprint>>,
-}
-
-impl DependencySet {
-    pub(crate) fn record(&mut self, path: PathBuf, fingerprint: Option<Fingerprint>) {
-        self.entries.insert(path, fingerprint);
-    }
-
-    pub(crate) fn into_vec(self) -> Vec<ExternalDependency> {
-        self.entries
-            .into_iter()
-            .map(|(path, fingerprint)| ExternalDependency { path, fingerprint })
-            .collect()
-    }
-}
-
-impl From<Vec<ExternalDependency>> for DependencySet {
-    fn from(dependencies: Vec<ExternalDependency>) -> Self {
-        Self {
-            entries: dependencies
-                .into_iter()
-                .map(|dep| (dep.path, dep.fingerprint))
-                .collect(),
-        }
-    }
-}
-
-/// What a directive lowerer needs to touch the filesystem: the `.mos` file
-/// paths resolve against, and the set that records every file it reads.
+/// Resource access for a directive, using the enclosing lowering's snapshot.
 pub(crate) struct ExternalInputs<'a> {
     pub(crate) source_file: &'a Path,
-    pub(crate) dependencies: &'a mut DependencySet,
+    pub(crate) reader: &'a dyn ResourceReader,
+    pub(crate) resources: &'a mut ResourceSnapshot,
 }
 
 #[cfg(test)]
@@ -314,23 +406,22 @@ mod tests {
     fn unchanged_contents_stay_current_when_only_the_stat_moved() {
         let path = unique_temp_file("touch");
         std::fs::write(&path, b"same").expect("write");
-        let dep = ExternalDependency::observe(&path);
-        let recorded = dep.fingerprint.expect("fingerprint");
+        let recorded = fingerprint_file(&path).expect("fingerprint");
         let moved = ExternalDependency {
             path: path.clone(),
-            fingerprint: Some(Fingerprint {
+            fingerprint: Some(ResourceFingerprint::File(Fingerprint {
                 modified: Some(SystemTime::UNIX_EPOCH),
                 ..recorded
-            }),
+            })),
         };
         assert!(moved.is_current(), "a stat mismatch falls back to the hash");
         let stale = ExternalDependency {
             path: path.clone(),
-            fingerprint: Some(Fingerprint {
+            fingerprint: Some(ResourceFingerprint::File(Fingerprint {
                 modified: Some(SystemTime::UNIX_EPOCH),
                 content: fingerprint_bytes(b"other"),
                 ..recorded
-            }),
+            })),
         };
         assert!(!stale.is_current());
         cleanup(&path);
@@ -345,10 +436,10 @@ mod tests {
 
         let lying = ExternalDependency {
             path: path.clone(),
-            fingerprint: Some(Fingerprint {
+            fingerprint: Some(ResourceFingerprint::File(Fingerprint {
                 content: fingerprint_bytes(b"other"),
                 ..recorded
-            }),
+            })),
         };
         assert!(
             !lying.is_current(),
@@ -362,10 +453,10 @@ mod tests {
         assert!(!settled.is_racy());
         let trusted = ExternalDependency {
             path: path.clone(),
-            fingerprint: Some(Fingerprint {
+            fingerprint: Some(ResourceFingerprint::File(Fingerprint {
                 content: fingerprint_bytes(b"other"),
                 ..settled
-            }),
+            })),
         };
         assert!(
             trusted.is_current(),
@@ -394,10 +485,10 @@ mod tests {
         let recorded = fingerprint_file(&path).expect("fingerprint");
         let settled = ExternalDependency {
             path: path.clone(),
-            fingerprint: Some(Fingerprint {
+            fingerprint: Some(ResourceFingerprint::File(Fingerprint {
                 observed: recorded.observed + RACY_WINDOW * 2,
                 ..recorded
-            }),
+            })),
         };
         assert!(settled.is_current());
 
@@ -419,37 +510,5 @@ mod tests {
             "a new inode falls through the stat gate to the hash"
         );
         cleanup(&path);
-    }
-
-    #[test]
-    fn dependency_set_dedupes_by_path_and_orders_deterministically() {
-        let fp = |n: u128| {
-            Some(Fingerprint {
-                len: 1,
-                modified: None,
-                identity: FileIdentity::NONE,
-                observed: SystemTime::UNIX_EPOCH,
-                content: ContentHash(n),
-            })
-        };
-        let mut set = DependencySet::default();
-        set.record(PathBuf::from("b"), None);
-        set.record(PathBuf::from("a"), fp(1));
-        set.record(PathBuf::from("b"), fp(2));
-        let deps = set.into_vec();
-        assert_eq!(
-            deps,
-            vec![
-                ExternalDependency {
-                    path: PathBuf::from("a"),
-                    fingerprint: fp(1),
-                },
-                ExternalDependency {
-                    path: PathBuf::from("b"),
-                    fingerprint: fp(2),
-                },
-            ]
-        );
-        assert_eq!(DependencySet::from(deps.clone()).into_vec(), deps);
     }
 }

@@ -24,18 +24,30 @@ cross-references currently supported by `mos check` / `mos build`.
 
 ## Public API
 
-- `lower(src, file)`: parse, lower, resolve, and concatenate diagnostics.
+- `lower(src, file)` / `lower_tree(tree)`: lower with filesystem resources.
+- `lower_with_reader(src, file, reader)` / `lower_tree_with_reader(tree, reader)`: use a
+  `ResourceReader` for image and bibliography bytes. Closures implementing `Fn(&Path) ->
+  io::Result<ResourceData>` work directly; `ResourceData::new(bytes)` supplies memory-backed data.
+  The default adapter is `FileSystemReader`.
+- `Evaluator::evaluate_with_reader(tree, reader)`: evaluation without resolution using that reader.
 - `Evaluator::evaluate(tree)`: lower a parsed tree only; does not run `resolve`.
 - `resolve(document)`: mutate a lowered document in place with section numbers and reference text.
 - `LowerResult`: semantic `Document`, diagnostics, `DocumentMetadata`, and `external_dependencies`,
-  the files the lowering read (`#image` / `#figure` rasters, `#bibliography` sources) with the
-  `Fingerprint` each had at the time; `reads_external_resources()` is true when that list is
+  the resources the lowering read (`#image` / `#figure` rasters, `#bibliography` sources) with the
+  `ResourceFingerprint` each had at the time; `reads_external_resources()` is true when that list is
   non-empty. `bibliography` holds every BibTeX record loaded from the declared `#bibliography`
   sources (a re-exported `mos_bib::Bibliography`), the same records citation resolution used.
-- `ExternalDependency` / `Fingerprint` / `FileIdentity`, `fingerprint_bytes`, `fingerprint_file`:
-  the dependency record and its hashing, plus `ExternalDependency::is_current` for cache validation
-  (a `stat`, and a re-hash only when size, mtime, or the Unix inode identity moved, or when the file
-  was modified within `RACY_WINDOW` of being fingerprinted).
+  `resources` retains the exact bytes and failures in a read-only `ResourceSnapshot`. Repeated
+  resolved paths are read once per lowering, including failures, across images and bibliographies.
+  External source spans must be interpreted against these captured bytes, not a later reread.
+- `ExternalDependency` / `ResourceFingerprint` / `Fingerprint` / `FileIdentity`,
+  `fingerprint_bytes`, `fingerprint_file`: the dependency record and its hashing, plus
+  `ExternalDependency::is_current` for cache validation (a `stat`, and a re-hash only when size,
+  mtime, or the Unix inode identity moved, or when the file was modified within `RACY_WINDOW` of
+  being fingerprinted). `ResourceFingerprint::File` holds filesystem metadata; `Content` holds only
+  the supplied bytes' hash. Use `.content()` for either. `is_current()` checks disk, not a custom
+  reader: caller-supplied content returns false. Custom hosts own invalidation when their resources
+  change, including previously failed reads.
 
 ## Lowering Behavior
 
@@ -114,8 +126,8 @@ sizes, or leading values produce warnings, not hard errors.
 - `set_schema.rs`: accepted `#set` targets and argument types.
 - `image.rs`: image path resolution, file read, PNG/JPEG decode, alpha compositing.
 - `image_lower.rs`: `#image` / `#figure` argument handling and semantic node creation.
-- `dependency.rs`: external-file dependency records and fingerprints, the crate-private set that
-  collects them during lowering, and the `ExternalInputs` bundle directive lowerers read through.
+- `dependency.rs`: resource readers, immutable captured inputs, content fingerprints, and filesystem
+  freshness checks. `ExternalInputs` shares the snapshot across directive lowerers.
 - `resolve.rs`: section numbering, label index, duplicate/unknown reference diagnostics.
 
 ## Boundaries

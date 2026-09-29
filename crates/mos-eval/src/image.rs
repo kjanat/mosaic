@@ -19,7 +19,7 @@ use std::path::PathBuf;
 
 use mos_core::{Diagnostic, DiagnosticAnnotation, SourceSpan, codes};
 
-use crate::dependency::{ExternalInputs, read_fingerprinted};
+use crate::dependency::ExternalInputs;
 use crate::suggest;
 
 /// One decoded raster image, ready to be lowered onto a
@@ -58,15 +58,9 @@ pub(crate) fn load(
             path_span,
         ))
     })?;
-    let bytes = match read_fingerprinted(&resolved) {
-        Ok((bytes, fingerprint)) => {
-            inputs
-                .dependencies
-                .record(resolved.clone(), Some(fingerprint));
-            bytes
-        }
+    let bytes = match inputs.resources.read(inputs.reader, &resolved) {
+        Ok(bytes) => bytes,
         Err(err) => {
-            inputs.dependencies.record(resolved.clone(), None);
             return Err(Box::new(
                 Diagnostic::simple(
                     &codes::MOS0012,
@@ -80,7 +74,7 @@ pub(crate) fn load(
             ));
         }
     };
-    let decoded = decode(&bytes).map_err(|err| {
+    let decoded = decode(bytes).map_err(|err| {
         Box::new(
             Diagnostic::simple(
                 &codes::MOS0029,
