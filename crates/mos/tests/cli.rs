@@ -489,6 +489,61 @@ fn check_accepts_many_entries_and_skips_non_mos_files() {
 }
 
 #[test]
+fn batch_commands_skip_nonproject_directories() {
+    let dir = temp_dir("mos-batch-nonprojects");
+    std::fs::create_dir(dir.path().join("build")).unwrap();
+    std::fs::create_dir(dir.path().join("doc")).unwrap();
+    write_file(&dir.path().join("doc"), "main.mos", "= Title\n\nbody\n");
+    write_file(&dir.path().join("build"), "old.pdf", "old output");
+    write_file(dir.path(), "README.md", "not a source");
+    for command in ["check", "build"] {
+        let (code, stdout, stderr) = run(&[command, "build", "README.md", "doc"], dir.path());
+        assert_eq!(code, 0, "{command}: stdout={stdout} stderr={stderr}");
+        assert!(stderr.is_empty(), "{command}: {stderr}");
+    }
+    assert!(dir.path().join("doc/build/main.pdf").is_file());
+    assert!(!dir.path().join("build/build").exists());
+}
+
+#[test]
+fn batch_commands_preserve_invalid_project_errors() {
+    let dir = temp_dir("mos-batch-invalid-projects");
+    std::fs::create_dir(dir.path().join("empty")).unwrap();
+    std::fs::create_dir(dir.path().join("broken")).unwrap();
+    write_file(dir.path(), "good.mos", "= Title\n\nbody\n");
+    write_file(
+        &dir.path().join("broken"),
+        "mosaic.toml",
+        "[project]\nname = \"demo\"\nversion = \"0.1.0\"\nentry = \"missing.mos\"\n",
+    );
+    for command in ["check", "build"] {
+        for entries in [
+            vec!["empty"],
+            vec!["missing", "good.mos"],
+            vec!["broken", "good.mos"],
+        ] {
+            let mut args = vec![command];
+            args.extend(entries);
+            let (code, stdout, stderr) = run(&args, dir.path());
+            assert_ne!(code, 0, "{args:?}: stdout={stdout} stderr={stderr}");
+            assert!(!stderr.is_empty(), "{args:?} must report the invalid input");
+        }
+    }
+}
+
+#[test]
+fn batch_commands_fail_when_every_entry_is_skipped() {
+    let dir = temp_dir("mos-batch-no-projects");
+    std::fs::create_dir(dir.path().join("build")).unwrap();
+    write_file(dir.path(), "README.md", "not a source");
+    for command in ["check", "build"] {
+        let (code, stdout, stderr) = run(&[command, "build", "README.md"], dir.path());
+        assert_ne!(code, 0, "{command}: stdout={stdout} stderr={stderr}");
+        assert!(stdout.is_empty(), "{command}: {stdout}");
+    }
+}
+
+#[test]
 fn check_many_entries_fails_if_any_entry_fails() {
     let dir = temp_dir("mos-check-many-fail");
     write_file(dir.path(), "good.mos", "= Good\n\nbody\n");
