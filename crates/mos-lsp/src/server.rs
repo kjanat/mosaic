@@ -93,14 +93,15 @@ struct ServerState {
 
 #[derive(Debug)]
 struct OpenBibliography {
+    uri: String,
     text: String,
     content: mos_core::ContentHash,
 }
 
 impl OpenBibliography {
-    fn new(text: String) -> Self {
+    fn new(uri: String, text: String) -> Self {
         let content = mos_eval::fingerprint_bytes(text.as_bytes());
-        Self { text, content }
+        Self { uri, text, content }
     }
 }
 
@@ -131,14 +132,6 @@ fn handle_message<W: Write>(
     writer: &mut W,
 ) -> Result<bool> {
     let exit = dispatch_message(message, state, writer)?;
-    if message.get("id").is_some() && !state.changed_sources.is_empty() {
-        // A request may detect disk changes. Revalidate other owners before
-        // publishing, so their old snapshots cannot keep stale errors alive.
-        let uris: Vec<_> = state.documents.keys().cloned().collect();
-        for uri in uris {
-            with_lowering(state, &uri, |_, _, _| ());
-        }
-    }
     if !state.changed_sources.is_empty() {
         publish_combined_diagnostics(writer, state)?;
     }
@@ -216,7 +209,7 @@ fn dispatch_message<W: Write>(
                 {
                     state
                         .bibliographies
-                        .insert(path.clone(), OpenBibliography::new(text));
+                        .insert(path.clone(), OpenBibliography::new(uri.clone(), text));
                     refresh_dependents(writer, state, &path)?;
                     return Ok(false);
                 }
@@ -242,7 +235,7 @@ fn dispatch_message<W: Write>(
                 if is_bibliography(&path) || state.bibliographies.contains_key(&path) {
                     state
                         .bibliographies
-                        .insert(path.clone(), OpenBibliography::new(text));
+                        .insert(path.clone(), OpenBibliography::new(uri.clone(), text));
                     refresh_dependents(writer, state, &path)?;
                     return Ok(false);
                 }
@@ -461,7 +454,10 @@ fn with_lowering<T>(
     let fresh = mos_eval::lower_with_reader(src, &path, &reader);
     let result = f(&fresh, &path, src);
     let mut contributions = crate::diagnostics::resource_diagnostics(&path, &fresh);
-    contributions.insert(uri.to_owned(), from_result(&path, src, &fresh));
+    contributions
+        .entry(uri.to_owned())
+        .or_default()
+        .extend(from_result(&path, src, &fresh));
     lowerings.store(uri, fresh);
     for diagnostic in contributions.values_mut().flatten() {
         if !state.code_description_support {
@@ -612,10 +608,31 @@ fn publish_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState, uri: &
 }
 
 fn publish_combined_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState) -> Result<()> {
+    if !state.changed_sources.is_empty() {
+        // Any fresh lowering can observe disk changes, including notifications.
+        // Revalidate all owners before merging their diagnostic contributions.
+        let mut uris: Vec<_> = state.documents.keys().cloned().collect();
+        uris.sort();
+        for uri in uris {
+            with_lowering(state, &uri, |_, _, _| ());
+        }
+    }
     let mut combined = BTreeMap::<String, Vec<LspDiagnostic>>::new();
     for resources in state.diagnostic_contributions.values() {
         for (uri, diagnostics) in resources {
-            let target = combined.entry(uri.clone()).or_default();
+            let path = path_from_uri(uri);
+            let target_uri = state
+                .bibliographies
+                .get(&path)
+                .map(|open| &open.uri)
+                .or_else(|| {
+                    state
+                        .documents
+                        .keys()
+                        .find(|open_uri| path_from_uri(open_uri) == path)
+                })
+                .unwrap_or(uri);
+            let target = combined.entry(target_uri.clone()).or_default();
             for diagnostic in diagnostics {
                 if !target.contains(diagnostic) {
                     target.push(diagnostic.clone());
@@ -1645,6 +1662,16 @@ mod tests {
 
     #[test]
     fn request_relowering_republishes_disk_diagnostics_for_all_owners() {
+        assert_disk_diagnostic_refresh("textDocument/completion");
+    }
+
+    #[test]
+    fn notifications_republish_disk_diagnostics_for_all_owners() {
+        assert_disk_diagnostic_refresh("textDocument/didChange");
+        assert_disk_diagnostic_refresh("textDocument/didOpen");
+    }
+
+    fn assert_disk_diagnostic_refresh(method: &str) {
         let dir = unique_temp_dir("disk-resource-diagnostics");
         let resource = dir.join("refs.bib");
         std::fs::write(&resource, "@book{broken").unwrap();
@@ -1666,14 +1693,19 @@ mod tests {
         for (text, expected_errors) in [("@book{key, title={Fixed}}", 0), ("\n@book{broken", 1)] {
             std::fs::write(&resource, text).unwrap();
             writer.clear();
-            handle_message(
-                &json!({"id":1,"method":"textDocument/completion","params":{
+            let source = "#bibliography(\"refs.bib\")\nSee [@key]";
+            let message = match method {
+                "textDocument/didChange" => json!({"method":method,"params":{
+                    "textDocument":{"uri":first},"contentChanges":[{"text":source}]
+                }}),
+                "textDocument/didOpen" => json!({"method":method,"params":{
+                    "textDocument":{"uri":first,"text":source}
+                }}),
+                _ => json!({"id":1,"method":method,"params":{
                     "textDocument":{"uri":first},"position":{"line":1,"character":7}
                 }}),
-                &mut state,
-                &mut writer,
-            )
-            .unwrap();
+            };
+            handle_message(&message, &mut state, &mut writer).unwrap();
             let messages = decode_messages(&writer);
             let publish = messages
                 .iter()
@@ -1688,11 +1720,120 @@ mod tests {
                     publish["params"]["diagnostics"][0]["range"]["start"]["line"],
                     1
                 );
-            } else {
+            } else if method == "textDocument/completion" {
                 let response = messages.iter().find(|m| m["id"] == 1).unwrap();
                 assert_eq!(response["result"][0]["label"], "key");
             }
         }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn resource_diagnostics_retain_client_uri_and_clear_alias_on_close() {
+        for (source, bibliography) in [
+            (
+                "file:///virtual/main.mos",
+                "file://localhost/virtual/my%20refs.bib",
+            ),
+            (
+                "file://server/virtual/main.mos",
+                "file://server/virtual/my%20refs.bib",
+            ),
+        ] {
+            let mut state = ServerState::default();
+            let mut writer = Vec::new();
+            let canonical = path_to_uri(&path_from_uri(bibliography));
+            handle_message(
+                &json!({"method":"textDocument/didOpen","params":{"textDocument":{
+                    "uri":bibliography,"languageId":"bibtex","text":"@book{broken"
+                }}}),
+                &mut state,
+                &mut writer,
+            )
+            .unwrap();
+            handle_message(
+                &json!({"method":"textDocument/didOpen","params":{"textDocument":{
+                    "uri":source,"text":"#bibliography(\"my refs.bib\")"
+                }}}),
+                &mut state,
+                &mut writer,
+            )
+            .unwrap();
+            assert!(state.published_diagnostics.contains_key(bibliography));
+            assert!(!state.published_diagnostics.contains_key(&canonical));
+            writer.clear();
+            handle_message(
+                &json!({"method":"textDocument/didChange","params":{
+                    "textDocument":{"uri":bibliography},"contentChanges":[{"text":"@book{key}"}]
+                }}),
+                &mut state,
+                &mut writer,
+            )
+            .unwrap();
+            assert!(
+                decode_messages(&writer)
+                    .iter()
+                    .any(|m| m["params"]["uri"] == bibliography
+                        && m["params"]["diagnostics"] == json!([]))
+            );
+            handle_message(
+                &json!({"method":"textDocument/didChange","params":{
+                    "textDocument":{"uri":bibliography},"contentChanges":[{"text":"@book{broken"}]
+                }}),
+                &mut state,
+                &mut writer,
+            )
+            .unwrap();
+            writer.clear();
+            handle_message(
+                &json!({"method":"textDocument/didClose","params":{
+                    "textDocument":{"uri":bibliography}
+                }}),
+                &mut state,
+                &mut writer,
+            )
+            .unwrap();
+            assert!(
+                decode_messages(&writer)
+                    .iter()
+                    .any(|m| m["params"]["uri"] == bibliography
+                        && m["params"]["diagnostics"] == json!([]))
+            );
+        }
+    }
+
+    #[test]
+    fn self_referenced_bibliography_uses_disk_ranges_and_keeps_source_errors() {
+        let dir = unique_temp_dir("self-bibliography-diagnostics");
+        let path = dir.join("main.mos");
+        let prefix = "@book{key, title={😀}} ";
+        std::fs::write(&path, format!("\n\n{prefix}!")).unwrap();
+        let uri = path_to_uri(&path);
+        let mut state = ServerState::default();
+        let mut writer = Vec::new();
+        handle_message(
+            &json!({"method":"textDocument/didOpen","params":{"textDocument":{
+                "uri":uri,"text":"#bibliography(\"main.mos\")\nSee @missing"
+            }}}),
+            &mut state,
+            &mut writer,
+        )
+        .unwrap();
+        let diagnostics = &state.published_diagnostics[&uri];
+        let bibliography = diagnostics
+            .iter()
+            .find(|d| d.code == "syntax.bibtex-parse-failed")
+            .unwrap();
+        assert_eq!(bibliography.range.start.line, 2);
+        assert_eq!(
+            bibliography.range.start.character as usize,
+            prefix.encode_utf16().count()
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.code == "resolution.label-missing" && d.range.start.line == 1)
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
