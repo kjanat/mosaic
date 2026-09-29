@@ -429,7 +429,7 @@ impl LayoutState {
                 first_title_word.space_before_pt = text_width(bold, size, " ");
             }
         }
-        self.flow_words(&words, BODY_LEADING);
+        self.flow_words(words, BODY_LEADING);
         self.cursor_y += space_after;
     }
 
@@ -438,7 +438,7 @@ impl LayoutState {
         let leading = self.text.leading;
         let regular = self.text.family.regular;
         let words = self.collect_words(document, paragraph, regular, size);
-        self.flow_words(&words, leading);
+        self.flow_words(words, leading);
         self.cursor_y += PARA_SPACE_AFTER_PT;
     }
 
@@ -478,7 +478,7 @@ impl LayoutState {
                 subruns,
                 shy_break_offsets: Vec::new(),
             };
-            self.flow_words(&[WordItem::Word(word)], leading);
+            self.flow_words([WordItem::Word(word)], leading);
             emitted = true;
         }
         if emitted {
@@ -691,10 +691,7 @@ impl LayoutState {
     /// at its position (and produces a blank line when two hard
     /// breaks are adjacent or one lands mid-paragraph with no words
     /// behind it).
-    fn flow_words(&mut self, items: &[WordItem], leading: f32) {
-        if items.is_empty() {
-            return;
-        }
+    fn flow_words(&mut self, items: impl IntoIterator<Item = WordItem>, leading: f32) {
         let line_width = self.column_width_pt();
         let mut line: Vec<Word> = Vec::new();
         let mut line_width_used = 0.0_f32;
@@ -717,19 +714,17 @@ impl LayoutState {
         // may break twice (`super\-cali\-fragil\-istic` on a narrow
         // column), so the suffix re-enters the same dispatch loop.
         let mut pending: Option<Word> = None;
-        let mut item_idx = 0;
+        let mut items = items.into_iter();
 
         loop {
             let word_owned: Word = if let Some(w) = pending.take() {
                 w
-            } else if item_idx < items.len() {
-                let item = &items[item_idx];
-                item_idx += 1;
+            } else if let Some(item) = items.next() {
                 match item {
-                    WordItem::Word(w) => w.clone(),
+                    WordItem::Word(w) => w,
                     WordItem::HardBreak => {
                         if !line.is_empty() {
-                            self.flush_line(&line, leading);
+                            self.flush_line(&mut line, leading);
                             line.clear();
                             line_width_used = 0.0;
                             paragraph_emitted_line = true;
@@ -790,7 +785,7 @@ impl LayoutState {
                 )
             {
                 line.push(prefix);
-                self.flush_line(&line, leading);
+                self.flush_line(&mut line, leading);
                 line.clear();
                 line_width_used = 0.0;
                 paragraph_emitted_line = true;
@@ -803,7 +798,7 @@ impl LayoutState {
             // already empty. Flush any in-progress line and decide
             // what to do on a fresh empty line.
             if !line.is_empty() {
-                self.flush_line(&line, leading);
+                self.flush_line(&mut line, leading);
                 line.clear();
                 line_width_used = 0.0;
                 paragraph_emitted_line = true;
@@ -818,7 +813,7 @@ impl LayoutState {
                     try_shy_break(&word_owned, line_width, self.text.family.fallbacks)
                 {
                     line.push(prefix);
-                    self.flush_line(&line, leading);
+                    self.flush_line(&mut line, leading);
                     line.clear();
                     line_width_used = 0.0;
                     paragraph_emitted_line = true;
@@ -837,14 +832,14 @@ impl LayoutState {
             line.push(word_owned);
         }
         if !line.is_empty() {
-            self.flush_line(&line, leading);
+            self.flush_line(&mut line, leading);
         }
     }
 
     /// Emit one line worth of words at `cursor_y`, advancing past it.
     /// Computes the line's typographic metrics from `line` itself so
     /// the caller doesn't have to track them in parallel.
-    fn flush_line(&mut self, line: &[Word], leading: f32) {
+    fn flush_line(&mut self, line: &mut [Word], leading: f32) {
         // The marker participates in the line's vertical metrics so a
         // taller marker still gets the right baseline. In practice the
         // marker uses the body face at body size, but folding it in
@@ -911,7 +906,7 @@ impl LayoutState {
         }
 
         let mut x = self.current_left_pt;
-        for (i, word) in line.iter().enumerate() {
+        for (i, word) in line.iter_mut().enumerate() {
             if i > 0 {
                 x += word.space_before_pt;
             }
@@ -919,16 +914,21 @@ impl LayoutState {
             // each sub-run's `advance_pt`. PDF emit's per-run `Tf`
             // switch fires naturally at the font boundary between
             // sub-runs (Latin → Math → Latin in `a≤b`-style runs).
-            for sub in &word.subruns {
+            let subrun_count = word.subruns.len();
+            for (subrun_index, sub) in word.subruns.drain(..).enumerate() {
                 self.push_text_run(
                     TextRun {
                         x_pt: x,
                         baseline_from_top_pt: self.cursor_y,
                         size_pt: word.size_pt,
                         font: sub.font,
-                        text: sub.text.clone(),
-                        actual_text: word.actual_text.clone(),
-                        glyphs: sub.glyphs.clone(),
+                        text: sub.text,
+                        actual_text: if subrun_index + 1 == subrun_count {
+                            word.actual_text.take()
+                        } else {
+                            word.actual_text.clone()
+                        },
+                        glyphs: sub.glyphs,
                     },
                     sub.advance_pt,
                 );
@@ -980,7 +980,7 @@ impl LayoutState {
         leading: f32,
     ) {
         self.flush_line(
-            &[Word {
+            &mut [Word {
                 text,
                 actual_text: None,
                 space_before_pt: 0.0,
@@ -1026,6 +1026,44 @@ mod tests {
     use crate::types::BODY_SIZE_PT;
 
     use super::*;
+
+    #[test]
+    fn flowing_words_transfers_shaped_buffers_into_page_runs() {
+        let style = TextStyle::default();
+        let font = style.family.regular;
+        let subruns = shape_with_fallback(font, style.family.fallbacks, style.size_pt, "a⨌b");
+        assert!(subruns.len() > 1);
+        let buffers: Vec<_> = subruns
+            .iter()
+            .map(|sub| (sub.text.as_ptr(), sub.glyphs.as_ptr()))
+            .collect();
+        let width_pt = subruns.iter().map(|sub| sub.advance_pt).sum();
+        let actual_text = String::from("original text");
+        let actual_text_buffer = actual_text.as_ptr();
+        let word = Word {
+            text: String::from("a⨌b"),
+            actual_text: Some(actual_text),
+            space_before_pt: 0.0,
+            font,
+            size_pt: style.size_pt,
+            width_pt,
+            subruns,
+            shy_break_offsets: Vec::new(),
+        };
+        let mut state = LayoutState::new(PageStyle::default(), style);
+        state.flow_words([WordItem::Word(word)], 1.2);
+        let runs = &state.current_page.runs;
+        assert_eq!(runs.len(), buffers.len());
+        for (run, (text, glyphs)) in runs.iter().zip(buffers) {
+            assert_eq!(run.text.as_ptr(), text);
+            assert_eq!(run.glyphs.as_ptr(), glyphs);
+            assert_eq!(run.actual_text.as_deref(), Some("original text"));
+        }
+        assert_eq!(
+            runs.last().unwrap().actual_text.as_ref().unwrap().as_ptr(),
+            actual_text_buffer
+        );
+    }
 
     fn alloc_inline(doc: &mut Document, parent: NodeId, kind: NodeKind, text: &str) {
         let mut attrs = AttrMap::new();
