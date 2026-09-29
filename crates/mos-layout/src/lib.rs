@@ -962,9 +962,9 @@ impl LayoutState {
                 );
                 chunk_width = 0.0;
             }
-            chunk_text.push_str(&cluster.text);
+            chunk_text.push_str(cluster.text);
             chunk_width += cluster.advance_pt;
-            chunk_subruns.push(cluster);
+            chunk_subruns.push(cluster.into_subrun());
         }
         if !chunk_subruns.is_empty() {
             self.flush_oversize_chunk(chunk_text, chunk_width, chunk_subruns, word, leading);

@@ -254,45 +254,61 @@ pub(crate) fn split_soft_hyphens(text: &str) -> (String, Vec<usize>) {
     (stripped, offsets)
 }
 
-pub(crate) fn word_clusters(word: &Word) -> Vec<WordSubRun> {
-    let mut clusters = Vec::new();
-    for sub in &word.subruns {
-        if sub.glyphs.is_empty() {
-            for ch in sub.text.chars() {
-                let mut text = String::new();
-                text.push(ch);
-                clusters.push(WordSubRun {
-                    font: sub.font,
-                    advance_pt: text_width(sub.font, word.size_pt, &text),
-                    text,
-                    glyphs: Vec::new(),
-                });
-            }
-            continue;
-        }
+pub(crate) struct WordCluster<'a> {
+    pub font: Font,
+    pub text: &'a str,
+    pub glyphs: &'a [ShapedGlyph],
+    pub advance_pt: f32,
+}
 
-        for cluster in mos_fonts::glyph_clusters(&sub.glyphs, sub.text.len()) {
-            let Some(text) = sub.text.get(cluster.byte_range.clone()) else {
-                continue;
-            };
-            let shift = u32::try_from(cluster.byte_range.start).unwrap_or(u32::MAX);
-            let glyphs: Vec<_> = cluster
+impl WordCluster<'_> {
+    pub(crate) fn into_subrun(self) -> WordSubRun {
+        let shift = self.glyphs.first().map_or(0, |glyph| glyph.cluster);
+        WordSubRun {
+            font: self.font,
+            text: self.text.to_owned(),
+            glyphs: self
                 .glyphs
                 .iter()
-                .map(|g| ShapedGlyph {
-                    cluster: g.cluster.saturating_sub(shift),
-                    ..*g
+                .map(|glyph| ShapedGlyph {
+                    cluster: glyph.cluster.saturating_sub(shift),
+                    ..*glyph
                 })
-                .collect();
-            clusters.push(WordSubRun {
-                font: sub.font,
-                text: text.to_owned(),
-                advance_pt: glyphs_advance_pt(sub.font, word.size_pt, &glyphs),
-                glyphs,
-            });
+                .collect(),
+            advance_pt: self.advance_pt,
         }
     }
-    clusters
+}
+
+pub(crate) fn word_clusters(word: &Word) -> impl Iterator<Item = WordCluster<'_>> {
+    word.subruns.iter().flat_map(move |sub| {
+        let mut characters = sub.text.char_indices();
+        let mut clusters = mos_fonts::glyph_clusters(&sub.glyphs, sub.text.len());
+        std::iter::from_fn(move || {
+            if sub.glyphs.is_empty() {
+                let (start, character) = characters.next()?;
+                let text = &sub.text[start..start + character.len_utf8()];
+                return Some(WordCluster {
+                    font: sub.font,
+                    text,
+                    glyphs: &[],
+                    advance_pt: text_width(sub.font, word.size_pt, text),
+                });
+            }
+            loop {
+                let cluster = clusters.next()?;
+                let Some(text) = sub.text.get(cluster.byte_range) else {
+                    continue;
+                };
+                return Some(WordCluster {
+                    font: sub.font,
+                    text,
+                    glyphs: cluster.glyphs,
+                    advance_pt: glyphs_advance_pt(sub.font, word.size_pt, cluster.glyphs),
+                });
+            }
+        })
+    })
 }
 
 fn glyphs_advance_pt(font: Font, size_pt: f32, glyphs: &[ShapedGlyph]) -> f32 {
@@ -331,6 +347,53 @@ mod tests {
     }
 
     #[test]
+    fn cluster_views_borrow_text_and_glyphs_across_font_runs() {
+        let mut word = make_shy_word("a⨌é", Vec::new());
+        word.font = Font::Embedded(mos_fonts::EmbeddedFontId::Regular);
+        word.subruns = shape_with_fallback(
+            word.font,
+            &[mos_fonts::EmbeddedFontId::Math],
+            word.size_pt,
+            &word.text,
+        );
+        let clusters: Vec<_> = super::word_clusters(&word).collect();
+        assert_eq!(clusters.len(), word.subruns.len());
+        assert_eq!(
+            clusters
+                .iter()
+                .map(|cluster| cluster.text)
+                .collect::<String>(),
+            word.text
+        );
+        for (cluster, subrun) in clusters.iter().zip(&word.subruns) {
+            assert_eq!(cluster.text.as_ptr(), subrun.text.as_ptr());
+            assert_eq!(cluster.glyphs.as_ptr(), subrun.glyphs.as_ptr());
+            assert_eq!(cluster.font, subrun.font);
+            assert_eq!(cluster.advance_pt, subrun.advance_pt);
+        }
+    }
+
+    #[test]
+    fn base14_cluster_views_follow_unicode_scalar_boundaries() {
+        let word = make_shy_word("aé日", Vec::new());
+        let clusters: Vec<_> = super::word_clusters(&word).collect();
+        assert_eq!(
+            clusters
+                .iter()
+                .map(|cluster| cluster.text)
+                .collect::<Vec<_>>(),
+            ["a", "é", "日"]
+        );
+        for cluster in clusters {
+            assert!(cluster.glyphs.is_empty());
+            assert_eq!(
+                cluster.advance_pt,
+                text_width(word.font, word.size_pt, cluster.text)
+            );
+        }
+    }
+
+    #[test]
     fn word_cluster_slices_rebase_without_losing_positioning() {
         let mut word = make_shy_word("xffié", Vec::new());
         word.font = Font::Embedded(mos_fonts::EmbeddedFontId::Regular);
@@ -365,7 +428,9 @@ mod tests {
                 },
             ],
         }];
-        let clusters = super::word_clusters(&word);
+        let clusters: Vec<_> = super::word_clusters(&word)
+            .map(super::WordCluster::into_subrun)
+            .collect();
         assert_eq!(
             clusters
                 .iter()
