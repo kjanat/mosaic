@@ -161,7 +161,7 @@ fn run_many(entries: &[PathBuf], mut run_one: impl FnMut(&Path) -> ExitCode) -> 
     let mut failed = false;
 
     for entry in &entries {
-        if should_skip_glob_file(entry, many) {
+        if should_skip_batch_entry(entry, many) {
             continue;
         }
         ran = true;
@@ -177,8 +177,11 @@ fn run_many(entries: &[PathBuf], mut run_one: impl FnMut(&Path) -> ExitCode) -> 
     }
 }
 
-fn should_skip_glob_file(entry: &Path, many: bool) -> bool {
-    many && entry.is_file() && !is_mos_source(entry)
+fn should_skip_batch_entry(entry: &Path, many: bool) -> bool {
+    many && ((entry.is_file() && !is_mos_source(entry))
+        || (entry.is_dir()
+            && matches!(entry.join("mosaic.toml").try_exists(), Ok(false))
+            && matches!(entry.join("main.mos").try_exists(), Ok(false))))
 }
 
 fn is_mos_source(entry: &Path) -> bool {
