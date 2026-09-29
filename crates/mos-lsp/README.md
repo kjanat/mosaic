@@ -30,7 +30,9 @@ quick fixes.
 - Bibliography parse errors are published against the bibliography URI using the captured text and
   UTF-16 ranges. Shared errors are deduplicated across open Mosaic documents and cleared on repair
   or when their last dependent closes or removes the declaration. Closing a bibliography buffer
-  restores diagnostics from disk while dependent Mosaic documents remain open.
+  restores diagnostics from disk while dependent Mosaic documents remain open. Requests that detect
+  changed resources on disk also refresh diagnostics. If a URI is both Mosaic source and a
+  bibliography resource, both sets of diagnostics coexist until their respective owners close.
 - BibTeX buffers are resource inputs, not Mosaic source: this server does not parse them as `.mos`
   or provide standalone BibTeX editing features. Clients must send their open/change/close events to
   the same server instance as the dependent Mosaic documents.

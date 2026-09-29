@@ -6,7 +6,7 @@
 //! JSON-RPC 2.0 messages: implemented directly against [`std::io`]
 //! rather than pulling in `tower-lsp` for one notification.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
@@ -86,8 +86,9 @@ struct ServerState {
     /// requests and dropped whenever a document's source changes or closes.
     lowerings: LoweringCache,
     // Contributions belong to source documents: several can share a resource.
-    resource_diagnostics: BTreeMap<String, BTreeMap<String, Vec<LspDiagnostic>>>,
-    published_resources: BTreeMap<String, Vec<LspDiagnostic>>,
+    diagnostic_contributions: BTreeMap<String, BTreeMap<String, Vec<LspDiagnostic>>>,
+    published_diagnostics: BTreeMap<String, Vec<LspDiagnostic>>,
+    changed_sources: BTreeSet<String>,
 }
 
 #[derive(Debug)]
@@ -117,14 +118,34 @@ fn refresh_dependents<W: Write>(
     path: &Path,
 ) -> Result<()> {
     for uri in state.lowerings.invalidate_dependency(path) {
-        update_diagnostics(writer, state, &uri)?;
+        with_lowering(state, &uri, |_, _, _| ());
     }
-    publish_resource_diagnostics(writer, state)
+    publish_combined_diagnostics(writer, state)
 }
 
 /// Process a single decoded LSP message. Returns `Ok(true)` if the
 /// loop should exit (the client sent `exit`).
 fn handle_message<W: Write>(
+    message: &Value,
+    state: &mut ServerState,
+    writer: &mut W,
+) -> Result<bool> {
+    let exit = dispatch_message(message, state, writer)?;
+    if message.get("id").is_some() && !state.changed_sources.is_empty() {
+        // A request may detect disk changes. Revalidate other owners before
+        // publishing, so their old snapshots cannot keep stale errors alive.
+        let uris: Vec<_> = state.documents.keys().cloned().collect();
+        for uri in uris {
+            with_lowering(state, &uri, |_, _, _| ());
+        }
+    }
+    if !state.changed_sources.is_empty() {
+        publish_combined_diagnostics(writer, state)?;
+    }
+    Ok(exit)
+}
+
+fn dispatch_message<W: Write>(
     message: &Value,
     state: &mut ServerState,
     writer: &mut W,
@@ -246,10 +267,8 @@ fn handle_message<W: Write>(
                 }
                 state.documents.remove(&uri);
                 state.lowerings.invalidate(&uri);
-                state.resource_diagnostics.remove(&uri);
-                publish_resource_diagnostics(writer, state)?;
-                // Clear stale squigglies in the editor.
-                clear_diagnostics(writer, &uri)?;
+                state.diagnostic_contributions.remove(&uri);
+                publish_combined_diagnostics(writer, state)?;
             }
             Ok(false)
         }
@@ -441,7 +460,21 @@ fn with_lowering<T>(
     };
     let fresh = mos_eval::lower_with_reader(src, &path, &reader);
     let result = f(&fresh, &path, src);
+    let mut contributions = crate::diagnostics::resource_diagnostics(&path, &fresh);
+    contributions.insert(uri.to_owned(), from_result(&path, src, &fresh));
     lowerings.store(uri, fresh);
+    for diagnostic in contributions.values_mut().flatten() {
+        if !state.code_description_support {
+            diagnostic.code_description = None;
+        }
+        if !state.data_support {
+            diagnostic.data = None;
+        }
+    }
+    state
+        .diagnostic_contributions
+        .insert(uri.to_owned(), contributions);
+    state.changed_sources.insert(uri.to_owned());
     Some(result)
 }
 
@@ -573,37 +606,14 @@ fn read_range(message: &Value) -> Option<LspRange> {
 /// Callers invalidate the cache *before* publishing on a source mutation,
 /// so the lowering populated here always reflects the current text.
 fn publish_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState, uri: &str) -> Result<()> {
-    update_diagnostics(writer, state, uri)?;
-    publish_resource_diagnostics(writer, state)
+    with_lowering(state, uri, |_, _, _| ());
+    state.changed_sources.insert(uri.to_owned());
+    publish_combined_diagnostics(writer, state)
 }
 
-fn update_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState, uri: &str) -> Result<()> {
-    let Some((mut diagnostics, mut resources)) = with_lowering(state, uri, |lowered, path, src| {
-        (
-            from_result(path, src, lowered),
-            crate::diagnostics::resource_diagnostics(path, lowered),
-        )
-    }) else {
-        return Ok(());
-    };
-    for diagnostic in diagnostics
-        .iter_mut()
-        .chain(resources.values_mut().flatten())
-    {
-        if !state.code_description_support {
-            diagnostic.code_description = None;
-        }
-        if !state.data_support {
-            diagnostic.data = None;
-        }
-    }
-    state.resource_diagnostics.insert(uri.to_owned(), resources);
-    send_publish(writer, uri, &diagnostics)
-}
-
-fn publish_resource_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState) -> Result<()> {
+fn publish_combined_diagnostics<W: Write>(writer: &mut W, state: &mut ServerState) -> Result<()> {
     let mut combined = BTreeMap::<String, Vec<LspDiagnostic>>::new();
-    for resources in state.resource_diagnostics.values() {
+    for resources in state.diagnostic_contributions.values() {
         for (uri, diagnostics) in resources {
             let target = combined.entry(uri.clone()).or_default();
             for diagnostic in diagnostics {
@@ -613,17 +623,25 @@ fn publish_resource_diagnostics<W: Write>(writer: &mut W, state: &mut ServerStat
             }
         }
     }
-    for (uri, diagnostics) in &combined {
-        if state.published_resources.get(uri) != Some(diagnostics) {
+    for uri in &state.changed_sources {
+        if let Some(diagnostics) = combined.get(uri) {
             send_publish(writer, uri, diagnostics)?;
         }
     }
-    for uri in state.published_resources.keys() {
+    for (uri, diagnostics) in &combined {
+        if !state.changed_sources.contains(uri)
+            && state.published_diagnostics.get(uri) != Some(diagnostics)
+        {
+            send_publish(writer, uri, diagnostics)?;
+        }
+    }
+    for uri in state.published_diagnostics.keys() {
         if !combined.contains_key(uri) {
             clear_diagnostics(writer, uri)?;
         }
     }
-    state.published_resources = combined;
+    state.published_diagnostics = combined;
+    state.changed_sources.clear();
     Ok(())
 }
 
@@ -1559,6 +1577,126 @@ mod tests {
     }
 
     #[test]
+    fn closing_source_preserves_errors_owned_by_a_bibliography_consumer() {
+        let dir = unique_temp_dir("source-resource-diagnostics");
+        let resource = dir.join("second.mos");
+        std::fs::write(&resource, "@book{broken").unwrap();
+        let resource_uri = path_to_uri(&resource);
+        let owner_uri = path_to_uri(&dir.join("first.mos"));
+        let mut state = ServerState::default();
+        let mut writer = Vec::new();
+        for (uri, text) in [
+            (&owner_uri, "#bibliography(\"second.mos\")"),
+            (&resource_uri, "See @missing"),
+        ] {
+            handle_message(
+                &json!({"method":"textDocument/didOpen","params":{"textDocument":{
+                    "uri":uri,"text":text
+                }}}),
+                &mut state,
+                &mut writer,
+            )
+            .unwrap();
+        }
+        let published = &state.published_diagnostics[&resource_uri];
+        assert!(
+            published
+                .iter()
+                .any(|d| d.code == "syntax.bibtex-parse-failed")
+        );
+        assert!(published.len() > 1, "source and resource errors coexist");
+        writer.clear();
+        handle_message(
+            &json!({"method":"textDocument/didClose","params":{
+                "textDocument":{"uri":resource_uri}
+            }}),
+            &mut state,
+            &mut writer,
+        )
+        .unwrap();
+        let notifications = decode_messages(&writer);
+        let last = notifications
+            .iter()
+            .rev()
+            .find(|m| m["params"]["uri"] == resource_uri)
+            .unwrap();
+        assert_eq!(last["params"]["diagnostics"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            last["params"]["diagnostics"][0]["code"],
+            "syntax.bibtex-parse-failed"
+        );
+        writer.clear();
+        handle_message(
+            &json!({"method":"textDocument/didClose","params":{
+                "textDocument":{"uri":owner_uri}
+            }}),
+            &mut state,
+            &mut writer,
+        )
+        .unwrap();
+        assert!(
+            decode_messages(&writer)
+                .iter()
+                .any(|m| m["params"]["uri"] == resource_uri
+                    && m["params"]["diagnostics"] == json!([]))
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn request_relowering_republishes_disk_diagnostics_for_all_owners() {
+        let dir = unique_temp_dir("disk-resource-diagnostics");
+        let resource = dir.join("refs.bib");
+        std::fs::write(&resource, "@book{broken").unwrap();
+        let resource_uri = path_to_uri(&resource);
+        let first = path_to_uri(&dir.join("first.mos"));
+        let second = path_to_uri(&dir.join("second.mos"));
+        let mut state = ServerState::default();
+        let mut writer = Vec::new();
+        for uri in [&first, &second] {
+            handle_message(
+                &json!({"method":"textDocument/didOpen","params":{"textDocument":{
+                    "uri":uri,"text":"#bibliography(\"refs.bib\")\nSee [@key]"
+                }}}),
+                &mut state,
+                &mut writer,
+            )
+            .unwrap();
+        }
+        for (text, expected_errors) in [("@book{key, title={Fixed}}", 0), ("\n@book{broken", 1)] {
+            std::fs::write(&resource, text).unwrap();
+            writer.clear();
+            handle_message(
+                &json!({"id":1,"method":"textDocument/completion","params":{
+                    "textDocument":{"uri":first},"position":{"line":1,"character":7}
+                }}),
+                &mut state,
+                &mut writer,
+            )
+            .unwrap();
+            let messages = decode_messages(&writer);
+            let publish = messages
+                .iter()
+                .find(|m| m["params"]["uri"] == resource_uri)
+                .unwrap();
+            assert_eq!(
+                publish["params"]["diagnostics"].as_array().unwrap().len(),
+                expected_errors
+            );
+            if expected_errors == 1 {
+                assert_eq!(
+                    publish["params"]["diagnostics"][0]["range"]["start"]["line"],
+                    1
+                );
+            } else {
+                let response = messages.iter().find(|m| m["id"] == 1).unwrap();
+                assert_eq!(response["result"][0]["label"], "key");
+            }
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn shared_bibliography_diagnostics_are_deduplicated_and_retained_until_unused() {
         let mut state = ServerState::default();
         let mut writer = Vec::new();
@@ -1635,7 +1773,7 @@ mod tests {
             &mut writer,
         )
         .unwrap();
-        assert!(state.published_resources.contains_key(bibliography));
+        assert!(state.published_diagnostics.contains_key(bibliography));
         assert!(
             decode_messages(&writer)
                 .iter()
@@ -1651,7 +1789,7 @@ mod tests {
             &mut writer,
         )
         .unwrap();
-        assert!(state.published_resources.is_empty());
+        assert!(!state.published_diagnostics.contains_key(bibliography));
         assert!(
             decode_messages(&writer)
                 .iter()
