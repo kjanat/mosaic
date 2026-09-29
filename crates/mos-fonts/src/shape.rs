@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{
     EmbeddedFontId, Font, ShapedGlyph, advance_units_to_pt, normalize::nfc_text, shape, text_width,
 };
@@ -252,16 +254,14 @@ pub fn shape_with_fallback(
     // Per-cluster resolution: which face owns it + which glyphs to use.
     // `glyphs` here carry `cluster` offsets into the *parent* `text`;
     // rebasing to sub-run-local offsets happens at the merge step.
-    let mut resolutions: Vec<ClusterResolution> = Vec::with_capacity(primary_glyphs.len());
-    for cluster in clusters {
+    let resolutions = clusters.map(|cluster| {
         let has_notdef = cluster.glyphs.iter().any(|g| g.gid == 0);
         if !has_notdef {
-            resolutions.push(ClusterResolution {
+            return ClusterResolution {
                 font: primary,
-                byte_range: cluster.byte_range.clone(),
-                glyphs: cluster.glyphs.to_vec(),
-            });
-            continue;
+                byte_range: cluster.byte_range,
+                glyphs: Cow::Borrowed(cluster.glyphs),
+            };
         }
         // Retry against each fallback. Cluster-granular: replace the
         // entire cluster's glyph slice if a fallback covers it.
@@ -292,18 +292,18 @@ pub fn shape_with_fallback(
             }
         }
         match accepted {
-            Some((fb_font, fb_glyphs)) => resolutions.push(ClusterResolution {
+            Some((fb_font, fb_glyphs)) => ClusterResolution {
                 font: fb_font,
-                byte_range: cluster.byte_range.clone(),
-                glyphs: fb_glyphs,
-            }),
-            None => resolutions.push(ClusterResolution {
+                byte_range: cluster.byte_range,
+                glyphs: Cow::Owned(fb_glyphs),
+            },
+            None => ClusterResolution {
                 font: primary,
-                byte_range: cluster.byte_range.clone(),
-                glyphs: cluster.glyphs.to_vec(),
-            }),
+                byte_range: cluster.byte_range,
+                glyphs: Cow::Borrowed(cluster.glyphs),
+            },
         }
-    }
+    });
 
     // Merge adjacent same-font resolutions into one sub-run apiece.
     let mut subruns: Vec<WordSubRun> = Vec::new();
@@ -312,14 +312,14 @@ pub fn shape_with_fallback(
         match current.take() {
             Some((font, range, mut glyphs)) if font == res.font => {
                 let new_range = range.start..res.byte_range.end;
-                glyphs.extend(res.glyphs);
+                glyphs.extend_from_slice(&res.glyphs);
                 current = Some((font, new_range, glyphs));
             }
             Some((font, range, glyphs)) => {
                 subruns.push(finalize_subrun(font, range, glyphs, text, size_pt));
-                current = Some((res.font, res.byte_range, res.glyphs));
+                current = Some((res.font, res.byte_range, res.glyphs.into_owned()));
             }
-            None => current = Some((res.font, res.byte_range, res.glyphs)),
+            None => current = Some((res.font, res.byte_range, res.glyphs.into_owned())),
         }
     }
     if let Some((font, range, glyphs)) = current {
@@ -341,10 +341,10 @@ pub struct GlyphCluster<'a> {
 
 /// Internal: one cluster's resolution after fallback retry. `glyphs`
 /// carry `cluster` offsets into the parent word text.
-struct ClusterResolution {
+struct ClusterResolution<'a> {
     font: Font,
     byte_range: std::ops::Range<usize>,
-    glyphs: Vec<ShapedGlyph>,
+    glyphs: Cow<'a, [ShapedGlyph]>,
 }
 
 /// Iterate over a left-to-right shaped glyph stream without allocating or copying glyphs.
@@ -470,6 +470,39 @@ fn embedded_upem(id: EmbeddedFontId) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn adjacent_fallback_clusters_merge_and_rebase() {
+        let runs = shape_with_fallback(
+            Font::Embedded(EmbeddedFontId::Regular),
+            &[EmbeddedFontId::Math],
+            11.0,
+            "office⨌⨌office",
+        );
+        assert_eq!(runs.len(), 3);
+        assert_eq!(
+            runs.iter().map(|run| run.text.as_str()).collect::<Vec<_>>(),
+            ["office", "⨌⨌", "office"]
+        );
+        assert_eq!(runs[1].font, Font::Embedded(EmbeddedFontId::Math));
+        let expected = shape_with_fallback(Font::Embedded(EmbeddedFontId::Math), &[], 11.0, "⨌⨌");
+        assert_eq!(runs[1].glyphs, expected[0].glyphs);
+        assert_eq!(runs[1].advance_pt, expected[0].advance_pt);
+        assert_eq!(runs[0].glyphs, runs[2].glyphs);
+    }
+
+    #[test]
+    fn unresolved_fallback_clusters_merge_with_original_positioning() {
+        let primary = Font::Embedded(EmbeddedFontId::Regular);
+        let text = "officeé🎉office🎉".repeat(32);
+        let expected = shape_with_fallback(primary, &[], 11.0, &text);
+        let actual = shape_with_fallback(primary, &[EmbeddedFontId::Math], 11.0, &text);
+        assert_eq!(actual.len(), 1);
+        assert_eq!(actual[0].font, expected[0].font);
+        assert_eq!(actual[0].text, expected[0].text);
+        assert_eq!(actual[0].glyphs, expected[0].glyphs);
+        assert_eq!(actual[0].advance_pt, expected[0].advance_pt);
+    }
 
     #[test]
     #[allow(clippy::expect_used, reason = "test requires nonempty cluster groups")]
