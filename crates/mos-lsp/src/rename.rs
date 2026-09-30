@@ -26,8 +26,7 @@ use std::path::Path;
 
 use mos_core::{AttrValue, Document, NodeKind, SourceSpan};
 
-use crate::definition::position_to_byte;
-use crate::diagnostics::{LspPosition, LspRange, span_to_range};
+use crate::diagnostics::{LspPosition, LspRange};
 
 /// Collect every editable range for renaming the label under `position`: the
 /// first declaration's label token plus every reference's identifier.
@@ -42,7 +41,18 @@ pub fn ranges(
     src: &str,
     position: LspPosition,
 ) -> Option<Vec<LspRange>> {
-    let offset = position_to_byte(src, position);
+    ranges_indexed(document, file, &mos_core::LineIndex::new(src), position)
+}
+
+/// Reuse an immutable source index across requests and range conversions.
+#[must_use]
+pub fn ranges_indexed(
+    document: &Document,
+    file: &Path,
+    src: &mos_core::LineIndex,
+    position: LspPosition,
+) -> Option<Vec<LspRange>> {
+    let offset = crate::definition::indexed_byte_offset(src, position);
     let label = label_under_cursor(document, file, offset)?;
 
     let mut spans: Vec<SourceSpan> = Vec::new();
@@ -64,7 +74,12 @@ pub fn ranges(
     if spans.is_empty() {
         return None;
     }
-    Some(spans.iter().map(|span| span_to_range(src, span)).collect())
+    Some(
+        spans
+            .iter()
+            .map(|span| crate::diagnostics::indexed_range(src, span))
+            .collect(),
+    )
 }
 
 /// The label spelled at `offset`, whether the cursor sits inside a reference
@@ -176,6 +191,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    use crate::definition::position_to_byte;
     use crate::diagnostics::byte_to_position;
 
     /// Resolve `position` for the byte `offset` via the production mapping.

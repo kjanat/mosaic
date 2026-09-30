@@ -17,6 +17,10 @@ doc  = false
 name = "mos-lsp"
 path = "src/main.rs"
 
+[[bench]]
+harness = false
+name    = "source_positions"
+
 [dependencies]
 mos-core.workspace   = true
 mos-eval.workspace   = true

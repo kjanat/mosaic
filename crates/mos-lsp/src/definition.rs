@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 
 use mos_core::{AttrValue, Document, NodeKind, SourceSpan};
 
-use crate::diagnostics::{LspPosition, LspRange, span_to_range};
+use crate::diagnostics::{LspPosition, LspRange};
 
 /// A resolved definition target. Label references point back into the
 /// requested Mosaic source file; citation keys can point into a declared
@@ -78,20 +78,31 @@ pub fn target_in(
     src: &str,
     position: LspPosition,
 ) -> Option<Target> {
+    target_in_indexed(lowered, file, &mos_core::LineIndex::new(src), position)
+}
+
+/// Reuse an immutable source index across requests and range conversions.
+#[must_use]
+pub fn target_in_indexed(
+    lowered: &mos_eval::LowerResult,
+    file: &Path,
+    src: &mos_core::LineIndex,
+    position: LspPosition,
+) -> Option<Target> {
     let document = &lowered.document;
-    let offset = position_to_byte(src, position);
+    let offset = indexed_byte_offset(src, position);
     if let Some(label) = reference_label_at(document, file, offset) {
         let span = first_declaration_span(document, &label)?;
         return (span.file == file).then(|| Target {
             path: span.file.clone(),
-            range: span_to_range(src, &span),
+            range: crate::diagnostics::indexed_range(src, &span),
         });
     }
     let span = citation_target_span_at(document, file, offset)?;
-    let target_src = std::str::from_utf8(lowered.resources.get(&span.file)?.ok()?).ok()?;
+    let target_src = lowered.resources.text_index(&span.file)?;
     Some(Target {
         path: span.file.clone(),
-        range: span_to_range(target_src, &span),
+        range: crate::diagnostics::indexed_range(target_src, &span),
     })
 }
 
@@ -228,6 +239,10 @@ pub fn position_to_byte(src: &str, position: LspPosition) -> usize {
         utf16 = utf16.saturating_add(u32::try_from(ch.len_utf16()).unwrap_or(0));
     }
     src.len()
+}
+
+pub(crate) fn indexed_byte_offset(src: &mos_core::LineIndex, position: LspPosition) -> usize {
+    src.byte_offset(position.line as usize, position.character as usize)
 }
 
 /// Byte offset of the start of `line` (zero-based). `None` if the

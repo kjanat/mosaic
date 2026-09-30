@@ -108,6 +108,21 @@ const fn lsp_severity(severity: Severity) -> u8 {
     }
 }
 
+pub(crate) fn indexed_position(src: &mos_core::LineIndex, offset: usize) -> LspPosition {
+    let (line, character) = src.utf16_position(offset);
+    LspPosition {
+        line: u32::try_from(line).unwrap_or(u32::MAX),
+        character: u32::try_from(character).unwrap_or(u32::MAX),
+    }
+}
+
+pub(crate) fn indexed_range(src: &mos_core::LineIndex, span: &SourceSpan) -> LspRange {
+    LspRange {
+        start: indexed_position(src, span.start()),
+        end: indexed_position(src, span.end()),
+    }
+}
+
 /// Parse a `file://` URI into a filesystem path.
 ///
 /// Percent-escapes are decoded as raw bytes and reassembled into UTF-8 so
@@ -195,6 +210,16 @@ pub fn for_document(file: &Path, src: &str) -> Vec<LspDiagnostic> {
 /// definition rather than lowering the same source twice.
 #[must_use]
 pub fn from_result(file: &Path, src: &str, lowered: &mos_eval::LowerResult) -> Vec<LspDiagnostic> {
+    from_result_indexed(file, &mos_core::LineIndex::new(src), lowered)
+}
+
+/// Reuse an immutable source index across requests and range conversions.
+#[must_use]
+pub fn from_result_indexed(
+    file: &Path,
+    src: &mos_core::LineIndex,
+    lowered: &mos_eval::LowerResult,
+) -> Vec<LspDiagnostic> {
     lowered
         .diagnostics
         .iter()
@@ -216,10 +241,7 @@ pub(crate) fn resource_diagnostics(
         else {
             continue;
         };
-        let Some(Ok(bytes)) = lowered.resources.get(&span.file) else {
-            continue;
-        };
-        let Ok(source) = std::str::from_utf8(bytes) else {
+        let Some(source) = lowered.resources.text_index(&span.file) else {
             continue;
         };
         if let Some(projected) = project_diagnostic(&span.file, source, diagnostic) {
@@ -240,9 +262,13 @@ fn is_resource_diagnostic(file: &Path, diagnostic: &CoreDiagnostic) -> bool {
     })
 }
 
-fn project_diagnostic(file: &Path, src: &str, diag: &CoreDiagnostic) -> Option<LspDiagnostic> {
+fn project_diagnostic(
+    file: &Path,
+    src: &mos_core::LineIndex,
+    diag: &CoreDiagnostic,
+) -> Option<LspDiagnostic> {
     let range = match diag.span() {
-        Some(span) if span.file == file => span_to_range(src, span),
+        Some(span) if span.file == file => indexed_range(src, span),
         Some(_) => return None,
         None => LspRange {
             start: LspPosition {
@@ -275,6 +301,43 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+
+    #[test]
+    fn indexed_positions_match_scan_semantics_at_all_boundaries() {
+        for source in [
+            String::new(),
+            "a😀\r\n字\n\n\tend\r".to_owned(),
+            format!("{}\n{}", "é😀字a".repeat(200), "z".repeat(800)),
+        ] {
+            let index = mos_core::LineIndex::new(source.as_str());
+            for byte in (0..=source.len() + 2).chain([usize::MAX]) {
+                assert_eq!(
+                    indexed_position(&index, byte),
+                    byte_to_position(&source, byte)
+                );
+            }
+            for (line, text) in source.split('\n').enumerate() {
+                for column in (0..=text.encode_utf16().count() + 2).chain([u32::MAX as usize]) {
+                    let position = LspPosition {
+                        line: u32::try_from(line).unwrap_or(u32::MAX),
+                        character: u32::try_from(column).unwrap_or(u32::MAX),
+                    };
+                    assert_eq!(
+                        crate::definition::indexed_byte_offset(&index, position),
+                        crate::definition::position_to_byte(&source, position)
+                    );
+                }
+            }
+            let beyond = LspPosition {
+                line: u32::MAX,
+                character: u32::MAX,
+            };
+            assert_eq!(
+                crate::definition::indexed_byte_offset(&index, beyond),
+                source.len()
+            );
+        }
+    }
 
     #[test]
     fn byte_to_position_handles_multibyte_lines() {
@@ -441,7 +504,7 @@ mod tests {
         let file = Path::new("/virtual/main.mos");
         for def in mos_core::codes::ALL {
             let diagnostic = CoreDiagnostic::new(def, Severity::Notice, None, "message");
-            let projected = project_diagnostic(file, "", &diagnostic);
+            let projected = project_diagnostic(file, &mos_core::LineIndex::new(""), &diagnostic);
             assert!(projected.is_some(), "spanless diagnostic must project");
             let Some(projected) = projected else {
                 return;
@@ -517,10 +580,12 @@ mod tests {
             "test setup: expected at least one diagnostic for {file:?}"
         );
         assert!(
-            lowered
-                .diagnostics
-                .iter()
-                .all(|d| project_diagnostic(&other, src, d).is_none()),
+            lowered.diagnostics.iter().all(|d| project_diagnostic(
+                &other,
+                &mos_core::LineIndex::new(src),
+                d
+            )
+            .is_none()),
             "diagnostics for a different file must be filtered out"
         );
     }

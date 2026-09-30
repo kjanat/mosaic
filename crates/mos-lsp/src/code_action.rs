@@ -9,13 +9,30 @@ use std::path::Path;
 use mos_core::{Diagnostic, SourceSpan, Suggestion};
 use serde_json::{Value, json};
 
-use crate::definition::position_to_byte;
-use crate::diagnostics::{LspRange, span_to_range};
+use crate::diagnostics::LspRange;
 
 #[must_use]
 pub fn code_actions_for_range(
     file: &Path,
     src: &str,
+    uri: &str,
+    lowered: &mos_eval::LowerResult,
+    request_range: LspRange,
+) -> Vec<Value> {
+    code_actions_for_range_indexed(
+        file,
+        &mos_core::LineIndex::new(src),
+        uri,
+        lowered,
+        request_range,
+    )
+}
+
+/// Reuse an immutable source index across requests and range conversions.
+#[must_use]
+pub fn code_actions_for_range_indexed(
+    file: &Path,
+    src: &mos_core::LineIndex,
     uri: &str,
     lowered: &mos_eval::LowerResult,
     request_range: LspRange,
@@ -89,7 +106,7 @@ fn suggestion_matches_request(
 }
 
 fn action_for_suggestion(
-    src: &str,
+    src: &mos_core::LineIndex,
     uri: &str,
     diagnostic: &Diagnostic,
     suggestion: &Suggestion,
@@ -98,7 +115,7 @@ fn action_for_suggestion(
     let edit = json!({
         "changes": {
             uri: [{
-                "range": span_to_range(src, &suggestion.span),
+                "range": crate::diagnostics::indexed_range(src, &suggestion.span),
                 "newText": suggestion.replacement,
             }],
         },
@@ -138,9 +155,9 @@ struct ByteRange {
 }
 
 impl ByteRange {
-    fn from_lsp(src: &str, range: LspRange) -> Self {
-        let start = position_to_byte(src, range.start);
-        let end = position_to_byte(src, range.end);
+    fn from_lsp(src: &mos_core::LineIndex, range: LspRange) -> Self {
+        let start = crate::definition::indexed_byte_offset(src, range.start);
+        let end = crate::definition::indexed_byte_offset(src, range.end);
         if start <= end {
             Self { start, end }
         } else {
